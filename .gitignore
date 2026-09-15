@@ -33,7 +33,9 @@ logs/
 # ---------- 检查点 ----------
 # 训练 checkpoint 体积大且可再生成，不入库。
 # 例外：Imgo2_deploy/policy/imgo2/himloco/himloco.pt 是部署配置引用的占位策略，
-# 体积不到 1 MB，需要保留，因此不在此处排除 *.pt。
+# 体积不到 1 MB，需要保留。
+*.pt
+!Imgo2_deploy/policy/imgo2/himloco/himloco.pt
 *.pth
 *.ckpt
 *.onnx
