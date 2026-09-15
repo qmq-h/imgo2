@@ -1,6 +1,7 @@
 #include "robot_joint_controller_group.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include <pluginlib/class_list_macros.hpp>
+#include <algorithm>
 
 namespace robot_joint_controller
 {
@@ -285,19 +286,28 @@ void RobotJointControllerGroup::SetCommandCallback(const robot_msgs::msg::RobotC
     rt_command_ptr_.writeFromNonRT(last_command_);
 }
 
+// std::clamp returns the clamped value and does not modify in place; the return value was
+// previously discarded, so ROS2 applied no limit. Guard the shared_ptr and the index too,
+// since joints_urdf_ is filled from an async parameter callback.
 void RobotJointControllerGroup::PositionLimit(double &position, int &index)
 {
-    std::clamp(position, joints_urdf_[index]->limits->lower, joints_urdf_[index]->limits->upper);
+    if (index < 0 || index >= static_cast<int>(joints_urdf_.size())) return;
+    if (!joints_urdf_[index] || !joints_urdf_[index]->limits) return;
+    position = std::clamp(position, joints_urdf_[index]->limits->lower, joints_urdf_[index]->limits->upper);
 }
 
 void RobotJointControllerGroup::VelocityLimit(double &velocity, int &index)
 {
-    std::clamp(velocity, -joints_urdf_[index]->limits->velocity, joints_urdf_[index]->limits->velocity);
+    if (index < 0 || index >= static_cast<int>(joints_urdf_.size())) return;
+    if (!joints_urdf_[index] || !joints_urdf_[index]->limits) return;
+    velocity = std::clamp(velocity, -joints_urdf_[index]->limits->velocity, joints_urdf_[index]->limits->velocity);
 }
 
 void RobotJointControllerGroup::EffortLimit(double &effort, int &index)
 {
-    std::clamp(effort, -joints_urdf_[index]->limits->effort, joints_urdf_[index]->limits->effort);
+    if (index < 0 || index >= static_cast<int>(joints_urdf_.size())) return;
+    if (!joints_urdf_[index] || !joints_urdf_[index]->limits) return;
+    effort = std::clamp(effort, -joints_urdf_[index]->limits->effort, joints_urdf_[index]->limits->effort);
 }
 
 } // namespace robot_joint_controller

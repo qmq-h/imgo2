@@ -12,7 +12,10 @@ from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
 import pandas as pd
 
-BASE_PATH = os.path.join(os.path.dirname(__file__), "../")
+# BASE_PATH must be the deploy root (imgo2_deploy/), because the callers below join it with
+# "policy". From src/imgo2_deploy/scripts/ that is three levels up; "../" resolved to
+# src/imgo2_deploy/, which has no policy/ directory.
+BASE_PATH = os.path.join(os.path.dirname(__file__), "../../../")
 
 class Config:
     def __init__(self):

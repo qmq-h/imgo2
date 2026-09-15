@@ -4,6 +4,11 @@ set -e
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+# Run from the deploy root: several steps below (cmake src/imgo2_deploy, find src,
+# rm -rf build/) are written relative to it, so `bash /path/to/imgo2_deploy/build.sh`
+# from any other directory would otherwise fail.
+cd "${SCRIPT_DIR}"
+
 # Load common utilities
 source "${SCRIPT_DIR}/scripts/common.sh"
 

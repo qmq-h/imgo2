@@ -67,6 +67,8 @@ MUJOCO_LOG.TXT
 /imgo2_deploy/**/libtorch/
 /imgo2_deploy/**/mujoco/
 /imgo2_deploy/**/.cache/
+# 部署子树下生成的 json（原 imgo2_deploy/.gitignore 的规则，合并时曾漏掉）
+/imgo2_deploy/**/*.json
 /imgo2_deploy/**/rl_sar_zoo/
 
 # ---------- Isaac Sim / Omniverse（原 imgo2_rl/.gitignore 的规则） ----------

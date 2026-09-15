@@ -6,6 +6,12 @@ from isaaclab.utils import configclass
 
 from imgo2_rl.assets.imgo2 import IMGO2_CFG, AMP_MOTION_FILES
 import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
+# `mdp/__init__.py` deliberately does not star-import amp_events: that module pulls in
+# rl_lab -> torch -> pybullet_utils, which would otherwise be dragged into every task
+# registration. Import the module directly here instead, so the AMP reference-reset term
+# exists exactly when the AMP config is loaded. Without this, `mdp.reset_amp_reference_state`
+# raises AttributeError at class-body evaluation and the AMP task cannot be created at all.
+from imgo2_rl.tasks.manager_based.locomotion.velocity.mdp import amp_events as mdp_amp
 from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     EventCfg,
     LocomotionVelocityRoughEnvCfg,
@@ -16,7 +22,7 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 @configclass
 class AMPEventCfg(EventCfg):
     reference_state_initialization = EventTerm(
-        func=mdp.reset_amp_reference_state,
+        func=mdp_amp.reset_amp_reference_state,
         mode="reset",
         params={
             "motion_files": AMP_MOTION_FILES,
@@ -167,6 +173,12 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # This is an explicit flat-ground height constraint, not frame tracking.
         self.rewards.base_height_l2.params["target_height"] = 0.30
         self.rewards.base_height_l2.params["sensor_cfg"] = None
+        # RewardsCfg declares base_height_l2 with body_names="" (velocity_env_cfg.py). Isaac Lab
+        # resolves every SceneEntityCfg param at env construction and treats "" as a regex that
+        # matches no body, then raises "Not all regular expressions are matched!". The reward
+        # itself only reads root_pos_w, so naming the base body is enough to make it resolvable.
+        # The sibling configs (rough_env_cfg.py, himloco_env_cfg.py) set this too.
+        self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
 
 
 @configclass

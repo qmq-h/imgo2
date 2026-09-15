@@ -41,9 +41,31 @@ class KinematicsTests(unittest.TestCase):
 
 
 class RewardContractTests(unittest.TestCase):
+    # These two guards exist because the AMP task was unconstructible without them:
+    # (a) mdp.reset_amp_reference_state did not exist (amp_events was not imported anywhere),
+    #     so importing amp_env_cfg raised AttributeError before any run could start;
+    # (b) base_height_l2 kept RewardsCfg's body_names="" and Isaac Lab raises
+    #     "Not all regular expressions are matched!" while resolving it at env construction.
+    # Neither is reachable from a simulator-free test, so they are asserted statically here.
+
+    CONFIG = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py"
+    AMP_EVENTS = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/amp_events.py"
+
+    def test_amp_reference_reset_term_is_imported_and_defined(self):
+        cfg_src = self.CONFIG.read_text(encoding="utf-8-sig")
+        events_src = self.AMP_EVENTS.read_text(encoding="utf-8-sig")
+        self.assertIn("def reset_amp_reference_state", events_src)
+        # the config must import amp_events itself; the mdp package does not re-export it
+        self.assertIn("from imgo2_rl.tasks.manager_based.locomotion.velocity.mdp import amp_events", cfg_src)
+        # and must reference the function through that module, not through `mdp`
+        self.assertIn("func=mdp_amp.reset_amp_reference_state", cfg_src)
+        self.assertNotIn("func=mdp.reset_amp_reference_state", cfg_src)
+        self.assertIn("# from .amp_events import *", (self.AMP_EVENTS.parent / "__init__.py").read_text(
+            encoding="utf-8-sig"), "if mdp re-exports amp_events, this guard needs revisiting")
+
     def test_height_survives_filter_and_per_step_scale_is_preserved(self):
         # Execute the actual config method without importing Isaac Sim.
-        path = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py"
+        path = self.CONFIG
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))  # 27 个上游文件带 UTF-8 BOM
         cfg_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Imgo2AmpMoveEnvCfg")
         method = next(n for n in cfg_class.body if isinstance(n, ast.FunctionDef) and n.name == "_keep_only_amp_task_rewards")
@@ -53,13 +75,18 @@ class RewardContractTests(unittest.TestCase):
             with self.subTest(step_dt=dt):
                 terms = SimpleNamespace(**{name: SimpleNamespace(weight=0.0, params={}) for name in (
                     "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2", "feet_slide")})
-                cfg = SimpleNamespace(rewards=terms, sim=SimpleNamespace(dt=dt / 4), decimation=4)
+                terms.base_height_l2.params["asset_cfg"] = SimpleNamespace(body_names="")
+                cfg = SimpleNamespace(rewards=terms, sim=SimpleNamespace(dt=dt / 4), decimation=4,
+                                      base_link_name="base")
                 namespace[method.name](cfg)
                 self.assertIsNone(terms.feet_slide)
                 self.assertIsNotNone(terms.base_height_l2)
                 target = terms.base_height_l2.params["target_height"]
                 self.assertAlmostEqual(target, 0.30)
                 self.assertIsNone(terms.base_height_l2.params["sensor_cfg"])
+                # body_names must be resolved to a concrete body, otherwise Isaac Lab's
+                # SceneEntityCfg resolution raises at env construction
+                self.assertEqual(terms.base_height_l2.params["asset_cfg"].body_names, ["base"])
                 standing_reward = dt * (terms.track_lin_vel_xy_exp.weight + terms.track_ang_vel_z_exp.weight)
                 crawling_reward = standing_reward + dt * terms.base_height_l2.weight * (0.10 - target)**2
                 self.assertAlmostEqual(standing_reward, 1.3)

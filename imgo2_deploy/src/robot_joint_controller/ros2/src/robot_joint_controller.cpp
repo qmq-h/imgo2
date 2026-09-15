@@ -1,6 +1,7 @@
 #include "robot_joint_controller.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include <pluginlib/class_list_macros.hpp>
+#include <algorithm>
 
 namespace robot_joint_controller
 {
@@ -42,7 +43,10 @@ CallbackReturn RobotJointController::on_configure(const rclcpp_lifecycle::State 
     robot_description_client_ = get_node()->create_client<rcl_interfaces::srv::GetParameters>("/robot_state_publisher/get_parameters");
 
     auto request = std::make_shared<rcl_interfaces::srv::GetParameters::Request>();
-    request->names.push_back("robot_description_");
+    // The parameter published by robot_state_publisher is "robot_description"; a trailing
+    // underscore here made the request return an empty string, so the URDF never parsed and
+    // joints_urdf_ stayed null.
+    request->names.push_back("robot_description");
 
     while (!robot_description_client_->wait_for_service(std::chrono::seconds(1)))
     {
@@ -212,19 +216,27 @@ void RobotJointController::SetCommandCallback(const robot_msgs::msg::MotorComman
     rt_command_ptr_.writeFromNonRT(last_command_);
 }
 
+// NOTE: std::clamp takes its argument by const reference and returns the clamped value;
+// it does not modify in place. These three helpers previously discarded the return value,
+// so ROS2 silently applied no limit at all (ROS1 defines its own by-reference clamp).
+// Also guard against joints_urdf_ being unset when the async parameter request has not
+// completed or failed — dereferencing a null JointConstSharedPtr is undefined behaviour.
 void RobotJointController::PositionLimit(double &position)
 {
-    std::clamp(position, joints_urdf_->limits->lower, joints_urdf_->limits->upper);
+    if (!joints_urdf_ || !joints_urdf_->limits) return;
+    position = std::clamp(position, joints_urdf_->limits->lower, joints_urdf_->limits->upper);
 }
 
 void RobotJointController::VelocityLimit(double &velocity)
 {
-    std::clamp(velocity, -joints_urdf_->limits->velocity, joints_urdf_->limits->velocity);
+    if (!joints_urdf_ || !joints_urdf_->limits) return;
+    velocity = std::clamp(velocity, -joints_urdf_->limits->velocity, joints_urdf_->limits->velocity);
 }
 
 void RobotJointController::EffortLimit(double &effort)
 {
-    std::clamp(effort, -joints_urdf_->limits->effort, joints_urdf_->limits->effort);
+    if (!joints_urdf_ || !joints_urdf_->limits) return;
+    effort = std::clamp(effort, -joints_urdf_->limits->effort, joints_urdf_->limits->effort);
 }
 
 } // namespace robot_joint_controller
