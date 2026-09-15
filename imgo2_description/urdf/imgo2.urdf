@@ -5,12 +5,13 @@
         <compiler meshdir="../meshes/" balanceinertia="false" discardvisual="false" fusestatic="false"/>
     </mujoco>
     <link name="base">
+        
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00002223 -0.00136579 0.00287896"/>
-            <mass value="6.53394020"/>
-            <inertia ixx="0.02469352" ixy="0.00000959" ixz="0.00000146" 
-                    iyy="0.06648693" iyz="-0.00006132" 
-                    izz="0.08016976"/>
+            <mass value="5.53394020"/>
+            <inertia ixx="0.03866860" ixy="0.00001502" ixz="0.00000229" 
+                    iyy="0.10411461" iyz="-0.00009602" 
+                    izz="0.12554111"/>
         </inertial>
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0.0"/>

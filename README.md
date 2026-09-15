@@ -23,7 +23,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | 路径 | 内容与用途 |
 |---|---|
 | [Imgo2/](Imgo2/) | 原始建模目录。`Imgo2_urdf/urdf/imgo2.urdf` 只是**腿部件片段**（16 link／16 joint，仅 HIP/THIGH/SHANK/FOOT，无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不是可直接加载的模型；`imgo2_mjcf/` 目前只有一套 MuJoCo 命名的网格（torso/hip_/thigh_/shank_/foot），无 XML |
-| [imgo2_description/](imgo2_description/) | 用户确认的实际动作采集模型；`xacro/robot.xacro` 包含 `urdf/imgo2_description.urdf`，采用 LF/LH/RF/RH 命名。**其腿部顺序与训练侧不同是有意为之，服务于另一处实现**：不要为「统一」而改写它，也不要把它与其它副本合并 |
+| [imgo2_description/](imgo2_description/) | 用户确认的实际动作采集模型；`xacro/robot.xacro` 直接 include `urdf/imgo2_description.urdf`，采用 LF/LH/RF/RH 命名。**其腿部顺序与训练侧不同是有意为之，服务于另一处实现**：不要为「统一」而改写它，也不要把它与其它副本合并。两个 URDF 的关节符号与限位已核实与训练份一致（FK 重现录制数据）；`mjcf/` 下有 `imgo2.xml` 与 `scene.xml`，是 DEPLOY-02 的线索 |
 | [Imgo2_rl/](Imgo2_rl/) | Isaac Lab 扩展、任务配置、训练脚本、自定义算法包、训练用模型及数据副本 |
 | [imgo2_dataset/](imgo2_dataset/) | 参考动作数据；当前数据位于 `datasets/imgo2_motion/` |
 | [Imgo2_deploy/](Imgo2_deploy/) | C++ 推理、观察缓存、状态机、MuJoCo/Gazebo/真机入口及策略配置 |
@@ -38,7 +38,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 
 | 模块 | 已核对事实 | 尚待验证 |
 |---|---|---|
-| 模型 | 原始、训练、部署目录各有一份 Imgo2 URDF | 三份文件 SHA256 不同；差异是否仅来自路径、格式或包含动力学差异，需进一步比较 |
+| 模型 | 四份 Imgo2 模型的关节符号与基座质量已于 2026-09-15 统一（`check_model_sync.py` 全通过）；`imgo2_description` 腿序不同是有意设计 | Gazebo/ROS 链路需复核；`Imgo2/` 的 URDF 是腿部件片段，统一模型副本仍需先补全 |
 | PPO | 用户于 2026-09-15 确认已完成训练及 sim 验证；代码有平地、粗糙地形、变高度、倒立注册项 | 待补具体已验证任务 ID、checkpoint 和指标；不推定所有注册任务均已验证 |
 | HIM-Loco | 环境、历史观察包装器、训练、回放、JIT/ONNX 导出及比较脚本已存在 | 导出数值一致性与 C++ 端适配 |
 | AMP | 用户反馈已有训练步态，但策略贴地爬行；已完成本地数据/URDF 离线核对并修正映射、归一化，补充高度约束及奖励量级调整 | 新配置尚待重新训练验证；正常初始化不视为策略能维持高度 |
@@ -62,6 +62,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | 自定义算法、网络、runner、包装器、数据加载器 | [scripts/rl_lab/rl_lab/](Imgo2_rl/scripts/rl_lab/rl_lab/) |
 | AMP 动作数据离线核对（高度、FK、腿顺序） | [audit_amp_dataset.py](Imgo2_rl/scripts/tools/audit_amp_dataset.py)、[check_amp_joint_order.py](Imgo2_rl/scripts/tools/check_amp_joint_order.py) |
 | 资源路径自检（新机器/训练服务器前置） | [check_asset_paths.py](Imgo2_rl/scripts/tools/check_asset_paths.py) |
+| 模型副本一致性（符号/限位/质量/网格/FK） | [check_model_sync.py](Imgo2_rl/scripts/tools/check_model_sync.py) |
 | 部署观察处理与策略推理 | [rl_sdk.cpp](Imgo2_deploy/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp) |
 | 部署状态切换 | [fsm_imgo2.hpp](Imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp) |
 | 构建选项与外部依赖条件 | [build.sh](Imgo2_deploy/build.sh)、[CMakeLists.txt](Imgo2_deploy/src/imgo2_deploy/CMakeLists.txt) |
@@ -234,13 +235,13 @@ bash build.sh --cmake
 |---|---|---|---|---|
 | DOC-01 | P1 | 已完成 | 训练 README 曾引用失效的 `script/himloco_rsl_rl` 安装路径和写死的个人服务器 checkpoint | 已改为 `scripts/rl_lab`，checkpoint 改为 `<run>` 占位并注明不可沿用；根 README 与子项目 README 表述一致 |
 | ENV-01 | P0 | 代码已修正，待服务器验证 | 原先 `assets/imgo2.py` 的两条路径写死为 `/root/gpufree-data/Imgo2_rl/...`，且假定 `Imgo2_rl` 就是项目根，合并成 monorepo 后必然失效且 glob 为空时无明确报错 | 已改为由 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖；新增 `scripts/tools/check_asset_paths.py` 供新机器自检（本机通过：URDF 存在、动作文件 21 份、无残留机器路径）。服务器上仍需运行该脚本并记录实际加载路径 |
-| MODEL-01 | P0 | 已比较；符号建议改 deploy 份，基座质量待你确认真值 | 四份 Imgo2 URDF 的 SHA256 不同。**符号**：12 个腿部关节 axis 中 `Imgo2_deploy` 全部取反（`-1 0 0`／`0 -1 0` 对训练份的 `1 0 0`／`0 1 0`），限位随之镜像（thigh `-2.87..0.9` 对 `-0.9..2.87`），即 q_部署 = −q_训练；`Imgo2/` 片段与训练份一致，故部署份是唯一反向者。**关键佐证**：deploy 三条推理链路里 `rl_real_imgo2.cpp`（Unitree SDK）、`rl_sim.cpp`（ROS 关节控制器）、`rl_sim_mujoco.cpp`（MJCF）**均无任何符号取反**，只有 `joint_mapping` 索引置换，`robot_control.yaml` 也只做控制器到关节名映射——没有任何地方为这套反向做补偿；读该 URDF 的只有 Gazebo/ROS 链路（`gazebo.launch(.py)` 把 `robot_description` 指向它）。**基座质量有四个值且每次差整 1.0 kg**：`Imgo2_deploy` `3.53394020`（总重 10.69955）、`Imgo2_rl` 与采集模型 `imgo2_description.urdf` `5.53394020`（总重 12.69955）、`imgo2_description/urdf/imgo2.urdf` `6.5339402`（总重 13.69955）；差异只在 base 一个 link，其余 16 个 link 质量完全一致。2.0 kg 占总重约 15.7%，但 base 本身是 5.53 对 3.53（差 57%）。**结构问题**：`Imgo2/Imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（16 link／16 joint，无 `base` link、无 `<robot>` 起始标签，只有尾部 `</robot>`，XML 不能独立解析），因此不能作为基座质量基准，也不能直接加载。网格共三套：`Imgo2/Imgo2_urdf`、`Imgo2_rl/.../Imgo2_urdf`、`Imgo2_deploy/...` 三份共用（指纹 `bc421eb1cbef`），`Imgo2/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各自独立 | ① 确认哪个基座质量是当前真值（3.5339／5.5339／6.5339）。② 符号改为以训练份为准——**不能反向改训练份**：AMP 恒等映射的依据是训练 URDF 与录制的真机数据 FK 吻合到 0.001 m，改训练份符号会使该吻合崩到 0.225 量级、整套对齐结论作废，而真机数据不会跟着变。③ 改完 deploy 后需在 Gazebo/ROS 链路复核（真机与 MuJoCo 链路不读该 URDF，不受影响）。④ 统一模型副本的前置是把 `Imgo2/` 片段补成完整 URDF |
+| MODEL-01 | P0 | 符号与基座质量已统一并验证；Gazebo/ROS 侧待复核 | 原先四份 URDF 不一致，现已查明并修正：部署份 12 个腿部关节 axis 全部取反（q_部署 = −q_训练），限位镜像；deploy 三条推理链路（`rl_real_imgo2.cpp` 走 Unitree SDK、`rl_sim.cpp` 走 ROS 控制器、`rl_sim_mujoco.cpp` 走 MJCF）**均无任何符号取反**，只有 `joint_mapping` 索引置换，`robot_control.yaml` 也只做控制器到关节名映射，即无补偿；读该 URDF 的只有 Gazebo/ROS。**已把部署份改为训练份约定**，改动 24 行（12 axis + 8 限位 + base 惯量块）。基座质量按用户确认真值统一为 `5.53394020`（原部署份 `3.53394020`、`imgo2_description/urdf/imgo2.urdf` `6.53394020` 且其惯量是 3.5339 那份、质量与惯量不自洽）。`imgo2_description` 两个 URDF 的符号与限位本来就和训练份一致（故采集数据无问题）。**验证**：修正后四份 URDF 的 FK 全部重现录制数据，最差恒等 RMSE 0.00214 m（部署份修正前为 0.11790 m）；`scripts/tools/check_model_sync.py` 按逻辑关节名逐项比对，四项检查全通过，并已用「故意翻回符号」的负向测试确认能报错（12 个关节 + FK 全部报 FAIL） | ① 在 Gazebo/ROS 链路复核（真机与 MuJoCo 链路不读该 URDF，不受影响）。② 统一模型副本仍需先把 `Imgo2/` 片段补成完整 URDF。③ 遗留项：`imgo2_description/xacro/common/leg.xacro` 与 `imgo2_description/urdf/imgo2.urdf` 全工作区无人引用，可考虑删除（未动） |
 | AMP-01 | P0 | 恒等映射由数据独立确认 | 用户确认未覆盖采集参数；脚本按默认 LF/RF/LH/RH 写入关节和足端，等价于训练端 `[FL,FR,RL,RR]`。本地补充：改用实际采集模型 `imgo2_description.urdf` 复算 FK 与训练 URDF 结果一致（恒等 RMSE 均值 0.00107 m，声明顺序配对 0.22491 m）；髋外展左右对称性和关节位置/速度块相关性检查也不依赖 URDF 支持同一结论 | 采集来源、源码顺序和数据本身均已确认；新训练的行为改善仍待服务器验证 |
 | AMP-02 | P0 | 历史报错，未复现 | 历史草稿记录 `RuntimeError: normal expects all elements of std >= 0.0`，调用栈为 `amp_on_policy_runner.py:136` → `amp_ppo.py:120` → `actor_critic.py:129` 的 `distribution.sample()` | 记录复现命令、数据和首个异常值；修复后训练验证；不能仅凭该报错断定根因 |
 | AMP-03 | P0 | 代码已修正，待 Torch 回归 | 原均值方差更新使用归一化值，梯度惩罚使用未归一化值；已与 `amp_go2-main` 的处理方式对齐 | CPU Torch 更新回归通过，并检查新训练中的判别器与归一化统计 |
 | AMP-04 | P0 | 已加入待验证配置 | 原配置删除高度项和非法接触终止；现在保留 0.30 m 高度项、基座触地终止，并补偿任务奖励的时间步长缩放，任务混合系数改为 0.3 | 新训练高度稳定、贴地比例降低、速度跟踪可接受；具体权重仍需实验 |
 | DEPLOY-01 | P0 | 待对齐 | Go2 占位策略与 Imgo2 训练配置存在默认姿态、PD、限幅、指令缩放等差异 | 替换为来源明确的 Imgo2 策略，完成训练端与部署端同输入输出比较 |
-| DEPLOY-02 | P0 | 缺场景 | MuJoCo 模型目录仅有 `.gitkeep` | 生成并成功加载场景，保存 sim2sim 测试结果 |
+| DEPLOY-02 | P0 | 缺场景 | `Imgo2_deploy/robot_description/imgo2_mjcf/` 仅有 `.gitkeep`，且 `rl_sim_mujoco.cpp` 读的正是 `<robot>_mjcf/<scene>.xml` | **线索**：`imgo2_description/mjcf/` 下已有 `imgo2.xml` 与 `scene.xml`（15.9 KB／0.8 KB），可评估能否直接复用或需按 deploy 网格路径改写；生成并成功加载场景，保存 sim2sim 测试结果 |
 | DEPLOY-03 | P0 | 缺依赖，待适配 | SDK2 目录为空，真机目标被跳过 | 依赖到位、目标生成、通信接口验证通过 |
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
 | DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
@@ -266,13 +267,14 @@ bash build.sh --cmake
 
 ```bash
 python scripts/tools/check_asset_paths.py
+python scripts/tools/check_model_sync.py
 python scripts/tools/audit_amp_dataset.py --output logs/amp_data_audit.json
 python scripts/tools/check_amp_joint_order.py
 python -m unittest discover -s tests -p test_amp_alignment.py -v
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
 
-`check_asset_paths.py` 确认 URDF 与动作数据能按 `Path(__file__)` 推导的路径找到（应为 21 份动作文件），是本机 ENV-01 的自检项。
+`check_asset_paths.py` 确认 URDF 与动作数据能按 `Path(__file__)` 推导的路径找到（应为 21 份动作文件），是本机 ENV-01 的自检项。`check_model_sync.py` 按逻辑关节名比对四份 URDF 的轴与限位、base 惯量、共用的网格集合，并让每份 URDF 都对录制数据做 FK——符号一旦回退会立即报错。
 
 `check_amp_joint_order.py` 只用标准库，默认读取同级的 `imgo2_description/urdf/imgo2_description.urdf`；本机可用解释器见第 8.3 节维护记录。它检查采集模型 FK、髋外展左右对称性和关节位置/速度块相关性，三项全部通过才返回 0。
 
@@ -328,3 +330,4 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-09-15 | 仓库改名为 `imgo2`，本地 remote 与文档同步更新 | 经 GitHub API 核对：仓库 `id` 仍为 `1371418917`（是改名而非新建），`full_name` 由 `qmq-h/imgo2_rl` 变为 `qmq-h/imgo2`，`default_branch` 仍为 `main`，`pushed_at` 保持 `12:53:21Z` 说明 7 个提交完整保留；旧地址 `imgo2_rl` 由 GitHub 重定向。本地已 `git remote set-url origin https://github.com/qmq-h/imgo2.git` 并用 `ls-remote` 验证仍指向 `6e9e2e0`。此前记录的「仓库名与内容不匹配」（博客仓库名 `imgo2_rl` 装的是整个工作区）随之消除 |
 | 2026-09-15 | 更正模型副本描述：`Imgo2/` 的 URDF 是腿部件片段；网格共三套而非一套 | 用户问及关节轴与基座质量的差异含义时复算发现：`Imgo2/Imgo2_urdf/urdf/imgo2.urdf`（523 行）只有 16 link／16 joint，全是四条腿的部件，**无 `base` link、无 `<robot>` 起始标签**（只有尾部 `</robot>`），XML 解析报 `junk after document element`，因此不能作为基座质量的对照基准；但它的腿部关节轴（`FL_hip_joint` = `1 0 0`）与训练份一致，说明部署份是唯一反向者。按内容指纹比对五个网格目录：`Imgo2/Imgo2_urdf`、`Imgo2_rl/source/.../data/`、`Imgo2_deploy/...` **三份共用同一套**（`bc421eb1cbef`），`Imgo2/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各为独立命名体系。此前的「四份 mesh 全同」说法有误，已在 README 目录表、MODEL-01 与 AGENTS.md 一并更正 |
 | 2026-09-15 | 查清 `Imgo2/` 的实际内容、deploy 链路是否补偿符号、以及基座质量的真实分布；更正一处错误数字 | `Imgo2/` 只有模型素材：腿部件片段 URDF（无 `base`、无 `<robot>`）+ 两套网格（`Imgo2_urdf/meshes` 14.8 MB、`imgo2_mjcf/meshes` 11.6 MB），无任何 XML/launch/xacro/yaml/py。逐条核对 deploy 三条推理链路源码：`rl_real_imgo2.cpp`、`rl_sim.cpp`、`rl_sim_mujoco.cpp` 均无符号取反，只有 `joint_mapping` 索引置换；`robot_control.yaml` 只做控制器到关节名映射——即没有任何地方补偿 URDF 的反向，读该 URDF 的只有 Gazebo/ROS 链路。按 link 统计质量：差异只在 `base` 一个 link（其余 16 个完全一致），四份取值 `3.53394020`／`5.53394020`／`6.5339402`（`Imgo2/` 片段无 base），每次差整 1.0 kg，总质量对应 10.69955／12.69955／13.69955 kg；采集模型 `imgo2_description.urdf` 与训练份同为 5.53394020。另更正 README 原先「占总重约 9.5 kg」的错误：实测总质量为 12.69955（训练）／10.69955（部署）。本轮只改文档，未改任何 URDF 或代码 |
+| 2026-09-15 | 修正部署份 URDF 的关节符号、统一 base 惯量；新增模型一致性检查 | 部署份 12 个腿部关节 axis 原本全部取反且限位镜像，改为训练份约定（24 行：12 axis + 8 限位 + base 惯量块）。FK 验证：修正前对录制数据恒等 RMSE 0.057–0.118 m，修正后 0.0001–0.0016 m，与训练份一致。base 质量按确认真值 `5.53394020` 统一四份；`imgo2_description/urdf/imgo2.urdf` 原为 `6.53394020` 却带 3.5339 那份惯量（质量与惯量不自洽，比值 1.566 恰为 5.5339/3.5339），已改为规范块。核实 `imgo2_description` 两个 URDF 的符号与限位本来即与训练份一致，故录制数据无问题。新增 `scripts/tools/check_model_sync.py`（纯标准库）：按逻辑关节名比对四份 URDF 的轴/限位、base 惯量、三份共用网格，并对每份做 FK；本机全通过，并以「故意翻回符号」的负向测试确认可报错（12 关节 + FK 报 FAIL，恢复后 sha256 不变）。另发现 `imgo2_description/xacro/common/leg.xacro` 与 `urdf/imgo2.urdf` 全工作区无人引用、`imgo2_description/mjcf/scene.xml` 是 DEPLOY-02 的线索。未运行 Isaac Lab 或 Gazebo |
