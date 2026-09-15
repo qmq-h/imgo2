@@ -27,7 +27,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | [imgo2_rl/](imgo2_rl/) | Isaac Lab 扩展、任务配置、训练脚本、自定义算法包、训练用模型及数据副本 |
 | [imgo2_dataset/](imgo2_dataset/) | 参考动作数据；当前数据位于 `datasets/imgo2_motion/` |
 | [imgo2_deploy/](imgo2_deploy/) | C++ 推理、观察缓存、状态机、MuJoCo/Gazebo/真机入口及策略配置 |
-| [docs/](docs/) | 排查记录与离线结果：`amp_alignment_review.md`、`amp_data_audit.json` |
+| [docs/](docs/) | 排查记录与离线结果：`amp_alignment_review.md`、`code_review_2026-09-15.md`、`amp_data_audit.json` |
 | [paper_plan_imgo2.md](paper_plan_imgo2.md) | 小论文与毕设选题、实验和写作建议 |
 | [research_exploration_plan.md](research_exploration_plan.md) | 本体感知、执行器随机化、动作跟踪与真机准备的研究规划 |
 | [imgo2_rl/rlfromgym2lab.md](imgo2_rl/rlfromgym2lab.md) | IsaacGym AMP 迁移到 IsaacLab 时 env/wrapper 对接层的说明（背景资料，非当前结论） |
@@ -266,6 +266,8 @@ bash build.sh --cmake
 | DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
 | EXP-01 | P1 | 待补充 | 已记录 PPO 验证与 AMP 贴地现象的用户反馈，尚缺对应日志、命令和模型路径 | 按第 8 节补充真实实验与产物路径 |
 
+问题表只放结论与状态，依据、根因和未修项的细节见 [代码复审记录](docs/code_review_2026-09-15.md) 与 [AMP 对齐与参考项目对照](docs/amp_alignment_review.md)。**代码改了不等于修好**：只有经过编译、运行或测试验证的项才改状态，仅改代码未验证的写成「已修，待验证」并保留条目（见 AGENTS.md 的同名约定）。
+
 关于 AMP-02：当前 `actor_critic.py` 直接学习 `std`，同时 `amp_ppo.py` 中存在有条件的最小标准差裁剪。仍需检查是否出现 NaN/Inf、裁剪条件是否生效以及数据/梯度是否异常；本次不将任何一个猜测登记为已确认根因。
 
 历史草稿已收编：`imgo2_rl/todo.md`（AMP 腿顺序与上述报错的原始记录）并入本表 AMP-01／AMP-02；`imgo2_deploy/todo.md`（部署项目搭建需求）的内容已由第 6 节部署流程与目录职责覆盖。两个草稿文件已删除。状态以本表最近核验结果为准。
@@ -357,3 +359,4 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-09-15 | 清掉最后两个大写目录，全仓库目录名统一为小写下划线 | 承接上一轮的顶层命名整合，把仓库内最后两个含大写字母的目录也改掉：`imgo2_model/Imgo2_urdf`→`imgo2_model/imgo2_urdf`，以及 RL 包内的 `imgo2_rl/source/imgo2_rl/data/Imgo2/Imgo2_urdf`→`.../data/imgo2_model/imgo2_urdf`（case-only 改名分两步走）。引用同步更新：`data/Imgo2/` 8 处、JSON 内 Windows 转义形式 1 处、`Imgo2_urdf` 20 处。**验证**：按 `git ls-files` 统计的 108 个目录中，含大写字母的由 7 个降为 **0 个**；`check_asset_paths` 打印的 URDF 路径已落在新目录且存在；三项离线检查 + 5 项单元测试全通过；`docs/amp_data_audit.json` 重新生成（21 文件 / 5097 帧不变）。残留的大写 `Imgo2` 仅为项目名、任务 ID、类名与 URDF 的 `<robot name="Imgo2">`，以及本机工作区目录 `Desktop\Imgo2`。未运行 Isaac Lab 或 Gazebo |
 | 2026-09-15 | 代码复审（自查部分）：修掉两个检查脚本的盲区、一个指向无效模型的工具、一处 BOM 隐患，并纠正改名造成的史实误引 | ① `check_asset_paths.py` 原先把期望的相对路径硬编码在脚本里，因此即便 `imgo2.py` 声明的路径写错也照样通过；改为从源码读出 `_DEFAULT_URDF_PATH`/`_DEFAULT_MOTION_DIR` 的字面成分再解析，并新增校验 URDF 引用的 17 个网格是否都在；负向测试（故意改错 `imgo2.py` 的路径）确认现在会 FAIL。② `check_model_sync.py` 只覆盖写死的 4 份 URDF，新增第 6 项以 `git ls-files *.urdf` 枚举全仓、未登记即 FAIL；负向测试（加入第 6 份副本）确认会报错。③ `inertia_urdf.py` 原指向 `imgo2_model/imgo2_urdf/urdf/imgo2.urdf`（腿部件片段，XML 都不能独立解析），必然在 `buildModelFromUrdf` 失败；改为指向完整训练模型并加说明。④ `tests/test_amp_alignment.py` 两处 `read_text("utf-8")` 后 `ast.parse`，遇到带 BOM 的源文件会抛 U+FEFF——全仓 27 个上游文件带 BOM，改为 `utf-8-sig`。⑤ 上一轮改名把文档中引用的历史路径 `/root/gpufree-data/Imgo2_rl/...` 一并改成了 `imgo2_rl`，属改写史实，已恢复原样并注明当时目录名。**全仓核查**：113 个 Python 文件按字节全部可编译；25 个 XML/URDF/xacro/launch 仅 1 个解析失败（即那个已知片段）；代码与配置中旧目录名残留 0 处；README 的 8 个任务 ID 与 8 个注册项完全对应，12 个脚本路径与 `build.sh` 的 `--cmake`/`--mujoco` 均存在；57 处路径式引用中 8 处未解析，逐条核对均为上下文相对路径、省略写法或日志里刻意提到的已删文件。未运行 Isaac Lab、Gazebo 或 pinocchio |
 | 2026-09-15 | 代码复审（独立复核部分）：发现并修复两个阻断训练的缺陷，以及 deploy 侧若干真实缺陷 | 由两个并行只读复核 + 本人复核交叉验证，逐条在源码中确认后才采纳。**阻断训练的两处（已修）**：① `amp_env_cfg.py` 用了 `mdp.reset_amp_reference_state`，但 `mdp/__init__.py` 的 `from .amp_events import *` 是注释掉的、全仓无人导入 amp_events → 导入该配置即 `AttributeError`，AMP 任务根本无法创建（含文档推荐的训练命令）；改为在 `amp_env_cfg.py` 内直接导入 `amp_events` 模块（不放进 `mdp/__init__`，避免把 torch 拖进所有任务的注册）。② `base_height_l2` 沿用 `RewardsCfg` 的 `body_names=""`，而 Isaac Lab 会把空串当正则解析并因无匹配抛出 "Not all regular expressions are matched!" → 环境构造即失败；已设为 `[self.base_link_name]`（与 rough/himloco 配置一致）。两处都补了可在无仿真环境运行的回归测试，并各自做了负向测试（回退后测试失败、恢复后 sha256 不变）。**deploy 侧（已修，未编译）**：ROS2 两版控制器的 `std::clamp(…)` 丢弃返回值导致限位完全失效，单关节版参数名多加下划线使 URDF 从未解析成功（`joints_urdf_` 空指针）——已修并加保护；`actuator_net.py` 的 `BASE_PATH` 少上溯两层、`build.sh` 未 `cd` 到脚本目录（从仓库根调用会失败）——已修。**记录未修**：DEPLOY-04/05/06（joystick 目录空、Gazebo 链路缺 transmission 与控制器插件、MuJoCo 路径的映射与 MJCF 顺序冲突）。另更正上一轮那句「ros 两版都会 clamp 限位」的过度陈述。未运行 Isaac Lab、Gazebo、ROS 或编译器 |
+| 2026-09-15 | 建立复审记录文档并把约定写进 AGENTS.md | 新建 [代码复审记录](docs/code_review_2026-09-15.md)，收纳本轮全部内容：① 两个阻断训练缺陷的现象/根因/修法/守位与负向测试；② 工具与检查脚本的六项修复；③ deploy 侧四处「已修未编译」及其验证前提；④ 已确认未修项（DEPLOY-04/05/06 等）与需要决定的项（MJCF 复用、安装规则、外部依赖、himloco 配置差异、base.yaml 定位、amp_motions 死代码、extension.toml 悬空 readme、Jetson 分支、GetUp/GetDown 快照等），每项写明「缺什么才能完成」；⑤ 已核实无问题的部分；⑥ 剔除的 7 条复核误报；⑦ 本轮限制。AGENTS.md 新增约定：每次工作都要把已修与待修写入维护文档；单次细节放 docs/、README 只留结论与链接；**代码改了不等于修好**，未验证的保留「已修，待验证」。按此口径复核当前问题表：AMP-03、ENV-01、DEPLOY-07 均保持待验证状态，未关闭任何条目。未运行 Isaac Lab、Gazebo、ROS 或编译器 |
