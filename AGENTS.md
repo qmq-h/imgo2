@@ -34,7 +34,7 @@
 
 ## 多机与同步
 
-- 仓库是单一 monorepo（根目录），远程为 `https://github.com/qmq-h/imgo2_rl`，默认分支 `main`。训练服务器 clone 这一份即可拿到模型、训练代码、动作数据与文档。
+- 仓库是单一 monorepo（根目录），远程为 `https://github.com/qmq-h/imgo2`，默认分支 `main`。训练服务器 clone 这一份即可拿到模型、训练代码、动作数据与文档。仓库曾用名 `imgo2_rl`（2026-09-15 改名，旧地址由 GitHub 重定向）。
 - 本机 git 推送需要临时 `-c` 覆盖，不要擅自改用户的全局配置：
   - `~/.gitconfig` 的 `http.proxy`／`https.proxy` 指向 `127.0.0.1:10808`，**但该端口没有进程监听**；代理客户端实际监听 **7890**。且 `https.proxy` 被写成 `https://` 是错的，对 HTTPS 目标代理本身仍用 `http://`。
   - 系统 `gitconfig` 的 `http.sslBackend=schannel` 在受限 shell 下报 `SEC_E_NO_CREDENTIALS`，需改用 `openssl`。
