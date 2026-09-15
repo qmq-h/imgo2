@@ -1,6 +1,6 @@
 """Offline AMP height/kinematics audit; Python standard library only.
 
-Run from Imgo2_rl: python scripts/tools/audit_amp_dataset.py
+Run from imgo2_rl: python scripts/tools/audit_amp_dataset.py
 This checks stored data against URDF link origins, not simulated contact points.
 """
 

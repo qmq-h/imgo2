@@ -18,10 +18,10 @@ Fails when any of these breaks:
      leg order are tolerated);
   3. a base link inertial block drifts from the agreed canonical values
      (user decision: the recording model's values);
-  4. the mesh set shared by the training, deploy and `Imgo2/` copies diverges;
+  4. the mesh set shared by the training, deploy and `imgo2_model/` copies diverges;
   5. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics.
 
-Stdlib only. Run from Imgo2_rl:
+Stdlib only. Run from imgo2_rl:
     python scripts/tools/check_model_sync.py
 """
 
@@ -33,7 +33,7 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import audit_amp_dataset as audit_mod  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[2]   # Imgo2_rl/
+ROOT = Path(__file__).resolve().parents[2]   # imgo2_rl/
 REPO = ROOT.parent
 MOTION_DIR = ROOT / "datasets/imgo2_motion"
 
@@ -44,12 +44,12 @@ CANONICAL_BASE_INERTIA = ("0.03866860", "0.10411461", "0.12554111")
 # Complete URDFs that must all agree. foot_legs is the audit script's LEGS tuple,
 # i.e. the foot link name prefixes used by that file.
 URDFS = {
-    "Imgo2_rl (training)": {
+    "imgo2_rl (training)": {
         "path": ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
     },
-    "Imgo2_deploy": {
-        "path": REPO / "Imgo2_deploy/robot_description/imgo2_urdf/urdf/imgo2.urdf",
+    "imgo2_deploy": {
+        "path": REPO / "imgo2_deploy/robot_description/imgo2_urdf/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
     },
     "imgo2_description.urdf": {
@@ -71,9 +71,9 @@ DESC_TO_TRAIN = {
 }
 
 SHARED_MESH_DIRS = {
-    "Imgo2_rl/.../Imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/meshes",
-    "Imgo2_deploy/.../meshes": REPO / "Imgo2_deploy/robot_description/imgo2_urdf/meshes",
-    "Imgo2/Imgo2_urdf/meshes": REPO / "Imgo2/Imgo2_urdf/meshes",
+    "imgo2_rl/.../Imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/meshes",
+    "imgo2_deploy/.../meshes": REPO / "imgo2_deploy/robot_description/imgo2_urdf/meshes",
+    "imgo2_model/Imgo2_urdf/meshes": REPO / "imgo2_model/Imgo2_urdf/meshes",
 }
 
 
@@ -163,7 +163,7 @@ def main() -> int:
         print(f"   {label:28s} leg joints={len(conventions[label])}")
 
     if len(conventions) >= 2:
-        ref_label = "Imgo2_rl (training)"
+        ref_label = "imgo2_rl (training)"
         ref = conventions.get(ref_label)
         if ref is None:
             failures.append("training URDF missing; cannot establish reference")
@@ -189,8 +189,8 @@ def main() -> int:
     for label, spec in URDFS.items():
         if spec["path"].is_file():
             physics[label] = link_physics(spec["path"])
-    if "Imgo2_rl (training)" in physics:
-        ref_label = "Imgo2_rl (training)"
+    if "imgo2_rl (training)" in physics:
+        ref_label = "imgo2_rl (training)"
         ref = physics[ref_label]
         print(f"   reference: {ref_label} ({len(ref)} links)")
         for label, got in physics.items():
@@ -270,17 +270,17 @@ def main() -> int:
     # ---- informational ----
     print("\n6) known-intentional / orphan items (reported, not failures)")
     print("   - imgo2_description/ leg order LF,LH,RF,RH differs by design (another implementation)")
-    frag = REPO / "Imgo2/Imgo2_urdf/urdf/imgo2.urdf"
+    frag = REPO / "imgo2_model/Imgo2_urdf/urdf/imgo2.urdf"
     if frag.is_file():
         print(f"   - {frag.relative_to(REPO)} is a leg-only fragment (no base link, no <robot>)")
     for rel in ("imgo2_description/xacro/common/leg.xacro",
                 "imgo2_description/urdf/imgo2.urdf"):
         if (REPO / rel).is_file():
             print(f"   - {rel} is not referenced by any file in the workspace")
-    mjcf = REPO / "Imgo2/imgo2_mjcf/meshes"
+    mjcf = REPO / "imgo2_model/imgo2_mjcf/meshes"
     if mjcf.is_dir():
         fp, n = mesh_fingerprint(mjcf)
-        print(f"   - Imgo2/imgo2_mjcf/meshes uses MuJoCo naming: files={n} fingerprint={fp}")
+        print(f"   - imgo2_model/imgo2_mjcf/meshes uses MuJoCo naming: files={n} fingerprint={fp}")
     if (REPO / "imgo2_description/mjcf/scene.xml").is_file():
         print("   - imgo2_description/mjcf/scene.xml exists (lead for README DEPLOY-02, which needs a MuJoCo scene)")
 

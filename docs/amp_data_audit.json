@@ -1,6 +1,6 @@
 {
-  "motion_dir": "C:\\Users\\qmq\\Desktop\\Imgo2\\Imgo2_rl\\datasets\\imgo2_motion",
-  "urdf": "C:\\Users\\qmq\\Desktop\\Imgo2\\Imgo2_rl\\source\\imgo2_rl\\data\\Imgo2\\Imgo2_urdf\\urdf\\imgo2.urdf",
+  "motion_dir": "C:\\Users\\qmq\\Desktop\\Imgo2\\imgo2_rl\\datasets\\imgo2_motion",
+  "urdf": "C:\\Users\\qmq\\Desktop\\Imgo2\\imgo2_rl\\source\\imgo2_rl\\data\\Imgo2\\Imgo2_urdf\\urdf\\imgo2.urdf",
   "urdf_sha256": "aa53eb6b203a70eed4d2acdd5d00c513a799323d0a103593b9598e787f3988a2",
   "file_count": 21,
   "frame_count": 5097,

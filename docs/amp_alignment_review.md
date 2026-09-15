@@ -81,7 +81,7 @@ amp_leg_mapping = [0, 2, 1, 3]
 
 站立片段中，参考足端原点的世界 z 均值约 0.022008 m；URDF 推算约 0.022011 m。这里比较的是足端 link 原点，并非碰撞表面的触地点，不应强行把它改成零高度。
 
-当前已将 `joint_mapping` 改为 `list(range(12))`，观测与参考重置共用这个约定。数据内容和 URDF 没有被改写。详细逐动作统计见 [amp_data_audit.json](amp_data_audit.json)，可通过 [audit_amp_dataset.py](../Imgo2_rl/scripts/tools/audit_amp_dataset.py) 重现。
+当前已将 `joint_mapping` 改为 `list(range(12))`，观测与参考重置共用这个约定。数据内容和 URDF 没有被改写。详细逐动作统计见 [amp_data_audit.json](amp_data_audit.json)，可通过 [audit_amp_dataset.py](../imgo2_rl/scripts/tools/audit_amp_dataset.py) 重现。
 
 ### 3.3 追加的独立验证（不依赖采集参数回忆）
 
@@ -93,7 +93,7 @@ amp_leg_mapping = [0, 2, 1, 3]
 
 关节块与足端块来自两个独立 ROS 源（JointState 与 TF），二者能相互对上 1 mm 量级，不是同一个错误在自我印证。因此“文件内容是 `FL,FR,RL,RR`，等价于采集侧 `LF,RF,LH,RH`”可以由数据本身和采集模型证明，不必依赖对采集参数的回忆；`joint_mapping = list(range(12))` 对当前数据成立。
 
-这三项检查可由 [check_amp_joint_order.py](../Imgo2_rl/scripts/tools/check_amp_joint_order.py) 重现，只用标准库，三项全部通过时返回 0。
+这三项检查可由 [check_amp_joint_order.py](../imgo2_rl/scripts/tools/check_amp_joint_order.py) 重现，只用标准库，三项全部通过时返回 0。
 
 一个结构性限制仍然存在：`amp_foot_pos_base` 复用的是同一个 12 维 `joint_mapping`，它只在关节块与足端块腿顺序一致时才能同时排对两者。若将来数据的两块顺序不同，需要把关节映射和足端映射拆开。
 
@@ -183,7 +183,7 @@ r_total = 0.7 × r_style + 0.3 × r_task
 建议先在训练环境运行：
 
 ```bash
-cd Imgo2_rl
+cd imgo2_rl
 python -m unittest discover -s tests -p test_amp_alignment.py -v
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
@@ -192,9 +192,9 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256
 
 以下检查都很便宜，能避免用一次完整训练去发现本可提前发现的问题。
 
-1. **先把修复后的代码同步到训练机，不要按文件时间戳挑文件**。`Imgo2_rl` 下除少数文件外都带着 `2026-07-18 11:16` 这个批量拷贝留下的统一时间戳，真正属于本次修复的 `mdp/observations.py`、`mdp/amp_events.py` 也在其中；按修改时间挑选必然漏掉它们，而漏掉 `amp_events.py` 就等于参考重置失去逆映射。按内容确认，本次修复涉及 9 个文件（整树同步更省事）：
+1. **先把修复后的代码同步到训练机，不要按文件时间戳挑文件**。`imgo2_rl` 下除少数文件外都带着 `2026-07-18 11:16` 这个批量拷贝留下的统一时间戳，真正属于本次修复的 `mdp/observations.py`、`mdp/amp_events.py` 也在其中；按修改时间挑选必然漏掉它们，而漏掉 `amp_events.py` 就等于参考重置失去逆映射。按内容确认，本次修复涉及 9 个文件（整树同步更省事）：
 
-   | 文件（相对 `Imgo2_rl/`） | 修复内容 | 本轮验证版本 SHA256 前 12 位 |
+   | 文件（相对 `imgo2_rl/`） | 修复内容 | 本轮验证版本 SHA256 前 12 位 |
    |---|---|---|
    | `source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/observations.py` | 映射辅助函数重写：由按腿轴（4 元）改为按 12 维平铺索引 | `5ec7fc70a237` |
    | `source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/amp_events.py` | `_invert_mapping`，参考重置逆映射 | `3b529139161a` |
@@ -209,11 +209,11 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256
    | `scripts/tools/check_amp_joint_order.py` | 三项腿顺序检查（本轮新增） | `17d00857e2ea` |
    | `tests/test_amp_alignment.py` | 离线回归 | `7df0476aef8e` |
 
-   这份清单来自 `Imgo2_rl` 仓库合并前的 `git diff` 与未跟踪文件列表，因此比凭内容整理的版本更可靠：本文此前只列了 9 个，漏掉了 `motion_loader.py`、`play_check.py` 和采集脚本副本。路径都从 `Imgo2_rl/` 起算，便于在服务器上逐条核对。哈希是这一轮验证过的版本，用于确认同步后内容是否真的到位（Linux 下 `sha256sum <文件> | cut -c1-12`），不是长期不变的约定；文件再改动后哈希随之更新。之所以用哈希而不是时间戳，是因为本工作区多数源码带同一批拷贝时间戳。
+   这份清单来自 `imgo2_rl` 仓库合并前的 `git diff` 与未跟踪文件列表，因此比凭内容整理的版本更可靠：本文此前只列了 9 个，漏掉了 `motion_loader.py`、`play_check.py` 和采集脚本副本。路径都从 `imgo2_rl/` 起算，便于在服务器上逐条核对。哈希是这一轮验证过的版本，用于确认同步后内容是否真的到位（Linux 下 `sha256sum <文件> | cut -c1-12`），不是长期不变的约定；文件再改动后哈希随之更新。之所以用哈希而不是时间戳，是因为本工作区多数源码带同一批拷贝时间戳。
 
    本文其他位置提到的「六个修改或新增 Python 文件」是当初做语法检查的文件数，不等于需要同步的清单。
 2. **补跑被跳过的 Torch 回归**。它是唯一针对归一化尺度不一致的测试，几秒钟即可完成，但需要 `torch`/`numpy`，因此只能在训练环境执行。注意本机通过的 4 项只覆盖运动学与奖励量级，不覆盖此项。
-3. **确认资源路径与数据副本**。`IMGO2_CFG` 的 URDF 路径与 `AMP_MOTION_FILES` 原本写死为 `/root/gpufree-data/Imgo2_rl/...`，现已改为由 `assets/imgo2.py` 的 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖。在训练机上先运行 `python scripts/tools/check_asset_paths.py`，它不需要 Isaac Lab，会打印实际解析到的路径与动作文件数（应为 21）；若 glob 为空，AMPLoader 不会给出明确报错。此外恒等映射的结论是针对当前这份数据证明的，本地两份副本逐文件哈希一致、集合哈希为 `163d96671f601673a950b0da13d1c5fb`，服务器那份值得对照。
+3. **确认资源路径与数据副本**。`IMGO2_CFG` 的 URDF 路径与 `AMP_MOTION_FILES` 原本写死为 `/root/gpufree-data/imgo2_rl/...`，现已改为由 `assets/imgo2.py` 的 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖。在训练机上先运行 `python scripts/tools/check_asset_paths.py`，它不需要 Isaac Lab，会打印实际解析到的路径与动作文件数（应为 21）；若 glob 为空，AMPLoader 不会给出明确报错。此外恒等映射的结论是针对当前这份数据证明的，本地两份副本逐文件哈希一致、集合哈希为 `163d96671f601673a950b0da13d1c5fb`，服务器那份值得对照。
 4. **第一次训练保持短**。本次涉及的改动文件（关节映射、归一化、奖励与终止配置）在本机只做过语法检查，从未被导入（本机没有 Isaac Lab），因此这个短训练同时是导入与配置构建的冒烟测试。
 
 配置接线已在源码中核对，可作为参考：`amp_task_reward_lerp=0.3` 定义在 `agents/amp_rsl_rl_cfg.py`，runner 通过 `self.cfg = train_cfg.get("runner", train_cfg)` 读取，而 `train.py` 传入 `agent_cfg.to_dict()`，因此 0.3 生效（`AMPOnPolicyRunnerCfg` 的默认值仍是 0.1）。`base_height_l2(sensor_cfg=None)` 在平地直接使用目标高度，并有重力投影门控，不会访问不存在的扫描传感器。`illegal_contact = None` 只写在 `Imgo2RoughEnvCfg`，AMP 继承自公共基类，所以基座触地终止确实生效而不会在构建配置时抛错。

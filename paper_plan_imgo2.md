@@ -4,10 +4,10 @@
 
 本项目已经具备做一篇四足机器人强化学习应用型小论文的基础：
 
-- 机器人本体模型：`Imgo2/` 中已有 URDF、MJCF 相关模型和网格文件，可支撑仿真训练与部署验证。
-- 强化学习环境：`Imgo2_rl/` 中已有 Isaac Lab 扩展，包含平地、粗糙地形、HIM-Loco、AMP 等任务雏形。
+- 机器人本体模型：`imgo2_model/` 中已有 URDF、MJCF 相关模型和网格文件，可支撑仿真训练与部署验证。
+- 强化学习环境：`imgo2_rl/` 中已有 Isaac Lab 扩展，包含平地、粗糙地形、HIM-Loco、AMP 等任务雏形。
 - 动作数据：`imgo2_dataset/datasets/imgo2_motion/` 中已有多组前进、后退、横移、转向与组合速度参考动作。
-- 部署框架：`Imgo2_deploy/` 中已有 ROS/Gazebo/MuJoCo/sim2sim/sim2real 结构，但真机部署尚未完全闭环。
+- 部署框架：`imgo2_deploy/` 中已有 ROS/Gazebo/MuJoCo/sim2sim/sim2real 结构，但真机部署尚未完全闭环。
 
 因此，短期小论文建议以“仿真训练 + 泛化验证 + 部署接口验证”为主，不把真机实验作为论文成败核心。毕设可以在此基础上继续补齐 sim2real。
 
@@ -20,7 +20,7 @@
 可用资产：
 
 - `imgo2_dataset/datasets/imgo2_motion/` 中已有多速度、多方向动作数据。
-- `Imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/.../base_move/amp_env_cfg.py` 中已经包含 AMP 观察量、参考状态初始化、关节映射等关键结构。
+- `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/.../base_move/amp_env_cfg.py` 中已经包含 AMP 观察量、参考状态初始化、关节映射等关键结构。
 - AMP 当前还有训练稳定性问题，可把“参考动作适配与训练稳定化”作为工程贡献点。
 
 潜在贡献点：
@@ -86,7 +86,7 @@
 
 可用资产：
 
-- `Imgo2_deploy/` 已有推理运行时、观察缓存、策略配置、MuJoCo sim2sim、ROS/Gazebo 框架。
+- `imgo2_deploy/` 已有推理运行时、观察缓存、策略配置、MuJoCo sim2sim、ROS/Gazebo 框架。
 - 已有 `rl_sim_mujoco.cpp`、`rl_sim.cpp`、`rl_real_imgo2.cpp` 等部署入口。
 
 潜在贡献点：
@@ -319,7 +319,7 @@
 ### 第 6 周：sim2sim 验证
 
 - 导出训练策略。
-- 对齐 `Imgo2_deploy/policy/imgo2/base.yaml` 中的关节名、动作尺度、观测量。
+- 对齐 `imgo2_deploy/policy/imgo2/base.yaml` 中的关节名、动作尺度、观测量。
 - 在 MuJoCo 或 Gazebo 中完成低速直线和原地转向测试。
 
 产出：

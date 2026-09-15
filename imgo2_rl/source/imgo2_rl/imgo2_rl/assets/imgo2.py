@@ -7,14 +7,14 @@ from isaaclab.actuators import DCMotorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 # 以本文件位置推导路径，不再写死具体机器的绝对路径。
-# 本文件位于 <Imgo2_rl>/source/imgo2_rl/imgo2_rl/assets/imgo2.py，
-# 因此上溯 4 层即 Imgo2_rl/ 项目根。这样无论仓库被 clone 到哪里、从哪个
+# 本文件位于 <imgo2_rl>/source/imgo2_rl/imgo2_rl/assets/imgo2.py，
+# 因此上溯 4 层即 imgo2_rl/ 项目根。这样无论仓库被 clone 到哪里、从哪个
 # 工作目录启动，路径都成立；前提是安装方式为 `pip install -e`（可编辑安装），
 # 非可编辑安装会把包拷进 site-packages，届时数据目录不在上溯路径上。
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_MOTION_DIR = _PROJECT_ROOT / "datasets" / "imgo2_motion"
 _DEFAULT_URDF_PATH = (
-    _PROJECT_ROOT / "source" / "imgo2_rl" / "data" / "Imgo2" / "Imgo2_urdf" / "urdf" / "imgo2.urdf"
+    _PROJECT_ROOT / "source" / "imgo2_rl" / "data" / "imgo2_model" / "Imgo2_urdf" / "urdf" / "imgo2.urdf"
 )
 
 

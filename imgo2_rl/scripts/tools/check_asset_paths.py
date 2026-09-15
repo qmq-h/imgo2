@@ -8,7 +8,7 @@ reports any machine-specific absolute path left in the sources.
 Run this on a new machine (especially the training server) before training: an
 empty motion glob makes AMPLoader fail without a clear message.
 
-Stdlib only. Run from Imgo2_rl:
+Stdlib only. Run from imgo2_rl:
     python scripts/tools/check_asset_paths.py
 Exit code 0 only when every check passes.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 import re
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]  # Imgo2_rl/
+ROOT = Path(__file__).resolve().parents[2]  # imgo2_rl/
 ASSET_FILES = [
     ROOT / "source/imgo2_rl/imgo2_rl/assets/imgo2.py",
     ROOT / "source/imgo2_rl/imgo2_rl/assets/amp_motions.py",
@@ -51,8 +51,8 @@ def main() -> int:
 
     print(f"asset config      : {asset.relative_to(ROOT.parent)}")
     print(f"parents[{depth}]          : {project_root}")
-    ok_root = project_root.name == "Imgo2_rl" and (project_root / "source").is_dir()
-    print(f"  looks like Imgo2_rl root: {ok_root}")
+    ok_root = project_root.name == "imgo2_rl" and (project_root / "source").is_dir()
+    print(f"  looks like imgo2_rl root: {ok_root}")
     if not ok_root:
         failures.append("project root derivation")
 

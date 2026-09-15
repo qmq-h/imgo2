@@ -14,7 +14,7 @@ foot blocks using forward kinematics and the training URDF only. This script add
 All three support the identity mapping `joint_mapping = list(range(12))` for the
 current `datasets/imgo2_motion` data, i.e. file order FL,FR,RL,RR (== LF,RF,LH,RH).
 
-Stdlib only. Run from Imgo2_rl:
+Stdlib only. Run from imgo2_rl:
     python scripts/tools/check_amp_joint_order.py
 """
 

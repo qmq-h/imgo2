@@ -10,30 +10,32 @@
 
 ## 文档结构
 
-- 分工：根 `README.md` 放总览、流程、问题表和维护记录；`docs/` 放单项排查记录与离线结果；子项目 `README.md` 只保留该子项目的安装与命令速查，不复制根 README 已有的结论。
-- 同一结论只在一处展开。子项目文档与根 README 冲突时以根 README 为准，并把子项目文档改成指向它，避免两处各自漂移。
+- 仓库是**单一项目**，文档只放三处：根 `README.md`（总览、流程、问题表、维护记录）、`AGENTS.md`（维护约定）、`docs/`（单项排查记录与离线结果）。**不保留子项目 `README.md`**；「哪个目录属于哪条链路」由根 README 的目录职责表说明，不要再为子目录另建入口文档。
+- 顶层目录命名统一为小写下划线：`imgo2_model/`、`imgo2_description/`、`imgo2_dataset/`、`imgo2_rl/`、`imgo2_deploy/`。新增顶层目录沿用该风格。
+- 同一结论只在一处展开，避免两处各自漂移。
+- 忽略规则只放在根 `.gitignore`。只对某个子树成立的规则必须带路径前缀（例如 `/imgo2_deploy/**/mujoco/`），否则会在整仓范围内过度匹配；改动后跑一遍 `git ls-files -i -c --exclude-standard`，它必须为空（没有「已跟踪却被忽略」的文件）。
 - 模型与 URDF 目录不放临时笔记、质量草稿一类的文件；这类数字写进 `docs/` 或直接删除。
 - 路径、安装命令、checkpoint 示例写进文档前先确认存在；个人训练机路径要标为示例，不要让人直接沿用。
 - 内容已被取代或失真的文档应更新或删除，删除前确认没有其他文档引用它。
 
 ## 模型与资源路径
 
-- 仓库内有四份 Imgo2 模型（`Imgo2/`、`imgo2_description/`、`Imgo2_rl/source/.../data/`、`Imgo2_deploy/robot_description/`）。**它们不是同一件东西的冗余副本，不要为了「统一」而合并**：
+- 仓库内有四份 Imgo2 模型（`imgo2_model/`、`imgo2_description/`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/`）。**它们不是同一件东西的冗余副本，不要为了「统一」而合并**：
   - `imgo2_description/` 的腿部顺序（LF/LH/RF/RH）与训练侧不同，是服务另一处实现的有意设计。
-  - `Imgo2_deploy/` 的 12 个腿部关节 axis 原本与训练份**全部相反**（q_部署 = −q_训练，限位镜像），已于 2026-09-15 改为训练份约定并验证；deploy 三条推理链路（`rl_real_imgo2.cpp`、`rl_sim.cpp`、`rl_sim_mujoco.cpp`）**没有任何符号取反**，只有 `joint_mapping` 索引置换，读该 URDF 的只有 Gazebo/ROS 链路。
-  - **物理参数的唯一准绳是训练侧**（用户 2026-09-15 决定）：关节轴/限位、每个 link 的质量/质心/惯量、碰撞几何、base 规范值都以 `Imgo2_rl` 那份为准，其余副本（含 `Imgo2_deploy` 与 `imgo2_description`）向它对齐。四份完整 URDF 现已一致，`Imgo2_deploy` 仅多 4 个不影响物理的 `<material>` 块。
+  - `imgo2_deploy/` 的 12 个腿部关节 axis 原本与训练份**全部相反**（q_部署 = −q_训练，限位镜像），已于 2026-09-15 改为训练份约定并验证；deploy 三条推理链路（`rl_real_imgo2.cpp`、`rl_sim.cpp`、`rl_sim_mujoco.cpp`）**没有任何符号取反**，只有 `joint_mapping` 索引置换，读该 URDF 的只有 Gazebo/ROS 链路。
+  - **物理参数的唯一准绳是训练侧**（用户 2026-09-15 决定）：关节轴/限位、每个 link 的质量/质心/惯量、碰撞几何、base 规范值都以 `imgo2_rl` 那份为准，其余副本（含 `imgo2_deploy` 与 `imgo2_description`）向它对齐。四份完整 URDF 现已一致，`imgo2_deploy` 仅多 4 个不影响物理的 `<material>` 块。
   - **不要为了「统一符号」去改训练份的 URDF**：AMP 恒等映射的依据是训练 URDF 与录制的真机数据 FK 吻合到 0.002 m，改其关节轴符号会让吻合崩到 0.22 量级、整套对齐结论作废，而真机数据不会跟着变。要改就改其它副本。
   - base link 的规范值是质量 `5.53394020` 配惯量 `0.03866860/0.10411461/0.12554111`。惯量与质量成比例，只改质量不改惯量会造成不自洽（`imgo2_description/urdf/imgo2.urdf` 原先正是如此）。
-  - 改动任何模型副本或 URDF 后，运行 `python Imgo2_rl/scripts/tools/check_model_sync.py`：它按逻辑关节名与逻辑 link 名（与腿序、LF_/LH_ 命名无关）比对四份 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、三份共用的网格集合，并让每份 URDF 都对录制数据做 FK。五项任一破坏都会报错。
-  - 网格共**三套**而非一套：`Imgo2/Imgo2_urdf`、`Imgo2_rl/source/.../data/`、`Imgo2_deploy/robot_description/` 三份**共用同一套**（集合指纹 `bc421eb1cbef`，10 文件 14.8 MB 逐字节相同，git 因此只存一份）；`Imgo2/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各有独立命名体系，不是同一套网格。
-  - `Imgo2/Imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不要当作完整模型或基座参数的来源。
+  - 改动任何模型副本或 URDF 后，运行 `python imgo2_rl/scripts/tools/check_model_sync.py`：它按逻辑关节名与逻辑 link 名（与腿序、LF_/LH_ 命名无关）比对四份 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、三份共用的网格集合，并让每份 URDF 都对录制数据做 FK。五项任一破坏都会报错。
+  - 网格共**三套**而非一套：`imgo2_model/Imgo2_urdf`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/` 三份**共用同一套**（集合指纹 `bc421eb1cbef`，10 文件 14.8 MB 逐字节相同，git 因此只存一份）；`imgo2_model/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各有独立命名体系，不是同一套网格。
+  - `imgo2_model/Imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不要当作完整模型或基座参数的来源。
 - 新增或修改模型副本时，先确认它服务于哪条链路，并在 README 的 MODEL-01 里更新差异，不要默默覆盖。
 - 代码里的资源路径一律由 `Path(__file__)` 推导或走环境变量，不写机器绝对路径。改动后跑 `python scripts/tools/check_asset_paths.py` 自检。
 
 ## 删除与可复现性
 
 - 仓库已可用（见「多机与同步」），删除内容可由 `git` 追溯，但仍要在维护记录里写明删了什么、为什么。删除前先确认没有其他文档或脚本引用它。
-- 离线检查脚本放在 `Imgo2_rl/scripts/tools/` 且只用标准库，使结论能在没有 Isaac Lab 的机器上复现；不要把验证只留在临时目录。
+- 离线检查脚本放在 `imgo2_rl/scripts/tools/` 且只用标准库，使结论能在没有 Isaac Lab 的机器上复现；不要把验证只留在临时目录。
 - 记录验证时写清所用解释器或环境，PATH 上的 `python` 不一定可用（本机该别名返回退出码 9009）。
 - 提交长训练前先做前置检查并跑一次短训练；判别器和归一化统计与输入尺度绑定，改用新配置时应新建运行而不是续训。
 
