@@ -1,0 +1,27 @@
+# 换行与二进制约定
+# 训练服务器是 Linux：仓库内统一 LF，避免 CRLF 导致 build.sh 出现
+# "bad interpreter" 一类问题。本机 core.autocrlf 曾为 true，靠这里固定下来。
+
+* text=auto eol=lf
+
+# 明确按二进制处理，禁止任何换行转换
+*.STL binary
+*.stl binary
+*.STP binary
+*.step binary
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.onnx binary
+*.jit binary
+*.pb binary
+*.so binary
+*.a binary
+*.dll binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.gz binary
+*.zip binary

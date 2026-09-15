@@ -1,0 +1,67 @@
+# 根 .gitignore —— Imgo2 工作区
+# 原则：跟踪训练与部署真正需要的源码、模型、动作数据和文档；
+# 排除可再生成的产物。仓库包含约 100 MB 的 STL 网格，这是有意保留的：
+# 四份模型副本各被一处流程引用（原始模型、采集模型、训练用副本、部署副本），
+# 去掉网格会让 URDF 无法加载、训练和仿真都跑不起来。
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.so
+*.pb
+*_pb2.py
+
+# ---------- 日志与训练输出 ----------
+logs/
+**/logs/
+*.log
+**/wandb/
+**/output/
+**/outputs/
+**/videos/
+**/recordings/
+**/runs/
+
+# ---------- 检查点 ----------
+# 训练 checkpoint 体积大且可再生成，不入库。
+# 例外：Imgo2_deploy/policy/imgo2/himloco/himloco.pt 是部署配置引用的占位策略，
+# 体积不到 1 MB，需要保留，因此不在此处排除 *.pt。
+*.pth
+*.ckpt
+*.onnx
+*.jit
+
+# ---------- C++ / ROS 构建产物 ----------
+cmake_build/
+devel/
+install/
+*.o
+*.a
+MUJOCO_LOG.TXT
+
+# ---------- 压缩包与临时目录 ----------
+*.zip
+*.tgz
+*.tar.gz
+*.rar
+temp_extract*/
+*.tmp
+
+# ---------- 编辑器与系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------- 本地历史备份（不属于仓库内容） ----------
+# 合并嵌套仓库前的 Imgo2 / Imgo2_rl 历史 bundle，保存在本机供回滚，
+# 不应提交，也不需要同步到服务器。
+.git-backups/

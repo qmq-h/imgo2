@@ -1,0 +1,75 @@
+# C++
+**/cmake-build*/
+**/build*/
+**/*.so
+**/*.log*
+
+# Omniverse
+**/*.dmp
+**/.thumbs
+
+# No USD files allowed in the repo
+# **/*.usd
+**/*.usda
+**/*.usdc
+**/*.usdz
+
+# Python
+.DS_Store
+**/*.egg-info/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/*.pb
+
+# Docker/Singularity
+**/*.sif
+docker/cluster/exports/
+docker/.container.cfg
+
+# IDE
+**/.idea/
+**/.vscode/
+# Don't ignore the top-level .vscode directory as it is
+# used to configure VS Code settings
+!.vscode
+
+# Outputs
+**/output/*
+**/outputs/*
+**/videos/*
+**/wandb/*
+**/.neptune/*
+docker/artifacts/
+*.tmp
+
+# Doc Outputs
+**/docs/_build/*
+**/generated/*
+
+# Isaac-Sim packman
+_isaac_sim*
+_repo
+_build
+.lastformat
+
+# RL-Games
+**/runs/*
+**/logs/*
+**/recordings/*
+
+# Pre-Trained Checkpoints
+/.pretrained_checkpoints/
+
+# Teleop Recorded Dataset
+# 保留（不再忽略）：datasets/imgo2_motion/ 是 AMP 训练实际加载的 21 份参考动作，
+# 忽略它会让克隆出来的仓库无法训练。依据见 docs/amp_alignment_review.md。
+# /datasets/
+
+# Tests
+# 保留（不再忽略）：tests/test_amp_alignment.py 属于 AMP 修复文件集，
+# 也是提交训练前必须能跑的前置检查。
+# tests/
+
+# Docker history
+.isaac-lab-docker-history

@@ -1,0 +1,51 @@
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 1000
+
+FR_hip_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FR_hip_joint
+
+FR_thigh_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FR_thigh_joint
+
+FR_shank_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FR_shank_joint
+
+FL_hip_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FL_hip_joint
+
+FL_thigh_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FL_thigh_joint
+
+FL_shank_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: FL_shank_joint
+
+RR_hip_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RR_hip_joint
+
+RR_thigh_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RR_thigh_joint
+
+RR_shank_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RR_shank_joint
+
+RL_hip_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RL_hip_joint
+
+RL_thigh_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RL_thigh_joint
+
+RL_shank_controller:
+  type: robot_joint_controller/RobotJointController
+  joint: RL_shank_joint

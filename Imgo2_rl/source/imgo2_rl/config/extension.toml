@@ -1,0 +1,24 @@
+[package]
+
+version = "0.1.0"
+category = "isaaclab"
+readme = "README.md"
+
+title = "Imgo2 RL"
+author = "qmq"
+maintainer = "qmq"
+description = "Isaac Lab reinforcement learning tasks for Imgo2"
+repository = ""
+keywords = ["isaaclab", "rl", "imgo2"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_mimic" = {}
+"isaaclab_rl" = {}
+"isaaclab_tasks" = {}
+
+[[python.module]]
+name = "imgo2_rl"
+
+[isaac_lab_settings]

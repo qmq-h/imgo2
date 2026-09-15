@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+
+<robot name="imgo2_description" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:include filename="$(find imgo2_description)/urdf/imgo2_description.urdf"/>
+    <xacro:include filename="$(find imgo2_description)/xacro/common/gazebo.xacro"/>
+    <xacro:include filename="$(find imgo2_description)/xacro/common/imu.xacro"/>
+    <xacro:IMU connected_to="base" imu_name="base_imu" xyz="0. 0. 0." rpy="0. 0. 0."/>
+
+</robot>
