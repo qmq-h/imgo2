@@ -26,6 +26,8 @@
 ## 多机与同步
 
 - 仓库是单一 monorepo（根目录），远程为 `https://github.com/qmq-h/imgo2_rl`，默认分支 `main`。训练服务器 clone 这一份即可拿到模型、训练代码、动作数据与文档。
+- 本机 git 有两处会直接导致网络操作失败，推送/拉取时用 `-c` 临时覆盖，不要擅自改全局配置：`~/.gitconfig` 的 `http.proxy`／`https.proxy` 指向 `127.0.0.1:10808`，而该端口通常没有进程监听（代理客户端没开）；系统 `gitconfig` 的 `http.sslBackend=schannel` 在受限 shell 下会报 `SEC_E_NO_CREDENTIALS`。可用组合：`git -c http.sslBackend=openssl -c http.proxy= -c https.proxy= push`。
+- 受限 shell 下 git 的凭据助手无法创建命名管道（`Win32 error 5`），需要放宽沙箱才能推送；这是环境限制，不是仓库问题。
 - 合并前的嵌套仓库历史保存在 `.git-backups/`（git bundle，已被忽略、不入库），恢复方法见该目录的 `README.md`。不要删除它。
 - 换行由根 `.gitattributes` 固定为 LF 并把模型网格标记为二进制；本机 `core.autocrlf` 已设为 `false`。新增二进制类型时同步补进 `.gitattributes`，否则可能被当文本转换而损坏。
 - harness 只在它所在 Host 的文件系统上读写，本身不做跨机同步。会话记录也留在 Host 侧，在云服务器上运行 harness 得到的是「操作服务器那份文件」的 agent，不会把本机的改动和上下文带过去。
