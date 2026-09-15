@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 
-URDF_PATH = Path(__file__).resolve().parents[3] / "imgo2_model" / "Imgo2_urdf" / "urdf" / "imgo2.urdf"
+URDF_PATH = Path(__file__).resolve().parents[3] / "imgo2_model" / "imgo2_urdf" / "urdf" / "imgo2.urdf"
 FLOATING_BASE = True                     # 四足一般 True
 # ===========================================
 

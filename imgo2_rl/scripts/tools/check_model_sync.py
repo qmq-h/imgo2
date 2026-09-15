@@ -45,7 +45,7 @@ CANONICAL_BASE_INERTIA = ("0.03866860", "0.10411461", "0.12554111")
 # i.e. the foot link name prefixes used by that file.
 URDFS = {
     "imgo2_rl (training)": {
-        "path": ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf",
+        "path": ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
     },
     "imgo2_deploy": {
@@ -71,9 +71,9 @@ DESC_TO_TRAIN = {
 }
 
 SHARED_MESH_DIRS = {
-    "imgo2_rl/.../Imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/meshes",
+    "imgo2_rl/.../imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/meshes",
     "imgo2_deploy/.../meshes": REPO / "imgo2_deploy/robot_description/imgo2_urdf/meshes",
-    "imgo2_model/Imgo2_urdf/meshes": REPO / "imgo2_model/Imgo2_urdf/meshes",
+    "imgo2_model/imgo2_urdf/meshes": REPO / "imgo2_model/imgo2_urdf/meshes",
 }
 
 
@@ -270,7 +270,7 @@ def main() -> int:
     # ---- informational ----
     print("\n6) known-intentional / orphan items (reported, not failures)")
     print("   - imgo2_description/ leg order LF,LH,RF,RH differs by design (another implementation)")
-    frag = REPO / "imgo2_model/Imgo2_urdf/urdf/imgo2.urdf"
+    frag = REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf"
     if frag.is_file():
         print(f"   - {frag.relative_to(REPO)} is a leg-only fragment (no base link, no <robot>)")
     for rel in ("imgo2_description/xacro/common/leg.xacro",

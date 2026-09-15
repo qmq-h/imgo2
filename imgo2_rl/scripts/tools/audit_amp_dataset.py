@@ -127,7 +127,7 @@ def main():
     root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--motion-dir", type=Path, default=root / "datasets/imgo2_motion")
-    parser.add_argument("--urdf", type=Path, default=root / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf")
+    parser.add_argument("--urdf", type=Path, default=root / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf")
     parser.add_argument("--output", type=Path, help="Optional JSON report path")
     args = parser.parse_args()
     result = audit(args.motion_dir, args.urdf)

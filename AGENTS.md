@@ -27,8 +27,8 @@
   - **不要为了「统一符号」去改训练份的 URDF**：AMP 恒等映射的依据是训练 URDF 与录制的真机数据 FK 吻合到 0.002 m，改其关节轴符号会让吻合崩到 0.22 量级、整套对齐结论作废，而真机数据不会跟着变。要改就改其它副本。
   - base link 的规范值是质量 `5.53394020` 配惯量 `0.03866860/0.10411461/0.12554111`。惯量与质量成比例，只改质量不改惯量会造成不自洽（`imgo2_description/urdf/imgo2.urdf` 原先正是如此）。
   - 改动任何模型副本或 URDF 后，运行 `python imgo2_rl/scripts/tools/check_model_sync.py`：它按逻辑关节名与逻辑 link 名（与腿序、LF_/LH_ 命名无关）比对四份 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、三份共用的网格集合，并让每份 URDF 都对录制数据做 FK。五项任一破坏都会报错。
-  - 网格共**三套**而非一套：`imgo2_model/Imgo2_urdf`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/` 三份**共用同一套**（集合指纹 `bc421eb1cbef`，10 文件 14.8 MB 逐字节相同，git 因此只存一份）；`imgo2_model/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各有独立命名体系，不是同一套网格。
-  - `imgo2_model/Imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不要当作完整模型或基座参数的来源。
+  - 网格共**三套**而非一套：`imgo2_model/imgo2_urdf`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/` 三份**共用同一套**（集合指纹 `bc421eb1cbef`，10 文件 14.8 MB 逐字节相同，git 因此只存一份）；`imgo2_model/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各有独立命名体系，不是同一套网格。
+  - `imgo2_model/imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不要当作完整模型或基座参数的来源。
 - 新增或修改模型副本时，先确认它服务于哪条链路，并在 README 的 MODEL-01 里更新差异，不要默默覆盖。
 - 代码里的资源路径一律由 `Path(__file__)` 推导或走环境变量，不写机器绝对路径。改动后跑 `python scripts/tools/check_asset_paths.py` 自检。
 

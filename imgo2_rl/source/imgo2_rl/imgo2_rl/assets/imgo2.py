@@ -14,7 +14,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_MOTION_DIR = _PROJECT_ROOT / "datasets" / "imgo2_motion"
 _DEFAULT_URDF_PATH = (
-    _PROJECT_ROOT / "source" / "imgo2_rl" / "data" / "imgo2_model" / "Imgo2_urdf" / "urdf" / "imgo2.urdf"
+    _PROJECT_ROOT / "source" / "imgo2_rl" / "data" / "imgo2_model" / "imgo2_urdf" / "urdf" / "imgo2.urdf"
 )
 
 

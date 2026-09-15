@@ -56,7 +56,7 @@ def main() -> int:
     if not ok_root:
         failures.append("project root derivation")
 
-    urdf = project_root / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf"
+    urdf = project_root / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf"
     print(f"\nURDF              : {urdf}")
     print(f"  exists          : {urdf.is_file()}")
     if not urdf.is_file():

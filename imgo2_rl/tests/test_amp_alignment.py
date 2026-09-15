@@ -26,13 +26,13 @@ class KinematicsTests(unittest.TestCase):
             self.assertAlmostEqual(actual, expected)
 
     def test_zero_pose_leg_length(self):
-        urdf = ET.parse(ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf").getroot()
+        urdf = ET.parse(ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf").getroot()
         result = forward_kinematics(read_chain(urdf, "FL_FOOT"), [0, 0, 0])
         for actual, expected in zip(result, [0.2205, 0.16185, -0.42575]):
             self.assertAlmostEqual(actual, expected)
 
     def test_dataset_matches_urdf_without_middle_leg_swap(self):
-        result = audit(ROOT / "datasets/imgo2_motion", ROOT / "source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf")
+        result = audit(ROOT / "datasets/imgo2_motion", ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf")
         for row in result["motions"]:
             with self.subTest(motion=row["file"]):
                 error = row["fk_coordinate_rmse_m_by_order"]
