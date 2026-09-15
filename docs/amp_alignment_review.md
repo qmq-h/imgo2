@@ -213,7 +213,7 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256
 
    本文其他位置提到的「六个修改或新增 Python 文件」是当初做语法检查的文件数，不等于需要同步的清单。
 2. **补跑被跳过的 Torch 回归**。它是唯一针对归一化尺度不一致的测试，几秒钟即可完成，但需要 `torch`/`numpy`，因此只能在训练环境执行。注意本机通过的 4 项只覆盖运动学与奖励量级，不覆盖此项。
-3. **确认服务器资源与数据副本**。`IMGO2_CFG` 的 URDF 路径和 `AMP_MOTION_FILES` 都硬编码为 `/root/gpufree-data/Imgo2_rl/...`（见 README 的 ENV-01）。若 glob 为空，AMPLoader 不会给出明确报错。此外恒等映射的结论是针对当前这份数据证明的，本地两份副本逐文件哈希一致、集合哈希为 `163d96671f601673a950b0da13d1c5fb`，服务器那份值得对照。
+3. **确认资源路径与数据副本**。`IMGO2_CFG` 的 URDF 路径与 `AMP_MOTION_FILES` 原本写死为 `/root/gpufree-data/Imgo2_rl/...`，现已改为由 `assets/imgo2.py` 的 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖。在训练机上先运行 `python scripts/tools/check_asset_paths.py`，它不需要 Isaac Lab，会打印实际解析到的路径与动作文件数（应为 21）；若 glob 为空，AMPLoader 不会给出明确报错。此外恒等映射的结论是针对当前这份数据证明的，本地两份副本逐文件哈希一致、集合哈希为 `163d96671f601673a950b0da13d1c5fb`，服务器那份值得对照。
 4. **第一次训练保持短**。本次涉及的改动文件（关节映射、归一化、奖励与终止配置）在本机只做过语法检查，从未被导入（本机没有 Isaac Lab），因此这个短训练同时是导入与配置构建的冒烟测试。
 
 配置接线已在源码中核对，可作为参考：`amp_task_reward_lerp=0.3` 定义在 `agents/amp_rsl_rl_cfg.py`，runner 通过 `self.cfg = train_cfg.get("runner", train_cfg)` 读取，而 `train.py` 传入 `agent_cfg.to_dict()`，因此 0.3 生效（`AMPOnPolicyRunnerCfg` 的默认值仍是 0.1）。`base_height_l2(sensor_cfg=None)` 在平地直接使用目标高度，并有重力投影门控，不会访问不存在的扫描传感器。`illegal_contact = None` 只写在 `Imgo2RoughEnvCfg`，AMP 继承自公共基类，所以基座触地终止确实生效而不会在构建配置时抛错。

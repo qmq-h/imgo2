@@ -23,7 +23,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | 路径 | 内容与用途 |
 |---|---|
 | [Imgo2/](Imgo2/) | 机器人原始模型与网格；URDF 位于 `Imgo2_urdf/urdf/imgo2.urdf` |
-| [imgo2_description/](imgo2_description/) | 用户确认的实际动作采集模型；`xacro/robot.xacro` 包含 `urdf/imgo2_description.urdf`，采用 LF/LH/RF/RH 命名 |
+| [imgo2_description/](imgo2_description/) | 用户确认的实际动作采集模型；`xacro/robot.xacro` 包含 `urdf/imgo2_description.urdf`，采用 LF/LH/RF/RH 命名。**其腿部顺序与训练侧不同是有意为之，服务于另一处实现**：不要为「统一」而改写它，也不要把它与其它副本合并 |
 | [Imgo2_rl/](Imgo2_rl/) | Isaac Lab 扩展、任务配置、训练脚本、自定义算法包、训练用模型及数据副本 |
 | [imgo2_dataset/](imgo2_dataset/) | 参考动作数据；当前数据位于 `datasets/imgo2_motion/` |
 | [Imgo2_deploy/](Imgo2_deploy/) | C++ 推理、观察缓存、状态机、MuJoCo/Gazebo/真机入口及策略配置 |
@@ -61,6 +61,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | 自定义奖励、观测、重置、速度指令 | [mdp/](Imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/) |
 | 自定义算法、网络、runner、包装器、数据加载器 | [scripts/rl_lab/rl_lab/](Imgo2_rl/scripts/rl_lab/rl_lab/) |
 | AMP 动作数据离线核对（高度、FK、腿顺序） | [audit_amp_dataset.py](Imgo2_rl/scripts/tools/audit_amp_dataset.py)、[check_amp_joint_order.py](Imgo2_rl/scripts/tools/check_amp_joint_order.py) |
+| 资源路径自检（新机器/训练服务器前置） | [check_asset_paths.py](Imgo2_rl/scripts/tools/check_asset_paths.py) |
 | 部署观察处理与策略推理 | [rl_sdk.cpp](Imgo2_deploy/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp) |
 | 部署状态切换 | [fsm_imgo2.hpp](Imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp) |
 | 构建选项与外部依赖条件 | [build.sh](Imgo2_deploy/build.sh)、[CMakeLists.txt](Imgo2_deploy/src/imgo2_deploy/CMakeLists.txt) |
@@ -75,9 +76,10 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 
 - `imgo2_rl` 和 `rl_lab` 安装脚本声明 Python `>=3.10`；这不是完整的 Isaac Lab、Isaac Sim、CUDA 和 PyTorch 兼容性记录。
 - 本次没有核验这些依赖的实际安装版本。首次跑通后，在第 8 节记录实际版本和启动命令。
-- `assets/imgo2.py` 中的 URDF 路径目前硬编码为 `/root/gpufree-data/Imgo2_rl/source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf`。在其他机器运行前，需要将它改为该机器的实际路径，或后续实现可配置路径。
-- AMP 当前从同一文件读取 `/root/gpufree-data/Imgo2_rl/datasets/imgo2_motion/*`。开始 AMP 训练前应确认这里确实能读到数据。
-- 另有 [assets/amp_motions.py](Imgo2_rl/source/imgo2_rl/imgo2_rl/assets/amp_motions.py) 支持 `IMGO2_AMP_MOTION_DIR`，但当前 AMP 环境和 runner 配置导入的是 `assets.imgo2.AMP_MOTION_FILES`。仅设置该环境变量不会改变当前训练数据来源。
+- `assets/imgo2.py` 的 URDF 与动作数据路径已改为**由文件自身位置推导**（`Path(__file__)` 上溯 4 层得到 `Imgo2_rl/` 项目根），不再写死机器绝对路径。无论仓库 clone 到哪里、从哪个目录启动都成立；前提是可编辑安装（`pip install -e`），非可编辑安装会把包拷进 site-packages，届时数据目录不在上溯路径上。
+- 需要把数据或模型放在别处时，用环境变量覆盖而不用改代码：`IMGO2_AMP_MOTION_DIR` 覆盖动作数据目录，`IMGO2_URDF_PATH` 覆盖 URDF 路径。
+- 在新机器（尤其训练服务器）上训练前，先运行 `python scripts/tools/check_asset_paths.py`：它不需要 Isaac Lab，会打印实际解析到的路径、动作文件数（应为 21）以及是否还有残留的机器绝对路径。
+- 另有 [assets/amp_motions.py](Imgo2_rl/source/imgo2_rl/imgo2_rl/assets/amp_motions.py) 用于查找另一个参考项目的 mocap 数据，也已去掉机器绝对路径。当前 AMP 环境与 runner 配置导入的是 `assets.imgo2.AMP_MOTION_FILES`，不经过该模块；仅设置环境变量不会改变当前训练数据来源。
 
 安装项目包：
 
@@ -231,8 +233,8 @@ bash build.sh --cmake
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
 | DOC-01 | P1 | 已完成 | 训练 README 曾引用失效的 `script/himloco_rsl_rl` 安装路径和写死的个人服务器 checkpoint | 已改为 `scripts/rl_lab`，checkpoint 改为 `<run>` 占位并注明不可沿用；根 README 与子项目 README 表述一致 |
-| ENV-01 | P0 | 待处理，合并为 monorepo 后更易踩 | `assets/imgo2.py` 的两条路径硬编码为 `/root/gpufree-data/Imgo2_rl/datasets/imgo2_motion/*` 与 `/root/gpufree-data/Imgo2_rl/source/imgo2_rl/data/Imgo2/Imgo2_urdf/urdf/imgo2.urdf`，它们都假定 `Imgo2_rl` 就是项目根。合并成 monorepo 后仓库根是工作区、`Imgo2_rl/` 变成子目录：若把仓库 clone 到 `/root/gpufree-data/Imgo2_rl`，训练代码实际在 `/root/gpufree-data/Imgo2_rl/Imgo2_rl/`，两条路径全部失效，而 glob 为空时 AMPLoader 不会给出明确报错。备用数据解析器（`IMGO2_AMP_MOTION_DIR`）仍未接入当前 AMP 配置 | clone 到任意位置后把 `assets/imgo2.py` 这两条改为实际绝对路径（推荐，改完提交）；或让 `<clone>/Imgo2_rl` 通过软链接出现在 `/root/gpufree-data/Imgo2_rl` 以满足原路径。启动后记录实际加载路径 |
-| MODEL-01 | P0 | 待核对 | 三份 URDF 的 SHA256 不同 | 比较关节、惯量、坐标、网格引用等，明确各副本用途和同步方式 |
+| ENV-01 | P0 | 代码已修正，待服务器验证 | 原先 `assets/imgo2.py` 的两条路径写死为 `/root/gpufree-data/Imgo2_rl/...`，且假定 `Imgo2_rl` 就是项目根，合并成 monorepo 后必然失效且 glob 为空时无明确报错 | 已改为由 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖；新增 `scripts/tools/check_asset_paths.py` 供新机器自检（本机通过：URDF 存在、动作文件 21 份、无残留机器路径）。服务器上仍需运行该脚本并记录实际加载路径 |
+| MODEL-01 | P0 | 已比较，差异属语义问题，待决定基准 | 三份 Imgo2 URDF 的 SHA256 不同。逐项比较结果：**12 个腿部关节的 axis 全部相反**——`Imgo2`（原始）与 `Imgo2_rl`（训练）一致为 `hip +1 0 0`、`thigh/shank 0 +1 0`，而 `Imgo2_deploy` 全部取反为 `-1`／`0 -1 0`，关节限位随之镜像（如 thigh `-0.9..2.87` 对 `-2.87..0.9`）；基座质量也不同，训练份 `5.53394020` kg、部署份 `3.53394020` kg（相差恰好 2.0 kg）；另有材质块、足端惯量等次要差异，两文件 diff 为 +70/−50 行。`Imgo2_rl` 与 `Imgo2_deploy` 的 10 个网格文件**逐字节相同** | 先确定以哪一份关节符号与基座质量为基准（需对照 Gazebo/ROS 与真机 SDK 的实际约定），再据此修正另一份；在此之前不要合并两者的 URDF |
 | AMP-01 | P0 | 恒等映射由数据独立确认 | 用户确认未覆盖采集参数；脚本按默认 LF/RF/LH/RH 写入关节和足端，等价于训练端 `[FL,FR,RL,RR]`。本地补充：改用实际采集模型 `imgo2_description.urdf` 复算 FK 与训练 URDF 结果一致（恒等 RMSE 均值 0.00107 m，声明顺序配对 0.22491 m）；髋外展左右对称性和关节位置/速度块相关性检查也不依赖 URDF 支持同一结论 | 采集来源、源码顺序和数据本身均已确认；新训练的行为改善仍待服务器验证 |
 | AMP-02 | P0 | 历史报错，未复现 | 历史草稿记录 `RuntimeError: normal expects all elements of std >= 0.0`，调用栈为 `amp_on_policy_runner.py:136` → `amp_ppo.py:120` → `actor_critic.py:129` 的 `distribution.sample()` | 记录复现命令、数据和首个异常值；修复后训练验证；不能仅凭该报错断定根因 |
 | AMP-03 | P0 | 代码已修正，待 Torch 回归 | 原均值方差更新使用归一化值，梯度惩罚使用未归一化值；已与 `amp_go2-main` 的处理方式对齐 | CPU Torch 更新回归通过，并检查新训练中的判别器与归一化统计 |
@@ -263,11 +265,14 @@ bash build.sh --cmake
 从 `Imgo2_rl/` 执行离线检查与短训练示例（后者本次未执行）：
 
 ```bash
+python scripts/tools/check_asset_paths.py
 python scripts/tools/audit_amp_dataset.py --output logs/amp_data_audit.json
 python scripts/tools/check_amp_joint_order.py
 python -m unittest discover -s tests -p test_amp_alignment.py -v
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
+
+`check_asset_paths.py` 确认 URDF 与动作数据能按 `Path(__file__)` 推导的路径找到（应为 21 份动作文件），是本机 ENV-01 的自检项。
 
 `check_amp_joint_order.py` 只用标准库，默认读取同级的 `imgo2_description/urdf/imgo2_description.urdf`；本机可用解释器见第 8.3 节维护记录。它检查采集模型 FK、髋外展左右对称性和关节位置/速度块相关性，三项全部通过才返回 0。
 
@@ -317,3 +322,5 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-09-15 | 首次提交 `f6acff9` 已推送到 `https://github.com/qmq-h/imgo2_rl`（分支 `main`） | 远程 `refs/heads/main` 与本地 HEAD 同为 `f6acff9`，共 314 个文件，`main` 已跟踪 `origin/main`。推送需要临时覆盖三处本机配置：`~/.gitconfig` 的 `http.proxy`／`https.proxy` 指向 `127.0.0.1:10808`，而该端口没有进程在监听；系统 `gitconfig` 的 `http.sslBackend=schannel` 在受限 shell 下报 `SEC_E_NO_CREDENTIALS`。实际生效命令为 `git -c http.sslBackend=openssl -c http.proxy= -c https.proxy= push`。另：受限 shell 下 git 凭据助手无法创建命名管道（`Win32 error 5`），推送需放宽沙箱。未改动用户的全局 git 配置 |
 | 2026-09-15 | 补上 checkpoint 忽略规则（提交 `653b661`） | 原根 `.gitignore` 只排除 `*.pth`／`*.ckpt`／`*.onnx`／`*.jit`，未排除 `*.pt`，与其自身注释「训练 checkpoint 体积大且可再生成，不入库」矛盾：`model_*.pt` 只要落在 `logs/` 之外就会被提交。现排除 `*.pt` 并用否定规则保留 `Imgo2_deploy/policy/imgo2/himloco/himloco.pt`（不足 1 MB，部署配置引用）。以 `git check-ignore` 退出码验证：该占位策略退出 1（未被忽略），其余 `.pt` 退出 0（被忽略） |
 | 2026-09-15 | 记录 monorepo 对 ENV-01 硬编码路径的影响 | 仓库结构变为「根 = 工作区、`Imgo2_rl/` 为子目录」后，`assets/imgo2.py` 中假定 `Imgo2_rl` 为项目根的两条绝对路径不再自然成立；已在问题表 ENV-01 写明失效条件与两种解法。本轮只更新文档，未改代码、未在服务器上验证 |
+| 2026-09-15 | 资源路径改为由文件位置推导（去掉机器绝对路径），并补齐模型副本比较结论 | `assets/imgo2.py` 改为 `Path(__file__)` 上溯 4 层得 `Imgo2_rl/` 项目根，支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖；`assets/amp_motions.py` 一并去掉 3 条机器路径（含一条 Windows 个人目录）。新增 `scripts/tools/check_asset_paths.py`（纯标准库）：本机运行 PASS——URDF 存在、动作文件 21 份、无残留机器路径；用不存在的 `IMGO2_AMP_MOTION_DIR` 覆盖时正确返回 FAIL（计数 0≠21）。ENV-01 状态随之改为「代码已修正，待服务器验证」。另完成 MODEL-01 要求的逐项比较：部署份 12 个腿部关节 axis 与训练份全部相反、基座质量相差 2.0 kg、网格 10 个文件逐字节相同，故两份 URDF 属语义差异而非冗余副本，暂不合并。未运行 Isaac Lab |
+| 2026-09-15 | 明确 `imgo2_description` 的腿部顺序差异是有意设计 | 该副本腿序 LF/LH/RF/RH 与训练侧不同，服务另一处实现；已在 README 目录表与 AGENTS.md 写明不要为「统一」而改写或合并它。本轮只更新文档 |
