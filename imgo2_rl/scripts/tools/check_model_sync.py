@@ -27,6 +27,7 @@ Stdlib only. Run from imgo2_rl:
 
 import hashlib
 from pathlib import Path
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
@@ -267,8 +268,31 @@ def main() -> int:
         finally:
             audit_mod.LEGS = original_legs
 
+    # ---- 6. every URDF in the tree must be a registered one ----
+    # The checks above only cover URDFS keys, so a NEW copy appearing elsewhere
+    # would go unnoticed — that is precisely how the sign-inverted deploy copy
+    # survived. Discover all tracked URDFs and require each to be known.
+    print("\n6) coverage: every tracked URDF is a registered one")
+    known = {p.resolve() for p in (spec["path"] for spec in URDFS.values())}
+    known.add((REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf").resolve())  # del leg-only fragment
+    tracked = subprocess.run(["git", "ls-files", "*.urdf"], capture_output=True,
+                             text=True, cwd=REPO).stdout.split()
+    print(f"   tracked URDF files: {len(tracked)}")
+    unregistered = []
+    for rel in tracked:
+        if (REPO / rel).resolve() not in known:
+            unregistered.append(rel)
+    if unregistered:
+        failures.append(f"{len(unregistered)} unregistered URDF file(s)")
+        for rel in unregistered:
+            print(f"   FAIL  not registered: {rel}")
+        print("         add it to URDFS (if it must agree) or to `known` above")
+    else:
+        print(f"   PASS  all {len(tracked)} URDF files are accounted for "
+              f"({len(URDFS)} checked + fragment)")
+
     # ---- informational ----
-    print("\n6) known-intentional / orphan items (reported, not failures)")
+    print("\n7) known-intentional / orphan items (reported, not failures)")
     print("   - imgo2_description/ leg order LF,LH,RF,RH differs by design (another implementation)")
     frag = REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf"
     if frag.is_file():

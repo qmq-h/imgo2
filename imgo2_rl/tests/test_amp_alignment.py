@@ -44,7 +44,7 @@ class RewardContractTests(unittest.TestCase):
     def test_height_survives_filter_and_per_step_scale_is_preserved(self):
         # Execute the actual config method without importing Isaac Sim.
         path = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py"
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))  # 27 个上游文件带 UTF-8 BOM
         cfg_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Imgo2AmpMoveEnvCfg")
         method = next(n for n in cfg_class.body if isinstance(n, ast.FunctionDef) and n.name == "_keep_only_amp_task_rewards")
         namespace = {}
@@ -79,7 +79,7 @@ class AMPUpdateTests(unittest.TestCase):
             # The package __init__ imports Isaac Lab export utilities. Load the
             # real CPU implementations without those simulator-only imports.
             path = ROOT / "scripts/rl_lab/rl_lab" / relative
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"))  # 27 个上游文件带 UTF-8 BOM
             tree.body = [node for node in tree.body if not (
                 isinstance(node, ast.ImportFrom) and (node.module or "").startswith("rl_lab"))]
             scope = {"__name__": "amp_cpu_regression", **dependencies}

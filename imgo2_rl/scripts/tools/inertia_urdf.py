@@ -1,11 +1,18 @@
-﻿import pinocchio as pin
+import pinocchio as pin
 import numpy as np
 import os
 
 from pathlib import Path
 
 
-URDF_PATH = Path(__file__).resolve().parents[3] / "imgo2_model" / "imgo2_urdf" / "urdf" / "imgo2.urdf"
+# 注意：imgo2_model/imgo2_urdf/urdf/imgo2.urdf 只是腿部件片段——没有 base link、
+# 没有 <robot> 起始标签，XML 都无法独立解析，pinocchio 更加载不了；本脚本原先指向它，
+# 因此必然在 buildModelFromUrdf 处失败。改用完整的训练模型；四份完整 URDF 的关节与
+# 物理参数已统一，用哪一份算出的惯量相同。
+URDF_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "source" / "imgo2_rl" / "data" / "imgo2_model" / "imgo2_urdf" / "urdf" / "imgo2.urdf"
+)
 FLOATING_BASE = True                     # 四足一般 True
 # ===========================================
 
