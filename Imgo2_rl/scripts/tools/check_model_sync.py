@@ -13,10 +13,13 @@ FL_hip_joint/... ordered FL, FR, RL, RR.
 
 Fails when any of these breaks:
   1. a leg joint's axis or limits differs between any two complete URDFs;
-  2. a base link inertial block drifts from the agreed canonical values
+  2. a link's mass, centre of mass, inertia tensor or collision geometry differs
+     (compared by logical link, so the description copy's LF_/LH_ naming and its
+     leg order are tolerated);
+  3. a base link inertial block drifts from the agreed canonical values
      (user decision: the recording model's values);
-  3. the mesh set shared by the training, deploy and `Imgo2/` copies diverges;
-  4. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics.
+  4. the mesh set shared by the training, deploy and `Imgo2/` copies diverges;
+  5. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics.
 
 Stdlib only. Run from Imgo2_rl:
     python scripts/tools/check_model_sync.py
@@ -104,6 +107,40 @@ def base_inertial(path: Path):
             (i.get("ixx").strip(), i.get("iyy").strip(), i.get("izz").strip()))
 
 
+# The description copy names legs LF/LH/RF/RH and calls the shank "calf".
+_LINK_PREFIX = {"LF": "FL", "LH": "RL", "RF": "FR", "RH": "RR"}
+_LINK_ROLE = {"hip": "HIP", "thigh": "THIGH", "calf": "SHANK", "FOOT": "FOOT"}
+
+
+def logical_link(name: str) -> str:
+    if name == "base":
+        return "base"
+    prefix, _, role = name.partition("_")
+    return f"{_LINK_PREFIX.get(prefix, prefix)}_{_LINK_ROLE.get(role, role)}"
+
+
+def link_physics(path: Path) -> dict:
+    """{logical link -> mass/CoM/inertia/collision signature} for every link."""
+    root = ET.parse(path).getroot()
+    out = {}
+    for link in root.findall("link"):
+        parts = []
+        inertial = link.find("inertial")
+        if inertial is not None:
+            origin = inertial.find("origin")
+            inertia = inertial.find("inertia")
+            parts.append("m=" + inertial.find("mass").get("value").strip())
+            parts.append("o=" + (origin.get("xyz") if origin is not None else "-"))
+            parts.append("i=" + ",".join(inertia.get(k).strip()
+                                         for k in ("ixx", "ixy", "ixz", "iyy", "iyz", "izz")))
+        for collision in link.findall("collision"):
+            geometry = collision.find("geometry")
+            for shape in geometry:
+                parts.append(f"c={shape.tag}:" + ",".join(f"{k}={v}" for k, v in sorted(shape.attrib.items())))
+        out[logical_link(link.get("name"))] = "|".join(parts)
+    return out
+
+
 def mesh_fingerprint(d: Path):
     files = sorted(p for p in d.glob("*") if p.is_file())
     entries = [(p.name, hashlib.sha256(p.read_bytes()).hexdigest()) for p in files]
@@ -146,8 +183,39 @@ def main() -> int:
                 else:
                     print(f"   PASS  {label:28s} all {len(ref)} joints match training")
 
-    # ---- 2. base link inertial ----
-    print("\n2) base link inertial vs canonical")
+    # ---- 2. per-link physical parameters, by logical link ----
+    print("\n2) link mass / CoM / inertia / collision, by logical link")
+    physics = {}
+    for label, spec in URDFS.items():
+        if spec["path"].is_file():
+            physics[label] = link_physics(spec["path"])
+    if "Imgo2_rl (training)" in physics:
+        ref_label = "Imgo2_rl (training)"
+        ref = physics[ref_label]
+        print(f"   reference: {ref_label} ({len(ref)} links)")
+        for label, got in physics.items():
+            if label == ref_label:
+                continue
+            if set(got) != set(ref):
+                failures.append(f"{label}: link set differs")
+                print(f"   FAIL  {label:28s} link set differs: {sorted(set(got) ^ set(ref))}")
+                continue
+            bad = [k for k in sorted(ref) if ref[k] != got[k]]
+            if bad:
+                failures.append(f"{label}: {len(bad)} link(s) differ physically")
+                for k in bad[:6]:
+                    print(f"   FAIL  {k}: training={ref[k]}")
+                    print(f"   {'':4s}  {'':28s} {label}={got[k]}")
+                if len(bad) > 6:
+                    print(f"   FAIL  ... and {len(bad) - 6} more links")
+            else:
+                print(f"   PASS  {label:28s} all {len(ref)} links identical")
+    else:
+        failures.append("training URDF missing; cannot establish reference")
+        print("   FAIL  training URDF not found")
+
+    # ---- 3. base link inertial vs the agreed canonical values ----
+    print("\n3) base link inertial vs canonical")
     for label, spec in URDFS.items():
         if not spec["path"].is_file():
             continue
@@ -157,8 +225,8 @@ def main() -> int:
         if not ok:
             failures.append(f"{label}: base inertial differs from canonical")
 
-    # ---- 3. shared mesh set ----
-    print("\n3) mesh set shared by three copies")
+    # ---- 4. shared mesh set ----
+    print("\n4) mesh set shared by three copies")
     prints = {}
     for label, d in SHARED_MESH_DIRS.items():
         if not d.is_dir():
@@ -175,8 +243,8 @@ def main() -> int:
         else:
             print("   PASS  all three copies byte-identical")
 
-    # ---- 4. forward kinematics against the recorded data ----
-    print("\n4) forward kinematics against datasets/imgo2_motion")
+    # ---- 5. forward kinematics against the recorded data ----
+    print("\n5) forward kinematics against datasets/imgo2_motion")
     if not MOTION_DIR.is_dir():
         failures.append("motion dir missing")
         print(f"   FAIL  {MOTION_DIR} not found")
@@ -200,7 +268,7 @@ def main() -> int:
             audit_mod.LEGS = original_legs
 
     # ---- informational ----
-    print("\n5) known-intentional / orphan items (reported, not failures)")
+    print("\n6) known-intentional / orphan items (reported, not failures)")
     print("   - imgo2_description/ leg order LF,LH,RF,RH differs by design (another implementation)")
     frag = REPO / "Imgo2/Imgo2_urdf/urdf/imgo2.urdf"
     if frag.is_file():

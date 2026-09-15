@@ -84,7 +84,7 @@
     <link name="FL_THIGH">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="-0.00429543 0.04392351 -0.03236426"/>
-            <mass value="0.96995719 "/>
+            <mass value="0.96995719"/>
             <inertia ixx="0.00506421" ixy="0.00008162" ixz="-0.00034748" 
                     iyy="0.00527087" iyz="0.00062882" 
                     izz="0.00088197"/>
@@ -118,7 +118,7 @@
     <link name="FL_SHANK">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="0.00291507 0.00773582 -0.08768836"/>
-            <mass value="0.09561741 "/>
+            <mass value="0.09561741"/>
             <inertia ixx="0.00054414" ixy="0.00000025" ixz="0.00000058" 
                     iyy="0.00055144" iyz="0.00000263" 
                     izz="0.00001064"/>
@@ -155,11 +155,9 @@
 
     <link name="FL_FOOT">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.000516 0.0 -0.003667"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.00797137 0.00353495 -0.02130484"/>
             <mass value="0.056"/>
-            <inertia ixx="0.000001175" ixy="0" ixz="0" 
-                    iyy="0.000012778" iyz="0" 
-                    izz="0.00001189"/>
+            <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
         </inertial>
         <visual>
             <geometry>
@@ -169,7 +167,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 0.01"/>
             <geometry>
-                <cylinder length="0.02" radius="0.0155"/>
+                <cylinder length="0.01" radius="0.0155"/>
             </geometry>
         </collision>
         <collision>
@@ -219,7 +217,7 @@
     <link name="FR_THIGH">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="-0.00429543 -0.04392351 -0.03236426"/>
-            <mass value="0.96995719 "/>
+            <mass value="0.96995719"/>
             <inertia ixx="0.00506421" ixy="-0.00008162" ixz="-0.00034748" 
                     iyy="0.00527087" iyz="-0.00062882" 
                     izz="0.00088197"/>
@@ -253,7 +251,7 @@
     <link name="FR_SHANK">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="0.00291507 -0.00773582 -0.08768836"/>
-            <mass value="0.09561741 "/>
+            <mass value="0.09561741"/>
             <inertia ixx="0.00054414" ixy="-0.00000025" ixz="0.00000058" 
                     iyy="0.00055144" iyz="-0.00000263" 
                     izz="0.00001064"/>
@@ -290,11 +288,9 @@
 
     <link name="FR_FOOT">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.000516 0.0 -0.003667"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.00797137 0.00353495 -0.02130484"/>
             <mass value="0.056"/>
-            <inertia ixx="0.000001175" ixy="0" ixz="0" 
-                    iyy="0.000012778" iyz="0" 
-                    izz="0.00001189"/>
+            <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
         </inertial>
         <visual>
             <geometry>
@@ -304,7 +300,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 0.01"/>
             <geometry>
-                <cylinder length="0.02" radius="0.0155"/>
+                <cylinder length="0.01" radius="0.0155"/>
             </geometry>
         </collision>
         <collision>
@@ -354,8 +350,8 @@
     <link name="RL_THIGH">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="0.00429543 0.04392351 -0.03236426"/>
-            <mass value="0.96995719 "/>
-            <inertia ixx="0.00506421" ixy="-0.00008162" ixz="0.00034748" 
+            <mass value="0.96995719"/>
+            <inertia ixx="0.00506421" ixy="0.00008162" ixz="-0.00034748" 
                     iyy="0.00527087" iyz="0.00062882" 
                     izz="0.00088197"/>
         </inertial>
@@ -387,9 +383,9 @@
 
     <link name="RL_SHANK">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.00291507 0.00773582 -0.08768836"/>
-            <mass value="0.09561741 "/>
-            <inertia ixx="0.00054414" ixy="-0.00000025" ixz="-0.00000058" 
+            <origin rpy="0.0 0.0 0.0" xyz="0.00291507 0.00773582 -0.08768836"/>
+            <mass value="0.09561741"/>
+            <inertia ixx="0.00054414" ixy="0.00000025" ixz="0.00000058" 
                     iyy="0.00055144" iyz="0.00000263" 
                     izz="0.00001064"/>
         </inertial>
@@ -425,11 +421,9 @@
 
     <link name="RL_FOOT">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="0.000516 0.0 -0.003667"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.00797137 0.00353495 -0.02130484"/>
             <mass value="0.056"/>
-            <inertia ixx="0.000001175" ixy="0" ixz="0" 
-                    iyy="0.000012778" iyz="0" 
-                    izz="0.00001189"/>
+            <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
         </inertial>
         <visual>
             <geometry>
@@ -439,7 +433,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 0.01"/>
             <geometry>
-                <cylinder length="0.02" radius="0.0155"/>
+                <cylinder length="0.01" radius="0.0155"/>
             </geometry>
         </collision>
         <collision>
@@ -489,8 +483,8 @@
     <link name="RR_THIGH">
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="0.00429543 -0.04392351 -0.03236426"/>
-            <mass value="0.96995719 "/>
-            <inertia ixx="0.00506421" ixy="0.00008162" ixz="0.00034748" 
+            <mass value="0.96995719"/>
+            <inertia ixx="0.00506421" ixy="-0.00008162" ixz="-0.00034748" 
                     iyy="0.00527087" iyz="-0.00062882" 
                     izz="0.00088197"/>
         </inertial>
@@ -522,9 +516,9 @@
 
     <link name="RR_SHANK">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.00291507 -0.00773582 -0.08768836"/>
-            <mass value="0.09561741 "/>
-            <inertia ixx="0.00054414" ixy="0.00000025" ixz="-0.00000058" 
+            <origin rpy="0.0 0.0 0.0" xyz="0.00291507 -0.00773582 -0.08768836"/>
+            <mass value="0.09561741"/>
+            <inertia ixx="0.00054414" ixy="-0.00000025" ixz="0.00000058" 
                     iyy="0.00055144" iyz="-0.00000263" 
                     izz="0.00001064"/>
         </inertial>
@@ -560,11 +554,9 @@
 
     <link name="RR_FOOT">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="0.000516 0.0 -0.003667"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.00797137 0.00353495 -0.02130484"/>
             <mass value="0.056"/>
-            <inertia ixx="0.000001175" ixy="0" ixz="0" 
-                    iyy="0.000012778" iyz="0" 
-                    izz="0.00001189"/>
+            <inertia ixx="9.6e-06" ixy="0" ixz="0" iyy="9.6e-06" iyz="0" izz="9.6e-06" />
         </inertial>
         <visual>
             <geometry>
@@ -574,7 +566,7 @@
         <collision>
             <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 0.01"/>
             <geometry>
-                <cylinder length="0.02" radius="0.0155"/>
+                <cylinder length="0.01" radius="0.0155"/>
             </geometry>
         </collision>
         <collision>
