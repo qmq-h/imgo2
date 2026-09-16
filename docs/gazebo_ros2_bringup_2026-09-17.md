@@ -54,13 +54,18 @@
 
 ```bash
 cd ~/RL/imgo2/imgo2_deploy
-source /opt/ros/humble/setup.bash
 
-# 编译（含 imgo2_description / robot_msgs / robot_joint_controller / imgo2_deploy）
-bash build.sh                 # 或 colcon build --merge-install --symlink-install
+# 0) 关键：用「干净」的 Python 环境。若 shell 里 source 过 Isaac Lab / 有 conda 环境，
+#    它们的 PYTHONPATH 会带进一份给 Python 3.11 编的 numpy，把系统 Python 3.10 的 numpy 顶掉，
+#    于是 launch 和 rl_sim 内部调用的 Python `spawner` 会崩（见第 6 节）。
+unset PYTHONPATH PYTHONHOME          # 若激活了 conda：conda deactivate
+python3 -c "import numpy, rclpy; print(numpy.__file__)"   # 不应指向 isaac 的 pip_prebundle
+
+source /opt/ros/humble/setup.bash    # 顺序很重要：先清干净，再 source ROS（它会加回自己的路径）
+bash build.sh                        # 或 colcon build --merge-install --symlink-install
 source install/setup.bash
 
-# 终端 A：Gazebo（GUI 窗口）
+# 终端 A：Gazebo（GUI 窗口）；这个终端也要同样清掉 PYTHONPATH
 ros2 launch imgo2_deploy gazebo.launch.py                 # 默认 earth 世界
 #   wname:=stairs 换楼梯世界；gui:=false 无头
 
@@ -94,3 +99,40 @@ himloco/AMP 在本链路的长时间行为、真机。
 **限制**：以上验证都在 harness 的沙箱 shell 里完成（每次调用独立 PID/`/tmp` 命名空间，
 后台进程会被收掉），所以只能"单次调用内"跑完整链路；用户自己的终端不受此限。
 `~/.ros` 与 `~/.gazebo` 需可写（沙箱里用 `HOME`/`ROS_LOG_DIR` 指到工作区）。
+
+## 6. 环境陷阱：Isaac Lab 的 `PYTHONPATH` 会让 Python `spawner` 崩
+
+**现象**（用户实跑）：`ros2 run imgo2_deploy rl_sim` 在 `Get param` / `Entered passive mode` 之后
+抛一长串 Python traceback，最后：
+
+```
+ImportError: Error importing numpy: you should not try to import numpy from
+        its source directory; ...
+[ros2run]: Process exited with failure 1
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  Failed to start joint controller
+```
+
+**根因**：`rl_sim.cpp` 的 `StartJointController()` 是用 `sh -c "ros2 run controller_manager spawner
+robot_joint_controller -p <临时yaml>"` 起控制器的，子进程继承当前环境。若这个 shell 里 source 过
+Isaac Lab（或挂着 conda 环境），`PYTHONPATH` 里会有
+`/home/qmq/isaac/IsaacLab/_isaac_sim/extscache/omni.kit.pip_archive-*/pip_prebundle`——那是一份给
+**Python 3.11** 编的 numpy 1.26.0。`spawner` 跑的是系统 **Python 3.10**，import numpy 时先命中它，
+C 扩展对不上就崩；spawner 非 0 退出 → `rl_sim` 抛 `Failed to start joint controller`。
+
+**本机复现**（同一台机器、同一份 ROS 2）：
+
+```bash
+source /opt/ros/humble/setup.bash
+ISAAC=/home/qmq/isaac/IsaacLab/_isaac_sim/extscache/omni.kit.pip_archive-*/pip_prebundle
+/usr/bin/python3 -c "import numpy; print(numpy.__file__)"                     # /usr/lib/python3/dist-packages/numpy（1.21.5，正常）
+PYTHONPATH="$PYTHONPATH:$ISAAC" /usr/bin/python3 -c "import numpy; print(numpy.__file__)"   # 报 "its source directory"（复现）
+PYTHONPATH="$PYTHONPATH:$ISAAC" ros2 run controller_manager spawner --help    # 同样报错（复现）
+ros2 run controller_manager spawner --help                                    # 正常
+```
+
+**解决**：跑 Gazebo/ROS 2 的终端要干净——先 `unset PYTHONPATH PYTHONHOME`（有 conda 就
+`conda deactivate`），**然后**才 `source /opt/ros/humble/setup.bash`（它会加回 ROS 自己的路径；
+顺序反了会把 ROS 的路径也清掉）。launch 那个终端同样要清，因为它也要起
+`joint_state_broadcaster`（同样是 Python spawner）。Isaac Lab 训练与 ROS 2 部署请用不同终端，
+不要共用一套环境变量。
