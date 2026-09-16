@@ -5,6 +5,11 @@
 path. This script replicates that derivation, checks the targets exist, and
 reports any machine-specific absolute path left in the sources.
 
+Since the 2026-09-17 model unification the URDF lives outside `imgo2_rl/`
+(`<repo>/imgo2_description/urdf/imgo2.urdf`), so the config declares two roots:
+`_PROJECT_ROOT` (parents[4] -> `imgo2_rl/`) and `_REPO_ROOT` (parents[5] ->
+`<repo>/`). The checker reads whichever root each declared path uses.
+
 Run this on a new machine (especially the training server) before training: an
 empty motion glob makes AMPLoader fail without a clear message.
 
@@ -26,20 +31,16 @@ ASSET_FILES = [
 MACHINE_PATH_RX = re.compile(r"/root/|/home/|[A-Za-z]:\\\\Users")
 
 
-def resolve_project_root(asset_file: Path) -> tuple[Path | None, int | None]:
-    """Read the parents[N] depth out of the asset file and apply it."""
-    text = asset_file.read_text(encoding="utf-8")
-    match = re.search(r"parents\[(\d+)\]", text)
-    if not match:
-        return None, None
-    depth = int(match.group(1))
-    return asset_file.resolve().parents[depth], depth
+def root_vars(text: str) -> dict[str, int]:
+    """{variable -> parents[N]} for every `VAR = Path(__file__).resolve().parents[N]`."""
+    return {m.group(1): int(m.group(2))
+            for m in re.finditer(r"(\w+)\s*=\s*Path\(__file__\)\.resolve\(\)\.parents\[(\d+)\]", text)}
 
 
-def declared_path(text: str, name: str) -> list[str] | None:
-    """Extract the literal path components the asset config declares for `name`.
+def declared_path(text: str, name: str):
+    """(root variable, literal components) declared for `name`, or None.
 
-    Reads e.g. `_DEFAULT_URDF_PATH = (_PROJECT_ROOT / "source" / "imgo2_rl" / ...)`.
+    Reads e.g. `_DEFAULT_URDF_PATH = _REPO_ROOT / "imgo2_description" / ...`.
     This must be read from the source rather than duplicated here: an earlier
     version of this script hardcoded the expected relative path, so it kept
     passing even when the config's own path was wrong.
@@ -50,9 +51,10 @@ def declared_path(text: str, name: str) -> list[str] | None:
     if match is None:
         return None
     body = match.group(1)
-    if "_PROJECT_ROOT" not in body:
+    roots = re.findall(r"\b(_[A-Z][A-Z_]*)\b", body)
+    if not roots:
         return None
-    return re.findall(r'"([^"]*)"', body)
+    return roots[0], re.findall(r'"([^"]*)"', body)
 
 
 def mesh_refs(urdf: Path) -> list[Path]:
@@ -70,14 +72,17 @@ def main() -> int:
         return 1
 
     asset_text = asset.read_text(encoding="utf-8")
-    project_root, depth = resolve_project_root(asset)
-    if project_root is None:
+    depths = root_vars(asset_text)
+    if not depths:
         print(f"FAIL  {asset.name} does not derive paths from Path(__file__)")
         return 1
+    roots = {name: asset.resolve().parents[d] for name, d in depths.items()}
 
     print(f"asset config      : {asset.relative_to(ROOT.parent)}")
-    print(f"parents[{depth}]          : {project_root}")
-    ok_root = project_root.name == "imgo2_rl" and (project_root / "source").is_dir()
+    for name, depth in sorted(depths.items()):
+        print(f"  {name:16s} parents[{depth}] -> {roots[name]}")
+    project_root = roots.get("_PROJECT_ROOT")
+    ok_root = project_root is not None and project_root.name == "imgo2_rl" and (project_root / "source").is_dir()
     print(f"  looks like imgo2_rl root: {ok_root}")
     if not ok_root:
         failures.append("project root derivation")
@@ -86,14 +91,19 @@ def main() -> int:
     print("\ndeclared by the asset config:")
     resolved = {}
     for name, label in (("_DEFAULT_URDF_PATH", "URDF"), ("_DEFAULT_MOTION_DIR", "motion dir")):
-        parts = declared_path(asset_text, name)
-        if parts is None:
-            failures.append(f"{name} not found / not derived from _PROJECT_ROOT")
-            print(f"  FAIL  {name}: not found or not derived from _PROJECT_ROOT")
+        declared = declared_path(asset_text, name)
+        if declared is None:
+            failures.append(f"{name} not found / not derived from a Path(__file__) root")
+            print(f"  FAIL  {name}: not found or not derived from a root variable")
             continue
-        target = project_root.joinpath(*parts)
+        root_var, parts = declared
+        if root_var not in roots:
+            failures.append(f"{name}: uses unknown root variable {root_var}")
+            print(f"  FAIL  {name}: unknown root variable {root_var}")
+            continue
+        target = roots[root_var].joinpath(*parts)
         resolved[name] = target
-        print(f"  {name}")
+        print(f"  {name}  ({label}, via {root_var})")
         print(f"    components : {parts}")
         print(f"    resolves to: {target}")
 

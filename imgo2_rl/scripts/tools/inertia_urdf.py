@@ -5,13 +5,13 @@ import os
 from pathlib import Path
 
 
-# 注意：imgo2_model/imgo2_urdf/urdf/imgo2.urdf 只是腿部件片段——没有 base link、
-# 没有 <robot> 起始标签，XML 都无法独立解析，pinocchio 更加载不了；本脚本原先指向它，
-# 因此必然在 buildModelFromUrdf 处失败。改用完整的训练模型；四份完整 URDF 的关节与
-# 物理参数已统一，用哪一份算出的惯量相同。
+# 注意：imgo2_model/imgo2_urdf/urdf/imgo2.urdf 曾是腿部件片段（无 base link、无 <robot>，
+# XML 都无法独立解析），本脚本原先指向它，必然在 buildModelFromUrdf 处失败。
+# 2026-09-17 模型统一后，唯一的模型源是 imgo2_description：这里用它的纯 URDF 生成物，
+# 物理参数与训练侧一致，用哪一份算出的惯量相同。
 URDF_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "source" / "imgo2_rl" / "data" / "imgo2_model" / "imgo2_urdf" / "urdf" / "imgo2.urdf"
+    Path(__file__).resolve().parents[3]
+    / "imgo2_description" / "urdf" / "imgo2.urdf"
 )
 FLOATING_BASE = True                     # 四足一般 True
 # ===========================================

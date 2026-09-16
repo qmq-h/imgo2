@@ -4,7 +4,8 @@
     <param name="robot_name" type="str" value="$(arg rname)"/>
     <param name="ros_namespace" type="str" value="/$(arg rname)_gazebo/"/>
     <param name="gazebo_model_name" type="str" value="$(arg rname)_gazebo"/>
-    <arg name="robot_urdf" default="$(find imgo2_deploy)/robot_description/imgo2_urdf/urdf/imgo2.urdf"/>
+    <!-- 模型唯一源在 imgo2_description；Gazebo 需要 transmission/IMU/插件，故用 gazebo 版 -->
+    <arg name="robot_urdf" default="$(find imgo2_description)/urdf/imgo2.gazebo.urdf"/>
     <arg name="dollar" value="$"/>
 
     <arg name="paused" default="false"/>

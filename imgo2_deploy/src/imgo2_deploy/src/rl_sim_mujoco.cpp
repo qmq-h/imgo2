@@ -61,7 +61,9 @@ RL_Sim::RL_Sim(int argc, char **argv)
         std::make_unique<mj::GlfwAdapter>(),
         &cam, &opt, &pert, /* is_passive = */ false);
 
-    std::string filename = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/../../robot_description/" + this->robot_name + "_mjcf/" + this->scene_name + ".xml";
+    // 模型唯一源：<repo>/imgo2_description/mjcf/<scene>.xml（含 imgo2.xml）。
+    // 2026-09-17 统一前这里是 ../../robot_description/<robot>_mjcf/<scene>.xml。
+    std::string filename = std::string(IMGO2_MODEL_DIR) + "/mjcf/" + this->scene_name + ".xml";
 
     // start physics thread
     std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename.c_str());

@@ -13,18 +13,19 @@ Model layout since 2026-09-17 (user decision, README MODEL-02): `imgo2_descripti
 is the single source. `xacro/core.xacro` holds the physics (FL/FR/RL/RR naming,
 identical to the training URDF), and `xacro/robot.xacro` assembles the committed
 artifacts `urdf/imgo2.urdf` (core only) and `urdf/imgo2.gazebo.urdf`
-(core + transmission + gazebo + imu). The training and deploy copies are still
-present as mirrors and are checked here too until they are removed.
+(core + transmission + gazebo + imu). The former training / deploy / `imgo2_model/`
+copies have been deleted; this script now guards the two generated artifacts and
+the single mesh directory.
 
 Fails when any of these breaks:
   1. a leg joint's axis or limits differs between any two complete URDFs;
-  2. a link's mass, centre of mass, inertia tensor or collision geometry differs
-     (compared by logical link, so the description copy's LF_/LH_ naming and its
-     leg order are tolerated);
+  2. a link's mass, centre of mass, inertia tensor or collision geometry differs;
   3. a base link inertial block drifts from the agreed canonical values
      (user decision: the recording model's values);
-  4. the mesh set shared by the training, deploy and `imgo2_model/` copies diverges;
-  5. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics.
+  4. the model mesh directory drifts from the recorded fingerprint, or a URDF
+     references a mesh file that does not exist;
+  5. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics;
+  6. a tracked URDF exists that is not registered below.
 
 Stdlib only. Run from imgo2_rl:
     python scripts/tools/check_model_sync.py
@@ -32,6 +33,7 @@ Stdlib only. Run from imgo2_rl:
 
 import hashlib
 from pathlib import Path
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -50,14 +52,6 @@ CANONICAL_BASE_INERTIA = ("0.03866860", "0.10411461", "0.12554111")
 # Complete URDFs that must all agree. foot_legs is the audit script's LEGS tuple,
 # i.e. the foot link name prefixes used by that file.
 URDFS = {
-    "imgo2_rl (training)": {
-        "path": ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/urdf/imgo2.urdf",
-        "foot_legs": ("FL", "FR", "RL", "RR"),
-    },
-    "imgo2_deploy": {
-        "path": REPO / "imgo2_deploy/robot_description/imgo2_urdf/urdf/imgo2.urdf",
-        "foot_legs": ("FL", "FR", "RL", "RR"),
-    },
     "imgo2_description (core)": {
         "path": REPO / "imgo2_description/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
@@ -70,13 +64,11 @@ URDFS = {
     },
 }
 
-SHARED_MESH_DIRS = {
-    "imgo2_rl/.../imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/meshes",
-    "imgo2_deploy/.../meshes": REPO / "imgo2_deploy/robot_description/imgo2_urdf/meshes",
-    "imgo2_model/imgo2_urdf/meshes": REPO / "imgo2_model/imgo2_urdf/meshes",
-    # unified 2026-09-17: same 10 files, only renamed LF_hip->FL_hip / L_calf->L_shank
-    "imgo2_description/meshes": REPO / "imgo2_description/meshes",
-}
+# The single model mesh directory (10 files, shared by every consumer since the
+# 2026-09-17 unification; LF_hip->FL_hip / L_calf->L_shank renames only).
+MESH_DIR = REPO / "imgo2_description/meshes"
+EXPECTED_MESH_FINGERPRINT = "8dc5b5995a11"
+SHARED_MESH_DIRS = {"imgo2_description/meshes": MESH_DIR}
 
 
 def logical_joints(path: Path) -> dict:
@@ -163,10 +155,10 @@ def main() -> int:
         print(f"   {label:28s} leg joints={len(conventions[label])}")
 
     if len(conventions) >= 2:
-        ref_label = "imgo2_rl (training)"
+        ref_label = "imgo2_description (core)"
         ref = conventions.get(ref_label)
         if ref is None:
-            failures.append("training URDF missing; cannot establish reference")
+            failures.append("core URDF missing; cannot establish reference")
         else:
             for label, conv in conventions.items():
                 if label == ref_label:
@@ -181,7 +173,7 @@ def main() -> int:
                     for k in bad:
                         print(f"   FAIL  {k}: training={ref[k]}  {label}={conv[k]}")
                 else:
-                    print(f"   PASS  {label:28s} all {len(ref)} joints match training")
+                    print(f"   PASS  {label:28s} all {len(ref)} joints match the core URDF")
 
     # ---- 2. per-link physical parameters, by logical link ----
     print("\n2) link mass / CoM / inertia / collision, by logical link")
@@ -189,8 +181,8 @@ def main() -> int:
     for label, spec in URDFS.items():
         if spec["path"].is_file():
             physics[label] = link_physics(spec["path"])
-    if "imgo2_rl (training)" in physics:
-        ref_label = "imgo2_rl (training)"
+    if "imgo2_description (core)" in physics:
+        ref_label = "imgo2_description (core)"
         ref = physics[ref_label]
         print(f"   reference: {ref_label} ({len(ref)} links)")
         for label, got in physics.items():
@@ -212,15 +204,15 @@ def main() -> int:
             if bad:
                 failures.append(f"{label}: {len(bad)} link(s) differ physically")
                 for k in bad[:6]:
-                    print(f"   FAIL  {k}: training={ref[k]}")
+                    print(f"   FAIL  {k}: core={ref[k]}")
                     print(f"   {'':4s}  {'':28s} {label}={got[k]}")
                 if len(bad) > 6:
                     print(f"   FAIL  ... and {len(bad) - 6} more links")
             else:
                 print(f"   PASS  {label:28s} all {len(ref)} links identical")
     else:
-        failures.append("training URDF missing; cannot establish reference")
-        print("   FAIL  training URDF not found")
+        failures.append("core URDF missing; cannot establish reference")
+        print("   FAIL  core URDF not found")
 
     # ---- 3. base link inertial vs the agreed canonical values ----
     print("\n3) base link inertial vs canonical")
@@ -233,23 +225,39 @@ def main() -> int:
         if not ok:
             failures.append(f"{label}: base inertial differs from canonical")
 
-    # ---- 4. shared mesh set ----
-    print("\n4) mesh set shared by every copy")
-    prints = {}
+    # ---- 4. the single model mesh directory ----
+    print("\n4) model mesh directory")
     for label, d in SHARED_MESH_DIRS.items():
         if not d.is_dir():
             failures.append(f"mesh dir missing: {label}")
             print(f"   FAIL  missing dir {label}")
             continue
         fp, n = mesh_fingerprint(d)
-        prints[label] = fp
-        print(f"   {label:34s} files={n:2d} fingerprint={fp}")
-    if prints:
-        if len(set(prints.values())) > 1:
-            failures.append("shared mesh copies differ")
-            print("   FAIL  fingerprints differ")
-        else:
-            print("   PASS  all {} copies byte-identical".format(len(prints)))
+        ok = (n == 10 and fp == EXPECTED_MESH_FINGERPRINT)
+        print(f"   {'PASS' if ok else 'FAIL'}  {label:34s} files={n:2d} fingerprint={fp} "
+              f"(expected 10 / {EXPECTED_MESH_FINGERPRINT})")
+        if not ok:
+            failures.append(f"{label}: mesh set drifted")
+    # every mesh referenced by the URDFs must exist next to them
+    # (only <mesh ... file="..."> inside <asset>; Gazebo plugins also use filename=)
+    missing_refs = []
+    for label, spec in URDFS.items():
+        if not spec["path"].is_file():
+            continue
+        root = ET.parse(spec["path"]).getroot()
+        for mesh in root.iter("mesh"):
+            ref = mesh.get("file") or mesh.get("filename")
+            if not ref:
+                continue
+            target = (spec["path"].parent / ref).resolve()
+            if not target.is_file():
+                missing_refs.append(f"{label}: {ref}")
+    if missing_refs:
+        failures.append(f"{len(missing_refs)} unresolvable mesh reference(s)")
+        for item in missing_refs[:5]:
+            print(f"   FAIL  unresolved mesh reference {item}")
+    else:
+        print("   PASS  every mesh referenced by the URDFs exists")
 
     # ---- 5. forward kinematics against the recorded data ----
     print("\n5) forward kinematics against datasets/imgo2_motion")
@@ -281,7 +289,6 @@ def main() -> int:
     # survived. Discover all tracked URDFs and require each to be known.
     print("\n6) coverage: every tracked URDF is a registered one")
     known = {p.resolve() for p in (spec["path"] for spec in URDFS.values())}
-    known.add((REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf").resolve())  # del leg-only fragment
     tracked = subprocess.run(["git", "ls-files", "*.urdf"], capture_output=True,
                              text=True, cwd=REPO).stdout.split()
     print(f"   tracked URDF files: {len(tracked)}")
@@ -293,30 +300,19 @@ def main() -> int:
         failures.append(f"{len(unregistered)} unregistered URDF file(s)")
         for rel in unregistered:
             print(f"   FAIL  not registered: {rel}")
-        print("         add it to URDFS (if it must agree) or to `known` above")
+        print("         add it to URDFS (if it must agree) or delete it")
     else:
-        print(f"   PASS  all {len(tracked)} URDF files are accounted for "
-              f"({len(URDFS)} checked + fragment)")
+        print(f"   PASS  all {len(tracked)} URDF files are accounted for ({len(URDFS)} checked)")
 
     # ---- informational ----
-    print("\n7) known-intentional / orphan items (reported, not failures)")
+    print("\n7) notes (reported, not failures)")
     print("   - imgo2_description/ is the single model source: xacro/core.xacro holds the")
     print("     physics; urdf/imgo2.urdf and urdf/imgo2.gazebo.urdf are generated, do not edit")
-    for rel in ("imgo2_rl/source/imgo2_rl/data/imgo2_model",
-                "imgo2_deploy/robot_description/imgo2_urdf",
-                "imgo2_deploy/robot_description/imgo2_mjcf",
-                "imgo2_model"):
-        if (REPO / rel).exists():
-            print(f"   - {rel} is a mirror kept only until consumers are switched (README MODEL-02)")
-    frag = REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf"
-    if frag.is_file():
-        print(f"   - {frag.relative_to(REPO)} is a leg-only fragment (no base link, no <robot>)")
-    mjcf = REPO / "imgo2_model/imgo2_mjcf/meshes"
-    if mjcf.is_dir():
-        fp, n = mesh_fingerprint(mjcf)
-        print(f"   - imgo2_model/imgo2_mjcf/meshes uses MuJoCo naming: files={n} fingerprint={fp}")
+    print("     (regenerate with `xacro xacro/robot.xacro [transmission:=true gazebo:=true imu:=true]`)")
     if (REPO / "imgo2_description/mjcf/scene.xml").is_file():
-        print("   - imgo2_description/mjcf/scene.xml is the MuJoCo scene (deploy copy still exists)")
+        print("   - imgo2_description/mjcf/{imgo2.xml,scene.xml} is the MuJoCo model used by rl_sim_mujoco")
+    if (REPO / "imgo2_description/mjcf/imgo2.xml").is_file():
+        print("   - the MuJoCo model carries a framelinvel sensor (adr 43) that the C++ does not read yet")
 
     print("\nSummary")
     if failures:

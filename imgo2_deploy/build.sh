@@ -59,10 +59,11 @@ setup_mujoco() {
 setup_robot_descriptions() {
     print_header "[Setting up Robot Descriptions]"
 
-    if [ -f "${SCRIPT_DIR}/robot_description/imgo2_urdf/urdf/imgo2.urdf" ]; then
-        print_success "Using local imgo2 URDF in robot_description/imgo2_urdf"
+    if [ -f "${SCRIPT_DIR}/../imgo2_description/urdf/imgo2.gazebo.urdf" ]; then
+        print_success "Using the unified model in imgo2_description/urdf/imgo2.gazebo.urdf"
     else
-        print_error "Missing robot_description/imgo2_urdf/urdf/imgo2.urdf"
+        print_error "Missing ${SCRIPT_DIR}/../imgo2_description/urdf/imgo2.gazebo.urdf"
+        print_error "2026-09-17 起模型唯一源是仓库根的 imgo2_description（README MODEL-02）"
         exit 1
     fi
 }

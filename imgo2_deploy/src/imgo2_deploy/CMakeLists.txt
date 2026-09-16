@@ -45,6 +45,9 @@ get_filename_component(PROJECT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSO
 
 add_definitions(-DCMAKE_CURRENT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_definitions(-DPOLICY_DIR="${PROJECT_ROOT_DIR}/policy")
+# 模型唯一源在仓库根的 imgo2_description（2026-09-17 统一，见 README MODEL-02）。
+# MuJoCo 入口用它下面的 mjcf/<scene>.xml。
+add_definitions(-DIMGO2_MODEL_DIR="${PROJECT_ROOT_DIR}/../imgo2_description")
 add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 if(NOT USE_CMAKE)
@@ -431,7 +434,7 @@ endif()
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(
-            DIRECTORY config launch worlds ${PROJECT_ROOT_DIR}/policy ${PROJECT_ROOT_DIR}/robot_description
+            DIRECTORY config launch worlds ${PROJECT_ROOT_DIR}/policy
             DESTINATION share/${PROJECT_NAME}
         )
     endif()

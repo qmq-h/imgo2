@@ -15,8 +15,9 @@ def generate_launch_description():
     rname = LaunchConfiguration("rname")
 
     wname = "stairs"
-    package_share = get_package_share_directory("imgo2_deploy")
-    urdf_path = os.path.join(package_share, "robot_description", "imgo2_urdf", "urdf", "imgo2.urdf")
+    # 模型唯一源在 imgo2_description；Gazebo 需要 transmission/IMU/插件，故用 gazebo 版
+    package_share = get_package_share_directory("imgo2_description")
+    urdf_path = os.path.join(package_share, "urdf", "imgo2.gazebo.urdf")
     robot_name = ParameterValue(Command(["echo -n ", rname]), value_type=str)
     ros_namespace = ParameterValue(Command(["echo -n ", "/", rname, "_gazebo"]), value_type=str)
     gazebo_model_name = ParameterValue(Command(["echo -n ", rname, "_gazebo"]), value_type=str)
