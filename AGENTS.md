@@ -25,6 +25,7 @@
 
 ## 模型与资源路径
 
+- **【2026-09-17 起部分失效，统一进行中】** 用户已决定把模型统一到 `imgo2_description/`（命名统一 FL/FR/RL/RR、Gazebo/IMU/transmission 拆为 description 内的可选模块并在使用时组装、生成物入库、最终删除冗余副本，见 README MODEL-02 与 `docs/sim2sim_amp_2026-09-17.md` §6.6）。在本轮统一完成并被下一条约定取代之前，下面这段「不要合并」的规则**只对尚未迁移的副本有效**；动手前先看 README 维护记录里模型统一的最新状态。
 - 仓库内有四份 Imgo2 模型（`imgo2_model/`、`imgo2_description/`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/`）。**它们不是同一件东西的冗余副本，不要为了「统一」而合并**：
   - `imgo2_description/` 的腿部顺序（LF/LH/RF/RH）与训练侧不同，是服务另一处实现的有意设计。
   - `imgo2_deploy/` 的 12 个腿部关节 axis 原本与训练份**全部相反**（q_部署 = −q_训练，限位镜像），已于 2026-09-15 改为训练份约定并验证；deploy 三条推理链路（`rl_real_imgo2.cpp`、`rl_sim.cpp`、`rl_sim_mujoco.cpp`）**没有任何符号取反**，只有 `joint_mapping` 索引置换，读该 URDF 的只有 Gazebo/ROS 链路。
@@ -54,6 +55,9 @@
   - 因此实际可用命令是走 7890 代理：
     `git -c http.sslBackend=openssl -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main`
 - 受限 shell 下 git 的凭据助手无法创建命名管道（`Win32 error 5`），需要放宽沙箱才能推送；这是环境限制，不是仓库问题。
+- **Linux 主机（`~/RL/imgo2` 那份）情况不同，别照抄上面的 Windows 命令**：环境变量 `http_proxy`／`https_proxy`／`ALL_PROXY` 指向 `127.0.0.1:7897`，该端口在监听但 TLS 握手失败（`unexpected eof while reading`）；`7890`/`10808` 无人监听；**直连可通**（`curl --noproxy '*' https://github.com` 返回 200）。因此推送要先清掉代理环境变量：
+  `env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy -u ftp_proxy -u FTP_PROXY git -c http.proxy= -c https.proxy= push origin main`
+  该机没有 credential helper、`~/.git-credentials`、`gh` 与 token 环境变量，**推送前需要用户提供凭据**；本地 `git commit` 不受影响（2026-09-17 实测）。
 - 合并前的嵌套仓库历史保存在 `.git-backups/`（git bundle，已被忽略、不入库），恢复方法见该目录的 `README.md`。不要删除它。
 - 换行由根 `.gitattributes` 固定为 LF 并把模型网格标记为二进制；本机 `core.autocrlf` 已设为 `false`。新增二进制类型时同步补进 `.gitattributes`，否则可能被当文本转换而损坏。
 - harness 只在它所在 Host 的文件系统上读写，本身不做跨机同步。会话记录也留在 Host 侧，在云服务器上运行 harness 得到的是「操作服务器那份文件」的 agent，不会把本机的改动和上下文带过去。
