@@ -44,7 +44,7 @@
 
 ## 多机与同步
 
-- 仓库是单一 monorepo（根目录），远程为 `https://github.com/qmq-h/imgo2`，默认分支 `main`。训练服务器 clone 这一份即可拿到模型、训练代码、动作数据与文档。仓库曾用名 `imgo2_rl`（2026-09-15 改名，旧地址由 GitHub 重定向）。
+- 仓库是单一 monorepo（根目录），远程为 `https://github.com/qmq-h/imgo2`（本机 `origin` 已改为 SSH：`git@github.com:qmq-h/imgo2.git`，2026-09-17），默认分支 `main`。训练服务器 clone 这一份即可拿到模型、训练代码、动作数据与文档。仓库曾用名 `imgo2_rl`（2026-09-15 改名，旧地址由 GitHub 重定向）。
 - 本机 git 推送需要临时 `-c` 覆盖，不要擅自改用户的全局配置：
   - `~/.gitconfig` 的 `http.proxy`／`https.proxy` 指向 `127.0.0.1:10808`，**但该端口没有进程监听**；代理客户端实际监听 **7890**。且 `https.proxy` 被写成 `https://` 是错的，对 HTTPS 目标代理本身仍用 `http://`。
   - 系统 `gitconfig` 的 `http.sslBackend=schannel` 在受限 shell 下报 `SEC_E_NO_CREDENTIALS`，需改用 `openssl`。
@@ -54,7 +54,7 @@
 - 受限 shell 下 git 的凭据助手无法创建命名管道（`Win32 error 5`），需要放宽沙箱才能推送；这是环境限制，不是仓库问题。
 - **Linux 主机（`~/RL/imgo2` 那份）情况不同，别照抄上面的 Windows 命令**：环境变量 `http_proxy`／`https_proxy`／`ALL_PROXY` 指向 `127.0.0.1:7897`，该端口在监听但 TLS 握手失败（`unexpected eof while reading`）；`7890`/`10808` 无人监听；**直连可通**（`curl --noproxy '*' https://github.com` 返回 200）。因此推送要先清掉代理环境变量：
   `env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy -u ftp_proxy -u FTP_PROXY git -c http.proxy= -c https.proxy= push origin main`
-  该机没有 credential helper、`~/.git-credentials`、`gh` 与 token 环境变量，**推送前需要用户提供凭据**；本地 `git commit` 不受影响（2026-09-17 实测）。
+  **推送凭据（2026-09-17 已解决）**：该机原先没有 credential helper、`~/.git-credentials`、`gh` 与 token 环境变量，`git push` 报 `could not read Username`（harness 的 shell 无 TTY，无法交互输入；注意 `user.name`/`user.email` 只是提交署名，不是认证凭据）。现已在 `~/.ssh/id_ed25519` 配置 SSH key 并加到 GitHub，`origin` 改为 `git@github.com:qmq-h/imgo2.git`，`git push origin main` 可直接使用（`ssh -T git@github.com` 返回 `Hi qmq-h!`）。GitHub 的 22 与 `ssh.github.com:443` 都通。`~/.ssh/config` 里的 `Host qmq`（183.147.142.40:30069）是另一台机器，与 GitHub 无关。
 - 合并前的嵌套仓库历史保存在 `.git-backups/`（git bundle，已被忽略、不入库），恢复方法见该目录的 `README.md`。不要删除它。
 - 换行由根 `.gitattributes` 固定为 LF 并把模型网格标记为二进制；本机 `core.autocrlf` 已设为 `false`。新增二进制类型时同步补进 `.gitattributes`，否则可能被当文本转换而损坏。
 - harness 只在它所在 Host 的文件系统上读写，本身不做跨机同步。会话记录也留在 Host 侧，在云服务器上运行 harness 得到的是「操作服务器那份文件」的 agent，不会把本机的改动和上下文带过去。
