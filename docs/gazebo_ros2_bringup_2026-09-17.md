@@ -131,6 +131,31 @@ PYTHONPATH="$PYTHONPATH:$ISAAC" ros2 run controller_manager spawner --help    # 
 ros2 run controller_manager spawner --help                                    # 正常
 ```
 
+**反向的同一个坑**：如果**先** `source /opt/ros/humble/setup.bash`、**后**才 `unset PYTHONPATH`，
+就把 ROS 自己的 `site-packages` 也删掉了，`ros2` 立刻变成
+
+```
+importlib.metadata.PackageNotFoundError: No package metadata was found for ros2cli
+```
+
+因为 `ros2cli` 的 dist-info 就在 ROS 的 python 路径里，而那条路径是 `setup.bash` 追加到
+`PYTHONPATH` 的。此时只要**重新** `source /opt/ros/humble/setup.bash`（再 source 一次工作区
+`install/setup.bash`）即可恢复。
+
+**污染源**：Isaac Sim 的 `~/isaac/IsaacLab/_isaac_sim/setup_python_env.sh` 会把
+`.../extscache/omni.kit.pip_archive-*/pip_prebundle` 写进 `PYTHONPATH`。所以规矩是
+**Isaac Lab 训练与 ROS 2 部署分用不同终端**，ROS 终端里不要 source 这套脚本、也不要 activate
+`isaaclab` conda 环境。
+
+**验证过的正确做法**（本机实测，numpy 落在系统路径、`ros2cli` 元数据正常、包能解析）：
+
+```bash
+# 终端 A / B 都这样起（不依赖 .bashrc 是否已 source 过 ROS）
+env -u PYTHONPATH bash -c 'source /opt/ros/humble/setup.bash &&   source ~/RL/imgo2/imgo2_deploy/install/setup.bash && exec ros2 run imgo2_deploy rl_sim'
+# 启动 Gazebo 的那个终端把最后一句换成：
+#   exec ros2 launch imgo2_deploy gazebo.launch.py
+```
+
 **解决**：跑 Gazebo/ROS 2 的终端要干净——先 `unset PYTHONPATH PYTHONHOME`（有 conda 就
 `conda deactivate`），**然后**才 `source /opt/ros/humble/setup.bash`（它会加回 ROS 自己的路径；
 顺序反了会把 ROS 的路径也清掉）。launch 那个终端同样要清，因为它也要起

@@ -322,7 +322,8 @@ cd imgo2_deploy
 # Python 3.11 编的 numpy，把系统 Python 3.10 的 python `spawner` 搞崩（rl_sim 会报
 # "Failed to start joint controller"，见记录第 6 节）。顺序：先清、再 source ROS。
 unset PYTHONPATH PYTHONHOME            # 有 conda 时再加 conda deactivate
-source /opt/ros/humble/setup.bash
+source /opt/ros/humble/setup.bash    # 顺序不能反：反了会连 ROS 自己的 python 路径一起删掉，
+                                     # ros2 会报 PackageNotFoundError: ros2cli
 
 bash build.sh                          # 或 colcon build --merge-install --symlink-install
 source install/setup.bash
