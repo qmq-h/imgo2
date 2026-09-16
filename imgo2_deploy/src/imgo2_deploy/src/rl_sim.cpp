@@ -5,6 +5,9 @@
 
 #include "rl_sim.hpp"
 
+#include <algorithm>
+#include <set>
+
 RL_Sim::RL_Sim(int argc, char **argv)
 {
 #if defined(USE_ROS1)
@@ -118,7 +121,16 @@ RL_Sim::RL_Sim(int argc, char **argv)
     this->gazebo_unpause_physics_client = nh.serviceClient<std_srvs::Empty>("/gazebo/unpause_physics");
     this->gazebo_reset_world_client = nh.serviceClient<std_srvs::Empty>("/gazebo/reset_world");
 #elif defined(USE_ROS2)
-    this->StartJointController(this->ros_namespace, this->params.Get<std::vector<std::string>>("joint_names"));
+    // ROS2/Gazebo 路径：controller（robot_joint_controller/RobotJointControllerGroup）的消息槽位顺序
+    // = 这里传给它的 `joints` 参数顺序（controller 按名字解析 ros2_control 接口，与 URDF 里的声明
+    // 顺序无关，所以顺序由我们给）。策略的顺序是模型顺序（URDF/MJCF 都是 FL,FR,RL,RR，也是训练
+    // 顺序），而 base.yaml 的 joint_names 是 Unitree SDK 的电机顺序（FR,FL,RR,RL）；直接用
+    // joint_names 会让恒等 joint_mapping 把策略的 FL 接到物理 FR（左右腿互换，给速度指令后翻成
+    // 四脚朝天，实测见 docs/gazebo_ros2_bringup_2026-09-17.md 第 8 节）。故按 URDF 顺序重排。
+    // MuJoCo 路径不读 joint_names，其 joint_mapping 语义与顺序保持原样。
+    this->StartJointController(
+        this->ros_namespace,
+        this->OrderJointsByModelOrder(this->params.Get<std::vector<std::string>>("joint_names")));
     // publisher
     this->robot_command_publisher = ros2_node->create_publisher<robot_msgs::msg::RobotCommand>(
         this->ros_namespace + "robot_joint_controller/command", rclcpp::SystemDefaultsQoS());
@@ -185,6 +197,59 @@ RL_Sim::~RL_Sim()
 #endif
     std::cout << LOGGER::INFO << "RL_Sim exit" << std::endl;
 }
+
+#if defined(USE_ROS2)
+// 把关节名单按**模型（URDF）里的关节声明顺序**重排，只保留 names 里有的关节。
+// 为什么需要：ROS2 控制器槽位顺序 = 传给它的 `joints` 顺序，而 base.yaml 的 joint_names 是
+// Unitree SDK 的电机顺序；策略（以及 MuJoCo 路径的 sensordata/ctrl）用的是模型顺序。
+// 顺序来源是模型唯一源里的纯 URDF（IMGO2_MODEL_DIR/urdf/imgo2.urdf，见 CMakeLists 与 README
+// MODEL-02）；读不到或数量对不上就回退到原名单并告警，不影响启动。
+std::vector<std::string> RL_Sim::OrderJointsByModelOrder(const std::vector<std::string>& names)
+{
+    const std::string urdf_path = std::string(IMGO2_MODEL_DIR) + "/urdf/imgo2.urdf";
+    std::ifstream file(urdf_path);
+    if (!file.good())
+    {
+        std::cout << LOGGER::WARNING << "Cannot open " << urdf_path
+                  << " to order joints; using joint_names as-is" << std::endl;
+        return names;
+    }
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::set<std::string> wanted(names.begin(), names.end());
+    std::vector<std::string> ordered;
+    const std::string tag = "<joint name=\"";
+    std::size_t pos = 0;
+    while ((pos = text.find(tag, pos)) != std::string::npos)
+    {
+        pos += tag.size();
+        const std::size_t end = text.find('"', pos);
+        if (end == std::string::npos)
+        {
+            break;
+        }
+        const std::string joint_name = text.substr(pos, end - pos);
+        if (wanted.count(joint_name) != 0 &&
+            std::find(ordered.begin(), ordered.end(), joint_name) == ordered.end())
+        {
+            ordered.push_back(joint_name);
+        }
+        pos = end;
+    }
+    if (ordered.size() != names.size())
+    {
+        std::cout << LOGGER::WARNING << "Ordered " << ordered.size() << " of " << names.size()
+                  << " joints from " << urdf_path << "; using joint_names as-is" << std::endl;
+        return names;
+    }
+    std::cout << LOGGER::INFO << "Joint order for the ROS 2 controller follows the URDF:";
+    for (const auto& name : ordered)
+    {
+        std::cout << " " << name;
+    }
+    std::cout << std::endl;
+    return ordered;
+}
+#endif
 
 void RL_Sim::StartJointController(const std::string& ros_namespace, const std::vector<std::string>& names)
 {

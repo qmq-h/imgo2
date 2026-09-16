@@ -26,16 +26,21 @@ imgo2:
                     0.00, 0.87, -1.82,
                     0.00, 0.87, -1.82,
                     0.00, 0.87, -1.82]
-  # rl_sim_mujoco indexes sensordata/ctrl with joint_mapping, and the MuJoCo
-  # scene declares the joints as FL,FR,RL,RR (= policy order), so the identity
-  # mapping is required here. joint_names keeps the hardware/SDK order used by
-  # the ROS path; it is not read on the MuJoCo path.
-  joint_names: ["FR_hip_joint", "FR_thigh_joint", "FR_shank_joint",
-                "FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
-                "RR_hip_joint", "RR_thigh_joint", "RR_shank_joint",
-                "RL_hip_joint", "RL_thigh_joint", "RL_shank_joint"]
-  joint_controller_names: ["FR_hip_controller", "FR_thigh_controller", "FR_shank_controller",
-                           "FL_hip_controller", "FL_thigh_controller", "FL_shank_controller",
-                           "RR_hip_controller", "RR_thigh_controller", "RR_shank_controller",
-                           "RL_hip_controller", "RL_thigh_controller", "RL_shank_controller"]
+  # 关节顺序（2026-09-17 定，起因见 docs/gazebo_ros2_bringup_2026-09-17.md 第 8 节）：
+  #   * 模型/策略顺序 = URDF 与 MJCF 的声明顺序 = 训练顺序 = FL,FR,RL,RR；
+  #   * 这两个名单按模型顺序写：ROS2 路径的控制器槽位顺序就是 joint_names 顺序，于是恒等的
+  #     joint_mapping 与 MuJoCo 路径（sensordata/ctrl 也是模型顺序）一致。写成 SDK 顺序
+  #     （FR,FL,RR,RL）会让策略的 FL 接到物理 FR，给速度指令后翻车（实测）；
+  #   * rl_sim.cpp 的 ROS2 分支还会按 URDF 声明顺序再重排一次（OrderJointsByModelOrder），
+  #     所以即使这里顺序写错，ROS 路径也不会错位；
+  #   * 真机路径（rl_real_imgo2.cpp）不读这两份名单，而是用 joint_mapping 索引 Unitree SDK
+  #     的电机数组（固定 FR,FL,RR,RL）⇒ 真机用恒等映射时需要另行处理，见 README 问题表。
+  joint_names: ["FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
+                "FR_hip_joint", "FR_thigh_joint", "FR_shank_joint",
+                "RL_hip_joint", "RL_thigh_joint", "RL_shank_joint",
+                "RR_hip_joint", "RR_thigh_joint", "RR_shank_joint"]
+  joint_controller_names: ["FL_hip_controller", "FL_thigh_controller", "FL_shank_controller",
+                           "FR_hip_controller", "FR_thigh_controller", "FR_shank_controller",
+                           "RL_hip_controller", "RL_thigh_controller", "RL_shank_controller",
+                           "RR_hip_controller", "RR_thigh_controller", "RR_shank_controller"]
   joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

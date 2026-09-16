@@ -211,3 +211,50 @@ ros2 topic pub -r 20 /joy sensor_msgs/Joy \
 
 判据建议固定成三件套：**基座 z**（是否站立高度）、**x 位移/时间**（是否按指令速度走）、
 **大腿摆幅**（是步态还是站着抖），单看任何一个都会误判。
+
+## 8. 关节顺序：三条路径的"数组"不同（Gazebo 会翻车，MuJoCo 正常）
+
+### 8.1 现象与根因
+
+Gazebo 里按 `1` 进 PPO 后，机器人**翻成四脚朝天**并保持不动（`/odom`：z=0.073 m、roll=180°、
+dx=0）；同一策略在 MuJoCo 里站得住、按指令前进。原因不是物理，而是**关节顺序错位**。
+
+`joint_mapping` 的语义是"策略第 i 个关节 ↔ **该路径数组**的第 `joint_mapping[i]` 号"，但三条
+路径的"数组"根本不是同一个东西：
+
+| 路径 | 被索引的数组 | 顺序由谁决定 | 恒等映射是否正确 |
+|---|---|---|---|
+| MuJoCo（`rl_sim_mujoco.cpp`） | `mjData.sensordata` / `ctrl` 原始数组 | **MJCF 声明顺序** = 生成时按训练 URDF = FL,FR,RL,RR = 策略顺序 | ✅ 正确 |
+| ROS 2 / Gazebo（`rl_sim.cpp`） | `robot_msgs/RobotCommand`、`RobotState` 的 12 个槽位 | **controller 的 `joints` 参数顺序**，由 `rl_sim` 从 `base.yaml` 的 `joint_names` 传入（原为 Unitree SDK 的 FR,FL,RR,RL） | ❌ 策略的 FL 接到物理 FR |
+| 真机（`rl_real_imgo2.cpp`） | Unitree SDK `motor_state()` 数组 | 硬件/SDK 固定 FR,FL,RR,RL | ❌ 同上 |
+
+关键：**ROS 2 那边完全不看 URDF 顺序**——`robot_joint_controller` 按名字解析 ros2_control
+接口，槽位顺序只取决于我们传给它的 `joints` 名单。所以两条路径"都从 `base.yaml` 取映射"，
+但被映射的数组一个来自 MJCF、一个来自 `joint_names`，结果就不同。
+
+### 8.2 修法（只动 ROS 路径与数据，模型/URDF 与 MuJoCo 路径不动）
+
+1. **数据**：`base.yaml` 的 `joint_names` / `joint_controller_names` 改为**模型顺序**
+   （FL,FR,RL,RR）。它们只被 ROS 路径（`rl_sim.cpp`）与 ROS1 的按名控制器使用，真机路径不读，
+   所以改动不影响 MuJoCo 与真机的 `joint_mapping` 语义。
+2. **代码（兜底）**：`rl_sim.cpp` 的 ROS2 分支新增 `OrderJointsByModelOrder()`，启动控制器前
+   按 **URDF（模型唯一源 `IMGO2_MODEL_DIR/urdf/imgo2.urdf`）里的关节声明顺序**重排名单，
+   读不到或数量不符则回退并告警。这样即使 `joint_names` 写错，ROS 路径也不会错位；
+   MuJoCo 路径的代码（`rl_sim_mujoco.cpp`）与 `joint_mapping` 语义完全未改。
+3. 仅针对 PPO（键 1）：它的 `joint_mapping` 是恒等；himloco 的 `[3,4,5,0,1,2,9,10,11,6,7,8]`
+   在两种数组顺序下都仍然正确（该置换自逆，且 Go2 策略本身就是 SDK 顺序）。
+
+**验证**（Gazebo，`/odom` 真值）：`vx=0` → z 0.328–0.332 m、roll ±2.9°、dx≈0；`vx=0.5` →
+**向前 8.20 m / 12 s（0.56 m/s）**、z 0.26–0.27、大腿摆幅 0.99–1.08 rad。修前同一条命令是
+z 0.073 m + roll 180°（四脚朝天）。
+
+### 8.3 顺带查清的两件事
+
+- **IMU 没有问题**：把 `/imu` 的 `angular_velocity.z` 与 `/odom` 的 yaw 速率对比，两者同号同量级
+  （+0.059/+0.058、−0.055/−0.050、−0.065/−0.054 rad/s），说明 Gazebo 给的是体系角速度、约定与
+  策略一致。
+- **偏航/转圈是策略自身的性质，不是 Gazebo 特有**：同一策略在 MuJoCo 里 `vx=0.5` 也会持续偏航
+  （12 s 内 yaw 到 −61.9°，同时仍前进 6.18 m），`vx=0` 时只有 ~0.7°/s；Gazebo 侧量级相同但
+  抖动更大（`vx=0` 某些 run 到 ~7°/s）。所以"步态奇怪/走一会儿朝反方向"要往策略权重与
+  `kd=0.2`（阻尼偏低）上找，而不是继续查 Gazebo 物理。下一步可对比另外几份 PPO 导出
+  （flat/23-24-09 或 rough 系列其它 checkpoint），或用 `axes[3]` 给 yaw 指令看它是否真在闭环控航向。

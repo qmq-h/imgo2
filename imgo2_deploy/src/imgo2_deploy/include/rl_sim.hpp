@@ -126,6 +126,12 @@ private:
     std::map<std::string, float> joint_velocities;
     std::map<std::string, float> joint_efforts;
     void StartJointController(const std::string& ros_namespace, const std::vector<std::string>& names);
+#if defined(USE_ROS2)
+    // ROS2/Gazebo 路径专用：把关节名单按**模型（URDF）里的关节声明顺序**重排。
+    // 见 rl_sim.cpp 里该函数的注释（策略顺序 = URDF 顺序，而 base.yaml 的 joint_names 是
+    // Unitree SDK 的电机顺序，两者不同；MuJoCo 路径不读 joint_names，语义保持原样）。
+    std::vector<std::string> OrderJointsByModelOrder(const std::vector<std::string>& names);
+#endif
 };
 
 #endif // RL_SIM_HPP
