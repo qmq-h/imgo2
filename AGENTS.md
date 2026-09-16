@@ -26,14 +26,14 @@
 ## 模型与资源路径
 
 - **【2026-09-17 起部分失效，统一进行中】** 用户已决定把模型统一到 `imgo2_description/`（命名统一 FL/FR/RL/RR、Gazebo/IMU/transmission 拆为 description 内的可选模块并在使用时组装、生成物入库、最终删除冗余副本，见 README MODEL-02 与 `docs/sim2sim_amp_2026-09-17.md` §6.6）。在本轮统一完成并被下一条约定取代之前，下面这段「不要合并」的规则**只对尚未迁移的副本有效**；动手前先看 README 维护记录里模型统一的最新状态。
-- 仓库内有四份 Imgo2 模型（`imgo2_model/`、`imgo2_description/`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/`）。**它们不是同一件东西的冗余副本，不要为了「统一」而合并**：
-  - `imgo2_description/` 的腿部顺序（LF/LH/RF/RH）与训练侧不同，是服务另一处实现的有意设计。
+- 仓库内有四份 Imgo2 模型副本（`imgo2_model/`、`imgo2_description/`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/`）。2026-09-17 起用户决定统一到 `imgo2_description/`，**已完成的部分：命名与网格**（见下），**未完成的部分**：消费者切换与删除镜像。下面这段「不要合并」的规则只对尚未迁移的副本有效：
+  - ~~`imgo2_description/` 的腿部顺序（LF/LH/RF/RH）与训练侧不同，是服务另一处实现的有意设计~~ —— **2026-09-17 已统一为 FL/FR/RL/RR**，`xacro/core.xacro` 与训练 URDF 结构等价（17 link/16 joint、轴/限位/origin/惯量逐项相同），生成物 `urdf/imgo2.urdf`（纯）与 `urdf/imgo2.gazebo.urdf`（+transmission+gazebo+imu）已入库。
   - `imgo2_deploy/` 的 12 个腿部关节 axis 原本与训练份**全部相反**（q_部署 = −q_训练，限位镜像），已于 2026-09-15 改为训练份约定并验证；deploy 三条推理链路（`rl_real_imgo2.cpp`、`rl_sim.cpp`、`rl_sim_mujoco.cpp`）**没有任何符号取反**，只有 `joint_mapping` 索引置换，读该 URDF 的只有 Gazebo/ROS 链路。
-  - **物理参数的唯一准绳是训练侧**（用户 2026-09-15 决定）：关节轴/限位、每个 link 的质量/质心/惯量、碰撞几何、base 规范值都以 `imgo2_rl` 那份为准，其余副本（含 `imgo2_deploy` 与 `imgo2_description`）向它对齐。四份完整 URDF 现已一致，`imgo2_deploy` 仅多 4 个不影响物理的 `<material>` 块。
+  - **物理参数的唯一准绳是训练侧**（用户 2026-09-15 决定）：关节轴/限位、每个 link 的质量/质心/惯量、碰撞几何、base 规范值都以 `imgo2_rl` 那份为准，其余副本（含 `imgo2_deploy` 与 `imgo2_description`）向它对齐。
   - **不要为了「统一符号」去改训练份的 URDF**：AMP 恒等映射的依据是训练 URDF 与录制的真机数据 FK 吻合到 0.002 m，改其关节轴符号会让吻合崩到 0.22 量级、整套对齐结论作废，而真机数据不会跟着变。要改就改其它副本。
-  - base link 的规范值是质量 `5.53394020` 配惯量 `0.03866860/0.10411461/0.12554111`。惯量与质量成比例，只改质量不改惯量会造成不自洽（`imgo2_description/urdf/imgo2.urdf` 原先正是如此）。
-  - 改动任何模型副本或 URDF 后，运行 `python imgo2_rl/scripts/tools/check_model_sync.py`：它按逻辑关节名与逻辑 link 名（与腿序、LF_/LH_ 命名无关）比对四份 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、三份共用的网格集合，并让每份 URDF 都对录制数据做 FK。五项任一破坏都会报错。
-  - 网格共**三套**而非一套：`imgo2_model/imgo2_urdf`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/` 三份**共用同一套**（集合指纹 `bc421eb1cbef`，10 文件 14.8 MB 逐字节相同，git 因此只存一份）；`imgo2_model/imgo2_mjcf`（`1ac2f43d08b3`）与 `imgo2_description`（`24b1aa343fb9`）各有独立命名体系，不是同一套网格。
+  - base link 的规范值是质量 `5.53394020` 配惯量 `0.03866860/0.10411461/0.12554111`。惯量与质量成比例，只改质量不改惯量会造成不自洽。
+  - 改动任何模型副本或 URDF 后，运行 `python imgo2_rl/scripts/tools/check_model_sync.py`：它按逻辑关节名与逻辑 link 名比对**已登记的每份 URDF**（现在 4 份：训练份、部署份、`imgo2_description/urdf/imgo2.urdf`、`imgo2_description/urdf/imgo2.gazebo.urdf`；Gazebo 那份允许多的 `base_imu`）的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、各份共用的网格集合，并让每份 URDF 都对录制数据做 FK。五项任一破坏都会报错，另有第 6 项「全仓 URDF 都必须登记」。
+  - 网格现在**四份共用同一套**（`imgo2_model/imgo2_urdf`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/`、`imgo2_description/meshes`），集合指纹 `8dc5b5995a11`（2026-09-17 统一命名后；此前 `imgo2_description` 是 LF 命名的 `24b1aa343fb9`，其余三份是 FL 命名的 `bc421eb1cbef`），10 文件逐字节相同；`imgo2_model/imgo2_mjcf`（`1ac2f43d08b3`）仍是独立的 MuJoCo 命名体系。
   - `imgo2_model/imgo2_urdf/urdf/imgo2.urdf` 只是腿部件片段（无 `base` link、无 `<robot>` 起始标签，XML 不能独立解析），不要当作完整模型或基座参数的来源。
 - 新增或修改模型副本时，先确认它服务于哪条链路，并在 README 的 MODEL-01 里更新差异，不要默默覆盖。
 - 代码里的资源路径一律由 `Path(__file__)` 推导或走环境变量，不写机器绝对路径。改动后跑 `python scripts/tools/check_asset_paths.py` 自检。

@@ -6,10 +6,15 @@ joints (q_deploy = -q_train), which silently disagreed with the real-robot data
 the AMP reference motions were recorded from. Signs and limits must therefore be
 checked across every model, not just the one being edited.
 
-Comparison is by *logical joint* (leg + joint role), so the deliberate leg-order
-difference of `imgo2_description/` is tolerated: that copy names its joints
-LF_HAA/LH_HFE/... and orders legs LF, LH, RF, RH, while the others use
-FL_hip_joint/... ordered FL, FR, RL, RR.
+Comparison is by *logical joint* (leg + joint role) and *logical link*, so it does
+not depend on the declaration order inside a file.
+
+Model layout since 2026-09-17 (user decision, README MODEL-02): `imgo2_description/`
+is the single source. `xacro/core.xacro` holds the physics (FL/FR/RL/RR naming,
+identical to the training URDF), and `xacro/robot.xacro` assembles the committed
+artifacts `urdf/imgo2.urdf` (core only) and `urdf/imgo2.gazebo.urdf`
+(core + transmission + gazebo + imu). The training and deploy copies are still
+present as mirrors and are checked here too until they are removed.
 
 Fails when any of these breaks:
   1. a leg joint's axis or limits differs between any two complete URDFs;
@@ -53,28 +58,24 @@ URDFS = {
         "path": REPO / "imgo2_deploy/robot_description/imgo2_urdf/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
     },
-    "imgo2_description.urdf": {
-        "path": REPO / "imgo2_description/urdf/imgo2_description.urdf",
-        "foot_legs": ("LF", "RF", "LH", "RH"),
-    },
-    "imgo2_description/imgo2.urdf": {
+    "imgo2_description (core)": {
         "path": REPO / "imgo2_description/urdf/imgo2.urdf",
         "foot_legs": ("FL", "FR", "RL", "RR"),
     },
-}
-
-# description joint name -> training joint name (leg order differs; roles map 1:1)
-DESC_TO_TRAIN = {
-    "LF_HAA": "FL_hip_joint", "LF_HFE": "FL_thigh_joint", "LF_KFE": "FL_shank_joint",
-    "LH_HAA": "RL_hip_joint", "LH_HFE": "RL_thigh_joint", "LH_KFE": "RL_shank_joint",
-    "RF_HAA": "FR_hip_joint", "RF_HFE": "FR_thigh_joint", "RF_KFE": "FR_shank_joint",
-    "RH_HAA": "RR_hip_joint", "RH_HFE": "RR_thigh_joint", "RH_KFE": "RR_shank_joint",
+    "imgo2_description (gazebo)": {
+        "path": REPO / "imgo2_description/urdf/imgo2.gazebo.urdf",
+        "foot_legs": ("FL", "FR", "RL", "RR"),
+        # imu.xacro adds base_imu on top of the 17 core links
+        "extra_links": ("base_imu",),
+    },
 }
 
 SHARED_MESH_DIRS = {
     "imgo2_rl/.../imgo2_urdf/meshes": ROOT / "source/imgo2_rl/data/imgo2_model/imgo2_urdf/meshes",
     "imgo2_deploy/.../meshes": REPO / "imgo2_deploy/robot_description/imgo2_urdf/meshes",
     "imgo2_model/imgo2_urdf/meshes": REPO / "imgo2_model/imgo2_urdf/meshes",
+    # unified 2026-09-17: same 10 files, only renamed LF_hip->FL_hip / L_calf->L_shank
+    "imgo2_description/meshes": REPO / "imgo2_description/meshes",
 }
 
 
@@ -84,9 +85,7 @@ def logical_joints(path: Path) -> dict:
     out = {}
     for j in root.findall("joint"):
         name = j.get("name")
-        if name in DESC_TO_TRAIN:
-            logical = DESC_TO_TRAIN[name][: -len("_joint")]
-        elif name and name.endswith(("_hip_joint", "_thigh_joint", "_shank_joint")):
+        if name and name.endswith(("_hip_joint", "_thigh_joint", "_shank_joint")):
             logical = name[: -len("_joint")]
         else:
             continue
@@ -197,10 +196,18 @@ def main() -> int:
         for label, got in physics.items():
             if label == ref_label:
                 continue
-            if set(got) != set(ref):
+            # The Gazebo assembly adds an IMU frame (imu.xacro) and the legs keep the
+            # 17 core links; anything else is a real divergence.
+            allowed_extra = set(URDFS[label].get("extra_links", ()))
+            missing = set(ref) - set(got)
+            extra = set(got) - set(ref)
+            if missing or (extra - allowed_extra):
                 failures.append(f"{label}: link set differs")
-                print(f"   FAIL  {label:28s} link set differs: {sorted(set(got) ^ set(ref))}")
+                print(f"   FAIL  {label:28s} link set differs: missing={sorted(missing)} "
+                      f"unexpected={sorted(extra - allowed_extra)}")
                 continue
+            if extra:
+                print(f"   note  {label:28s} expected extra link(s): {sorted(extra)}")
             bad = [k for k in sorted(ref) if ref[k] != got[k]]
             if bad:
                 failures.append(f"{label}: {len(bad)} link(s) differ physically")
@@ -227,7 +234,7 @@ def main() -> int:
             failures.append(f"{label}: base inertial differs from canonical")
 
     # ---- 4. shared mesh set ----
-    print("\n4) mesh set shared by three copies")
+    print("\n4) mesh set shared by every copy")
     prints = {}
     for label, d in SHARED_MESH_DIRS.items():
         if not d.is_dir():
@@ -242,7 +249,7 @@ def main() -> int:
             failures.append("shared mesh copies differ")
             print("   FAIL  fingerprints differ")
         else:
-            print("   PASS  all three copies byte-identical")
+            print("   PASS  all {} copies byte-identical".format(len(prints)))
 
     # ---- 5. forward kinematics against the recorded data ----
     print("\n5) forward kinematics against datasets/imgo2_motion")
@@ -293,27 +300,30 @@ def main() -> int:
 
     # ---- informational ----
     print("\n7) known-intentional / orphan items (reported, not failures)")
-    print("   - imgo2_description/ leg order LF,LH,RF,RH differs by design (another implementation)")
+    print("   - imgo2_description/ is the single model source: xacro/core.xacro holds the")
+    print("     physics; urdf/imgo2.urdf and urdf/imgo2.gazebo.urdf are generated, do not edit")
+    for rel in ("imgo2_rl/source/imgo2_rl/data/imgo2_model",
+                "imgo2_deploy/robot_description/imgo2_urdf",
+                "imgo2_deploy/robot_description/imgo2_mjcf",
+                "imgo2_model"):
+        if (REPO / rel).exists():
+            print(f"   - {rel} is a mirror kept only until consumers are switched (README MODEL-02)")
     frag = REPO / "imgo2_model/imgo2_urdf/urdf/imgo2.urdf"
     if frag.is_file():
         print(f"   - {frag.relative_to(REPO)} is a leg-only fragment (no base link, no <robot>)")
-    for rel in ("imgo2_description/xacro/common/leg.xacro",
-                "imgo2_description/urdf/imgo2.urdf"):
-        if (REPO / rel).is_file():
-            print(f"   - {rel} is not referenced by any file in the workspace")
     mjcf = REPO / "imgo2_model/imgo2_mjcf/meshes"
     if mjcf.is_dir():
         fp, n = mesh_fingerprint(mjcf)
         print(f"   - imgo2_model/imgo2_mjcf/meshes uses MuJoCo naming: files={n} fingerprint={fp}")
     if (REPO / "imgo2_description/mjcf/scene.xml").is_file():
-        print("   - imgo2_description/mjcf/scene.xml exists (lead for README DEPLOY-02, which needs a MuJoCo scene)")
+        print("   - imgo2_description/mjcf/scene.xml is the MuJoCo scene (deploy copy still exists)")
 
     print("\nSummary")
     if failures:
         for item in failures:
             print(f"  FAIL  {item}")
         return 1
-    print("  PASS  all four URDFs agree and each reproduces the recorded data")
+    print(f"  PASS  all {len(URDFS)} registered URDFs agree and each reproduces the recorded data")
     return 0
 
 

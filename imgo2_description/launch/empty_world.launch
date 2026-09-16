@@ -1,12 +1,16 @@
 <launch>
+    <!-- Gazebo 链路：模型由 imgo2_description 的 xacro 源组装。
+         三个开关默认 false，这里必须显式打开，否则 Gazebo 拿不到 transmission/IMU/插件。
+         注意：本 launch 还依赖 legged_common 与 legged_gazebo 两个不在本仓库的包
+         （见 README DEPLOY-05），因此目前不能独立运行。 -->
     <arg name="robot_type" default="imgo2" doc="Robot type: imgo2"/>
 
     <param name="legged_robot_description" command="$(find xacro)/xacro $(find imgo2_description)/xacro/robot.xacro
-       robot_type:=$(arg robot_type)
+       transmission:=true gazebo:=true imu:=true
     "/>
     <node name="generate_urdf" pkg="legged_common" type="generate_urdf.sh" output="screen"
-          args="$(find imgo2_description)/xacro/robot.xacro $(arg robot_type)"/>
-          
+          args="$(find imgo2_description)/urdf/imgo2.gazebo.urdf $(arg robot_type)"/>
+
     <rosparam file="$(find legged_gazebo)/config/default.yaml" command="load"/>
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find legged_gazebo)/worlds/empty_world.world"/>

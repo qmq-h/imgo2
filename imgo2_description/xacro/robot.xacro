@@ -1,10 +1,41 @@
 <?xml version="1.0"?>
+<!-- Imgo2 模型组装入口（imgo2_description 是模型的唯一源）。
 
-<robot name="imgo2_description" xmlns:xacro="http://www.ros.org/wiki/xacro">
+     用法：
+       xacro robot.xacro                                            # 纯 URDF：RL / 非 Gazebo 消费者
+       xacro robot.xacro transmission:=true gazebo:=true imu:=true   # Gazebo / ROS 链路
 
-    <xacro:include filename="$(find imgo2_description)/urdf/imgo2_description.urdf"/>
-    <xacro:include filename="$(find imgo2_description)/xacro/common/gazebo.xacro"/>
-    <xacro:include filename="$(find imgo2_description)/xacro/common/imu.xacro"/>
-    <xacro:IMU connected_to="base" imu_name="base_imu" xyz="0. 0. 0." rpy="0. 0. 0."/>
+     开关默认全 false，所以不带参数时只输出 core.xacro 的内核（links + joints），
+     与训练侧 URDF 等价。
+
+     生成物（已入库，勿手改；改了要重新生成并跑校验）：
+       ../urdf/imgo2.urdf          <- core only
+       ../urdf/imgo2.gazebo.urdf   <- core + transmission + gazebo + imu
+-->
+<robot name="Imgo2" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:arg name="transmission" default="false"/>
+    <xacro:arg name="gazebo" default="false"/>
+    <xacro:arg name="imu" default="false"/>
+
+    <!-- 内核：物理参数唯一准绳 -->
+    <xacro:include filename="core.xacro"/>
+
+    <xacro:if value="$(arg transmission)">
+        <xacro:include filename="transmission.xacro"/>
+        <xacro:leg_transmission prefix="FL"/>
+        <xacro:leg_transmission prefix="FR"/>
+        <xacro:leg_transmission prefix="RL"/>
+        <xacro:leg_transmission prefix="RR"/>
+    </xacro:if>
+
+    <xacro:if value="$(arg gazebo)">
+        <xacro:include filename="gazebo.xacro"/>
+    </xacro:if>
+
+    <xacro:if value="$(arg imu)">
+        <xacro:include filename="imu.xacro"/>
+        <xacro:IMU connected_to="base" imu_name="base_imu" xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:if>
 
 </robot>

@@ -3,8 +3,12 @@
 Complements audit_amp_dataset.py. The bundled audit compares joint blocks against
 foot blocks using forward kinematics and the training URDF only. This script adds:
 
-1. FK against the actual recording model (imgo2_description), whose foot links are
-   named LF_FOOT/RF_FOOT/LH_FOOT/RH_FOOT instead of FL_FOOT/FR_FOOT/RL_FOOT/RR_FOOT.
+1. FK against the unified model (`imgo2_description/urdf/imgo2.urdf`, which since the
+   2026-09-17 unification is the same robot as the training URDF), with a cross-leg
+   swapped-order control to show the pairing is not accidental.
+   Note: before the unification this used the separate LF/LH/RF/RH recording copy and
+   also contrasted its declaration order; the model is now FL/FR/RL/RR, so that
+   particular sub-test no longer exists and checks 2 and 3 carry the URDF-free evidence.
 2. A URDF-free check: in a quasi-symmetric stance, hip abduction angles of the left
    and right leg of the same pair must have opposite signs. This identifies which
    blocks are left legs without any model, FK or recording-argument assumption.
@@ -41,33 +45,28 @@ def pearson(xs, ys):
 
 
 def check_recording_urdf(motion_dir, recording_urdf):
-    """FK with the recording model's link names, for both candidate leg orders."""
+    """FK with the unified model, plus the audit's cross-leg swapped-order control."""
     import audit_amp_dataset as a
 
     original = a.LEGS
-    a.LEGS = ("LF", "RF", "LH", "RH")  # LF,RF,LH,RH == FL,FR,RL,RR
+    a.LEGS = ("FL", "FR", "RL", "RR")
     try:
-        identity = a.audit(motion_dir, recording_urdf)
-    finally:
-        a.LEGS = original
-    a.LEGS = ("LF", "LH", "RF", "RH")  # the recording URDF's declaration order
-    try:
-        declared = a.audit(motion_dir, recording_urdf)
+        result = a.audit(motion_dir, recording_urdf)
     finally:
         a.LEGS = original
 
-    def stats(result):
-        values = [m["fk_coordinate_rmse_m_by_order"]["FL_FR_RL_RR"] for m in result["motions"]]
+    def stats(key):
+        values = [m["fk_coordinate_rmse_m_by_order"][key] for m in result["motions"]]
         return statistics.mean(values), max(values)
 
-    id_mean, id_max = stats(identity)
-    dec_mean, dec_max = stats(declared)
-    print("1) FK against the recording model imgo2_description.urdf")
-    print(f"   file order LF,RF,LH,RH (== FL,FR,RL,RR): mean={id_mean:.5f} m max={id_max:.5f} m")
-    print(f"   declaration order LF,LH,RF,RH         : mean={dec_mean:.5f} m max={dec_max:.5f} m")
-    print(f"   files={identity['file_count']} frames={identity['frame_count']} "
-          f"urdf_sha256={identity['urdf_sha256'][:16]}")
-    return id_mean < 0.005 and dec_mean > 0.20
+    id_mean, id_max = stats("FL_FR_RL_RR")
+    sw_mean, sw_min = stats("FL_RL_FR_RR")
+    print("1) FK against the unified model imgo2_description/urdf/imgo2.urdf")
+    print(f"   file order FL,FR,RL,RR: mean={id_mean:.5f} m max={id_max:.5f} m")
+    print(f"   swapped    FL,RL,FR,RR: mean={sw_mean:.5f} m min={sw_min:.5f} m")
+    print(f"   files={result['file_count']} frames={result['frame_count']} "
+          f"urdf_sha256={result['urdf_sha256'][:16]}")
+    return id_mean < 0.005 and id_max < 0.005 and sw_min > 0.20
 
 
 def check_hip_symmetry(files):
@@ -112,8 +111,9 @@ def main():
     parser.add_argument(
         "--recording-urdf",
         type=Path,
-        default=root.parent / "imgo2_description/urdf/imgo2_description.urdf",
-        help="The model the motion data was recorded from, not the training URDF.",
+        default=root.parent / "imgo2_description/urdf/imgo2.urdf",
+        help="The model the motion data was recorded from. Since the 2026-09-17 unification "
+             "this is the generated core URDF in imgo2_description (same robot as the training URDF).",
     )
     args = parser.parse_args()
 
