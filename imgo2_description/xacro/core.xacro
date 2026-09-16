@@ -3,7 +3,8 @@
      由 xacro/robot.xacro 组装；不要在这里放 Gazebo / transmission / IMU 内容。
      命名与训练侧一致：FL/FR/RL/RR，关节 FL_hip_joint / FL_thigh_joint / FL_shank_joint，
      足端固定关节 FL_Ankle，link 名 base / FL_HIP / FL_THIGH / FL_SHANK / FL_FOOT。
-     网格相对于 <repo>/imgo2_description/meshes/ 解析。 -->
+     网格前缀由 xacro 属性 mesh_prefix 决定（robot.xacro 按 gazebo 开关设为 ../meshes/ 或
+      package://imgo2_description/meshes/），故本文件必须经 robot.xacro 组装。 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 <link name="base">
         <inertial>
@@ -16,7 +17,7 @@
         <visual>
             <origin rpy="0 0 0" xyz="0 0 0.0"/>
             <geometry>
-                <mesh filename="../meshes/base.STL"/>
+                <mesh filename="${mesh_prefix}base.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -63,7 +64,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/FL_hip.STL" scale="1 1 1"/>
+                <mesh filename="${mesh_prefix}FL_hip.STL" scale="1 1 1"/>
             </geometry>
         </visual>
         <collision>
@@ -92,7 +93,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/L_thigh.STL"/>
+                <mesh filename="${mesh_prefix}L_thigh.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -126,7 +127,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/L_shank.STL"/>
+                <mesh filename="${mesh_prefix}L_shank.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -159,7 +160,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/foot.STL"/>
+                <mesh filename="${mesh_prefix}foot.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -193,7 +194,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/FR_hip.STL" scale="1 1 1"/>
+                <mesh filename="${mesh_prefix}FR_hip.STL" scale="1 1 1"/>
             </geometry>
         </visual>
         <collision>
@@ -222,7 +223,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/R_thigh.STL"/>
+                <mesh filename="${mesh_prefix}R_thigh.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -256,7 +257,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/R_shank.STL"/>
+                <mesh filename="${mesh_prefix}R_shank.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -289,7 +290,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/foot.STL"/>
+                <mesh filename="${mesh_prefix}foot.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -323,7 +324,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/RL_hip.STL" scale="1 1 1"/>
+                <mesh filename="${mesh_prefix}RL_hip.STL" scale="1 1 1"/>
             </geometry>
         </visual>
         <collision>
@@ -352,7 +353,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/L_thigh.STL"/>
+                <mesh filename="${mesh_prefix}L_thigh.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -386,7 +387,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/L_shank.STL"/>
+                <mesh filename="${mesh_prefix}L_shank.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -419,7 +420,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/foot.STL"/>
+                <mesh filename="${mesh_prefix}foot.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -453,7 +454,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/RR_hip.STL" scale="1 1 1"/>
+                <mesh filename="${mesh_prefix}RR_hip.STL" scale="1 1 1"/>
             </geometry>
         </visual>
         <collision>
@@ -482,7 +483,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/R_thigh.STL"/>
+                <mesh filename="${mesh_prefix}R_thigh.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -516,7 +517,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/R_shank.STL"/>
+                <mesh filename="${mesh_prefix}R_shank.STL"/>
             </geometry>
         </visual>
         <collision>
@@ -549,7 +550,7 @@
         </inertial>
         <visual>
             <geometry>
-                <mesh filename="../meshes/foot.STL"/>
+                <mesh filename="${mesh_prefix}foot.STL"/>
             </geometry>
         </visual>
         <collision>

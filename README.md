@@ -2,9 +2,9 @@
 
 > 最后核对：2026-09-17。本文是整个工作区的维护入口，覆盖项目总览、训练部署流程、已知问题和变更记录。
 > 状态依据包括用户反馈、本地源码/离线检查，以及 2026-09-17 实际执行的 `build.sh -mj`、
-> MuJoCo 物理回放与一次针对三个策略的运行期排查（结果见
-> [策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md)）。本轮**未**重新运行训练、
-> Isaac Lab 回放、ROS/Gazebo 或真机实验，也**未**在 GUI 里人工确认。
+> MuJoCo 物理回放、一次针对三个策略的运行期排查（[记录](docs/sim2sim_policy_runtime_2026-09-17.md)）
+> 和 ROS 2/Gazebo 链路打通（[记录](docs/gazebo_ros2_bringup_2026-09-17.md)，无头验证到策略闭环）。
+> 本轮**未**重新运行训练、Isaac Lab 回放或真机实验，也**未**在 GUI 里人工确认（本机显示不可用）。
 
 ## 1. 项目总览
 
@@ -311,15 +311,44 @@ OpenGL/显示，本机无可用 NVIDIA 驱动（`nvidia-smi` 失败）故未运�
 
 ### 6.2 ROS / Gazebo
 
-先加载已安装 ROS 的环境，再从部署根目录执行。下面启动示例对应 ROS 2：
+2026-09-17 已把这条链路从上游的 ROS 1 `liblegged_hw_sim.so` 改为**本机可用的 ROS 2
+`gazebo_ros2_control`（Humble + Gazebo 11）**，并在无头下单次调用内跑通到策略闭环
+（详见 [Gazebo 链路打通记录](docs/gazebo_ros2_bringup_2026-09-17.md)）：
 
 ```bash
-bash build.sh
+cd imgo2_deploy
+source /opt/ros/humble/setup.bash
+
+bash build.sh                          # 或 colcon build --merge-install --symlink-install
 source install/setup.bash
+
+# 终端 A：Gazebo（wname:=stairs 换世界，gui:=false 无头）
 ros2 launch imgo2_deploy gazebo.launch.py
+
+# 终端 B：策略节点；键盘 0 起身 → 1 PPO / 2 himloco / 3 AMP，9 下蹲，P 回 Passive
+ros2 run imgo2_deploy rl_sim
 ```
 
-现有脚本分别处理 ROS 1 Noetic 和 ROS 2 Foxy/Humble 的包配置；这些是代码支持分支，实际兼容性尚未核验。Gazebo 和控制器依赖由相应 ROS 包配置决定。
+要点（都是实测踩出来的，改动理由见记录第 3 节）：
+
+- 模型侧新增 `<ros2_control>`（12 关节 effort）与 `libgazebo_ros2_control.so` 插件，控制器配置在
+  `imgo2_description/config/robot_control_ros2.yaml`；控制器本体是仓库内的
+  `robot_joint_controller/RobotJointControllerGroup`（effort 接口），由 `rl_sim` 自己 spawn。
+- `gazebo_ros2_control` 0.4.x 的 `<parameters>` **必须是真实文件路径**（给 `package://` 或相对路径都会
+  在 Load 里抛异常）；launch 因此把 URDF 文本里的 `package://imgo2_description` 换成实际 share 路径。
+- URDF 传给 controller_manager 时必须**压成单行、去掉 XML 声明**，否则 rcl 报
+  `Couldn't parse parameter override rule`，controller_manager 起不来。
+- Gazebo 版 URDF 的网格用 `package://imgo2_description/meshes/...`（`xacro/robot.xacro` 的
+  `mesh_prefix` 属性按 `gazebo` 开关切换）；纯 URDF 仍是 `../meshes/`，不受影响。
+- 不要用 `gazebo_ros` 自带 launch：本机实测它起的 gzserver 未加载 factory 插件（`/spawn_entity`
+  不出现），我们的 launch 直接起 `gzserver -s libgazebo_ros_init.so -s libgazebo_ros_factory.so`。
+- `imgo2_description` 现在是工作区里的标准包（软链进 `src/`，`package.ros1.xml`/`package.ros2.xml`
+  由 `build.sh` 替换 `package.xml`），`imgo2_deploy` 的 `install(DIRECTORY ...)` 会把
+  `config launch worlds policy` 装进 share。
+
+**未验证**：GUI 画面（本机 `DISPLAY=:1` 建 GL 上下文失败，`gzclient` 大概率渲染不了，需要可用
+显示或 `LIBGL_ALWAYS_SOFTWARE=1`）、步态观感、真机。ROS 1 分支仍是代码支持路径，本机没有 ROS 1，
+未核验。
 
 ### 6.3 真机入口
 
@@ -353,7 +382,7 @@ bash build.sh --cmake
 | DEPLOY-02 | P0 | 场景已对齐并验证站起/行走，待 GUI 验证 | `imgo2_description/mjcf/{imgo2.xml,scene.xml}`（经编译期 `IMGO2_MODEL_DIR` 读取）：关节轴/限位与训练侧逐项一致、MuJoCo C API 可加载、`build.sh -mj` 通过；2026-09-17 按参考项目补齐初始高度（`base pos 0 0 0.5`）与求解器/接触块（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"`+friction），不再弹飞；同日又修 MODEL-03（姿态/线速度传感器由 `body` 改挂 `imu` site）并注释掉陈旧 keyframe，修后 PPO 站姿 0.321、`vx=0.5/1.0` 实测 0.509/0.975 m/s，AMP 站 0.3015 | 在有可用显示的机器上跑 `rl_sim_mujoco imgo2 scene` 并保存窗口记录。参考项目那份 MJCF 现在网格名已能对上（FL 改名的副产物，实测可加载），但它的 base 质量仍是旧值 6.53394、用 mesh 碰撞体且没写 `timestep`（=2 ms），同一个参考策略在它上面反而站不起来（`z_final=0.0771`），**不要改用它** |
 | DEPLOY-03 | P0 | 缺依赖，待适配 | SDK2 目录为空，真机目标被跳过 | 依赖到位、目标生成、通信接口验证通过 |
 | DEPLOY-04 | P1 | 已解决 | 原 `library/thirdparty/joystick/` 为空且未跟踪，`CMakeLists.txt` 在 `USE_MUJOCO` 下要求 `joystick.cc`，`rl_sim_mujoco.hpp` 还 `#include "joystick.hh"`；原无脚本会下载它。2026-09-17 已补入 `joystick.cc`/`joystick.hh`（与参考项目同源） | 已通过：2026-09-17 `bash build.sh -mj` 配置与编译均成功 |
-| DEPLOY-05 | P0 | 链路不完整 | 部署份 URDF 没有 `<transmission>`，也没有 `gazebo_ros_control`/`gz_ros2_control` 的 `<gazebo><plugin>`，两个 world 里也没有插件；因此 `rl_sim.cpp` 启动的 controller spawner 没有 controller_manager/EffortJointInterface 可加载，`robot->getHandle()` 无法工作。可用的 transmission 与插件只在 `imgo2_description`（其插件库不在本仓库） | 让部署链路自带 transmission 与控制器插件，或在 Gazebo 中实际跑通并记录 |
+| DEPLOY-05 | P0 | 已解决（无头跑通到策略闭环），GUI 画面待确认 | 原状：部署份 URDF 只有 ROS 1 式 `<transmission>`，`gazebo.xacro` 挂的是仓库内没有的 `liblegged_hw_sim.so`（`gazebo_ros_control`），ROS 2 下没有 `gazebo_ros_control`，于是 `rl_sim.cpp` 的 controller spawner 找不到 controller_manager。**2026-09-17 照参考项目改为 ROS 2 `gazebo_ros2_control`**：`gazebo.xacro` 加 IMU 传感器 + `<ros2_control>`（12 关节 effort 命令 + position/velocity/effort 状态）+ `libgazebo_ros2_control.so`；新增 `imgo2_description/config/robot_control_ros2.yaml`（`joint_state_broadcaster` + `robot_joint_controller/RobotJointControllerGroup`，后者是仓库内插件、由 `rl_sim` 自己 spawn）；`imgo2_description` 做成标准 ROS 2 包（ament + `package.ros1.xml`/`package.ros2.xml` + 软链进工作区 `src/`）；Gazebo 版网格改 `package://`（`robot.xacro` 的 `mesh_prefix`）；`build.sh` 的包扫描改 `find -L`；`check_model_sync.py` 认两种网格写法。**两个实测坑**：`<parameters>` 必须是真实文件路径（`package://`/相对路径都会让插件 Load 抛异常）；URDF 作为 `--param robot_description:=` 传给 controller_manager 时必须压成单行（否则 rcl 报 `Couldn't parse parameter override rule`，控制器起不来）；另外不能用 `gazebo_ros` 自带 launch（本机它起的 gzserver 未加载 factory 插件），改为直接起 `gzserver -s ...`。**验证**（无头、单次调用内）：spawn 成功且网格 0 报错；节点 `/gazebo_ros2_control`、`/imu_plugin` 出现；`ros2 control list_controllers` → `joint_state_broadcaster active`；`/joint_states` 与 `/imu` 发布；`rl_sim` 启动后用 `/joy` 注入 `A`→`RB+DPadUp`，打印 `RL Controller [ppo]`（进入键 1 的 PPO 闭环） | ① 在有可用显示的机器上确认 `gzclient` 画面与步态观感（本机 `DISPLAY=:1` 建 GL 上下文失败）；② 长时间跑 himloco/AMP；③ 真机链路仍待验证。详见 [Gazebo 链路打通记录](docs/gazebo_ros2_bringup_2026-09-17.md) |
 | DEPLOY-06 | P1 | AMP 路径已解决，himloco 路径仍在 | `rl_sim_mujoco.cpp` 用 `joint_mapping` 直接索引 MJCF，因此配置的映射必须与场景顺序一致。2026-09-17 采用自建场景（关节声明顺序 = 策略顺序 `FL,FR,RL,RR`）+ `base.yaml`/`amp/config.yaml` 恒等映射，AMP 路径自洽 | AMP 已在 16 s 回放中确认基座高度稳定、无 NaN；`himloco/config.yaml` 仍带硬件置换映射 `[3,4,5,0,1,2,9,10,11,6,7,8]`，在 MuJoCo 上会索引错腿，需单独处理；`imgo2_description/mjcf/` 那份现成 MJCF 未再复用 |
 | DEPLOY-07 | P0 | 已修，待编译验证 | ROS2 两个控制器把 `std::clamp(…)` 当语句调用、丢弃返回值，限位实际失效；单关节版还把参数名写成 `"robot_description_"`，URDF 从未解析成功。已改为赋值形式并加空指针/越界保护、补 `<algorithm>`、修正参数名 | 在装有 ROS 2 的 Linux 上编译并跑通，确认限位生效且不再有空指针风险 |
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
@@ -427,6 +456,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-17 | Gazebo/ROS 2 链路打通（DEPLOY-05 关闭；用户要看新 PPO 的步态） | **改动**：照参考项目把 Gazebo 链路从仓库内没有的 ROS 1 `liblegged_hw_sim.so` 换成 ROS 2 `gazebo_ros2_control`（本机 Humble 自带 0.4.10）：`xacro/gazebo.xacro` 加 IMU 传感器 + `<ros2_control>`（12 关节 effort 命令 + position/velocity/effort 状态）+ `libgazebo_ros2_control.so`，删掉不可用的 `liblegged_hw_sim` 与 ROS 1 p3d 插件；新增 `imgo2_description/config/robot_control_ros2.yaml`（`joint_state_broadcaster` + 仓库内 `robot_joint_controller/RobotJointControllerGroup`，后者由 `rl_sim` 自己 spawn）；`imgo2_description` 改成标准包（`package.ros1.xml`/`package.ros2.xml` + 由 `build.sh` 替换的 `package.xml` 软链 + ament CMakeLists 装 `config launch meshes urdf xacro mjcf`），并软链进工作区 `src/imgo2_description`（不复制模型）；`core.xacro`/`robot.xacro` 引入 `mesh_prefix`（Gazebo 版用 `package://imgo2_description/meshes/`，纯 URDF 仍 `../meshes/`，重生成后纯 URDF 与原来逐字节相同）；`build.sh` 包扫描改 `find -L src`；`check_model_sync.py` 网格检查同时认两种写法；`launch/gazebo.launch.py` 重写（自己起 gzserver/gzclient、加 `wname`/`gui` 参数、把 URDF 里的 `package://imgo2_description` 换成实际 share 路径并压成单行写到临时文件、用 `-file` spawn、等 spawn 完再起 broadcaster）。**实测两个坑**：① `gazebo_ros2_control` 0.4.x 的 `<parameters>` 只认真实文件路径——给 `package://` 或相对路径都会在插件 `Load()` 抛异常（Gazebo 只打印 `Exception occured in the Load function`）；② URDF 以 `--param robot_description:=<xml>` 交给 controller_manager 时**带换行**会报 `Couldn't parse parameter override rule`，CM 拿不到 URDF、控制器起不来（现象是 spawner 一直 `Could not contact service /controller_manager/list_controllers`）；另外不能用 `gazebo_ros` 自带 launch：本机它起的 gzserver 没加载 `libgazebo_ros_factory.so`（`/spawn_entity` 永不出现），手动 `-s` 起却正常。**验证**：`bash build.sh` 4 个包全过（`rl_sim` 43.8 MB，二进制内 `POLICY_DIR` 指向本仓库 policy，`share/imgo2_description/config/robot_control_ros2.yaml` 就位）；无头单次调用内 `SpawnEntity: Successfully spawned entity`、网格 0 报错、节点 `/gazebo_ros2_control` 与 `/imu_plugin` 出现、`ros2 control list_controllers` → `joint_state_broadcaster ... active`、`/joint_states` 与 `/imu` 发布、`rl_sim` 经 `/joy` 注入 `A`→`RB+DPadUp` 后打印 `RL Controller [ppo]`；`check_model_sync.py`/`check_asset_paths.py`/`check_amp_joint_order.py` 仍全 PASS。**未验证**：GUI 画面与步态观感（本机 `DISPLAY=:1` 建 GL 上下文失败：`X_GLXCreateContext ... BadValue`，gzclient 大概率也渲染不了）、himloco/AMP 在本链路的长时间行为、真机。详见 [Gazebo 链路打通记录](docs/gazebo_ros2_bringup_2026-09-17.md) |
 | 2026-09-17 | 键 1（PPO）换成 `imgo2_rough/2026-06-21_16-37-38`（能保持行走并维持高度）；查明「ppo 那份是 AMP 训练产物」不成立 | **用户反馈**：当前 ppo 那份其实是 AMP 训练出来的、应放到 amp 栏，另记得有一份能保持行走并维持高度的训练结果。**来源核对（新方法，只用标准库）**：torch 的 `.pt` 是 zip，成员形如 `<名字>/data.pkl` + `<名字>/data/<key>`，每个 tensor 的原始字节就是一个 storage 成员；按 storage 的 md5 求交集即可给导出验明正身。结果：换之前 `ppo/policy.pt` 的 8 个 storage **8/8 命中 `imgo2_flat/2026-06-21_23-24-09/model_1999.pt`**（该 run `agent.yaml` = `OnPolicyRunner` + `class_name: PPO`，env 里无任何 motion/AMP 项），`amp/policy.pt` 则 8/8 命中 `amp/model_9000.pt`；再用 `strings` 看 state-dict 键名可一眼分开两类：五个 run 只有 `actor/critic/normalizer`，只有 `model_9000.pt` 含 `discriminator`（11.9 MB 对 4.6–5.7 MB）。**⇒ 五个 `rsl_rl` run 全是普通 PPO，全机唯一的 AMP 训练产物是 `model_9000.pt`，它已经在 amp 栏（键 3）。** **五份导出横向实测**（各自 run 的 kp/kd，窗口 12.5 s）：flat(2000it, 20/1.0) 跟速最好但 **z 只有 0.13**；rough 19-58-19(900it, 25/0.5) z 0.30、0.47/0.74 m/s；rough 08-18-30(4400it, 25/1.0) z 0.26、0.54/0.80；**rough 16-37-38(4400it, 20/0.2) z 0.26、0.44/0.89 → 按用户选择用它**；rough 23-23-13(4999it, 20/1.0) z 0.17、0.22/0.58。**执行**：`ppo/policy.pt` ← `imgo2_rough/2026-06-21_16-37-38/exported/policy.pt`（sha256 `618cc4ea4737c343…`），`ppo/config.yaml` 的 `rl_kp/rl_kd` 改为该 run 的 `20/0.2`，其余（45 维观测、`0/0.8/-1.5`、`0.125/0.25`、`clip ±100`、观测缩放）逐项沿用该 run 的 `env.yaml`；amp 栏不动；flat 那份从此不再入库（训练日志 `~/RL/isaac/...` 里保留）。**换后复测**（无头 harness，16 s 仿真）：键 1 `vx=0` 站姿 0.3271、位移 0.023 m；`vx=0.5` z 0.259 + **0.51 m/s**；`vx=1.0` z 0.286 + **1.05 m/s**；FL_thigh 极差 0.88/1.96 rad；键 3 站姿 0.3015 不变；`1→3` 与 `1→2→3` 连续切换均不崩溃。**未运行**：GUI、真机；`kd=0.2` 是训练侧原始值（阻尼偏低），上真机前建议确认 |
 | 2026-09-17 | 修复三个策略的运行期故障：MuJoCo 姿态传感器挂错 frame（新增 MODEL-03）；更正 AMP-06／DEPLOY-08 里的两条错误结论 | **现象**：用户反馈三个策略运行都有问题，先查 PPO。**根因（MODEL-03）**：`imgo2_description/mjcf/imgo2.xml` 的 `framequat`/`framelinvel` 写成 `objtype="body"`，返回值会再乘该 body 的惯量主轴旋转 `iquat`（base 的 `fullinertia` 主轴非 `ixx<iyy<izz` 排列，偏移 ≈180° 绕 (1,0,1)/√2），姿态观测整体偏 90°：`GetUp` 结束直立时 `xquat=(1,0,0,0)` 而 `gravity_vec=(-1.000, 0.004, -0.025)`（应为 `(0,0,-1)`），策略把站直判成翻倒；PPO 接管瞬间就输出 ±3.9 的饱和动作并塌成深蹲（`z_final=0.154`）。判据：`QuatRotateInverse(·,(0,0,-1))` 第三分量恒为 `-1-2q_z² ≤ -1`，不可能出现 `-0.025`；再用 `xquat` 与 `sensordata[36..39]` 的 0.25 s 时间线确认是固定偏移；参考项目同位置用的是 site（`base_site`）。**修法**：三个传感器改挂 base 内原有的 `imu` site（site 无 `quat`、`pos` 默认原点，site 系 = link 系），**声明顺序不变**，`sensordata` 偏移（0–11 关节位置／12–23 速度／24–35 力矩／36–39 姿态／40–42 陀螺／43–45 线速度，`nsensordata=46`）与 `rl_sim_mujoco.cpp` 的读取处都不动；顺手注释掉文件末尾 `base z=0.35` 的陈旧 `<keyframe>`（C++ 不应用，但 MuJoCo `simulate` GUI 的 Key 下拉框会应用）。**验证**（无头 harness：复用真实 `RL`/FSM/`librl_sdk`/libtorch/MuJoCo 与 `policy/`，只重写 `GetState`/`SetCommand`/`RunModelStep`/`Forward`，按键序列与 GUI 相同）：修后三个键 `gravity_vec` 均为 `(0,-0,-1)`；PPO 站姿 `z_final=0.3212`（修前 0.154）、`vx=0.5/1.0` 实测 0.509/0.975 m/s（跟踪误差 <2%）、FL_thigh 极差 1.1–1.4 rad（真步态非滑行）；AMP 站姿 0.3015（修前 0.2663）但 `vx=0.5` 时 10.5 s 只走 0.076 m；himloco（Go2 占位）侧倾仍不可用；`0→1→2→3` 连续切换不再崩溃。**更正两条旧记录**：① AMP-06 里"用同一 harness 跑参考 45 维 `policy.pt` 结果四位小数完全相同"无效——`POLICY_DIR` 是编译期 `-D` 烘进 `librl_sdk.a` 的，当时换目录并没真正换到策略；本轮改为把 `rl_sdk.cpp` 编进 harness 并用 `-DPOLICY_DIR=<临时目录>` 才换到。② DEPLOY-08 那条 `1x45 vs 270x128` 崩溃是我第一版 harness 的 `Forward()` 漏掉历史分支（`history_obs_buf.insert`/`get_obs_vec`）造成的假象，逐行照搬真实 `RL_Sim::Forward()` 后单键与连续切换都不崩，真实 deploy 代码无此缺陷。**对照实验**：参考 `base_move/policy.pt` 在我们模型上站 0.2887、`vx=0.5` 走 0.454 m/s，在参考自己的 MJCF 上反而站不起来（0.0771；其 base 仍是 6.53394、mesh 碰撞体、没写 `timestep`），支持"物理参数取训练侧"。**同步更新**：README §5.4／§6.0／§6.1／问题表，新增 [策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md)；`check_model_sync.py`／`check_asset_paths.py`／`check_amp_joint_order.py` 仍全 PASS。**未运行**：GUI（本机无显示与 NVIDIA 驱动）、Isaac Lab 训练/回放、ROS/Gazebo、真机 |
 | 2026-09-17 | 部署侧接入 PPO，按键改为 1=PPO / 2=himloco / 3=AMP | **做了什么**：`policy/imgo2/ppo/` 新增 `policy.pt`（拷自 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09/exported/policy.pt`，sha256 `7cbb4def63c361db…`）与 `config.yaml`；`config.yaml` 的每个值都抄自该 run 的 `params/env.yaml`：45 维观测（`base_lin_vel`/`height_scan` 均为 null，顺序 ang_vel/gravity_vec/commands/dof_pos/dof_vel/actions）、`rl_kp 20`/`rl_kd 1.0`、`default_dof_pos 0/0.8/-1.5`、`action_scale 0.125/0.25`、`clip ±100`、观测 scale `0.25/1.0/1.0/1.0/0.05/1.0`、`joint_mapping` 恒等；`fsm_imgo2.hpp` 新增 `RLFSMStatePPOLocomotion`（config `ppo`）占用键 1（手柄 `RB+DPadUp`），himloco 从键 1 挪到键 2（`RB+DPadRight`），AMP 从键 2 挪到键 3（`RB+DPadDown`），Passive/GetUp/三个 locomotion 的 CheckChange 与工厂一并同步；`.gitignore` 的策略白名单由 `amp/policy.pt` 泛化为 `imgo2_deploy/policy/imgo2/**/policy.pt`。**验证**：`bash build.sh -mj` 通过；用仓库外临时 harness 单独按 1/2/3 各跑 9 s——三者都成功进入（`entered=1`，`calls=274`），PPO 读到 `rl_kp=20 default=0 0.8 -1.5`、himloco 的 6 帧历史 `co=45 → hist_obs=270` 正确、AMP 结束高度 0.2663，无 NaN 无崩溃。**未通过**：一次多键连续切换（0→1→2→3）出现 `1x45 vs 270x128` 崩溃，单键路径复现不了，登记为 DEPLOY-08（待 GUI 复现）。**未运行**：GUI、训练、ROS、真机 |

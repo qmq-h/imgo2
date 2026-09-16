@@ -240,6 +240,8 @@ def main() -> int:
             failures.append(f"{label}: mesh set drifted")
     # every mesh referenced by the URDFs must exist next to them
     # (only <mesh ... file="..."> inside <asset>; Gazebo plugins also use filename=)
+    # 纯 URDF 用相对路径 ../meshes/...；Gazebo 版用 package://imgo2_description/meshes/...
+    # （Gazebo 经 ament 解析，见 xacro/robot.xacro 的 mesh_prefix），两种都要能解析。
     missing_refs = []
     for label, spec in URDFS.items():
         if not spec["path"].is_file():
@@ -249,7 +251,15 @@ def main() -> int:
             ref = mesh.get("file") or mesh.get("filename")
             if not ref:
                 continue
-            target = (spec["path"].parent / ref).resolve()
+            if ref.startswith("package://"):
+                rest = ref[len("package://"):]
+                pkg, _, rel = rest.partition("/")
+                if pkg != "imgo2_description" or not rel:
+                    missing_refs.append(f"{label}: {ref}")
+                    continue
+                target = (REPO / "imgo2_description" / rel).resolve()
+            else:
+                target = (spec["path"].parent / ref).resolve()
             if not target.is_file():
                 missing_refs.append(f"{label}: {ref}")
     if missing_refs:

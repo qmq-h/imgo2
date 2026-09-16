@@ -1,0 +1,25 @@
+# ROS 2 / Gazebo 控制器配置（gazebo_ros2_control + controller_manager）。
+# 由 imgo2_description 的 gazebo.xacro 里 libgazebo_ros2_control.so 的 <parameters> 引用，
+# 参照 ~/RL/sim2sim/Imgo2_deploy/imgo2_description/config/robot_control_ros2.yaml。
+#
+# 分工：
+#   joint_state_broadcaster  —— 把 12 个关节的位置/速度/力矩发到 /joint_states，rl_sim 订阅它。
+#   robot_joint_controller   —— 仓库内 src/robot_joint_controller（RobotJointControllerGroup）：
+#                               订阅 "<namespace>/robot_joint_controller/command"（robot_msgs/RobotCommand），
+#                               update() 里算 tau = kp*(q_des-q) + kd*(dq_des-dq) + tau_ff，
+#                               写进 ros2_control 的 effort 命令接口，并用 URDF 限位 clamp。
+#                               关节名单由 rl_sim 启动时用 `spawner -p <临时 yaml>` 传入，见 rl_sim.cpp。
+#
+# 注意：这里没有 spawn imu_sensor_broadcaster。IMU 由 gazebo.xacro 里挂 base_imu 的
+# libgazebo_ros_imu_sensor.so 直接发布到 /imu（rl_sim 订阅 /imu），不走 ros2_control 的
+# sensor 状态接口。参考项目虽写了 broadcaster 配置，但其 <ros2_control> 里没有 <sensor>，
+# 也没有在 launch 里 spawn 它。
+controller_manager:
+  ros__parameters:
+    update_rate: 1000
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    robot_joint_controller:
+      type: robot_joint_controller/RobotJointControllerGroup

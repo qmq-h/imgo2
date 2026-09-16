@@ -294,7 +294,9 @@ create_symlinks_for_all_packages() {
         if create_symlinks_for_package "$package_dir"; then
             created_packages+=("$package_name")
         fi
-    done < <(find src -name "package.ros1.xml" -print0)
+    # -L：imgo2_description 是通过 src/imgo2_description 软链进工作区的（模型唯一源在仓库根，
+    # 不复制），不跟随软链就扫不到它的 package.ros1.xml，也就不会替换 package.xml。
+    done < <(find -L src -name "package.ros1.xml" -print0)
 
     if [ ${#created_packages[@]} -gt 0 ]; then
         print_success "Created symlinks for: ${created_packages[*]}"

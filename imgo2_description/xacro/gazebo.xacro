@@ -1,31 +1,85 @@
 <?xml version="1.0"?>
-<!-- Gazebo 专用内容：插件 + 按 link 的摩擦/接触参数。
-     只在组装 Gazebo 模型时包含（xacro/robot.xacro 的 gazebo:=true）。
+<!-- Gazebo 专用内容：IMU 传感器 + ros2_control 硬件接口 + gazebo_ros2_control 插件
+     + 按 link 的摩擦/接触参数。只在组装 Gazebo 模型时包含（xacro/robot.xacro 的
+     gazebo:=true，IMU 传感器还需要 imu:=true）。
      这些标签对 Isaac Lab / MuJoCo 无意义，故从 core.xacro 独立出来。
-     插件 liblegged_hw_sim.so 不在仓库内（见 README DEPLOY-05）。 -->
+
+     2026-09-17 按参考项目 ~/RL/sim2sim/Imgo2_deploy/imgo2_description/xacro/gazebo.xacro
+     对齐：旧版走 ROS1 的 `liblegged_hw_sim.so`（gazebo_ros_control + EffortJointInterface），
+     该库不在仓库内、本机也没有；现改走 ROS 2 的 `gazebo_ros2_control`（Humble 自带
+     /opt/ros/humble/lib/libgazebo_ros2_control.so），控制器是仓库内的
+     robot_joint_controller/RobotJointControllerGroup，由 rl_sim 启动。 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-    <!-- ros_control 与地面真值插件 -->
-    <gazebo>
-            <plugin name="gazebo_ros_control" filename="liblegged_hw_sim.so">
-                <robotNamespace>/</robotNamespace>
-                <robotParam>legged_robot_description</robotParam>
-                <robotSimType>legged_gazebo/LeggedHWSim</robotSimType>
+    <xacro:property name="hip_torque_max" value="23.7"/>
+    <xacro:property name="thigh_torque_max" value="23.7"/>
+    <xacro:property name="shank_torque_max" value="23.7"/>
+
+    <!-- IMU：rl_sim 订阅 /imu（sensor_msgs/Imu）。挂 base_imu（imu.xacro 生成）。 -->
+    <xacro:if value="$(arg imu)">
+    <gazebo reference="base_imu">
+        <sensor name="imu_sensor" type="imu">
+            <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+                <ros>
+                    <namespace>/</namespace>
+                    <remapping>~/out:=imu</remapping>
+                </ros>
+                <initial_orientation_as_reference>false</initial_orientation_as_reference>
             </plugin>
-        </gazebo>
+            <always_on>true</always_on>
+            <update_rate>100</update_rate>
+            <visualize>true</visualize>
+            <imu>
+                <angular_velocity>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev><bias_mean>0.0000075</bias_mean><bias_stddev>0.0000008</bias_stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev><bias_mean>0.0000075</bias_mean><bias_stddev>0.0000008</bias_stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev><bias_mean>0.0000075</bias_mean><bias_stddev>0.0000008</bias_stddev></noise></z>
+                </angular_velocity>
+                <linear_acceleration>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev><bias_mean>0.1</bias_mean><bias_stddev>0.001</bias_stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev><bias_mean>0.1</bias_mean><bias_stddev>0.001</bias_stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev><bias_mean>0.1</bias_mean><bias_stddev>0.001</bias_stddev></noise></z>
+                </linear_acceleration>
+            </imu>
+        </sensor>
+    </gazebo>
+    </xacro:if>
+
+    <!-- ros2_control 硬件：gazebo_ros2_control 的 GazeboSystem，力矩命令 + 位置/速度/力矩状态 -->
+    <ros2_control name="GazeboSystem" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
+
+        <xacro:macro name="joint_interface" params="joint_name torque_limit">
+            <joint name="${joint_name}">
+                <command_interface name="effort">
+                    <param name="min">-${torque_limit}</param>
+                    <param name="max">${torque_limit}</param>
+                </command_interface>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+                <state_interface name="effort"/>
+            </joint>
+        </xacro:macro>
+
+        <xacro:macro name="leg_joints" params="prefix">
+            <xacro:joint_interface joint_name="${prefix}_hip_joint" torque_limit="${hip_torque_max}"/>
+            <xacro:joint_interface joint_name="${prefix}_thigh_joint" torque_limit="${thigh_torque_max}"/>
+            <xacro:joint_interface joint_name="${prefix}_shank_joint" torque_limit="${shank_torque_max}"/>
+        </xacro:macro>
+
+        <xacro:leg_joints prefix="FL"/>
+        <xacro:leg_joints prefix="FR"/>
+        <xacro:leg_joints prefix="RL"/>
+        <xacro:leg_joints prefix="RR"/>
+    </ros2_control>
 
     <gazebo>
-            <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
-                <alwaysOn>true</alwaysOn>
-                <updateRate>1000.0</updateRate>
-                <bodyName>base</bodyName>
-                <topicName>ground_truth/state</topicName>
-                <gaussianNoise>0</gaussianNoise>
-                <frameName>world</frameName>
-                <xyzOffsets>0 0 0</xyzOffsets>
-                <rpyOffsets>0 0 0</rpyOffsets>
-            </plugin>
-        </gazebo>
+        <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+            <parameters>package://imgo2_description/config/robot_control_ros2.yaml</parameters>
+        </plugin>
+    </gazebo>
 
     <!-- 按 link 的 Gazebo 接触参数（mu1/mu2/kp/kd/self_collide） -->
     <gazebo reference="base">

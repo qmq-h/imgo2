@@ -19,6 +19,16 @@
     <xacro:arg name="imu" default="false"/>
 
     <!-- 内核：物理参数唯一准绳 -->
+    <!-- 网格前缀：纯 URDF 用相对路径 ../meshes/（相对 urdf/ 目录）；Gazebo 组装改用
+         package://imgo2_description/meshes/ —— Gazebo 经 ament 解析，这样即使 spawn 时
+         只把 URDF 文本发过去（-topic）也能找到网格，不依赖文件所在目录。 -->
+    <xacro:if value="$(arg gazebo)">
+        <xacro:property name="mesh_prefix" value="package://imgo2_description/meshes/"/>
+    </xacro:if>
+    <xacro:unless value="$(arg gazebo)">
+        <xacro:property name="mesh_prefix" value="../meshes/"/>
+    </xacro:unless>
+
     <xacro:include filename="core.xacro"/>
 
     <xacro:if value="$(arg transmission)">
