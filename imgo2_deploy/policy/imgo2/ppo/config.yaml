@@ -4,13 +4,18 @@
 #   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
 #   joint_pos_rel 12, joint_vel_rel 12, last_action 12
 #
-# 数值来源：~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09
+# 数值来源：~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_rough/2026-06-21_16-37-38
 #   的 params/env.yaml（该 run 的记录值），policy.pt 取自同目录 exported/。
-#   该 run 用的是旧一版默认姿态与增益，故与 amp/himloco 配置不同：
-#     actuator stiffness 20.0 / damping 1.0（不是 25.0/0.5）
+#   （2026-09-17 由 imgo2_flat/2026-06-21_23-24-09 换成本 run：flat 那份虽然速度跟踪
+#     更准，但行走时基座只有 0.13 m；本 run 在同一 harness 下 z≈0.26、vx=0.5→0.53 m/s、
+#     vx=1.0→1.06 m/s。来源已按 checkpoint storage 散列核对：导出的 actor 8/8 命中
+#     imgo2_rough/2026-06-21_16-37-38/model_4400.pt。）
+#   该 run 用的是旧一版默认姿态，故与 amp/himloco 配置不同：
+#     actuator stiffness 20.0 / damping 0.2（不是 25.0/0.5）
 #     init_state joint_pos  hip 0.0 / thigh 0.8 / shank -1.5（不是 0/0.87/-1.82）
 #     actions.joint_pos.clip (-100, 100)（等于不裁剪）
 #   换用别的 checkpoint 时必须同时换这些值，否则 dof_pos 的相对量会错位。
+#   注意 kd=0.2 是训练侧的原始值（阻尼偏低），sim2sim 已验证；上真机前建议再确认。
 imgo2/ppo:
   model_name: "policy.pt"
   num_observations: 45
@@ -27,15 +32,15 @@ imgo2/ppo:
                        100.0, 100.0, 100.0,
                        100.0, 100.0, 100.0,
                        100.0, 100.0, 100.0]
-  # 该 run 的 DCMotor：stiffness 20.0 / damping 1.0。
+  # 该 run 的 DCMotor：stiffness 20.0 / damping 0.2。
   rl_kp: [20.0, 20.0, 20.0,
           20.0, 20.0, 20.0,
           20.0, 20.0, 20.0,
           20.0, 20.0, 20.0]
-  rl_kd: [1.0, 1.0, 1.0,
-          1.0, 1.0, 1.0,
-          1.0, 1.0, 1.0,
-          1.0, 1.0, 1.0]
+  rl_kd: [0.2, 0.2, 0.2,
+          0.2, 0.2, 0.2,
+          0.2, 0.2, 0.2,
+          0.2, 0.2, 0.2]
   # 固定增益阶段（起身/站立）沿用参考部署的值。
   fixed_kp: [60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,

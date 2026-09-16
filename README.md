@@ -214,33 +214,38 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 
 | 键 | 状态类 | 配置目录 | 观察 | 网络 |
 |---|---|---|---|---|
-| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（由 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09/exported/` 拷入） |
+| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（由 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_rough/2026-06-21_16-37-38/exported/` 拷入，sha256 `618cc4ea4737c343…`；2026-09-17 由 `imgo2_flat/2026-06-21_23-24-09` 换成本 run） |
 | `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
 | `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 48 维（含 `lin_vel`） | `policy.pt`（`model_9000.pt` 导出） |
 
-`ppo/config.yaml` 的数值全部取自该 run 的 `params/env.yaml`（可追溯）：`rl_kp 20 / rl_kd 1.0`、
-`default_dof_pos 0 / 0.8 / -1.5`、`action_scale 0.125/0.25`、`clip (-100,100)`（等于不裁剪）、
-观测 scale `0.25 / 1.0 / 1.0 / 1.0 / 0.05 / 1.0`、`joint_mapping` 恒等。**换 checkpoint 时必须
-连这些值一起换**——该 run 用的是旧一版默认姿态与增益，与 AMP 的 `0/0.87/-1.82`、`25/0.5` 不同，
-混用会让 `dof_pos` 的相对量与 PD 都错位。参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/`
-是另一份更新的 45 维 PPO 策略（其配置用 `25/0.5` 与 `0/0.87/-1.82`），若要改用它，需要三个值一起改。
+`ppo/config.yaml` 的数值全部取自该 run（`imgo2_rough/2026-06-21_16-37-38`）的 `params/env.yaml`
+（可追溯）：`rl_kp 20 / rl_kd 0.2`、`default_dof_pos 0 / 0.8 / -1.5`、`action_scale 0.125/0.25`、
+`clip (-100,100)`（等于不裁剪）、观测 scale `0.25 / 1.0 / 1.0 / 1.0 / 0.05 / 1.0`、
+`joint_mapping` 恒等。**换 checkpoint 时必须连这些值一起换**——该 run 用的是旧一版默认姿态
+（`0/0.8/-1.5`）与偏低阻尼（`kd 0.2`），与 AMP 的 `0/0.87/-1.82`、`25/0.5` 不同，混用会让
+`dof_pos` 的相对量与 PD 都错位。2026-09-17 已从 `imgo2_flat/2026-06-21_23-24-09`（`20/1.0`）
+换成现在这份：flat 那份速度跟踪更准（误差 <2%）但**行走时基座只有 0.13 m**，本 run 是
+z≈0.26 且跟踪同样好（见下表）。来源由 checkpoint storage 散列核对确认（8/8 命中该 run 的
+`model_4400.pt`）。参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/` 是另一份
+45 维 PPO 策略（配置用 `25/0.5` 与 `0/0.87/-1.82`），若要改用它，需要三个值一起改。
 
 交付一个可部署策略时，至少记录：checkpoint 来源、模型版本、关节映射、默认姿态、动作缩放与裁剪、PD 与力矩限幅、观察顺序与缩放、历史排列及重置方式、四元数约定、控制周期、网络输入输出，以及同一输入下的数值比较结果。
 
-**2026-09-17 运行期排查后的实测**（无头 harness，修好 MODEL-03 的传感器之后；`dx` 为接管后到 14 s 的位移）：
+**2026-09-17 运行期排查后的实测**（无头 harness，修好 MODEL-03 的传感器之后；`dx` 为接管后到
+16 s 的位移，窗口 12.5 s）：
 
-| 键 | vx | `z_final` | `dx` | 实测速度 | FL_thigh 极差 |
-|---|---|---|---|---|---|
-| 1 PPO | 0.0 | 0.3212 | 0.075 | — | 0.003 |
-| 1 PPO | 0.5 | 0.1271 | 5.343 | 0.509 m/s | 1.114 |
-| 1 PPO | 1.0 | 0.1384 | 10.240 | 0.975 m/s | 1.359 |
-| 3 AMP | 0.0 | 0.3015 | 0.060 | — | 0.014 |
-| 3 AMP | 0.5 | 0.3033 | 0.076 | 0.007 m/s | 0.024 |
+| 键 | 策略 | vx | `z_final` | `dx` | 实测速度 | FL_thigh 极差 |
+|---|---|---|---|---|---|---|
+| 1 PPO | rough/16-37-38（现在） | 0.0 | 0.3271 | 0.023 | — | 0.001 |
+| 1 PPO | 同上 | 0.5 | 0.2520 | 6.369 | **0.51 m/s** | 0.880 |
+| 1 PPO | 同上 | 1.0 | 0.2857 | 13.158 | **1.05 m/s** | 1.956 |
+| 1 PPO | flat/23-24-09（换之前） | 0.5 | 0.1271 | 5.343 | 0.51 m/s | 1.114 |
+| 3 AMP | model_9000 | 0.0 | 0.3015 | 0.060 | — | 0.014 |
+| 3 AMP | 同上 | 0.5 | 0.3033 | 0.076 | 0.007 m/s | 0.024 |
 
-即 **PPO 站得住、速度跟踪误差 <2%，但行走时基座只有 0.13 m（站姿 0.32 m）**；
-**AMP 只站不走**（详见 AMP-06）。同一 harness 下参考项目 `base_move/policy.pt` 在我们模型上
-站姿 0.2887、`vx=0.5` 走 0.454 m/s，可作为换 checkpoint 的对照。细节见
-[策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md)。
+即 **PPO 站得住、走起来维持 0.26 m 高度、速度跟踪误差 <5%**；**AMP 只站不走**（详见 AMP-06）。
+五份 PPO 导出（flat + 四个 rough）的横向对比、以及"导出 ↔ checkpoint"的来源散列核对见
+[策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md) 第 7 节。
 
 ## 6. 部署流程
 
@@ -255,7 +260,7 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 | `src/imgo2_deploy` | RL 部署包：sim2sim、MuJoCo 仿真、Imgo2 真机入口 |
 | `src/robot_msgs` | 共享的电机/机器人状态消息 |
 | `src/robot_joint_controller` | ROS 仿真用的 Gazebo 关节控制器；用 URDF 的关节限位 clamp 指令（ROS1 生效，ROS2 原先失效，见 DEPLOY-07） |
-| `policy/imgo2` | 策略配置：`base.yaml`、`ppo/`（键 1）、Go2 参考占位的 `himloco/`（键 2）、`amp/`（键 3） |
+| `policy/imgo2` | 策略配置：`base.yaml`、`ppo/`（键 1，`imgo2_rough/2026-06-21_16-37-38` 的导出）、Go2 参考占位的 `himloco/`（键 2）、`amp/`（键 3，`model_9000.pt` 的导出） |
 | `../../imgo2_description/urdf/imgo2.urdf` | 部署侧 ROS/Gazebo 用 URDF（唯一模型源在 `imgo2_description/`，见 MODEL-02） |
 | `../../imgo2_description/mjcf/` | MuJoCo 场景；由 `rl_sim_mujoco` 经编译期 `IMGO2_MODEL_DIR` 读取，关节轴/限位与训练侧逐项一致 |
 
@@ -422,6 +427,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-17 | 键 1（PPO）换成 `imgo2_rough/2026-06-21_16-37-38`（能保持行走并维持高度）；查明「ppo 那份是 AMP 训练产物」不成立 | **用户反馈**：当前 ppo 那份其实是 AMP 训练出来的、应放到 amp 栏，另记得有一份能保持行走并维持高度的训练结果。**来源核对（新方法，只用标准库）**：torch 的 `.pt` 是 zip，成员形如 `<名字>/data.pkl` + `<名字>/data/<key>`，每个 tensor 的原始字节就是一个 storage 成员；按 storage 的 md5 求交集即可给导出验明正身。结果：换之前 `ppo/policy.pt` 的 8 个 storage **8/8 命中 `imgo2_flat/2026-06-21_23-24-09/model_1999.pt`**（该 run `agent.yaml` = `OnPolicyRunner` + `class_name: PPO`，env 里无任何 motion/AMP 项），`amp/policy.pt` 则 8/8 命中 `amp/model_9000.pt`；再用 `strings` 看 state-dict 键名可一眼分开两类：五个 run 只有 `actor/critic/normalizer`，只有 `model_9000.pt` 含 `discriminator`（11.9 MB 对 4.6–5.7 MB）。**⇒ 五个 `rsl_rl` run 全是普通 PPO，全机唯一的 AMP 训练产物是 `model_9000.pt`，它已经在 amp 栏（键 3）。** **五份导出横向实测**（各自 run 的 kp/kd，窗口 12.5 s）：flat(2000it, 20/1.0) 跟速最好但 **z 只有 0.13**；rough 19-58-19(900it, 25/0.5) z 0.30、0.47/0.74 m/s；rough 08-18-30(4400it, 25/1.0) z 0.26、0.54/0.80；**rough 16-37-38(4400it, 20/0.2) z 0.26、0.44/0.89 → 按用户选择用它**；rough 23-23-13(4999it, 20/1.0) z 0.17、0.22/0.58。**执行**：`ppo/policy.pt` ← `imgo2_rough/2026-06-21_16-37-38/exported/policy.pt`（sha256 `618cc4ea4737c343…`），`ppo/config.yaml` 的 `rl_kp/rl_kd` 改为该 run 的 `20/0.2`，其余（45 维观测、`0/0.8/-1.5`、`0.125/0.25`、`clip ±100`、观测缩放）逐项沿用该 run 的 `env.yaml`；amp 栏不动；flat 那份从此不再入库（训练日志 `~/RL/isaac/...` 里保留）。**换后复测**（无头 harness，16 s 仿真）：键 1 `vx=0` 站姿 0.3271、位移 0.023 m；`vx=0.5` z 0.259 + **0.51 m/s**；`vx=1.0` z 0.286 + **1.05 m/s**；FL_thigh 极差 0.88/1.96 rad；键 3 站姿 0.3015 不变；`1→3` 与 `1→2→3` 连续切换均不崩溃。**未运行**：GUI、真机；`kd=0.2` 是训练侧原始值（阻尼偏低），上真机前建议确认 |
 | 2026-09-17 | 修复三个策略的运行期故障：MuJoCo 姿态传感器挂错 frame（新增 MODEL-03）；更正 AMP-06／DEPLOY-08 里的两条错误结论 | **现象**：用户反馈三个策略运行都有问题，先查 PPO。**根因（MODEL-03）**：`imgo2_description/mjcf/imgo2.xml` 的 `framequat`/`framelinvel` 写成 `objtype="body"`，返回值会再乘该 body 的惯量主轴旋转 `iquat`（base 的 `fullinertia` 主轴非 `ixx<iyy<izz` 排列，偏移 ≈180° 绕 (1,0,1)/√2），姿态观测整体偏 90°：`GetUp` 结束直立时 `xquat=(1,0,0,0)` 而 `gravity_vec=(-1.000, 0.004, -0.025)`（应为 `(0,0,-1)`），策略把站直判成翻倒；PPO 接管瞬间就输出 ±3.9 的饱和动作并塌成深蹲（`z_final=0.154`）。判据：`QuatRotateInverse(·,(0,0,-1))` 第三分量恒为 `-1-2q_z² ≤ -1`，不可能出现 `-0.025`；再用 `xquat` 与 `sensordata[36..39]` 的 0.25 s 时间线确认是固定偏移；参考项目同位置用的是 site（`base_site`）。**修法**：三个传感器改挂 base 内原有的 `imu` site（site 无 `quat`、`pos` 默认原点，site 系 = link 系），**声明顺序不变**，`sensordata` 偏移（0–11 关节位置／12–23 速度／24–35 力矩／36–39 姿态／40–42 陀螺／43–45 线速度，`nsensordata=46`）与 `rl_sim_mujoco.cpp` 的读取处都不动；顺手注释掉文件末尾 `base z=0.35` 的陈旧 `<keyframe>`（C++ 不应用，但 MuJoCo `simulate` GUI 的 Key 下拉框会应用）。**验证**（无头 harness：复用真实 `RL`/FSM/`librl_sdk`/libtorch/MuJoCo 与 `policy/`，只重写 `GetState`/`SetCommand`/`RunModelStep`/`Forward`，按键序列与 GUI 相同）：修后三个键 `gravity_vec` 均为 `(0,-0,-1)`；PPO 站姿 `z_final=0.3212`（修前 0.154）、`vx=0.5/1.0` 实测 0.509/0.975 m/s（跟踪误差 <2%）、FL_thigh 极差 1.1–1.4 rad（真步态非滑行）；AMP 站姿 0.3015（修前 0.2663）但 `vx=0.5` 时 10.5 s 只走 0.076 m；himloco（Go2 占位）侧倾仍不可用；`0→1→2→3` 连续切换不再崩溃。**更正两条旧记录**：① AMP-06 里"用同一 harness 跑参考 45 维 `policy.pt` 结果四位小数完全相同"无效——`POLICY_DIR` 是编译期 `-D` 烘进 `librl_sdk.a` 的，当时换目录并没真正换到策略；本轮改为把 `rl_sdk.cpp` 编进 harness 并用 `-DPOLICY_DIR=<临时目录>` 才换到。② DEPLOY-08 那条 `1x45 vs 270x128` 崩溃是我第一版 harness 的 `Forward()` 漏掉历史分支（`history_obs_buf.insert`/`get_obs_vec`）造成的假象，逐行照搬真实 `RL_Sim::Forward()` 后单键与连续切换都不崩，真实 deploy 代码无此缺陷。**对照实验**：参考 `base_move/policy.pt` 在我们模型上站 0.2887、`vx=0.5` 走 0.454 m/s，在参考自己的 MJCF 上反而站不起来（0.0771；其 base 仍是 6.53394、mesh 碰撞体、没写 `timestep`），支持"物理参数取训练侧"。**同步更新**：README §5.4／§6.0／§6.1／问题表，新增 [策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md)；`check_model_sync.py`／`check_asset_paths.py`／`check_amp_joint_order.py` 仍全 PASS。**未运行**：GUI（本机无显示与 NVIDIA 驱动）、Isaac Lab 训练/回放、ROS/Gazebo、真机 |
 | 2026-09-17 | 部署侧接入 PPO，按键改为 1=PPO / 2=himloco / 3=AMP | **做了什么**：`policy/imgo2/ppo/` 新增 `policy.pt`（拷自 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09/exported/policy.pt`，sha256 `7cbb4def63c361db…`）与 `config.yaml`；`config.yaml` 的每个值都抄自该 run 的 `params/env.yaml`：45 维观测（`base_lin_vel`/`height_scan` 均为 null，顺序 ang_vel/gravity_vec/commands/dof_pos/dof_vel/actions）、`rl_kp 20`/`rl_kd 1.0`、`default_dof_pos 0/0.8/-1.5`、`action_scale 0.125/0.25`、`clip ±100`、观测 scale `0.25/1.0/1.0/1.0/0.05/1.0`、`joint_mapping` 恒等；`fsm_imgo2.hpp` 新增 `RLFSMStatePPOLocomotion`（config `ppo`）占用键 1（手柄 `RB+DPadUp`），himloco 从键 1 挪到键 2（`RB+DPadRight`），AMP 从键 2 挪到键 3（`RB+DPadDown`），Passive/GetUp/三个 locomotion 的 CheckChange 与工厂一并同步；`.gitignore` 的策略白名单由 `amp/policy.pt` 泛化为 `imgo2_deploy/policy/imgo2/**/policy.pt`。**验证**：`bash build.sh -mj` 通过；用仓库外临时 harness 单独按 1/2/3 各跑 9 s——三者都成功进入（`entered=1`，`calls=274`），PPO 读到 `rl_kp=20 default=0 0.8 -1.5`、himloco 的 6 帧历史 `co=45 → hist_obs=270` 正确、AMP 结束高度 0.2663，无 NaN 无崩溃。**未通过**：一次多键连续切换（0→1→2→3）出现 `1x45 vs 270x128` 崩溃，单键路径复现不了，登记为 DEPLOY-08（待 GUI 复现）。**未运行**：GUI、训练、ROS、真机 |
 | 2026-09-17 | 推送打通：配置 SSH key、`origin` 改为 SSH、7 个本地提交推上 `main` | 用户配置 `~/.ssh/id_ed25519` 并加到 GitHub 后，`ssh -T git@github.com` 返回 `Hi qmq-h! You've successfully authenticated`；`origin` 由 HTTPS 改为 `git@github.com:qmq-h/imgo2.git`；`git push origin main` 成功把 `271edd2..72e3193`（7 个提交）推上去，校验本地与远程 HEAD 同为 `72e3193b18e7bf3484aac01a371fcbdd106ddca2`，`git log origin/main..HEAD` 为空。此前失败的原因是**凭据**而非网络：本机无 credential helper / `~/.git-credentials` / `gh` / token，harness 的 shell 没有 TTY 无法交互输入（`user.name`/`user.email` 只是提交署名，不参与认证；公共仓库匿名 `ls-remote` 能成不代表 `push` 能成）。事实已写入 AGENTS.md「多机与同步」。**未做**：训练服务器尚未拉取 |

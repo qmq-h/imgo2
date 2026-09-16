@@ -166,9 +166,8 @@ base 质量 6.53 kg（比训练侧重 1 kg）与 mesh 碰撞体并不是训练�
 
 待决定：
 
-- **PPO 行走时基座偏低（0.13 m）**：可换成 `imgo2_rough/2026-06-21_23-23-13/exported/policy.pt`
-  或参考项目 `base_move/policy.pt`（同一 harness 下 0.27 m 高、0.454 m/s、站姿 0.2887）
-  对比后再定用哪份。
+- **PPO 用哪份权重（已决定，见第 7 节）**：行走时基座高度是主要区别 —— `imgo2_flat/2026-06-21_23-24-09`
+  是 0.13 m，rough 系列是 0.25–0.30 m。
 - **AMP 是否要换 checkpoint**：现有 `model_9000.pt` 只站不走；若目标是速度跟踪，
   需要一份会走的 AMP/运动模仿 checkpoint（也与 AMP-05 的 45/48 维问题相关）。
 - **himloco 是否要替换**：需要 Imgo2 的 HIM-Loco 导出（参考项目那份还有
@@ -176,3 +175,61 @@ base 质量 6.53 kg（比训练侧重 1 kg）与 mesh 碰撞体并不是训练�
 - **是否要在 `GetState` 里补 `lin_vel`**：本轮证明它对 AMP 现状没有影响，
   参考项目也不读；若将来有依赖 `base_lin_vel` 的策略再补，注意 framelinvel 是世界系速度，
   训练侧 `base_lin_vel` 是体系速度，需要旋转。
+
+## 7. 后续（同日）：五份 PPO 导出的对比、来源核对与键位最终分配
+
+### 7.1 五份导出的实测（同一 harness、同一模型，各自 run 的 kp/kd）
+
+窗口 = 策略接管后到 12.5 s（`dx` 除以 12.5 即平均速度；`thigh_range` 是同期 FL_thigh 极差）：
+
+| run（导出） | kp/kd | vx=0 | vx=0.5 | vx=1.0 |
+|---|---|---|---|---|
+| flat/2026-06-21_23-24-09（2000 it） | 20/1.0 | z 0.321 | z 0.128，0.43 m/s | z 0.14，0.82 m/s |
+| rough/2026-06-19_19-58-19（900 it） | 25/0.5 | z 0.322 | z 0.301，0.47 m/s | z 0.307，0.74 m/s |
+| rough/2026-06-21_08-18-30（4400 it） | 25/1.0 | z 0.307 | z 0.256，0.54 m/s | z 0.288，0.80 m/s |
+| **rough/2026-06-21_16-37-38（4400 it）** | **20/0.2** | **z 0.327** | **z 0.259，0.44 m/s** | **z 0.261，0.89 m/s** |
+| rough/2026-06-21_23-23-13（4999 it） | 20/1.0 | z 0.324 | z 0.167，0.22 m/s | z 0.216，0.58 m/s |
+
+（表内速度按 12.5 s 归一；用 14 s 窗口的原始 `dx` 见前文，两种口径都指向同一结论。）
+能"一边走一边维持高度"的是 **rough 系列**（z 0.26–0.31），flat 那份虽然也跟速度但只有 0.13 m。
+
+### 7.2 来源核对：用 checkpoint storage 散列给导出"验明正身"
+
+方法（不依赖 Python torch，只用标准库）：`torch.save`/`torch.jit.script` 的 `.pt` 都是 zip，
+成员形如 `<名字>/data.pkl` 与 `<名字>/data/<key>`；每个 tensor 的原始字节就是一个 storage 成员。
+于是把每个文件的 storage 取 md5 成集合，两两求交集，就能判断某个导出是不是某个 checkpoint 的 actor。
+
+结果（交集个数 / 8）：
+
+| | flat/…23-24-09 | rough 19-58-19 | rough 08-18-30 | rough 16-37-38 | rough 23-23-13 | amp/model_9000 |
+|---|---|---|---|---|---|---|
+| `ppo/policy.pt`（换之前 = flat 导出） | **8** | 0 | 0 | 0 | 0 | 0 |
+| `amp/policy.pt` | 0 | 0 | 0 | 0 | 0 | **8** |
+| 各 run 自己的 `exported/policy.pt` | 8（自身） | 0（自身的末号 checkpoint 是 model_900，未命中，应来自更早的号） | 8（自身） | 8（自身） | 8（自身） | — |
+
+另外用 `strings` 看 state-dict 键名可以一眼分开两类：五个 run 的 checkpoint 只有
+`actor/critic/normalizer`；`amp/model_9000.pt` 还含 `discriminator`，且体积 11.9 MB（三个 2 MB 层）
+对 4.6–5.7 MB。五个 run 的 `agent.yaml` 全是 `OnPolicyRunner` + `class_name: PPO`，env 里没有任何
+motion/AMP 项，仓库的 AMP 训练用的是 `AMPOnPolicyRunner`。
+
+**结论：`ppo/` 原来那份是 `imgo2_flat/2026-06-21_23-24-09/model_1999.pt` 的 actor（普通 PPO，
+flat 地形），不是 AMP 训练产物；全机唯一的 AMP 训练产物是 `amp/model_9000.pt`。**
+
+### 7.3 最终键位与权重（2026-09-17 按用户决定执行）
+
+- **键 1（PPO）** ← `imgo2_rough/2026-06-21_16-37-38/exported/policy.pt`
+  （sha256 `618cc4ea4737c343…`，来源已由 7.2 的散列比对确认 8/8 命中该 run 的 `model_4400.pt`）；
+  `ppo/config.yaml` 的 `rl_kp/rl_kd` 由 `20/1.0` 改为该 run 的 `20/0.2`，其余（45 维观测、
+  `default_dof_pos 0/0.8/-1.5`、`action_scale 0.125/0.25`、`clip ±100`、观测缩放）与该 run 的
+  `env.yaml` 逐项一致。
+- **键 3（AMP）** 不变：`amp/policy.pt`（`model_9000.pt` 的 actor，48 维，唯一 AMP 产物）。
+  该 checkpoint 本身（`imgo2_deploy/policy/imgo2/amp/model_9000.pt`，11.9 MB）被 `.gitignore`
+  的 `*.pt` 排除、**未入库**，只在本机；入库的产物是它的导出 `policy.pt`。换机器重建时需要另外
+  取得该 checkpoint。
+- flat 那份导出**从仓库移除**（`ppo/policy.pt` 已被替换；训练日志 `~/RL/isaac/...` 里那份仍保留，
+  那是训练产物，不属于仓库）。
+
+**换后复测**（16 s 仿真，窗口 = 接管后 12.5 s）：键 1 `vx=0` 站姿 0.327 且基座位移 0.023 m；
+`vx=0.5` → z 0.259、**0.51 m/s**、FL_thigh 极差 0.88 rad；`vx=1.0` → z 0.264、**1.05 m/s**、
+极差 1.96 rad；键 3 站姿 0.3015 不变；`1→3` 与 `1→2→3` 连续切换均不崩溃（himloco 仍会把机器人
+掀一下，AMP 这次能接住，见 DEPLOY-01/DEPLOY-06）。
