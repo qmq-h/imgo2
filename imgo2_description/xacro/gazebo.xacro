@@ -75,6 +75,23 @@
         <xacro:leg_joints prefix="RR"/>
     </ros2_control>
 
+    <!-- 基座真值（位姿/速度）：sim2sim 判定"到底在不在走"必须看基座高度与位移，
+         只看姿态会被"四脚朝天也很稳"骗过。ROS 2 版 p3d 插件用下划线参数名。 -->
+    <gazebo>
+        <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+            <ros>
+                <namespace>/</namespace>
+            </ros>
+            <body_name>base</body_name>
+            <frame_name>world</frame_name>
+            <update_rate>100.0</update_rate>
+            <topic_name>ground_truth/state</topic_name>
+            <xyz_offset>0 0 0</xyz_offset>
+            <rpy_offset>0 0 0</rpy_offset>
+            <gaussian_noise>0.0</gaussian_noise>
+        </plugin>
+    </gazebo>
+
     <gazebo>
         <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
             <parameters>package://imgo2_description/config/robot_control_ros2.yaml</parameters>

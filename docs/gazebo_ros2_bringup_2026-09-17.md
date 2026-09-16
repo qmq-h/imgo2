@@ -161,3 +161,53 @@ env -u PYTHONPATH bash -c 'source /opt/ros/humble/setup.bash &&   source ~/RL/im
 顺序反了会把 ROS 的路径也清掉）。launch 那个终端同样要清，因为它也要起
 `joint_state_broadcaster`（同样是 Python spawner）。Isaac Lab 训练与 ROS 2 部署请用不同终端，
 不要共用一套环境变量。
+
+## 7. 与 MuJoCo 的数值对比：判据必须看"位姿"，不能只看姿态
+
+用户反馈"Gazebo 完全不行、四脚朝天也显得稳定"。**只看姿态/关节会被骗过**（躺平、四脚朝天都能保持
+"稳定"），所以必须同时看**基座高度与位移**。为此在 `gazebo.xacro` 里加回了基座真值插件
+`libgazebo_ros_p3d.so`（发布 `/odom`，`nav_msgs/Odometry`，100 Hz，body `base`，world 系）：
+
+```bash
+ros2 topic echo /odom --field pose.pose.position --once     # 看 x（位移）与 z（高度）
+ros2 topic hz /odom                                          # 应为 ~100 Hz
+```
+
+**实测对比**（同一策略 `ppo`=rough/16-37-38，同一台机；Gazebo 稳态窗口取后 7 s，MuJoCo 为无头
+harness 结果）：
+
+| 指标 | MuJoCo | Gazebo |
+|---|---|---|
+| `vx=0` 基座高度 z | 0.327 m | 0.333 m（0.326–0.339） |
+| `vx=0` 位移 | 0.023 m | −0.001 m |
+| `vx=0` 大腿摆幅 | 0.001 rad | 0.079 rad |
+| `vx=0.5` 基座高度 z | 0.26 m | 0.276 m（0.244–0.332） |
+| `vx=0.5` 实测速度 | **0.51 m/s** | **0.502 m/s** |
+| `vx=0.5` 大腿摆幅 | 0.88 rad | 0.89–1.20 rad |
+| `vx=0.5` roll 范围 | — | ±6° |
+
+→ **两条链路在高度（±0.02 m）、速度（±0.01 m/s）、步态幅度（±0.3 rad）上一致，Gazebo 侧没有
+"完全不行"**。GetUp 阶段同样正常（roll/pitch ≈0.1°、关节跟到 `0/0.87/-1.82`、命令 kp=60/kd=2）。
+
+### 7.1 为什么会被看成"完全不行"——两条路径的指令来源不同
+
+- **`/cmd_vel` 默认不生效**：`rl_sim.cpp:465` 只有 `control.navigation_mode` 为真时，`cmd_vel`
+  才会写进 `obs.commands`。默认 OFF，此时给 `/cmd_vel` 完全无效果（机器人只会站着）。
+- **ROS 路径的速度指令有三个来源**：① 手柄（`/joy` 的 `axes[1]`=vx、`axes[0]`=vy、`axes[3]`=yaw）；
+  ② 键盘 `W/S/A/D/Q/E`（`RL::KeyboardInterface`，0.1/次步进，**要求 `rl_sim` 的 stdin 是终端**，
+  无 TTY 时收不到按键）；③ 先按 `N`（或手柄 `X`）打开 navigation mode，再用 `/cmd_vel`。
+- **键盘 `W/S` 在这两条路径都能用**，但 MuJoCo 窗口用的是 GLFW 键盘、ROS 路径用的是 stdin 的
+  `kbhit`：从别的程序/无 TTY 启动 `rl_sim` 时按什么都没反应，看起来就像"策略坏了"。
+- **别按错键**：键 `2` 是 himloco（Go2 参考占位），会把机器人掀翻；键 `3` 是 AMP（只站不走）；
+  `vx` 建议留在训练范围 ±1.0 m/s 内。
+
+无手柄时的最小验证（本机实测可用，`vx=0.5` 稳定走到 0.502 m/s）：
+
+```bash
+# 进 PPO 并给 vx=0.5（axes[1]=LY=vx；buttons[5]+axes[7]>0 = RB+DPadUp = 键1）
+ros2 topic pub -r 20 /joy sensor_msgs/Joy \
+  "{buttons: [0,0,0,0,0,1,0,0,0,0,0], axes: [0,0.5,0,0,0,0,0,1]}"
+```
+
+判据建议固定成三件套：**基座 z**（是否站立高度）、**x 位移/时间**（是否按指令速度走）、
+**大腿摆幅**（是步态还是站着抖），单看任何一个都会误判。
