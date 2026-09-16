@@ -102,11 +102,17 @@ public:
         }
         if (percent_getup >= 1.0f)
         {
+            // 策略按键统一：1 = PPO，2 = himloco，3 = amp
+            // （与各 locomotion 状态的 CheckChange 保持一致）
             if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+            {
+                return "RLFSMStatePPOLocomotion";
+            }
+            else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
             {
                 return "RLFSMStateRLLocomotion";
             }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+            else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
             {
                 return "RLFSMStateAMPLocomotion";
             }
@@ -153,6 +159,81 @@ public:
     }
 };
 
+// PPO policy, added the same way as the other policies: one key command plus one
+// complete state class. Key 1 (gamepad RB+DPadUp) loads policy/imgo2/ppo (45-input
+// base_move actor: ang_vel/gravity_vec/commands/dof_pos/dof_vel/actions).
+class RLFSMStatePPOLocomotion : public RLFSMState
+{
+public:
+    RLFSMStatePPOLocomotion(RL *rl) : RLFSMState(*rl, "RLFSMStatePPOLocomotion") {}
+
+    float percent_transition = 0.0f;
+
+    void Enter() override
+    {
+        percent_transition = 0.0f;
+        rl.episode_length_buf = 0;
+
+        // read params from yaml
+        rl.config_name = "ppo";
+        std::string robot_config_path = rl.robot_name + "/" + rl.config_name;
+        try
+        {
+            rl.InitRL(robot_config_path);
+            rl.now_state = *fsm_state;
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << LOGGER::ERROR << "InitRL() failed: " << e.what() << std::endl;
+            rl.rl_init_done = false;
+            rl.fsm.RequestStateChange("RLFSMStatePassive");
+        }
+    }
+
+    void Run() override
+    {
+        if (!rl.rl_init_done) rl.rl_init_done = true;
+
+        std::cout << "\r\033[K" << std::flush << LOGGER::INFO << "RL Controller [" << rl.config_name << "] x:" << rl.control.x << " y:" << rl.control.y << " yaw:" << rl.control.yaw << std::flush;
+        RLControl();
+    }
+
+    void Exit() override
+    {
+        rl.rl_init_done = false;
+    }
+
+    std::string CheckChange() override
+    {
+        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        {
+            return "RLFSMStatePassive";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+        {
+            return "RLFSMStateGetDown";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num0 || rl.control.current_gamepad == Input::Gamepad::A)
+        {
+            return "RLFSMStateGetUp";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+        {
+            return "RLFSMStatePPOLocomotion";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+        {
+            return "RLFSMStateRLLocomotion";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
+        {
+            return "RLFSMStateAMPLocomotion";
+        }
+        return state_name_;
+    }
+};
+
+// himloco policy (当前是 Go2 参考占位策略): key 2 (gamepad RB+DPadRight) loads policy/imgo2/himloco.
 class RLFSMStateRLLocomotion : public RLFSMState
 {
 public:
@@ -213,9 +294,13 @@ public:
         }
         else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
         {
-            return "RLFSMStateRLLocomotion";
+            return "RLFSMStatePPOLocomotion";
         }
         else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+        {
+            return "RLFSMStateRLLocomotion";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
         {
             return "RLFSMStateAMPLocomotion";
         }
@@ -223,8 +308,7 @@ public:
     }
 };
 
-// AMP policy, added the same way as the other policies: one key command plus one
-// complete state class. Key 2 (gamepad RB+DPadRight) loads policy/imgo2/amp.
+// AMP policy: key 3 (gamepad RB+DPadDown) loads policy/imgo2/amp.
 class RLFSMStateAMPLocomotion : public RLFSMState
 {
 public:
@@ -282,9 +366,13 @@ public:
         }
         else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
         {
-            return "RLFSMStateRLLocomotion";
+            return "RLFSMStatePPOLocomotion";
         }
         else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+        {
+            return "RLFSMStateRLLocomotion";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
         {
             return "RLFSMStateAMPLocomotion";
         }
@@ -309,6 +397,8 @@ public:
             return std::make_shared<imgo2_fsm::RLFSMStateGetDown>(rl);
         else if (state_name == "RLFSMStateRLLocomotion")
             return std::make_shared<imgo2_fsm::RLFSMStateRLLocomotion>(rl);
+        else if (state_name == "RLFSMStatePPOLocomotion")
+            return std::make_shared<imgo2_fsm::RLFSMStatePPOLocomotion>(rl);
         else if (state_name == "RLFSMStateAMPLocomotion")
             return std::make_shared<imgo2_fsm::RLFSMStateAMPLocomotion>(rl);
         return nullptr;
@@ -321,6 +411,7 @@ public:
             "RLFSMStateGetUp",
             "RLFSMStateGetDown",
             "RLFSMStateRLLocomotion",
+            "RLFSMStatePPOLocomotion",
             "RLFSMStateAMPLocomotion"
         };
     }

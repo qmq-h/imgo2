@@ -1,0 +1,71 @@
+# PPO 策略（base_move），按键 1（手柄 RB+DPadUp）进入 RLFSMStatePPOLocomotion。
+# Actor: 45 -> 512 -> 256 -> 128 -> 12，ELU。
+# 训练 actor 观察（45 维，base_lin_vel 与 height_scan 均为 null）：
+#   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
+#   joint_pos_rel 12, joint_vel_rel 12, last_action 12
+#
+# 数值来源：~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09
+#   的 params/env.yaml（该 run 的记录值），policy.pt 取自同目录 exported/。
+#   该 run 用的是旧一版默认姿态与增益，故与 amp/himloco 配置不同：
+#     actuator stiffness 20.0 / damping 1.0（不是 25.0/0.5）
+#     init_state joint_pos  hip 0.0 / thigh 0.8 / shank -1.5（不是 0/0.87/-1.82）
+#     actions.joint_pos.clip (-100, 100)（等于不裁剪）
+#   换用别的 checkpoint 时必须同时换这些值，否则 dof_pos 的相对量会错位。
+imgo2/ppo:
+  model_name: "policy.pt"
+  num_observations: 45
+  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
+  observations_history: []
+  observations_history_priority: "time"
+  clip_obs: 100.0
+  # 训练侧 actions.joint_pos.clip = (-100, 100)，即不裁剪；保留同样的边界。
+  clip_actions_lower: [-100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0,
+                       -100.0, -100.0, -100.0]
+  clip_actions_upper: [100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0,
+                       100.0, 100.0, 100.0]
+  # 该 run 的 DCMotor：stiffness 20.0 / damping 1.0。
+  rl_kp: [20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0,
+          20.0, 20.0, 20.0]
+  rl_kd: [1.0, 1.0, 1.0,
+          1.0, 1.0, 1.0,
+          1.0, 1.0, 1.0,
+          1.0, 1.0, 1.0]
+  # 固定增益阶段（起身/站立）沿用参考部署的值。
+  fixed_kp: [60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0]
+  fixed_kd: [2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0]
+  num_of_dofs: 12
+  # actions.joint_pos.scale：hip 0.125，其余 0.25；use_default_offset=true。
+  action_scale: [0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25]
+  wheel_indices: []
+  # policy 组各 ObsTerm 的 scale（base_ang_vel 0.25、projected_gravity 1.0、
+  # velocity_commands 1.0、joint_pos 1.0、joint_vel 0.05、last_action 1.0）。
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  commands_scale: [1.0, 1.0, 1.0]
+  torque_limits: [23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7]
+  # 该 run 的 init_state.joint_pos。
+  default_dof_pos: [0.00, 0.80, -1.50,
+                    0.00, 0.80, -1.50,
+                    0.00, 0.80, -1.50,
+                    0.00, 0.80, -1.50]
+  # MuJoCo 场景的关节声明顺序就是策略顺序（FL,FR,RL,RR），故为恒等映射。
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

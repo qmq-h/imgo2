@@ -42,10 +42,11 @@ logs/
 # 体积不到 1 MB，需要保留。
 *.pt
 !imgo2_deploy/policy/imgo2/himloco/himloco.pt
-# imgo2_deploy/policy/imgo2/amp/policy.pt 是 amp 部署配置引用的导出策略
-# （774 KB）；deploy 侧已不再保留导出脚本（改用 imgo2_rl 的 play/导出），
-# 所以必须入库，否则部署配置在任何新机器上都加载不到网络。
-!imgo2_deploy/policy/imgo2/amp/policy.pt
+# 各策略目录下由 imgo2_rl 的 play/导出脚本产出的 policy.pt 也是部署配置引用的
+# 网络（每个 700 KB 量级）；deploy 侧不再保留导出脚本，所以必须入库，
+# 否则部署配置在任何新机器上都加载不到网络。当前有 amp/（model_9000.pt 导出）
+# 与 ppo/（imgo2_flat 2026-06-21_23-24-09 导出）。
+!imgo2_deploy/policy/imgo2/**/policy.pt
 *.pth
 *.ckpt
 *.onnx

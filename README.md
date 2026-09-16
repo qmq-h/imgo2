@@ -206,6 +206,23 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 | 观察缩放 | `1.0 / 0.25 / 1.0 / 0.05 / 1.0` | 同 |
 | 网络文件 | `imgo2_rl` 的 `play.py` 导出 | `policy.pt`（与 checkpoint actor 数值一致） |
 
+### 5.4 部署侧三个策略与按键
+
+部署侧现在并列三个策略，每个是「一个按键 + 一个完整的 FSM 状态类」：
+
+| 键 | 状态类 | 配置目录 | 观察 | 网络 |
+|---|---|---|---|---|
+| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（由 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09/exported/` 拷入） |
+| `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
+| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 48 维（含 `lin_vel`） | `policy.pt`（`model_9000.pt` 导出） |
+
+`ppo/config.yaml` 的数值全部取自该 run 的 `params/env.yaml`（可追溯）：`rl_kp 20 / rl_kd 1.0`、
+`default_dof_pos 0 / 0.8 / -1.5`、`action_scale 0.125|0.25`、`clip (-100,100)`（等于不裁剪）、
+观测 scale `0.25 / 1.0 / 1.0 / 1.0 / 0.05 / 1.0`、`joint_mapping` 恒等。**换 checkpoint 时必须
+连这些值一起换**——该 run 用的是旧一版默认姿态与增益，与 AMP 的 `0/0.87/-1.82`、`25/0.5` 不同，
+混用会让 `dof_pos` 的相对量与 PD 都错位。参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/`
+是另一份更新的 45 维 PPO 策略（其配置用 `25/0.5` 与 `0/0.87/-1.82`），若要改用它，需要三个值一起改。
+
 交付一个可部署策略时，至少记录：checkpoint 来源、模型版本、关节映射、默认姿态、动作缩放与裁剪、PD 与力矩限幅、观察顺序与缩放、历史排列及重置方式、四元数约定、控制周期、网络输入输出，以及同一输入下的数值比较结果。
 
 ## 6. 部署流程
@@ -253,8 +270,10 @@ ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/inference_runtime/onnxruntime library/
 ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/mujoco                      library/mujoco
 ```
 
-窗口内的按键：`0` 起身、`1` himloco、`2` **AMP**、`9` 下蹲、`P` 回 Passive、`W/S/A/D/Q/E`
-步进速度指令、`Space` 清零指令、`R` 重置仿真、`Enter` 暂停/继续。
+窗口内的按键：`0` 起身、**`1` PPO**、**`2` himloco**、**`3` AMP**、`9` 下蹲、`P` 回 Passive、
+`W/S/A/D/Q/E` 步进速度指令、`Space` 清零指令、`R` 重置仿真、`Enter` 暂停/继续。
+（手柄：`RB+DPadUp`=PPO、`RB+DPadRight`=himloco、`RB+DPadDown`=AMP。）三个策略各自是一个
+`RLFSMState*Locomotion` 类 + 一条按键指令，新增策略照这个模式加即可。
 
 构建依赖网络与本地编译工具链。2026-09-17 已在本机通过 `build.sh -mj`；GUI 入口需要可用的
 OpenGL/显示，本机无可用 NVIDIA 驱动（`nvidia-smi` 失败）故未运行，见
@@ -298,7 +317,8 @@ bash build.sh --cmake
 | AMP-05 | P1 | 待重新训练 | actor 应移除 `base_lin_vel`，但现有 `model_9000.pt` 第一层为 `[512,48]`；2026-09-17 已按用户决定在配置中保留 `lin_vel` 项并以 48 维跑通管线 | 新建 45 维训练，取得对应 checkpoint 后同步修改回放、导出、部署观测并验证；不得直接截掉旧网络的 3 个输入。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) |
 | AMP-06 | P0 | 已修启动异常，速度跟踪仍未成立 | ① **"一启动就飞"已修**：`PhysicsThread` 不套 keyframe，用的是模型默认 qpos（关节全 0）；原场景 `base pos="0 0 0.35"` 在直腿时足端 z=−0.0758（穿地），改为参考项目的 `0 0 0.5`（足端 +0.0743）后不再弹飞。② 又把参考项目的求解器/接触块抄进场景（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"` 与分几何 friction），GUI 等价启动下机器人从"躺地 0.075 m"变为**能站起**（AMP 后最高 0.2907、结束 0.2621；参考项目场景对照 0.3009／0.2927） | ① 速度指令仍未跟踪：我们 `dx=−0.23 m`、参考 `+0.10 m`（`vx=+0.5`），需继续核对碰撞体清单、base 惯量（参考 MJCF 仍是旧值 6.53394）、`equality`、传感器集合；② `lin_vel` 仍恒为 0；③ GUI 未运行。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 6 节 |
 | MODEL-02 | P0 | 已完成并验证（①–⑤） | 用户决定把模型统一到 `imgo2_description`（D1 命名 FL/FR/RL/RR；D2 Gazebo/IMU/transmission 留在 description 作可选模块；D3 生成物入库；D4 删冗余副本、git 兜底；D5 Gazebo 插件暂不处理）。**① 命名/网格**：`meshes/` 改 FL 命名（指纹 `8dc5b5995a11`，10 文件）。**② 模块化**：`xacro/core.xacro`（物理内核）＋ `{transmission,gazebo,imu}.xacro` ＋ `robot.xacro` 组装入口（开关默认 false）；生成物 `urdf/imgo2.urdf`（纯）与 `urdf/imgo2.gazebo.urdf`。**③ MJCF**：`mjcf/{imgo2.xml,scene.xml}`（训练物理 + 参考求解器/接触块 + `framelinvel`）。**④ 消费者切换**：RL 的 `assets/imgo2.py` 经 `_REPO_ROOT` 指向 `imgo2_description/urdf/imgo2.urdf`；`check_asset_paths.py` 改为按声明解析多个 root 变量；`audit_amp_dataset.py`/`tests`/`inertia_urdf.py` 同步；deploy 新增编译期 `IMGO2_MODEL_DIR`、`rl_sim_mujoco.cpp` 读 `imgo2_description/mjcf/<scene>.xml`；`build.sh` 与两个 Gazebo launch 改指 description；`CMakeLists` 安装列表去掉 `robot_description`。**⑤ 清理**：删除 `imgo2_model/`、`imgo2_rl/source/imgo2_rl/data/`、`imgo2_deploy/robot_description/`（共 46 文件、约 57 MB 工作树）；AGENTS.md 模型章节改写为单一源规则 | **验证**：`check_model_sync.py` 全 PASS（2 份已登记 URDF、网格指纹、mesh 引用存在性、FK 恒等 RMSE 0.00214 m / 交换 0.22470 m）；`check_amp_joint_order.py` 三项全 PASS 且数值与统一前一致（0.00107/0.00214 m、0.22491、0.0191/0.1339 rad、r 0.9546/0.2317）；`check_asset_paths.py` PASS（URDF 17 mesh 引用全在、21 份动作）；单元测试 6 项 OK；`bash build.sh -mj` 删目录后仍构建成功，二进制内 `IMGO2_MODEL_DIR` 指向 `<repo>/imgo2_description`；`git ls-files -i -c --exclude-standard` 为空。**未运行**：GUI、Isaac Lab 训练/回放、ROS/Gazebo、真机；Gazebo 插件 `liblegged_hw_sim.so` 仍缺（DEPLOY-05 未解）。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 6.6 节 |
-| DEPLOY-01 | P0 | 待对齐 | Go2 占位策略与 Imgo2 训练配置存在默认姿态、PD、限幅、指令缩放等差异（指 himloco 占位；AMP 已于 2026-09-17 对齐，见 §5.3） | 替换为来源明确的 Imgo2 策略，完成训练端与部署端同输入输出比较 |
+| DEPLOY-08 | P1 | 观察到一次、未能复现 | 2026-09-17 加 PPO（键 1）后，用**多键连续切换**的临时 harness（0→1→2→3）在进入 himloco 后崩溃：`mat1 and mat2 shapes cannot be multiplied (1x45 and 270x128)`，即把 45 维（单帧）输入喂给了 himloco 的 270 维（6 帧历史）网络。**但单键分别测试三个策略均正常**（himloco 打印 `co=45 → hist_obs=270`，calls=274，无异常），因此无法在单键路径复现，也不能确认与本次按键重排有关 | 用**真实 GUI 依次按 1→2→3** 复现一次；若复现，检查 `RL::InitRL` 在「无历史配置 ↔ 有历史配置」之间切换时 `history_obs_buf`（只在 `observations_history` 非空时重建）与 `params` 合并是否会让 `observations_history` 短暂为空而模型已换新。属潜在缺陷，非当前故障 |
+| DEPLOY-01 | P0 | 待对齐 | Go2 占位策略与 Imgo2 训练配置存在默认姿态、PD、限幅、指令缩放等差异（指 himloco 占位；AMP 已于 2026-09-17 对齐，见 §5.3；PPO 也已接入，见 §5.4） | 替换为来源明确的 Imgo2 策略，完成训练端与部署端同输入输出比较 |
 | DEPLOY-02 | P0 | 场景已对齐并验证站起，待 GUI 验证 | `robot_description/imgo2_mjcf/scene.xml`：关节轴/限位与训练侧逐项一致、MuJoCo C API 可加载、`build.sh -mj` 通过；2026-09-17 又按参考项目补齐初始高度（`base pos 0 0 0.5`）与求解器/接触块（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"`+friction），GUI 等价启动不再弹飞且能站起 | 在有可用显示的机器上跑 `rl_sim_mujoco imgo2 scene` 并保存窗口记录；生成脚本已按用户要求删除，场景若要再生需重建；参考项目那份现成 MJCF 与本仓库网格命名不匹配（10 个引用缺 6 个），不能直接复用 |
 | DEPLOY-03 | P0 | 缺依赖，待适配 | SDK2 目录为空，真机目标被跳过 | 依赖到位、目标生成、通信接口验证通过 |
 | DEPLOY-04 | P1 | 已解决 | 原 `library/thirdparty/joystick/` 为空且未跟踪，`CMakeLists.txt` 在 `USE_MUJOCO` 下要求 `joystick.cc`，`rl_sim_mujoco.hpp` 还 `#include "joystick.hh"`；原无脚本会下载它。2026-09-17 已补入 `joystick.cc`/`joystick.hh`（与参考项目同源） | 已通过：2026-09-17 `bash build.sh -mj` 配置与编译均成功 |
@@ -376,6 +396,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-17 | 部署侧接入 PPO，按键改为 1=PPO / 2=himloco / 3=AMP | **做了什么**：`policy/imgo2/ppo/` 新增 `policy.pt`（拷自 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_flat/2026-06-21_23-24-09/exported/policy.pt`，sha256 `7cbb4def63c361db…`）与 `config.yaml`；`config.yaml` 的每个值都抄自该 run 的 `params/env.yaml`：45 维观测（`base_lin_vel`/`height_scan` 均为 null，顺序 ang_vel/gravity_vec/commands/dof_pos/dof_vel/actions）、`rl_kp 20`/`rl_kd 1.0`、`default_dof_pos 0/0.8/-1.5`、`action_scale 0.125|0.25`、`clip ±100`、观测 scale `0.25/1.0/1.0/1.0/0.05/1.0`、`joint_mapping` 恒等；`fsm_imgo2.hpp` 新增 `RLFSMStatePPOLocomotion`（config `ppo`）占用键 1（手柄 `RB+DPadUp`），himloco 从键 1 挪到键 2（`RB+DPadRight`），AMP 从键 2 挪到键 3（`RB+DPadDown`），Passive/GetUp/三个 locomotion 的 CheckChange 与工厂一并同步；`.gitignore` 的策略白名单由 `amp/policy.pt` 泛化为 `imgo2_deploy/policy/imgo2/**/policy.pt`。**验证**：`bash build.sh -mj` 通过；用仓库外临时 harness 单独按 1/2/3 各跑 9 s——三者都成功进入（`entered=1`，`calls=274`），PPO 读到 `rl_kp=20 default=0 0.8 -1.5`、himloco 的 6 帧历史 `co=45 → hist_obs=270` 正确、AMP 结束高度 0.2663，无 NaN 无崩溃。**未通过**：一次多键连续切换（0→1→2→3）出现 `1x45 vs 270x128` 崩溃，单键路径复现不了，登记为 DEPLOY-08（待 GUI 复现）。**未运行**：GUI、训练、ROS、真机 |
 | 2026-09-17 | 推送打通：配置 SSH key、`origin` 改为 SSH、7 个本地提交推上 `main` | 用户配置 `~/.ssh/id_ed25519` 并加到 GitHub 后，`ssh -T git@github.com` 返回 `Hi qmq-h! You've successfully authenticated`；`origin` 由 HTTPS 改为 `git@github.com:qmq-h/imgo2.git`；`git push origin main` 成功把 `271edd2..72e3193`（7 个提交）推上去，校验本地与远程 HEAD 同为 `72e3193b18e7bf3484aac01a371fcbdd106ddca2`，`git log origin/main..HEAD` 为空。此前失败的原因是**凭据**而非网络：本机无 credential helper / `~/.git-credentials` / `gh` / token，harness 的 shell 没有 TTY 无法交互输入（`user.name`/`user.email` 只是提交署名，不参与认证；公共仓库匿名 `ls-remote` 能成不代表 `push` 能成）。事实已写入 AGENTS.md「多机与同步」。**未做**：训练服务器尚未拉取 |
 | 2026-09-17 | 模型统一阶段②④⑤：切换全部消费者、删除三处镜像副本、改写 AGENTS 模型章节 | **消费者**：`assets/imgo2.py` 新增 `_REPO_ROOT`（`parents[5]`）并把 `_DEFAULT_URDF_PATH` 指向 `<repo>/imgo2_description/urdf/imgo2.urdf`；`check_asset_paths.py` 重写为「按声明解析任意 root 变量」（旧版只认 `_PROJECT_ROOT`，且会复制预期路径）；`audit_amp_dataset.py`/`tests/test_amp_alignment.py`(2 处)/`inertia_urdf.py` 同步；deploy 新增编译期 `IMGO2_MODEL_DIR="${PROJECT_ROOT_DIR}/../imgo2_description"`，`rl_sim_mujoco.cpp` 场景路径改为 `IMGO2_MODEL_DIR "/mjcf/" + scene`；`build.sh` 的 `setup_robot_descriptions` 与两个 Gazebo launch 改指 description（`imgo2.gazebo.urdf`）；`CMakeLists` 安装列表去掉 `robot_description`。**删除**（git 可追溯）：`imgo2_model/`（21 文件 27 MB）、`imgo2_rl/source/imgo2_rl/data/`（12 文件 15 MB）、`imgo2_deploy/robot_description/`（13 文件 15 MB）；删后全仓只剩 2 份 URDF、1 套网格、1 套 MJCF，工作树由约 126 MB 降到 69 MB。**check_model_sync.py 改造**：登记项改为 description 的 core+gazebo 两份，新增网格指纹断言（`8dc5b5995a11`/10 文件）与「每个 mesh 引用都存在」检查，去掉 `DESC_TO_TRAIN` 与镜像/fragment 提示。**AGENTS.md**：模型章节由「四份副本不要合并」改写为「唯一源 + 生成物勿手改 + 改完跑检查」，并更新目录命名清单。**验证**：`check_model_sync.py` 全 PASS；`check_amp_joint_order.py` 三项全 PASS（数值与统一前一致）；`check_asset_paths.py` PASS（新增负向测试：把 URDF 文件名改错 → FAIL，恢复 → PASS）；单元测试 6 项 OK；`bash build.sh -mj` 删目录后仍构建成功且二进制内 `IMGO2_MODEL_DIR` 指向 `<repo>/imgo2_description`；`git ls-files -i -c --exclude-standard` 为空。**未运行**：GUI、Isaac Lab 训练/回放、ROS/Gazebo、真机 |
 | 2026-09-17 | 阶段③回归：跑通单元测试与三项离线检查；AMP-03 的 Torch 回归首次真正执行并通过 | **环境**：本机 Linux `~/miniconda3/envs/isaaclab`（Python 3.11.14、torch 2.7.0+cu128、CPU）。`python -m unittest discover -s tests -p test_amp_alignment.py` → **6 项全过**（此前 Windows 侧因缺 torch 是「4 通过 1 跳过」，被跳过的 `test_raw_statistics_and_normalized_gradient_penalty` 正是 AMP-03 的 Torch 回归，本轮首次真正运行）。`check_asset_paths.py` / `check_model_sync.py` / `check_amp_joint_order.py` 三者 exit=0。全仓 79 个 URDF/xacro/XML 只有 1 个解析失败，即已知的 `imgo2_model/` 腿部件片段（无 `<robot>` 开头）。**限制**：仍未在 Isaac Lab 里构造环境、未训练，因此 AMP-03 只关掉「Torch 回归」这一半 |
