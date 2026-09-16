@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<!-- Gazebo 专用内容：插件 + 按 link 的摩擦/接触参数。
+     只在组装 Gazebo 模型时包含（xacro/robot.xacro 的 gazebo:=true）。
+     这些标签对 Isaac Lab / MuJoCo 无意义，故从 core.xacro 独立出来。
+     插件 liblegged_hw_sim.so 不在仓库内（见 README DEPLOY-05）。 -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- ros_control 与地面真值插件 -->
+    <gazebo>
+            <plugin name="gazebo_ros_control" filename="liblegged_hw_sim.so">
+                <robotNamespace>/</robotNamespace>
+                <robotParam>legged_robot_description</robotParam>
+                <robotSimType>legged_gazebo/LeggedHWSim</robotSimType>
+            </plugin>
+        </gazebo>
+
+    <gazebo>
+            <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+                <alwaysOn>true</alwaysOn>
+                <updateRate>1000.0</updateRate>
+                <bodyName>base</bodyName>
+                <topicName>ground_truth/state</topicName>
+                <gaussianNoise>0</gaussianNoise>
+                <frameName>world</frameName>
+                <xyzOffsets>0 0 0</xyzOffsets>
+                <rpyOffsets>0 0 0</rpyOffsets>
+            </plugin>
+        </gazebo>
+
+    <!-- 按 link 的 Gazebo 接触参数（mu1/mu2/kp/kd/self_collide） -->
+    <gazebo reference="base">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="FL_HIP">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+
+        </gazebo>
+
+    <gazebo reference="FL_THIGH">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="FL_SHANK">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+        </gazebo>
+
+    <gazebo reference="FL_FOOT">
+            <mu1>0.6</mu1>
+            <mu2>0.6</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="RL_HIP">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+        </gazebo>
+
+    <gazebo reference="RL_THIGH">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="RL_SHANK">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+        </gazebo>
+
+    <gazebo reference="RL_FOOT">
+            <mu1>0.6</mu1>
+            <mu2>0.6</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="FR_HIP">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+        </gazebo>
+
+    <gazebo reference="FR_THIGH">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="FR_SHANK">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+        </gazebo>
+
+    <gazebo reference="FR_FOOT">
+            <mu1>0.6</mu1>
+            <mu2>0.6</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="RR_HIP">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+        </gazebo>
+
+    <gazebo reference="RR_THIGH">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+    <gazebo reference="RR_SHANK">
+            <mu1>0.2</mu1>
+            <mu2>0.2</mu2>
+            <self_collide>1</self_collide>
+        </gazebo>
+
+    <gazebo reference="RR_FOOT">
+            <mu1>0.6</mu1>
+            <mu2>0.6</mu2>
+            <self_collide>1</self_collide>
+            <kp  value="1000000.0"/>
+            <kd  value="1.0"/>
+        </gazebo>
+
+</robot>
