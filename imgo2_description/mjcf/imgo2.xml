@@ -187,13 +187,23 @@
       <jointactuatorfrc name="RR_hip_joint_jointactuatorfrc" joint="RR_hip_joint" />
       <jointactuatorfrc name="RR_thigh_joint_jointactuatorfrc" joint="RR_thigh_joint" />
       <jointactuatorfrc name="RR_shank_joint_jointactuatorfrc" joint="RR_shank_joint" />
-      <framequat name="orientation" objtype="body" objname="base" />
+      <!-- 必须挂在 site 上，不能挂 body：body 的 framequat/framelinvel 会再乘上该 body
+           的惯量主轴旋转（base 的 iquat ≈ 180° 绕 (1,0,1)/√2），使姿态观测量整体偏转
+           90°，策略会把直立误判为"已翻倒"。参考项目同样用 site（base_site）。 -->
+      <framequat name="orientation" objtype="site" objname="imu" />
       <gyro name="angular_velocity" site="imu" />
-      <!-- 追加在末尾：不影响上面 0..42 的偏移。参考项目有此项；C++ 目前不读它，
-         要用 base 线速度（README AMP-06）时在 GetState/RunModel 里读它即可。 -->
-    <framelinvel name="base_lin_vel" objtype="body" objname="base" />
+      <!-- 追加在末尾：不影响上面 0..42 的偏移。注意 site 的 framelinvel 是世界系速度，
+           训练侧 base_lin_vel 是体系速度；C++ 目前不读它，要用时（README AMP-06）
+           在 GetState/RunModel 里读并做 QuatRotateInverse(base_quat, v) 变换。 -->
+    <framelinvel name="base_lin_vel" objtype="site" objname="imu" />
   </sensor>
+  <!-- 不要保留可用的 keyframe：C++ 路径的初始状态来自模型里的 base pos + 自由关节零位，
+       不应用 keyframe；而 MuJoCo 的 simulate GUI 的 Key 下拉框会应用它。参考项目同样
+       把 keyframe 注释掉。曾经这里留着 base z=0.35 的 stand，配合直腿初始位姿会穿地
+       （即"一启动就飞"的成因），已删除。 -->
+  <!--
   <keyframe>
-      <key name="stand" qpos="0 0 0.35 1 0 0 0 0 0.87 -1.82 0 0.87 -1.82 0 0.87 -1.82 0 0.87 -1.82" />
-    </keyframe>
+    <key name="stand" qpos="0 0 0.5 1 0 0 0 0 0.87 -1.82 0 0.87 -1.82 0 0.87 -1.82 0 0.87 -1.82" />
+  </keyframe>
+  -->
 </mujoco>
