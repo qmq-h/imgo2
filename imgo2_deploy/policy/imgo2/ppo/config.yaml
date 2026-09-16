@@ -4,44 +4,39 @@
 #   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
 #   joint_pos_rel 12, joint_vel_rel 12, last_action 12
 #
-# 数值来源：~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_rough/2026-06-21_16-37-38
-#   的 params/env.yaml（该 run 的记录值），policy.pt 取自同目录 exported/。
-#   （2026-09-17 由 imgo2_flat/2026-06-21_23-24-09 换成本 run：flat 那份虽然速度跟踪
-#     更准，但行走时基座只有 0.13 m；本 run 在同一 harness 下 z≈0.26、vx=0.5→0.53 m/s、
-#     vx=1.0→1.06 m/s。来源已按 checkpoint storage 散列核对：导出的 actor 8/8 命中
-#     imgo2_rough/2026-06-21_16-37-38/model_4400.pt。）
-#   该 run 用的是旧一版默认姿态，故与 amp/himloco 配置不同：
-#     actuator stiffness 20.0 / damping 0.2（不是 25.0/0.5）
-#     init_state joint_pos  hip 0.0 / thigh 0.8 / shank -1.5（不是 0/0.87/-1.82）
-#     actions.joint_pos.clip (-100, 100)（等于不裁剪）
-#   换用别的 checkpoint 时必须同时换这些值，否则 dof_pos 的相对量会错位。
-#   注意 kd=0.2 是训练侧的原始值（阻尼偏低），sim2sim 已验证；上真机前建议再确认。
+# 权重来源：参考项目 ~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/policy_flat.pt
+#   （sha256 53a57f909b61d2a7…，文件时间 06-30 12:45），配置数值取自同目录 config.yaml。
+#   2026-09-17 用 Gazebo 侧四项指标（位姿/速度跟随/抖动/周期性）评过 5 个候选后换成它
+#   （评测脚本 imgo2_deploy/scripts/eval_gazebo_policy.py，数字见
+#   docs/gazebo_ros2_bringup_2026-09-17.md 第 9 节）：vx=0.5 时 z 0.288 m、roll 2.5°、
+#   yaw 漂 -0.5°/s、抖动(大腿|Δdq|均值) 45 rad/s²、周期强度 0.95、FL-FR 相位 175°（trot），
+#   实测 0.428 m/s（比命令低 14%）；同项目 policy.pt 跟速更准（0.522 m/s）但抖动与姿态更差
+#   （79 rad/s²、roll 5.0°、周期强度 0.74），可作备选。
+#   注意该 run 用 0/0.87/-1.82 默认姿态与 25/0.5 增益（与其它 PPO 候选不同）。
+imgo2/ppo:
 imgo2/ppo:
   model_name: "policy.pt"
   num_observations: 45
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
-  observations_history: []
-  observations_history_priority: "time"
+  observations_history: []  # 0 is the latest observation
+  observations_history_priority: "time"  # "time" or "term" priority
   clip_obs: 100.0
-  # 训练侧 actions.joint_pos.clip = (-100, 100)，即不裁剪；保留同样的边界。
-  clip_actions_lower: [-100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0,
-                       -100.0, -100.0, -100.0]
-  clip_actions_upper: [100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0,
-                       100.0, 100.0, 100.0]
-  # 该 run 的 DCMotor：stiffness 20.0 / damping 0.2。
-  rl_kp: [20.0, 20.0, 20.0,
-          20.0, 20.0, 20.0,
-          20.0, 20.0, 20.0,
-          20.0, 20.0, 20.0]
-  rl_kd: [0.2, 0.2, 0.2,
-          0.2, 0.2, 0.2,
-          0.2, 0.2, 0.2,
-          0.2, 0.2, 0.2]
-  # 固定增益阶段（起身/站立）沿用参考部署的值。
+  clip_actions_lower: [-3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0]
+  clip_actions_upper: [3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0]
+  rl_kp: [25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0]
+  rl_kd: [0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5]
   fixed_kp: [60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,
@@ -51,26 +46,22 @@ imgo2/ppo:
              2.0, 2.0, 2.0,
              2.0, 2.0, 2.0]
   num_of_dofs: 12
-  # actions.joint_pos.scale：hip 0.125，其余 0.25；use_default_offset=true。
   action_scale: [0.125, 0.25, 0.25,
                  0.125, 0.25, 0.25,
                  0.125, 0.25, 0.25,
                  0.125, 0.25, 0.25]
   wheel_indices: []
-  # policy 组各 ObsTerm 的 scale（base_ang_vel 0.25、projected_gravity 1.0、
-  # velocity_commands 1.0、joint_pos 1.0、joint_vel 0.05、last_action 1.0）。
+  lin_vel_scale: 2.0
   ang_vel_scale: 0.25
   dof_pos_scale: 1.0
   dof_vel_scale: 0.05
   commands_scale: [1.0, 1.0, 1.0]
-  torque_limits: [23.7, 23.7, 23.7,
-                  23.7, 23.7, 23.7,
-                  23.7, 23.7, 23.7,
-                  23.7, 23.7, 23.7]
-  # 该 run 的 init_state.joint_pos。
-  default_dof_pos: [0.00, 0.80, -1.50,
-                    0.00, 0.80, -1.50,
-                    0.00, 0.80, -1.50,
-                    0.00, 0.80, -1.50]
-  # MuJoCo 场景的关节声明顺序就是策略顺序（FL,FR,RL,RR），故为恒等映射。
+  torque_limits: [23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5,
+                  23.5, 23.5, 23.5]
+  default_dof_pos: [ 0.00, 0.87, -1.82,
+                     0.00, 0.87, -1.82,
+                     0.00, 0.87, -1.82,
+                     0.00, 0.87, -1.82]
   joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

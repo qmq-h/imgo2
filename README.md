@@ -214,38 +214,45 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 
 | 键 | 状态类 | 配置目录 | 观察 | 网络 |
 |---|---|---|---|---|
-| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（由 `~/RL/isaac/Imgo2_rl/logs/rsl_rl/imgo2_rough/2026-06-21_16-37-38/exported/` 拷入，sha256 `618cc4ea4737c343…`；2026-09-17 由 `imgo2_flat/2026-06-21_23-24-09` 换成本 run） |
+| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/policy_flat.pt`，sha256 `53a57f909b61d2a7…`；2026-09-17 按四项指标评过 5 个候选后选它） |
 | `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
 | `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 48 维（含 `lin_vel`） | `policy.pt`（`model_9000.pt` 导出） |
 
-`ppo/config.yaml` 的数值全部取自该 run（`imgo2_rough/2026-06-21_16-37-38`）的 `params/env.yaml`
-（可追溯）：`rl_kp 20 / rl_kd 0.2`、`default_dof_pos 0 / 0.8 / -1.5`、`action_scale 0.125/0.25`、
-`clip (-100,100)`（等于不裁剪）、观测 scale `0.25 / 1.0 / 1.0 / 1.0 / 0.05 / 1.0`、
-`joint_mapping` 恒等。**换 checkpoint 时必须连这些值一起换**——该 run 用的是旧一版默认姿态
-（`0/0.8/-1.5`）与偏低阻尼（`kd 0.2`），与 AMP 的 `0/0.87/-1.82`、`25/0.5` 不同，混用会让
-`dof_pos` 的相对量与 PD 都错位。2026-09-17 已从 `imgo2_flat/2026-06-21_23-24-09`（`20/1.0`）
-换成现在这份：flat 那份速度跟踪更准（误差 <2%）但**行走时基座只有 0.13 m**，本 run 是
-z≈0.26 且跟踪同样好（见下表）。来源由 checkpoint storage 散列核对确认（8/8 命中该 run 的
-`model_4400.pt`）。参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/` 是另一份
-45 维 PPO 策略（配置用 `25/0.5` 与 `0/0.87/-1.82`），若要改用它，需要三个值一起改。
+`ppo/config.yaml` 的数值取自参考项目 `.../base_move/config.yaml`（可追溯）：`rl_kp 25 / rl_kd 0.5`、
+`default_dof_pos 0 / 0.87 / -1.82`、`action_scale 0.125/0.25`、`clip ±3`、观测 scale
+`0.25 / 1.0 / 1.0 / 1.0 / 0.05 / 1.0`、`joint_mapping` 恒等。**换 checkpoint 必须连这些值一起换**：
+仓库里三份 45 维 PPO 候选用的是两套参数（`0/0.8/-1.5` + `20/0.2` 或 `20/1.0`，与
+`0/0.87/-1.82` + `25/0.5`），混用会让 `dof_pos` 相对量与 PD 都错位。
+
+**2026-09-17 PPO 选型（Gazebo，四项指标，脚本 `imgo2_deploy/scripts/eval_gazebo_policy.py`）**：
+判据是**位姿 / 速度跟随 / 腿部抖动 / 周期性**——只看姿态会被"四脚朝天也很稳"骗过，只看关节看不出
+是否真的在走。指标定义：位姿 = 基座 z 与 roll/pitch/yaw 漂移（`/odom` p3d 真值）；速度跟随 =
+`dx/dt` 对命令 vx 的误差；抖动 = 相邻控制周期 `abs(Δdq)/dt` 的均值（分 hip/thigh/shank）与 `dq`
+换向率；周期性 = 大腿角自相关首个峰的周期与强度（0~1）、FL↔FR 相位（trot≈180°）。
+
+| 键 1 候选（vx=0.5） | 实测速度 | z_mean（范围） | roll/pitch | yaw 漂 | 抖动 thigh/shank | 周期强度 | FL-FR |
+|---|---|---|---|---|---|---|---|
+| **base_move/policy_flat.pt（现在）** | 0.428 m/s | **0.288**（0.280–0.295） | **2.5°/1.3°** | **−0.5°/s** | **45 / 94** | **0.95** | **+175°** |
+| base_move/policy.pt（备选） | **0.522 m/s** | 0.251 | 5.0°/4.6° | +1.5°/s | 79 / 153 | 0.74 | +198° |
+| base_move/policy1.pt | 0.662 m/s（超调） | 0.244 | 8.3°/7.6° | −1.5°/s | 153 / 91 | 0.68 | −148° |
+| rough/16-37-38（换之前） | 0.540 m/s | 0.271（0.219–0.382） | 13.4°/10.9° | −2.7°/s | 241 / 507 | 0.29 | −140° |
+| amp/policy.pt（7/3） | 0.057 m/s ✗ | 0.182 | 10.0°/6.8° | — | 53 / 71 | 0.84 | −164° |
+
+`vx=0` 静止时：`policy.pt` 与 `policy_flat.pt` 抖动 **0.0**、yaw 漂 0.0（完全静止）；rough/16-37-38
+抖动 47–77、yaw 漂 +4.8°/s。⇒ 采用 `policy_flat.pt`（四项里三项最好，仅速度低 14%）；
+若更看重速度精度可用 `policy.pt`。五份训练导出的横向对比见
+[策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md) 第 7 节，Gazebo 侧的完整评测见
+[Gazebo 记录](docs/gazebo_ros2_bringup_2026-09-17.md) 第 9 节。
+
+复跑评测（Gazebo 无头，脚本自己注入起身/键1/速度）：
+
+```bash
+ros2 launch imgo2_deploy gazebo.launch.py gui:=false      # 终端 A
+ros2 run imgo2_deploy rl_sim                              # 终端 B
+python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 20   # 终端 C
+```
 
 交付一个可部署策略时，至少记录：checkpoint 来源、模型版本、关节映射、默认姿态、动作缩放与裁剪、PD 与力矩限幅、观察顺序与缩放、历史排列及重置方式、四元数约定、控制周期、网络输入输出，以及同一输入下的数值比较结果。
-
-**2026-09-17 运行期排查后的实测**（无头 harness，修好 MODEL-03 的传感器之后；`dx` 为接管后到
-16 s 的位移，窗口 12.5 s）：
-
-| 键 | 策略 | vx | `z_final` | `dx` | 实测速度 | FL_thigh 极差 |
-|---|---|---|---|---|---|---|
-| 1 PPO | rough/16-37-38（现在） | 0.0 | 0.3271 | 0.023 | — | 0.001 |
-| 1 PPO | 同上 | 0.5 | 0.2520 | 6.369 | **0.51 m/s** | 0.880 |
-| 1 PPO | 同上 | 1.0 | 0.2857 | 13.158 | **1.05 m/s** | 1.956 |
-| 1 PPO | flat/23-24-09（换之前） | 0.5 | 0.1271 | 5.343 | 0.51 m/s | 1.114 |
-| 3 AMP | model_9000 | 0.0 | 0.3015 | 0.060 | — | 0.014 |
-| 3 AMP | 同上 | 0.5 | 0.3033 | 0.076 | 0.007 m/s | 0.024 |
-
-即 **PPO 站得住、走起来维持 0.26 m 高度、速度跟踪误差 <5%**；**AMP 只站不走**（详见 AMP-06）。
-五份 PPO 导出（flat + 四个 rough）的横向对比、以及"导出 ↔ checkpoint"的来源散列核对见
-[策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md) 第 7 节。
 
 ## 6. 部署流程
 
@@ -398,6 +405,7 @@ bash build.sh --cmake
 | DEPLOY-02 | P0 | 场景已对齐并验证站起/行走，待 GUI 验证 | `imgo2_description/mjcf/{imgo2.xml,scene.xml}`（经编译期 `IMGO2_MODEL_DIR` 读取）：关节轴/限位与训练侧逐项一致、MuJoCo C API 可加载、`build.sh -mj` 通过；2026-09-17 按参考项目补齐初始高度（`base pos 0 0 0.5`）与求解器/接触块（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"`+friction），不再弹飞；同日又修 MODEL-03（姿态/线速度传感器由 `body` 改挂 `imu` site）并注释掉陈旧 keyframe，修后 PPO 站姿 0.321、`vx=0.5/1.0` 实测 0.509/0.975 m/s，AMP 站 0.3015 | 在有可用显示的机器上跑 `rl_sim_mujoco imgo2 scene` 并保存窗口记录。参考项目那份 MJCF 现在网格名已能对上（FL 改名的副产物，实测可加载），但它的 base 质量仍是旧值 6.53394、用 mesh 碰撞体且没写 `timestep`（=2 ms），同一个参考策略在它上面反而站不起来（`z_final=0.0771`），**不要改用它** |
 | DEPLOY-03 | P0 | 缺依赖，待适配 | SDK2 目录为空，真机目标被跳过 | 依赖到位、目标生成、通信接口验证通过 |
 | DEPLOY-04 | P1 | 已解决 | 原 `library/thirdparty/joystick/` 为空且未跟踪，`CMakeLists.txt` 在 `USE_MUJOCO` 下要求 `joystick.cc`，`rl_sim_mujoco.hpp` 还 `#include "joystick.hh"`；原无脚本会下载它。2026-09-17 已补入 `joystick.cc`/`joystick.hh`（与参考项目同源） | 已通过：2026-09-17 `bash build.sh -mj` 配置与编译均成功 |
+| PPO-01 | P1 | 已按四项指标选定（`base_move/policy_flat.pt`） | PPO 权重此前用过 `imgo2_flat/2026-06-21_23-24-09` 与 `imgo2_rough/2026-06-21_16-37-38` 两份训练导出，用户反馈「腿部抖动很厉害」并给出评估标准：**位姿 / 速度跟随 / 抖动 / 周期性**。新增 `imgo2_deploy/scripts/eval_gazebo_policy.py`（自注入 /joy，从 /odom + /joint_states 统计四项）并对 5 个候选实测：参考项目 `base_move/policy_flat.pt`（6/30）vx=0.5 时 z 0.288、roll 2.5°、yaw 漂 −0.5°/s、抖动(大腿) 45 rad/s²、周期强度 0.95、FL-FR 175°、速度 0.428 m/s；`policy.pt`（6/30）速度更准 0.522 但抖动 79、roll 5.0°、强度 0.74；我们的 `rough/16-37-38` 抖动 241/507、roll 13.4°、强度 0.29、yaw 漂 −2.7°/s（vx=0 时还漂 +4.8°/s）；`policy1.pt` 超调 0.662；`amp/policy.pt` 不走（0.057 m/s、z 0.182）。⇒ 采用 `policy_flat.pt`（配置 25/0.5、默认 0/0.87/-1.82、clip ±3） | 已装并复测；后续若要速度精度可换 `policy.pt`（同配置）；新训练版本可用同一脚本按四项指标对比。详见 Gazebo 记录第 9 节 |
 | JOINT-01 | P0 | ROS2 路径已修并验证；真机路径待处理 | `joint_mapping` 的语义是「策略第 i 个关节 ↔ 该路径数组第 joint_mapping[i] 号」，但三条路径的数组不同：MuJoCo 是 MJCF 声明顺序（FL,FR,RL,RR=策略顺序，恒等正确）；ROS2 是消息槽位，顺序 = 控制器 `joints` 参数 = `base.yaml` 的 `joint_names`（原为 Unitree SDK 的 FR,FL,RR,RL）；真机是 SDK 电机数组（固定 SDK 顺序）。于是恒等映射在 MuJoCo 对、在 ROS2 把策略 FL 接到物理 FR：Gazebo 里按 1 进 PPO 会翻成四脚朝天（实测 `/odom` z=0.073 m、roll=180°、dx=0），给速度指令后更明显。**修法**：① `base.yaml` 的 `joint_names`/`joint_controller_names` 改为模型顺序；② `rl_sim.cpp` 的 ROS2 分支新增 `OrderJointsByModelOrder()`，按 URDF 声明顺序重排传给控制器的名单（读不到则回退），MuJoCo 路径代码与语义未动。**验证**：Gazebo `vx=0` z 0.328–0.332 m、roll ±2.9°、dx≈0；`vx=0.5` 向前 8.20 m/12 s（0.56 m/s）、z 0.26–0.27、大腿摆幅 0.99–1.08 rad（修前四脚朝天）；IMU 侧 `/imu` 角速度与 `/odom` yaw 速率同号同量级，排除 IMU 约定问题 | 真机路径（`rl_real_imgo2.cpp` 索引 SDK 电机数组）要另给映射或改代码；偏航/走偏已确认是策略性质（MuJoCo 同策略 `vx=0.5` 也偏航 −62°/12 s），待换 checkpoint 或用 `axes[3]` 做航向闭环验证。详见记录第 8 节 |
 | DEPLOY-05 | P0 | 已解决（无头跑通到策略闭环），GUI 画面待确认 | 原状：部署份 URDF 只有 ROS 1 式 `<transmission>`，`gazebo.xacro` 挂的是仓库内没有的 `liblegged_hw_sim.so`（`gazebo_ros_control`），ROS 2 下没有 `gazebo_ros_control`，于是 `rl_sim.cpp` 的 controller spawner 找不到 controller_manager。**2026-09-17 照参考项目改为 ROS 2 `gazebo_ros2_control`**：`gazebo.xacro` 加 IMU 传感器 + `<ros2_control>`（12 关节 effort 命令 + position/velocity/effort 状态）+ `libgazebo_ros2_control.so`；新增 `imgo2_description/config/robot_control_ros2.yaml`（`joint_state_broadcaster` + `robot_joint_controller/RobotJointControllerGroup`，后者是仓库内插件、由 `rl_sim` 自己 spawn）；`imgo2_description` 做成标准 ROS 2 包（ament + `package.ros1.xml`/`package.ros2.xml` + 软链进工作区 `src/`）；Gazebo 版网格改 `package://`（`robot.xacro` 的 `mesh_prefix`）；`build.sh` 的包扫描改 `find -L`；`check_model_sync.py` 认两种网格写法。**两个实测坑**：`<parameters>` 必须是真实文件路径（`package://`/相对路径都会让插件 Load 抛异常）；URDF 作为 `--param robot_description:=` 传给 controller_manager 时必须压成单行（否则 rcl 报 `Couldn't parse parameter override rule`，控制器起不来）；另外不能用 `gazebo_ros` 自带 launch（本机它起的 gzserver 未加载 factory 插件），改为直接起 `gzserver -s ...`。**验证**（无头、单次调用内）：spawn 成功且网格 0 报错；节点 `/gazebo_ros2_control`、`/imu_plugin` 出现；`ros2 control list_controllers` → `joint_state_broadcaster active`；`/joint_states` 与 `/imu` 发布；`rl_sim` 启动后用 `/joy` 注入 `A`→`RB+DPadUp`，打印 `RL Controller [ppo]`（进入键 1 的 PPO 闭环） | ① 在有可用显示的机器上确认 `gzclient` 画面（本机 `DISPLAY=:1` 建 GL 上下文失败）；步态**已用位姿客观验证**：vx=0.5 时 Gazebo 0.502 m/s、z 0.276 m、大腿摆幅 0.89–1.20 rad，与 MuJoCo（0.51 m/s、0.26 m、0.88 rad）一致，见记录第 7 节；② 长时间跑 himloco/AMP；③ 真机链路仍待验证。详见 [Gazebo 链路打通记录](docs/gazebo_ros2_bringup_2026-09-17.md) |
 | DEPLOY-06 | P1 | AMP 路径已解决，himloco 路径仍在 | `rl_sim_mujoco.cpp` 用 `joint_mapping` 直接索引 MJCF，因此配置的映射必须与场景顺序一致。2026-09-17 采用自建场景（关节声明顺序 = 策略顺序 `FL,FR,RL,RR`）+ `base.yaml`/`amp/config.yaml` 恒等映射，AMP 路径自洽 | AMP 已在 16 s 回放中确认基座高度稳定、无 NaN；`himloco/config.yaml` 仍带硬件置换映射 `[3,4,5,0,1,2,9,10,11,6,7,8]`，在 MuJoCo 上会索引错腿，需单独处理；`imgo2_description/mjcf/` 那份现成 MJCF 未再复用 |
@@ -473,6 +481,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-17 | 建立 PPO 四项评估标准并完成选型（PPO-01）：换用参考项目 base_move/policy_flat.pt | 用户反馈当前 PPO 腿部抖动厉害，并定下评估标准：位姿 / 速度跟随 / 腿部抖动 / 周期性。**新增** `imgo2_deploy/scripts/eval_gazebo_policy.py`（只用 rclpy+标准库：自己注入 A→键1→axes[1]=vx，从 /odom(p3d 真值)+/joint_states 统计 z/roll/pitch/yaw漂、dx/dt、`abs(Δdq)/dt` 均值与 dq 换向率、大腿自相关周期与强度、FL-FR 相位）。**5 候选实测**（vx=0.5）：`base_move/policy_flat.pt`(6/30 12:45) z 0.288/roll 2.5°/yaw −0.5°/s/抖动 45.3/强度 0.95/相位 175°/速度 0.428；`base_move/policy.pt`(6/30 16:52) 0.522 m/s 但抖动 79.3、roll 5.0°、强度 0.74；`policy1.pt`(6/26) 0.662 超调、抖动 153；`rough/16-37-38`(换之前) 抖动 240.9/507.4、roll 13.4°、强度 0.29、yaw −2.7°/s；`amp/policy.pt`(7/3) 只 0.057 m/s、z 0.182 不走。vx=0 时两份 ref 抖动 0.0/yaw 漂 0（完全静止），rough 抖动 47–77、yaw +4.8°/s。**执行**：`policy/imgo2/ppo/policy.pt` ← `policy_flat.pt`（sha256 `53a57f909b61d2a7…`），`config.yaml` 换成参考 base_move 的值（25/0.5、0/0.87/-1.82、clip ±3、恒等映射）并写明来源与备选。**验证**：脚本对每个候选都跑出 JSON（/odom 100 Hz、/joint_states ~50 Hz），数字见 Gazebo 记录第 9 节与 README §5.4。**未做**：新训练 checkpoint 的四项对比（用同一脚本即可）、真机 |
 | 2026-09-17 | 查明并修复 Gazebo 翻车主因：关节顺序（JOINT-01） | 用户报告 Gazebo 里 PPO 翻成四脚朝天且"只有 ppo 能前进"。用 `/odom` 真值定位：修前 z=0.073 m、roll=180°、dx=0（翻车）。**根因**：`joint_mapping` 被套在三条不同顺序的数组上——MuJoCo 是 MJCF 声明顺序（FL,FR,RL,RR，恒等正确）、ROS2 是消息槽位顺序（= 控制器 `joints` 参数 = `base.yaml` 的 `joint_names`，原为 SDK 的 FR,FL,RR,RL）、真机是 SDK 电机数组；ROS2 的槽位顺序只由我们传入的名单决定，与 URDF 无关，于是恒等映射把策略 FL 接到物理 FR。**修法（只动 ROS 路径与数据，模型/MuJoCo 不动）**：`base.yaml` 的 `joint_names`/`joint_controller_names` 改模型顺序；`rl_sim.cpp` ROS2 分支新增 `OrderJointsByModelOrder()` 按 URDF 声明顺序重排并把结果打印出来，读不到则回退+告警。**验证**：Gazebo `vx=0` z 0.328–0.332、roll ±2.9°、dx≈0；`vx=0.5` 向前 8.20 m/12 s（0.56 m/s）、z 0.26–0.27、大腿摆幅 0.99–1.08 rad。**顺带**：① IMU 排除——`/imu` 角速度与 `/odom` yaw 速率同号同量级；② 偏航/走偏是策略性质——MuJoCo 同策略 `vx=0.5` 也偏航到 −61.9°/12 s（仍前进 6.18 m）。**未做**：真机路径映射、GUI 画面、其它 checkpoint 对比 |
 | 2026-09-17 | 加回 Gazebo 基座真值并完成 MuJoCo↔Gazebo 位姿对比（回答"Gazebo 完全不行"） | 用户反馈同策略 MuJoCo 好、Gazebo 完全不行，并指出"四脚朝天也很稳"说明只看姿态会误判。**做了什么**：`gazebo.xacro` 加回 `libgazebo_ros_p3d.so`（`/odom`，100 Hz，body `base`，world 系）并重生成 URDF（`check_model_sync.py` 仍 PASS）；随后用 `/joint_states`+`/odom` 客观测量。**实测**（策略 `ppo`=rough/16-37-38）：`vx=0` MuJoCo z 0.327/dx 0.023 对 Gazebo z 0.333（0.326–0.339）/dx −0.001；`vx=0.5` MuJoCo z 0.26、0.51 m/s、大腿摆幅 0.88 rad 对 Gazebo z 0.276（0.244–0.332）、**0.502 m/s**、0.89–1.20 rad、roll ±6°；GetUp 段两者都正常（roll/pitch≈0.1°、关节跟到 `0/0.87/-1.82`、命令 kp=60/kd=2）。**⇒ Gazebo 侧并非不可用，此前"完全不行"是用法问题**：① `/cmd_vel` 默认不生效（`rl_sim.cpp:465` 要 `navigation_mode`，默认 OFF），没给速度指令时策略当然只站着；② ROS 路径速度来源是手柄 `axes`／键盘 `W-S-A-D-Q-E`（需 `rl_sim` 的 stdin 是终端）／按 `N` 开 nav mode 后的 `/cmd_vel`；③ 键 `2`=himloco（Go2 占位会把机器人掀翻）、键 `3`=AMP（只站不走）。**一处副产物**：ROS 路径的槽位顺序是 `base.yaml` 的 `joint_names`（FR,FL,RR,RL）而策略是 FL,FR,RL,RR，`joint_mapping` 恒等时左/右腿互换；MuJoCo 路径数组本身就是 FL 顺序、恒等才对——两条路径语义不同，`joint_mapping` 需要按路径给（实测镜像步态在 Gazebo 仍能走，故暂未改，登记为待决定项）。**未验证**：GUI 画面渲染、长时间稳定性、真机 |
 | 2026-09-17 | 复现并记录 Gazebo 运行时的 Python 环境陷阱（Isaac Lab 的 `PYTHONPATH` 顶掉 numpy，导致 `Failed to start joint controller`） | 用户实跑 `ros2 run imgo2_deploy rl_sim` 在进入 Passive 之后抛 Python traceback，最后 `Failed to start joint controller`。**根因**：`rl_sim.cpp` 的 `StartJointController()` 用 `sh -c "ros2 run controller_manager spawner robot_joint_controller -p <临时yaml>"` 起控制器，子进程继承 shell 环境；该 shell 若 source 过 Isaac Lab（或挂着 conda），`PYTHONPATH` 里会有 `~/isaac/IsaacLab/_isaac_sim/extscache/omni.kit.pip_archive-*/pip_prebundle`——一份给 **Python 3.11** 编的 numpy 1.26.0，被系统 **Python 3.10** 的 `spawner` 优先命中，C 扩展对不上即崩，spawner 非 0 退出 → `rl_sim` 抛异常。**本机复现**：`PYTHONPATH="$PYTHONPATH:<pip_prebundle>"` 时 `/usr/bin/python3 -c "import numpy"` 与 `ros2 run controller_manager spawner --help` 都报 `should not try to import numpy from its source directory`，清掉即正常（系统 numpy 1.21.5 在 `/usr/lib/python3/dist-packages`）。**修法（使用侧，不改代码）**：先 `unset PYTHONPATH PYTHONHOME`（有 conda 则 `conda deactivate`）**再** `source /opt/ros/humble/setup.bash`（顺序不能反，否则会把 ROS 自己的路径也清掉）；launch 那个终端同样要清（它也要起 `joint_state_broadcaster`）。已写入 README §6.2 与 [Gazebo 记录](docs/gazebo_ros2_bringup_2026-09-17.md) 第 6 节；Isaac Lab 训练与 ROS 2 部署建议分用不同终端 |
