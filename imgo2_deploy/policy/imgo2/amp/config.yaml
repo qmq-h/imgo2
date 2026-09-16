@@ -1,0 +1,67 @@
+# AMP policy for model_9000.pt, reached with key 2 (gamepad RB+DPadRight).
+# Actor: 48 -> 512 -> 256 -> 128 -> 12, ELU.
+# Training actor observation order (velocity_env_cfg.py PolicyCfg):
+#   base_lin_vel 3, base_ang_vel 3, projected_gravity 3, velocity_commands 3,
+#   joint_pos_rel 12, joint_vel_rel 12, last_action 12  = 48
+# kp/kd and clip_actions follow the working reference deployment
+# (~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/config.yaml, which the
+# reference routes to its AMP policy); physical values follow the training side.
+imgo2/amp:
+  model_name: "policy.pt"
+  num_observations: 48
+  observations: ["lin_vel", "ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
+  observations_history: []
+  observations_history_priority: "time"
+  clip_obs: 100.0
+  # rl_sim_mujoco clamps the raw network output to these bounds. The reference
+  # uses +/-3.0, matching this task's training-time action clip value.
+  clip_actions_lower: [-3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0]
+  clip_actions_upper: [3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0]
+  # Training model's actuator gains (assets/imgo2.py DCMotorCfg 25.0 / 0.5).
+  rl_kp: [25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0]
+  rl_kd: [0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5]
+  # Fixed-gain phase (get up / stand) uses the reference deployment's values.
+  fixed_kp: [60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0]
+  fixed_kd: [2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0]
+  num_of_dofs: 12
+  action_scale: [0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25]
+  wheel_indices: []
+  # Training observation scales: base_lin_vel 1.0, base_ang_vel 0.25,
+  # joint_pos 1.0, joint_vel 0.05, velocity_commands 1.0.
+  lin_vel_scale: 1.0
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  commands_scale: [1.0, 1.0, 1.0]
+  torque_limits: [23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7]
+  default_dof_pos: [0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82]
+  # The MuJoCo scene declares the joints as FL,FR,RL,RR (policy order), and
+  # rl_sim_mujoco indexes sensordata/ctrl with joint_mapping, so it is identity.
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

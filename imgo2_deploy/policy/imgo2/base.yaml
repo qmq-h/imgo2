@@ -4,24 +4,32 @@
 imgo2:
   dt: 0.005
   decimation: 4
-  fixed_kp: [80.0, 80.0, 80.0,
-             80.0, 80.0, 80.0,
-             80.0, 80.0, 80.0,
-             80.0, 80.0, 80.0]
-  fixed_kd: [3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0]
+  # kp/kd taken from the working reference deployment (~/RL/sim2sim/Imgo2_deploy).
+  fixed_kp: [60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0]
+  fixed_kd: [2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0]
   num_of_dofs: 12
   wheel_indices: []
-  torque_limits: [23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5,
-                  23.5, 23.5, 23.5]
-  default_dof_pos: [ 0.00, 0.80, -1.50,
-                     0.00, 0.80, -1.50,
-                     0.00, 0.80, -1.50,
-                     0.00, 0.80, -1.50]
+  # Torque limit follows the training side (URDF actuatorfrcrange and
+  # DCMotorCfg effort_limit, both 23.7). The reference file uses 23.5.
+  torque_limits: [23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7]
+  # Training init_state (assets/imgo2.py): hip 0.0, thigh 0.87, shank -1.82.
+  default_dof_pos: [0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82]
+  # rl_sim_mujoco indexes sensordata/ctrl with joint_mapping, and the MuJoCo
+  # scene declares the joints as FL,FR,RL,RR (= policy order), so the identity
+  # mapping is required here. joint_names keeps the hardware/SDK order used by
+  # the ROS path; it is not read on the MuJoCo path.
   joint_names: ["FR_hip_joint", "FR_thigh_joint", "FR_shank_joint",
                 "FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
                 "RR_hip_joint", "RR_thigh_joint", "RR_shank_joint",

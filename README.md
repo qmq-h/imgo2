@@ -1,7 +1,8 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-15。本文是整个工作区的维护入口，覆盖项目总览、训练部署流程、已知问题和变更记录。
-> 状态依据包括用户反馈和本地源码/离线检查。用户已确认 PPO 完成训练与仿真验证；本文维护过程中未重新运行训练、策略回放、部署编译或真机实验。
+> 最后核对：2026-09-17。本文是整个工作区的维护入口，覆盖项目总览、训练部署流程、已知问题和变更记录。
+> 状态依据包括用户反馈、本地源码/离线检查，以及 2026-09-17 实际执行的 `build.sh -mj` 与一次
+> MuJoCo 物理回放。本轮**未**重新运行训练、Isaac Lab 回放、ROS/Gazebo 或真机实验。
 
 ## 1. 项目总览
 
@@ -16,7 +17,9 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
                                       └─→ MuJoCo / Gazebo / 真机入口
 ```
 
-最后一段部署链路仍需验证。当前部署策略为 Go2 参考占位策略，不能据此认定 Imgo2 已完成训练到部署的闭环。
+最后一段部署链路仍需验证。`himloco` 仍是 Go2 参考占位策略；AMP 已于 2026-09-17 换成
+Imgo2 自己的 checkpoint（配置与关节/物理口径已对齐、构建与物理回放已跑通），但策略只给出
+静态下蹲、未形成步态（AMP-06），因此**仍不能认定 Imgo2 已完成训练到部署的闭环**。
 
 ### 目录职责
 
@@ -44,7 +47,8 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
 | AMP | 用户反馈已有训练步态，但策略贴地爬行；已完成本地数据/URDF 离线核对并修正映射、归一化，补充高度约束及奖励量级调整 | 新配置尚待重新训练验证；正常初始化不视为策略能维持高度 |
 | 数据集 | 21 份 JSON 格式 `.txt`，共 5097 帧；每帧 61 个数，帧间隔均为 0.02 秒 | 动作语义、腿顺序和运动学一致性的回放验证 |
 | 数据副本 | `imgo2_dataset/datasets/imgo2_motion/` 的 21 份文件与训练目录对应副本逐文件哈希一致 | 后续更新时防止两处副本漂移 |
-| MuJoCo 部署 | 有 C++ 入口及构建选项 | `robot_description/imgo2_mjcf/` 当前仅有 `.gitkeep`，缺少场景 XML |
+| MuJoCo 部署 | `robot_description/imgo2_mjcf/scene.xml` 已就位，关节轴/限位/传感器布局与训练侧逐项一致；2026-09-17 `bash build.sh -mj` 构建通过；参数已按参考项目对齐（见 §5.3） | GUI 入口需在有可用显示的机器上运行；AMP 策略当前只给出静态下蹲、不跟踪速度指令（AMP-06） |
+| AMP sim2sim | FSM 增量式新增 `RLFSMStateAMPLocomotion`（键 `2`）；`policy.pt` 与 checkpoint actor 128 组输入最大误差 0；16 s 回放无 NaN | 步态未成立；`lin_vel` 观测恒为 0（AMP-06）；GUI 未运行 |
 | 真机部署 | 有 `rl_real_imgo2.cpp` 和状态机代码 | Unitree SDK2 目录当前为空，CMake 会跳过真机目标；硬件通信适配未验证 |
 
 ## 3. 代码阅读导航
@@ -187,6 +191,21 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 | 指令缩放 | HIM-Loco 未显式设置 | 策略配置为 `[2.0, 2.0, 0.25]` |
 | 网络文件 | 回放导出 `policy.pt` 或两个 ONNX 网络 | 策略配置加载 `himloco.pt`，属参考占位策略 |
 
+上表描述的是**仍为 Go2 参考占位的 himloco 策略**（DEPLOY-01 未关闭）。AMP 策略已于
+2026-09-17 按训练侧 + 参考项目对齐，见下表；详细依据见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md)。
+
+| AMP 项目 | 训练侧 | [amp/config.yaml](imgo2_deploy/policy/imgo2/amp/config.yaml) 现状 |
+|---|---|---|
+| 观察 | `base_lin_vel/ang_vel/gravity/commands/joint_pos/joint_vel/actions` = 48 | 同顺序、同项数（48） |
+| 关节映射 | 动作与观察均为 `FL, FR, RL, RR` | `joint_mapping` 恒等，MuJoCo 场景关节声明顺序即策略顺序 |
+| 默认关节角 | `0, 0.87, -1.82` ×4 | 同（`base.yaml` 与 amp 配置一致） |
+| 策略 PD | `25.0 / 0.5` | `25.0 / 0.5`（与参考项目一致） |
+| 固定姿态 PD | — | `60.0 / 2.0`（参考项目） |
+| 力矩限制 | `23.7` | `23.7`（与 URDF/训练一致，参考项目为 23.5） |
+| 动作缩放 / 裁剪 | `0.125 / 0.25 / 0.25`，取值 `±3` | 同 |
+| 观察缩放 | `1.0 / 0.25 / 1.0 / 0.05 / 1.0` | 同 |
+| 网络文件 | `imgo2_rl` 的 `play.py` 导出 | `policy.pt`（与 checkpoint actor 数值一致） |
+
 交付一个可部署策略时，至少记录：checkpoint 来源、模型版本、关节映射、默认姿态、动作缩放与裁剪、PD 与力矩限幅、观察顺序与缩放、历史排列及重置方式、四元数约定、控制周期、网络输入输出，以及同一输入下的数值比较结果。
 
 ## 6. 部署流程
@@ -202,23 +221,44 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 | `src/imgo2_deploy` | RL 部署包：sim2sim、MuJoCo 仿真、Imgo2 真机入口 |
 | `src/robot_msgs` | 共享的电机/机器人状态消息 |
 | `src/robot_joint_controller` | ROS 仿真用的 Gazebo 关节控制器；用 URDF 的关节限位 clamp 指令（ROS1 生效，ROS2 原先失效，见 DEPLOY-07） |
-| `policy/imgo2` | 策略配置；`base.yaml` 与 `himloco/` 下的 Go2 参考占位策略 |
-| `robot_description/imgo2_urdf` | 部署用 URDF 与网格 |
-| `robot_description/imgo2_mjcf` | MuJoCo 场景放置处（当前为空，见 DEPLOY-02） |
+| `policy/imgo2` | 策略配置：`base.yaml`、Go2 参考占位的 `himloco/`、已对齐训练侧的 `amp/` |
+| `robot_description/imgo2_urdf` | 部署用 URDF 与网格（物理参数与训练侧一致） |
+| `robot_description/imgo2_mjcf` | MuJoCo 场景；`scene.xml` 由训练 URDF 生成，关节轴/限位与训练侧逐项一致 |
 
 策略配置里关节名用 `*_shank_joint`（对应本仓库 URDF），而不是 Go2 的 `*_calf_joint`。
 
 ### 6.1 MuJoCo：训练仿真到另一仿真器
 
-前置工作：在 `imgo2_deploy/robot_description/imgo2_mjcf/` 放入有效的 `scene.xml` 及其引用模型，完成第 5 节的策略参数对齐。
-
 ```bash
 cd imgo2_deploy
-bash build.sh --mujoco
+
+# 推理运行时与 MuJoCo 依赖；若本机已有安装，可把 library/ 软链到它（见下）
+bash scripts/download_inference_runtime.sh
+bash scripts/download_mujoco.sh
+
+# 构建（等价于参考项目的 ./build.sh -mj）
+bash build.sh -mj
+
+# 运行；参数为 <robot_name> <scene_name>，场景取 robot_description/<robot>_mjcf/<scene>.xml
 ./cmake_build/bin/rl_sim_mujoco imgo2 scene
 ```
 
-构建脚本会调用推理运行时和 MuJoCo 的下载/检查脚本，因此构建依赖网络和本地编译工具链。当前缺少场景文件，以上是待补齐前提后的操作流程，不是已验证的运行记录。
+复用既有依赖（本机做法，零拷贝，仓库内不留文件）：
+
+```bash
+cd imgo2_deploy
+mkdir -p library/inference_runtime
+ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/inference_runtime/libtorch    library/inference_runtime/libtorch
+ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/inference_runtime/onnxruntime library/inference_runtime/onnxruntime
+ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/mujoco                      library/mujoco
+```
+
+窗口内的按键：`0` 起身、`1` himloco、`2` **AMP**、`9` 下蹲、`P` 回 Passive、`W/S/A/D/Q/E`
+步进速度指令、`Space` 清零指令、`R` 重置仿真、`Enter` 暂停/继续。
+
+构建依赖网络与本地编译工具链。2026-09-17 已在本机通过 `build.sh -mj`；GUI 入口需要可用的
+OpenGL/显示，本机无可用 NVIDIA 驱动（`nvidia-smi` 失败）故未运行，见
+[sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 4 节。
 
 ### 6.2 ROS / Gazebo
 
@@ -255,12 +295,15 @@ bash build.sh --cmake
 | AMP-02 | P0 | 历史报错，未复现 | 历史草稿记录 `RuntimeError: normal expects all elements of std >= 0.0`，调用栈为 `amp_on_policy_runner.py:136` → `amp_ppo.py:120` → `actor_critic.py:129` 的 `distribution.sample()` | 记录复现命令、数据和首个异常值；修复后训练验证；不能仅凭该报错断定根因 |
 | AMP-03 | P0 | 代码已修正，待 Torch 回归 | 原均值方差更新使用归一化值，梯度惩罚使用未归一化值；已与 `amp_go2-main` 的处理方式对齐 | CPU Torch 更新回归通过，并检查新训练中的判别器与归一化统计 |
 | AMP-04 | P0 | 已加入待验证配置 | 原配置删除高度项和非法接触终止；现在保留 0.30 m 高度项、基座触地终止，并补偿任务奖励的时间步长缩放，任务混合系数改为 0.3 | 新训练高度稳定、贴地比例降低、速度跟踪可接受；具体权重仍需实验 |
-| DEPLOY-01 | P0 | 待对齐 | Go2 占位策略与 Imgo2 训练配置存在默认姿态、PD、限幅、指令缩放等差异 | 替换为来源明确的 Imgo2 策略，完成训练端与部署端同输入输出比较 |
-| DEPLOY-02 | P0 | 缺场景 | `imgo2_deploy/robot_description/imgo2_mjcf/` 仅有 `.gitkeep`，且 `rl_sim_mujoco.cpp` 读的正是 `<robot>_mjcf/<scene>.xml` | **线索**：`imgo2_description/mjcf/` 下已有 `imgo2.xml` 与 `scene.xml`（15.9 KB／0.8 KB），可评估能否直接复用或需按 deploy 网格路径改写；生成并成功加载场景，保存 sim2sim 测试结果 |
+| AMP-05 | P1 | 待重新训练 | actor 应移除 `base_lin_vel`，但现有 `model_9000.pt` 第一层为 `[512,48]`；2026-09-17 已按用户决定在配置中保留 `lin_vel` 项并以 48 维跑通管线 | 新建 45 维训练，取得对应 checkpoint 后同步修改回放、导出、部署观测并验证；不得直接截掉旧网络的 3 个输入。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) |
+| AMP-06 | P0 | 已修启动异常，速度跟踪仍未成立 | ① **"一启动就飞"已修**：`PhysicsThread` 不套 keyframe，用的是模型默认 qpos（关节全 0）；原场景 `base pos="0 0 0.35"` 在直腿时足端 z=−0.0758（穿地），改为参考项目的 `0 0 0.5`（足端 +0.0743）后不再弹飞。② 又把参考项目的求解器/接触块抄进场景（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"` 与分几何 friction），GUI 等价启动下机器人从"躺地 0.075 m"变为**能站起**（AMP 后最高 0.2907、结束 0.2621；参考项目场景对照 0.3009／0.2927） | ① 速度指令仍未跟踪：我们 `dx=−0.23 m`、参考 `+0.10 m`（`vx=+0.5`），需继续核对碰撞体清单、base 惯量（参考 MJCF 仍是旧值 6.53394）、`equality`、传感器集合；② `lin_vel` 仍恒为 0；③ GUI 未运行。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 6 节 |
+| MODEL-02 | P1 | 待决定，未执行 | 用户提议把模型统一到 `imgo2_description`：RL 用朴素 URDF，deploy 的 Gazebo 链路才需要 IMU/transmission/插件，MJCF 只服务 MuJoCo，因此把 Gazebo 内容从 description 独立、在使用时组装。已核实：`imgo2_description/urdf/imgo2_description.urdf` 现在**已混入** `<transmission>`×12 与 `<gazebo reference>`×17，插件与 IMU 只在 `xacro/common/{gazebo,imu}.xacro`；`imgo2_description/urdf/imgo2.urdf` 已是纯 URDF；部署份两者都没有（DEPLOY-05 成因）；三套网格实为同一套改名（10/10 字节相同） | 先定 5 个决策点（统一命名 FL 还是 LF、Gazebo 块归属、生成物是否入库、是否删冗余副本、Gazebo 插件缺失如何补），再分 5 阶段执行；每阶段用 `check_model_sync.py`（五项 + FK 复现录制数据）与 `check_amp_joint_order.py` 守位。方案与影响面见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 6.6 节 |
+| DEPLOY-01 | P0 | 待对齐 | Go2 占位策略与 Imgo2 训练配置存在默认姿态、PD、限幅、指令缩放等差异（指 himloco 占位；AMP 已于 2026-09-17 对齐，见 §5.3） | 替换为来源明确的 Imgo2 策略，完成训练端与部署端同输入输出比较 |
+| DEPLOY-02 | P0 | 场景已对齐并验证站起，待 GUI 验证 | `robot_description/imgo2_mjcf/scene.xml`：关节轴/限位与训练侧逐项一致、MuJoCo C API 可加载、`build.sh -mj` 通过；2026-09-17 又按参考项目补齐初始高度（`base pos 0 0 0.5`）与求解器/接触块（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"`+friction），GUI 等价启动不再弹飞且能站起 | 在有可用显示的机器上跑 `rl_sim_mujoco imgo2 scene` 并保存窗口记录；生成脚本已按用户要求删除，场景若要再生需重建；参考项目那份现成 MJCF 与本仓库网格命名不匹配（10 个引用缺 6 个），不能直接复用 |
 | DEPLOY-03 | P0 | 缺依赖，待适配 | SDK2 目录为空，真机目标被跳过 | 依赖到位、目标生成、通信接口验证通过 |
-| DEPLOY-04 | P0 | 构建被空目录阻断 | `library/thirdparty/joystick/` 目录存在但**为空且未跟踪**，而 `CMakeLists.txt` 在 `USE_MUJOCO` 下要求 `library/thirdparty/joystick/joystick.cc` 并 include 该目录，`rl_sim_mujoco.hpp` 还 `#include "joystick.hh"`；没有任何脚本会下载它 | 补齐 joystick 源码或把它改为可选，使 `build.sh --mujoco` 能配置通过 |
+| DEPLOY-04 | P1 | 已解决 | 原 `library/thirdparty/joystick/` 为空且未跟踪，`CMakeLists.txt` 在 `USE_MUJOCO` 下要求 `joystick.cc`，`rl_sim_mujoco.hpp` 还 `#include "joystick.hh"`；原无脚本会下载它。2026-09-17 已补入 `joystick.cc`/`joystick.hh`（与参考项目同源） | 已通过：2026-09-17 `bash build.sh -mj` 配置与编译均成功 |
 | DEPLOY-05 | P0 | 链路不完整 | 部署份 URDF 没有 `<transmission>`，也没有 `gazebo_ros_control`/`gz_ros2_control` 的 `<gazebo><plugin>`，两个 world 里也没有插件；因此 `rl_sim.cpp` 启动的 controller spawner 没有 controller_manager/EffortJointInterface 可加载，`robot->getHandle()` 无法工作。可用的 transmission 与插件只在 `imgo2_description`（其插件库不在本仓库） | 让部署链路自带 transmission 与控制器插件，或在 Gazebo 中实际跑通并记录 |
-| DEPLOY-06 | P1 | 映射语义冲突 | `rl_sim_mujoco.cpp` 用硬件侧的 `joint_mapping` 直接索引 MJCF，但现成的 `imgo2_description/mjcf/imgo2.xml` 的关节/执行器顺序已是策略顺序 FL,FR,RL,RR，应当用恒等映射；一套 `joint_mapping` 无法同时服务两种索引空间 | 为 MuJoCo 路径单独定义映射（或在 MJCF 侧对齐顺序）并在 sim2sim 中验证 |
+| DEPLOY-06 | P1 | AMP 路径已解决，himloco 路径仍在 | `rl_sim_mujoco.cpp` 用 `joint_mapping` 直接索引 MJCF，因此配置的映射必须与场景顺序一致。2026-09-17 采用自建场景（关节声明顺序 = 策略顺序 `FL,FR,RL,RR`）+ `base.yaml`/`amp/config.yaml` 恒等映射，AMP 路径自洽 | AMP 已在 16 s 回放中确认基座高度稳定、无 NaN；`himloco/config.yaml` 仍带硬件置换映射 `[3,4,5,0,1,2,9,10,11,6,7,8]`，在 MuJoCo 上会索引错腿，需单独处理；`imgo2_description/mjcf/` 那份现成 MJCF 未再复用 |
 | DEPLOY-07 | P0 | 已修，待编译验证 | ROS2 两个控制器把 `std::clamp(…)` 当语句调用、丢弃返回值，限位实际失效；单关节版还把参数名写成 `"robot_description_"`，URDF 从未解析成功。已改为赋值形式并加空指针/越界保护、补 `<algorithm>`、修正参数名 | 在装有 ROS 2 的 Linux 上编译并跑通，确认限位生效且不再有空指针风险 |
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
 | DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
@@ -333,6 +376,8 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-17 | 修「一启动就飞」；按参考项目对齐 MuJoCo 场景；完成模型副本对照 | **根因**：`mujoco_utils.hpp` 的 `PhysicsThread` 只做 `LoadModel → mj_makeData → mj_forward`，**不套 keyframe**，用的是模型默认 qpos（关节全 0 直腿）；我们原场景 `base pos="0 0 0.35"` 直腿时足端 z=−0.0758（穿地）→ 弹飞（实测 `z_max=1.3623`）。**撤销一次错误改法**：给关节加 `<joint ref>` 只改 `qpos0`，而 MuJoCo 关节运动学按 `qpos−ref` 计，等于把姿态抵消回直腿，仍穿地。**最终按参考项目改场景参数**：`base pos→0 0 0.5`（足端 +0.0743，与参考数值相同）、`<option cone="elliptic" impratio="100">`、关节 `damping="1" armature="0.1"`、碰撞 `condim="3" solref="0.005 1" friction="1 0.01 0.01"`、足端 `friction="0.4 0.02 0.01"`；`timestep` 保持 0.005（参考未设=2 ms，未跟抄）。**验证**（GUI 等价启动、不套 keyframe、16 s）：`z_max=0.5000` 不飞，AMP 后最高 0.2907、结束 0.2621，**能站起**；改前为躺地 0.0754。**模型对照**：参考 `imgo2_description.urdf` 与训练 URDF 的 17 个公共 link 质量/质心/惯量/碰撞体数全同、同名关节 axis/limit/父子 0 处不同，仅多 `imu_link`/`imu_joint` 且用 `FL/FR/RL/RR` 命名；参考与本仓库的 `mjcf/imgo2.xml`、`scene.xml` 逐字节相同，但该 MJCF 在本仓库**缺 6/10 网格**无法加载，且 base 惯量仍是旧值 6.53394。**未运行**：GUI、Isaac Lab 回放、ROS、真机；速度指令仍未跟踪（`dx=−0.23` 对参考 `+0.10`） |
+| 2026-09-17 | AMP sim2sim 对齐：把 6 个部署运行逻辑文件还原到 `271edd2`；FSM 只增量式新增一个 `RLFSMStateAMPLocomotion` 类 + 按键 `2` + 工厂注册；按训练侧/参考项目改 `base.yaml`、重写 `amp/config.yaml`；删除 deploy 侧导出与校验脚手架；补 `.gitignore` 两条 | **已构建**：`bash build.sh -mj` 退出码 0（复用参考项目 `library/` 的 libtorch 2.3.0 + ONNX Runtime 1.22.0 + MuJoCo 3.2.7）。**已核对**：`policy.pt` 与 `model_9000.pt` 的 actor 在 128 组随机 48 维输入上最大误差 0；`scene.xml` 12 个关节的 axis/range 与训练 URDF 逐项相同；场景传感器偏移（0-11 关节位置、12-23 关节速度、24-35 关节力矩、36-39 四元数、40-42 陀螺）正好落在 `GetState` 读取处；打印观测确认 `commands` 正确、`lin_vel` 恒 0。**仿真**：仓库外临时 harness（复用已编译的 `librl_sdk.a` 与真实 FSM/策略，仅重写 `GetState/SetCommand/RunModelStep`）跑 16 s，`0`→起身→`2` 成功进入 AMP，无 NaN，基座高度 ~0.2455 m。**未通过**：策略只给出静态下蹲、`vx_mean≈0.0000` 不跟踪速度指令；用同一 harness 跑参考项目 45 维 `policy.pt` 结果四位小数完全相同，故非本轮映射问题，登记为 AMP-06。**未运行**：GUI 入口（本机无可用 NVIDIA 驱动，`glfw` 建窗失败）、Isaac Lab 回放、ROS/Gazebo、真机 |
 | 2026-09-15 | 首次建立项目总览、代码导航、训练回放与部署流程、接口参数、问题表和维护模板；增加根目录维护约定 | 核对任务注册与关键脚本；解析 21 份动作数据，共 5097 帧、61 列、0.02 秒间隔；逐文件确认对应数据副本哈希一致；三份 URDF 哈希不同；确认 MuJoCo 场景与 SDK 缺失。未运行训练/回放/编译/真机。当前 shell 的 `python` 命令不可用，数据检查由 PowerShell 完成 |
 | 2026-09-15 | 根据用户反馈确认 PPO 已训练及 sim 验证，记录 AMP 贴地爬行；对照两个本地 AMP 项目，修正数据映射和归一化处理，加入高度约束、基座触地终止、任务奖励量级调整及日志 | 21 份参考动作与训练 URDF 运动学对照通过；4 项离线测试通过，1 项 Torch 更新测试因当前解释器缺少 torch/numpy 跳过；6 个变更 Python 文件语法检查通过。找到可用 Python 3.14 解释器，但未进行新训练或仿真验证 |
 | 2026-09-15 | 根据用户补充追踪实际采集模型和脚本，区分 URDF 声明顺序与按名称重排后的数据顺序，收窄映射结论的适用范围 | 仅阅读源码与模型结构；确认脚本默认 LF/RF/LH/RH，采集 URDF 声明 LF/LH/RF/RH；实际采集参数尚缺。本轮未改映射、未运行测试或仿真 |

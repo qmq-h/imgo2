@@ -42,6 +42,10 @@ logs/
 # 体积不到 1 MB，需要保留。
 *.pt
 !imgo2_deploy/policy/imgo2/himloco/himloco.pt
+# imgo2_deploy/policy/imgo2/amp/policy.pt 是 amp 部署配置引用的导出策略
+# （774 KB）；deploy 侧已不再保留导出脚本（改用 imgo2_rl 的 play/导出），
+# 所以必须入库，否则部署配置在任何新机器上都加载不到网络。
+!imgo2_deploy/policy/imgo2/amp/policy.pt
 *.pth
 *.ckpt
 *.onnx
@@ -59,6 +63,10 @@ MUJOCO_LOG.TXT
 # 仅对部署子树成立的构建/下载产物
 /imgo2_deploy/log/
 /imgo2_deploy/.catkin_tools/
+# 部署根下由 scripts/download_inference_runtime.sh / download_mujoco.sh 下载的
+# 推理与仿真依赖；也可以是软链到既有安装，因此整目录忽略（含软链本身）。
+# 注意只匹配部署根，不影响 imgo2_deploy/src/imgo2_deploy/library/ 源码。
+/imgo2_deploy/library/
 # 部署包的 package.xml 由构建生成（源文件是 package.ros1.xml / package.ros2.xml）
 /imgo2_deploy/**/package.xml
 /imgo2_deploy/rust_build/

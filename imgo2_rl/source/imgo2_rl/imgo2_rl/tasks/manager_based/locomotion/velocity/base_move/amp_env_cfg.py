@@ -98,6 +98,9 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner_base = None
 
         # ------------------------------Observations------------------------------
+        # Keep base_lin_vel for model_9000.pt (48 actor observations).
+        # TODO AMP-05: remove it with a newly trained 45-input checkpoint and
+        # update play/export/deployment together (README.md issue AMP-05).
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05

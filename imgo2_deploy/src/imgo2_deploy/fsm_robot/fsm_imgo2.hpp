@@ -106,6 +106,10 @@ public:
             {
                 return "RLFSMStateRLLocomotion";
             }
+            else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+            {
+                return "RLFSMStateAMPLocomotion";
+            }
             else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
             {
                 return "RLFSMStateGetDown";
@@ -211,6 +215,79 @@ public:
         {
             return "RLFSMStateRLLocomotion";
         }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+        {
+            return "RLFSMStateAMPLocomotion";
+        }
+        return state_name_;
+    }
+};
+
+// AMP policy, added the same way as the other policies: one key command plus one
+// complete state class. Key 2 (gamepad RB+DPadRight) loads policy/imgo2/amp.
+class RLFSMStateAMPLocomotion : public RLFSMState
+{
+public:
+    RLFSMStateAMPLocomotion(RL *rl) : RLFSMState(*rl, "RLFSMStateAMPLocomotion") {}
+
+    float percent_transition = 0.0f;
+
+    void Enter() override
+    {
+        percent_transition = 0.0f;
+        rl.episode_length_buf = 0;
+
+        // read params from yaml
+        rl.config_name = "amp";
+        std::string robot_config_path = rl.robot_name + "/" + rl.config_name;
+        try
+        {
+            rl.InitRL(robot_config_path);
+            rl.now_state = *fsm_state;
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << LOGGER::ERROR << "InitRL() failed: " << e.what() << std::endl;
+            rl.rl_init_done = false;
+            rl.fsm.RequestStateChange("RLFSMStatePassive");
+        }
+    }
+
+    void Run() override
+    {
+        if (!rl.rl_init_done) rl.rl_init_done = true;
+
+        std::cout << "\r\033[K" << std::flush << LOGGER::INFO << "RL Controller [" << rl.config_name << "] x:" << rl.control.x << " y:" << rl.control.y << " yaw:" << rl.control.yaw << std::flush;
+        RLControl();
+    }
+
+    void Exit() override
+    {
+        rl.rl_init_done = false;
+    }
+
+    std::string CheckChange() override
+    {
+        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        {
+            return "RLFSMStatePassive";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+        {
+            return "RLFSMStateGetDown";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num0 || rl.control.current_gamepad == Input::Gamepad::A)
+        {
+            return "RLFSMStateGetUp";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+        {
+            return "RLFSMStateRLLocomotion";
+        }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+        {
+            return "RLFSMStateAMPLocomotion";
+        }
         return state_name_;
     }
 };
@@ -232,6 +309,8 @@ public:
             return std::make_shared<imgo2_fsm::RLFSMStateGetDown>(rl);
         else if (state_name == "RLFSMStateRLLocomotion")
             return std::make_shared<imgo2_fsm::RLFSMStateRLLocomotion>(rl);
+        else if (state_name == "RLFSMStateAMPLocomotion")
+            return std::make_shared<imgo2_fsm::RLFSMStateAMPLocomotion>(rl);
         return nullptr;
     }
     std::string GetType() const override { return "imgo2"; }
@@ -241,7 +320,8 @@ public:
             "RLFSMStatePassive",
             "RLFSMStateGetUp",
             "RLFSMStateGetDown",
-            "RLFSMStateRLLocomotion"
+            "RLFSMStateRLLocomotion",
+            "RLFSMStateAMPLocomotion"
         };
     }
     std::string GetInitialState() const override { return initial_state_; }
