@@ -100,6 +100,9 @@ class OnPolicyRunner:
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
+            # 必须每轮同步，否则 save() 写进 checkpoint 的 'iter' 恒为该次运行起点（通常 0），
+            # resume 时会从错误位置继续（AMP/PPO 曾缺这一行，HIM runner 有）。
+            self.current_learning_iteration = it
             start = time.time()
             # Rollout
             with torch.inference_mode():

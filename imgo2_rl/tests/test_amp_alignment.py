@@ -51,6 +51,24 @@ class RewardContractTests(unittest.TestCase):
     CONFIG = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py"
     AMP_EVENTS = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/amp_events.py"
 
+    def test_runners_keep_checkpoint_iter_in_sync(self):
+        """checkpoint 的 'iter' 必须来自「当前轮」，否则 resume 会从错误位置继续。
+
+        AMP 与 PPO 的 learn() 曾在循环内从不更新 self.current_learning_iteration，
+        于是它一直是该次运行的起点（通常 0）：save() 把它写进 checkpoint，
+        load() 又用它作为续训起点 —— 结果是续训从 0 重跑，且第一次保存覆盖 model_0.pt。
+        HIM runner 一直是对的（循环内 self.current_learning_iteration = it）。
+        2026-09-17 实测 2026-09-17_17-19-04 的 20 个 checkpoint 全部 iter=0，即此缺陷。
+        """
+        runners = ROOT / "scripts/rl_lab/rl_lab/runners"
+        for name in ("amp_on_policy_runner.py", "ppo_on_policy_runner.py", "him_on_policy_runner.py"):
+            with self.subTest(runner=name):
+                src = (runners / name).read_text(encoding="utf-8")
+                self.assertIn("self.current_learning_iteration = it", src,
+                              f"{name} 的 learn() 循环内未同步迭代计数，checkpoint 的 iter 会失真")
+                # save() 必须写这个字段，否则 load() 无从恢复
+                self.assertIn("'iter': self.current_learning_iteration", src)
+
     def test_amp_reference_reset_term_is_imported_and_defined(self):
         cfg_src = self.CONFIG.read_text(encoding="utf-8-sig")
         events_src = self.AMP_EVENTS.read_text(encoding="utf-8-sig")
