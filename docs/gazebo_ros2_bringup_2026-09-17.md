@@ -374,12 +374,15 @@ python imgo2_rl/scripts/rl_lab/amp/play.py \
 # 1) 必须在 imgo2_rl 目录下执行：play.py 的 log_root_path = "logs/amp_rsl_rl/<experiment_name>" 是相对路径
 cd <工作区根>/imgo2_rl
 
-# 1.5) 确认 imgo2_rl 扩展在【运行时这个解释器】里可导入（2026-09-18 实遇的报错就在这一步）：
-#      ModuleNotFoundError: No module named 'imgo2_rl'  ← play.py 第 56 行 import imgo2_rl.tasks
-<isaaclab.sh> -p -c "import imgo2_rl; print(imgo2_rl.__file__)"
-#      若报错就先安装，必须与运行时同一个解释器（Isaac Sim 自带 python ≠ 别的 conda python）：
+# 1.5) 确认两个包在【运行时这个解释器】里都可导入（2026-09-18 实遇两次报错）：
+#      play.py:56  ModuleNotFoundError: No module named 'imgo2_rl'
+#      play.py:58 → rl_lab/datasets/motion_loader.py:8  No module named 'pybullet_utils'
+#      （pybullet 是 scripts/rl_lab/setup.py 的 install_requires；只用 PYTHONPATH 绕过打包就不会装它）
+<isaaclab.sh> -p -c "import imgo2_rl, rl_lab, pybullet_utils; print('ok')"
+#      缺哪个就装哪个，必须与运行时同一个解释器（Isaac Sim 自带 python ≠ 别的 conda python）：
 <isaaclab.sh> -p -m pip install -e source/imgo2_rl
-#      应急（不装、只给这一次）：export PYTHONPATH=<工作区根>/imgo2_rl/source/imgo2_rl
+<isaaclab.sh> -p -m pip install -e scripts/rl_lab      # 会连带装 pybullet
+#      最小补充也可以只装依赖：<isaaclab.sh> -p -m pip install pybullet
 #      注意这是 Isaac Lab 终端，与 ROS 2 终端「先清 PYTHONPATH」相反，别照搬第 6 节
 
 # 2) 找 45 维那次的 run 目录

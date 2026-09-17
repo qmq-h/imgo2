@@ -139,15 +139,23 @@ TorchScript**（用户 2026-09-18 决定）。`play.py` 自己调用
 `export_policy_as_jit(actor_critic, normalizer=None, ...)`，产物落在 checkpoint 同级的 `exported/`
 （`policy.pt` + `policy.onnx`）；两个前提：
 
-- **`imgo2_rl` 扩展必须在「你实际用来运行的那个解释器」里可编辑安装**，否则 `play.py` 会停在
-  `import imgo2_rl.tasks` 报 `ModuleNotFoundError: No module named 'imgo2_rl'`（2026-09-18 实遇）。
-  安装用第 4.1 节那条，并且要和运行时同一个 python：用 `isaaclab.sh -p` 跑就用
-  `isaaclab.sh -p -m pip install -e source/imgo2_rl` —— Isaac Sim 自带的 python 与另一个 conda
-  环境的 python 不是同一个解释器，在 A 里装、用 B 跑就会报这个错。先自检：
-  `python -c "import imgo2_rl, sys; print(imgo2_rl.__file__)"`（用的必须是运行时那个 `python`）。
-  应急也可以只给这一次加路径：`PYTHONPATH=<工作区根>/imgo2_rl/source/imgo2_rl`（`rl_lab` 不用装，
-  `play.py` 自己会把 `scripts/rl_lab` 插进 `sys.path`）。注意这里是 **Isaac Lab 终端**，
+- **`imgo2_rl` 与 `rl_lab` 都必须在「你实际用来运行的那个解释器」里可编辑安装**。两个都装是正解
+  （第 4.1 节那两条）：只装/只加路径的 `imgo2_rl` 会先报
+  `ModuleNotFoundError: No module named 'imgo2_rl'`，随后 AMP 的 `play.py` 还会在
+  `rl_lab.runners → rl_lab.datasets.motion_loader → from pybullet_utils import transformations`
+  处报 `No module named 'pybullet_utils'`（2026-09-18 两次实遇）——因为 **`pybullet` 是
+  `scripts/rl_lab/setup.py` 里声明的 `install_requires`**，走 `PYTHONPATH` 绕过打包就不会装它。
+  运行时用 `isaaclab.sh -p` 就用同一个 `isaaclab.sh -p -m pip install -e`：
+  `isaaclab.sh -p -m pip install -e source/imgo2_rl` 与 `-e scripts/rl_lab`
+  （Isaac Sim 自带的 python 与别的 conda python 不是同一个解释器，在 A 里装、用 B 跑就会报错）。
+  自检一条命令就够了：
+  `isaaclab.sh -p -c "import imgo2_rl, rl_lab, pybullet_utils; print('ok')"`。
+  应急（只想跑这一次）可以 `PYTHONPATH=<工作区根>/imgo2_rl/source/imgo2_rl` 加上
+  `pip install pybullet`，但这只补 `imgo2_rl`，`pybullet` 仍要装。注意这里是 **Isaac Lab 终端**，
   与第 6.2 节 ROS 2 终端"先清 `PYTHONPATH`"的要求相反，不要照搬。
+  AMP 这条链的额外第三方依赖**只有 `pybullet`**：`tensordict`（`mdp/symmetry/anymal.py`）不在我们的
+  import 链上，`onnxruntime`/`pandas`（himloco 的 compare 工具）、`yaml`（`export_deploy_cfg`）、
+  `packaging`/`rsl_rl`（`ppo/play.py`）都只属其它入口。
 - **配置的观测维数与该 checkpoint 一致**，否则 `runner.load()` 会在 `load_state_dict` 处尺寸不匹配报错。
 
 将下面的占位路径替换为实际 checkpoint 的绝对路径：
