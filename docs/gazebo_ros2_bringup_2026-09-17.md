@@ -265,7 +265,7 @@ z 0.073 m + roll 180°（四脚朝天）。
 
 | 项目 | 值 |
 |---|---|
-| 训练 checkpoint | `imgo2_rl/logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04/model_5000.pt`（原始副本也曾在 `policy/imgo2/amp/`），sha256 `bb399eb2519fc3f1…`；文件名是 5000 轮，文件内 `iter: 0`、无 `infos`，轮次只能靠文件名 |
+| 训练 checkpoint | `imgo2_rl/logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04/model_5000.pt`（原始副本也曾在 `policy/imgo2/amp/`），sha256 `bb399eb2519fc3f1…`；文件名是 5000 轮，文件内 `iter: 0`（原因已查明并修复：**AMP-08** / `b3db915`——AMP/PPO runner 的 `learn()` 循环内没有同步 `current_learning_iteration`，导致循环内保存的 checkpoint `iter` 恒为起点值，实测该 run 的 20 个 checkpoint 全为 0；**该修复之前的 checkpoint 轮次只能靠文件名**） |
 | actor | **45 维输入** → 512 → 256 → 128 → 12，ELU（第一层 `[512,45]`） |
 | critic | 仍 48 维（`[512,48]`，保留 `base_lin_vel`，只用于训练） |
 | 部署接口 | `amp/config.yaml`：`num_observations: 45`，`observations: [ang_vel, gravity_vec, commands, dof_pos, dof_vel, actions]`（即原 48 维去掉开头的 `lin_vel`，与参考 `amp_go2` 的 45 维 actor 组成一致） |
@@ -512,6 +512,8 @@ AMP（键 3）的速度点，并对键 1 参考 `base_move/policy_flat.pt` 做�
 周期强度 0.96、相位 −184.6°，与 PPO-01 记录的 0.428 m/s / 0.95 / 175° 一致。
 ⇒ 两处教训：**注释头不要连 key 行一起复制**；换策略后必须看 `Successfully loaded Torch model:`
 这一行，不能只看 FSM 状态名。
+
+**与参考步态基线的对照（`docs/gait_reference_baseline.json`，训练侧 2026-09-17 新增）**：该文件从 21 份录制动作直接算出「尺子」——19 份行走动作的步幅周期中位数 **0.600 s（1.67 Hz）**，且 `forward_0.3/0.6/0.9/1.2` **周期恒为 0.60 s**、只靠幅度变化（thigh 峰峰 0.388→1.161 rad、shank 0.626→0.990、足端抬升 0.093→0.121 m）。对照本节的实测：AMP 在 1.0/1.2 m/s 的周期是 **0.294 / 0.213 s（3.4 / 4.8 Hz）**，即比参考快 **2–2.8 倍**；参考 PPO 在 1.0 是 0.369 s（2.7 Hz）且周期强度 0.97。⇒ 数字上支持"AMP 是靠高频倒腿凑平均速度"这一判断，训练侧的目标应是把步幅周期往 **~1.7 Hz** 靠（或把幅度做上去），而不是继续加密步频。足端层面的占空比/落地相位用训练侧的 `eval_gait.py` 回放得到，与本表的关节侧指标互补。
 
 **手柄轴映射（`rl_sim.cpp:504-506`）**：`x = axes[1]`（Ly）、`y = axes[0]`（Lx）、`yaw = axes[3]`（Rx）。
 评测脚本目前只发 `axes[1]`（vx）；要做侧移/转向对比，改这一处即可。
