@@ -9,6 +9,10 @@
 脚本会自己发布 /joy（A=起身 → RB+方向键选策略，axes[1]=vx；1=DPadUp / 2=DPadRight / 3=DPadDown），
 随后从 /odom（p3d 真值）与 /joint_states 统计四项指标；只依赖 rclpy + 标准库 math。
 
+**每条速度指令请用一条全新的 Gazebo + rl_sim 栈**。在同一条已进入策略的栈上连跑多个 vx 时，
+开头那 6s 的 A 会重新触发 GetUp，而测量窗口仍从本次按键算起，均值会被起身段稀释
+（实测 0.5 命令下 0.380 m/s 被压到 0.039 m/s）。确实要复用同一条栈时加 --no-getup。
+
 指标定义：
   位姿      z_mean/z_min/z_max（站立或行走高度）、roll/pitch 范围、yaw 漂移率、dx/dt
   速度跟随  mean(dx/dt) 对命令 vx 的误差
@@ -35,13 +39,14 @@ def pitch_of(q):
     return math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
 
 class Eval(Node):
-    def __init__(self, vx, key=1):
+    def __init__(self, vx, key=1, getup=True):
         super().__init__("eval_gazebo_policy")
         q = QoSProfile(depth=2000, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.vx = vx
         # 策略按键与手柄组合：1 = PPO (RB+DPadUp)，2 = himloco (RB+DPadRight)，3 = amp (RB+DPadDown)
         # 见 imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp
         self.key = key
+        self.getup = getup
         self.odom = []      # (t, x, z, yaw, roll, pitch)
         self.js = []        # (t, {name: (q, dq)})
         self.create_subscription(Odometry, "/odom", self.on_odom, q)
@@ -66,11 +71,11 @@ class Eval(Node):
     def tick(self):
         """按时间推进按键序列：0~6s 起身(A)，6s 起按 --key 进策略并持续给 vx。"""
         el = time.time() - self.t0
-        if el < 6.0:
+        if self.getup and el < 6.0:
             self.state = "getup"
             self.send_joy([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0.0] * 8)
         else:
-            if self.state == "getup":
+            if self.state in ("getup", "passive"):
                 self.state = "policy"
                 self.entry_time = time.time()
             # RB=buttons[5]；DPadUp=axes[7]>0（键1）/ DPadRight=axes[6]>0（键2）/ DPadDown=axes[7]<0（键3）
@@ -129,13 +134,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vx", type=float, default=0.0)
     ap.add_argument("--key", type=int, default=1, choices=[1, 2, 3], help="1=PPO 2=himloco 3=amp")
+    ap.add_argument("--no-getup", dest="getup", action="store_false",
+                    help="跳过前 6s 的 A 起身。仅在已经处于策略状态时使用："
+                         "若在一条已经进入 AMP 的栈里再次按 A，会重新触发 GetUp，"
+                         "而测量窗口仍从本次按键算起 ⇒ 均值被起身段稀释（实测 0.5 命令下"
+                         "0.380 m/s 被压到 0.039 m/s）。默认每条命令用一条全新的栈。")
     ap.add_argument("--duration", type=float, default=22.0, help="含 6s 起身的总时长")
     ap.add_argument("--skip", type=float, default=3.0, help="进入策略后跳过的稳定时间")
     ap.add_argument("--json", type=str, default=None)
     a = ap.parse_args()
 
     rclpy.init()
-    n = Eval(a.vx, a.key)
+    n = Eval(a.vx, a.key, a.getup)
     t_end = time.time() + a.duration
     while time.time() < t_end:
         n.tick()
