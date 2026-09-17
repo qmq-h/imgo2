@@ -14,7 +14,6 @@
 #   （79 rad/s²、roll 5.0°、周期强度 0.74），可作备选。
 #   注意该 run 用 0/0.87/-1.82 默认姿态与 25/0.5 增益（与其它 PPO 候选不同）。
 imgo2/ppo:
-imgo2/ppo:
   model_name: "policy.pt"
   num_observations: 45
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
