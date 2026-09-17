@@ -137,8 +137,18 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --headless
 **导出部署用的 `policy.pt` 一律走对应算法目录下的 `play.py`（headless），不要手写导出脚本或手工拼
 TorchScript**（用户 2026-09-18 决定）。`play.py` 自己调用
 `export_policy_as_jit(actor_critic, normalizer=None, ...)`，产物落在 checkpoint 同级的 `exported/`
-（`policy.pt` + `policy.onnx`）；前提是**配置的观测维数与该 checkpoint 一致**，否则 `runner.load()`
-会在 `load_state_dict` 处尺寸不匹配报错。
+（`policy.pt` + `policy.onnx`）；两个前提：
+
+- **`imgo2_rl` 扩展必须在「你实际用来运行的那个解释器」里可编辑安装**，否则 `play.py` 会停在
+  `import imgo2_rl.tasks` 报 `ModuleNotFoundError: No module named 'imgo2_rl'`（2026-09-18 实遇）。
+  安装用第 4.1 节那条，并且要和运行时同一个 python：用 `isaaclab.sh -p` 跑就用
+  `isaaclab.sh -p -m pip install -e source/imgo2_rl` —— Isaac Sim 自带的 python 与另一个 conda
+  环境的 python 不是同一个解释器，在 A 里装、用 B 跑就会报这个错。先自检：
+  `python -c "import imgo2_rl, sys; print(imgo2_rl.__file__)"`（用的必须是运行时那个 `python`）。
+  应急也可以只给这一次加路径：`PYTHONPATH=<工作区根>/imgo2_rl/source/imgo2_rl`（`rl_lab` 不用装，
+  `play.py` 自己会把 `scripts/rl_lab` 插进 `sys.path`）。注意这里是 **Isaac Lab 终端**，
+  与第 6.2 节 ROS 2 终端"先清 `PYTHONPATH`"的要求相反，不要照搬。
+- **配置的观测维数与该 checkpoint 一致**，否则 `runner.load()` 会在 `load_state_dict` 处尺寸不匹配报错。
 
 将下面的占位路径替换为实际 checkpoint 的绝对路径：
 
