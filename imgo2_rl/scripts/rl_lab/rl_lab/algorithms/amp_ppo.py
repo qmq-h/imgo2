@@ -58,6 +58,7 @@ class AMPPPO:
                  device='cpu',
                  amp_replay_buffer_size=100000,
                  min_std=None,
+                 clamp_noise_std=True,
                  ):
 
         self.device = device
@@ -66,6 +67,9 @@ class AMPPPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
         self.min_std = min_std
+        # 关闭后不再对 std 施加下限 clamp，完全交给 KL 自适应学习率约束策略变化
+        # （标准 PPO 的做法）。该 clamp 一向只有下限，既不能防 std 暴涨，又会干扰熵项。
+        self.clamp_noise_std = clamp_noise_std
 
         # Discriminator components
         self.discriminator = discriminator
@@ -252,7 +256,8 @@ class AMPPPO:
                 nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
-                if not self.actor_critic.fixed_std and self.min_std is not None:
+                if (self.clamp_noise_std and not self.actor_critic.fixed_std
+                        and self.min_std is not None):
                     self.actor_critic.std.data = self.actor_critic.std.data.clamp(min=self.min_std)
 
                 if self.amp_normalizer is not None:

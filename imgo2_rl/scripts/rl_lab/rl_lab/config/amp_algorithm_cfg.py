@@ -32,6 +32,9 @@ class AMPAlgorithmCfg:
     schedule: str = "fixed"
     desired_kl: float = 0.01
     amp_replay_buffer_size: int = 1000000
+    # 见 RLLabBaseRunnerCfg.clamp_noise_std。设为 False 时 min_normalized_std 不再生效，
+    # 策略变化完全由 KL 自适应学习率约束（标准 PPO 行为）。
+    clamp_noise_std: bool = True
 
 
 @configclass
