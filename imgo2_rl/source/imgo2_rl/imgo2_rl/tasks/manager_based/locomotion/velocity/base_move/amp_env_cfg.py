@@ -98,9 +98,14 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner_base = None
 
         # ------------------------------Observations------------------------------
-        # Keep base_lin_vel for model_9000.pt (48 actor observations).
-        # TODO AMP-05: remove it with a newly trained 45-input checkpoint and
-        # update play/export/deployment together (README.md issue AMP-05).
+        # AMP-05（用户 2026-09-17 决定）：actor 不再观察 base_lin_vel —— 真机上基座线速度
+        # 需要状态估计，难以可靠获得。移除后 actor 观察为 45 维：
+        #   base_ang_vel 3 + projected_gravity 3 + velocity_commands 3 + joint_pos 12
+        #   + joint_vel 12 + last_action 12 = 45
+        # 注意：critic 仍保留 base_lin_vel（它不上真机，保留有利于价值估计）。
+        # 影响：现有 model_9000.pt 的第一层是 [512, 48]，与新配置不兼容，必须重新训练；
+        # 不得直接截掉旧网络输入。配套要同步的还包括回放、导出与部署侧 amp/config.yaml。
+        self.observations.policy.base_lin_vel = None
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05
@@ -158,7 +163,16 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
     def _keep_only_amp_task_rewards(self):
-        keep_rewards = {"track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2"}
+        # AMP-06 任务项（2026-09-17 第二次调参）：
+        #   速度项从 1.0 抬到 4.0（**只抬 4 倍**，不是上一轮的 50 倍），
+        #   高度项从 -10 降到 -5（**仍强于单个速度项**，避免重演「趴低滑行」），
+        #   并补三个轻量姿态约束，使姿态不再只由一个超强高度项独自承担。
+        #   依据：a1 论文代码的真实每步系数是 1.67（不是 50——它配置里的 50 还会被
+        #   legged_robot.py:710 再乘一次 dt），go2 用 4.0/2.0 + 一组辅助项 + 任务主导 lerp。
+        keep_rewards = {
+            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2",
+            "lin_vel_z_l2", "ang_vel_xy_l2", "joint_pos_limits",
+        }
         for attr in dir(self.rewards):
             if attr.startswith("__"):
                 continue
@@ -166,14 +180,31 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
             if hasattr(reward_attr, "weight") and attr not in keep_rewards:
                 setattr(self.rewards, attr, None)
 
-        # AMP style rewards are per policy step, while RewardManager multiplies
-        # task terms by step_dt. Express these weights in per-step units too.
+        # 单位换算：AMP 风格奖励是**每步**（runner 里直接算，不进 RewardManager），
+        # 而 RewardManager 计算 `term × weight × dt`，weight 的语义是「每秒」。
+        # 因此 weight 一律写成 `每步系数 / step_dt`，由代码换算，不手写魔数。
+        #
+        # 历史（勿重复）：
+        #   Run1（1.0 / 0.3 / -10）：策略只站不走（速度误差恒 1.65 m/s，1000 轮后全平）。
+        #   Run2（50 / 17 / -1，5000 轮）：速度项生效但退化为贴地滑行（高度 0.172 m、
+        #     贴地 0.89），且噪声 std 失控到 12、价值损失 ~5000、判别器饱和。
+        #     根因之一是高度项相对速度项弱了约 3000 倍。
+        TRACK_LIN_VEL_PER_STEP = 4.0      # Run1 1.0 / Run2 50；go2 用 4.0
+        TRACK_ANG_VEL_PER_STEP = 2.0      # Run1 0.3 / Run2 17；go2 用 2.0
+        BASE_HEIGHT_PER_STEP = -5.0       # Run1 -10 / Run2 -1；比单个速度项强、比两项之和小
+        LIN_VEL_Z_PER_STEP = -1.0         # go2 的 lin_vel_z
+        ANG_VEL_XY_PER_STEP = -0.05       # go2 的 ang_vel_xy
+        JOINT_POS_LIMITS_PER_STEP = -2.0  # go2 的 dof_pos_limits
+
         step_dt = self.sim.dt * self.decimation
-        self.rewards.track_lin_vel_xy_exp.weight = 1.0 / step_dt
-        self.rewards.track_ang_vel_z_exp.weight = 0.3 / step_dt
-        self.rewards.base_height_l2.weight = -10.0 / step_dt
-        # Bundled reference motions have mean root heights around 0.30 m.
-        # This is an explicit flat-ground height constraint, not frame tracking.
+        self.rewards.track_lin_vel_xy_exp.weight = TRACK_LIN_VEL_PER_STEP / step_dt
+        self.rewards.track_ang_vel_z_exp.weight = TRACK_ANG_VEL_PER_STEP / step_dt
+        self.rewards.lin_vel_z_l2.weight = LIN_VEL_Z_PER_STEP / step_dt
+        self.rewards.ang_vel_xy_l2.weight = ANG_VEL_XY_PER_STEP / step_dt
+        self.rewards.joint_pos_limits.weight = JOINT_POS_LIMITS_PER_STEP / step_dt
+
+        # 高度约束目标 0.30 m（参考动作的平均根高），平地不读高度扫描传感器。
+        self.rewards.base_height_l2.weight = BASE_HEIGHT_PER_STEP / step_dt
         self.rewards.base_height_l2.params["target_height"] = 0.30
         self.rewards.base_height_l2.params["sensor_cfg"] = None
         # RewardsCfg declares base_height_l2 with body_names="" (velocity_env_cfg.py). Isaac Lab
