@@ -7,9 +7,12 @@ from rl_lab.config import AMPActorCriticCfg, AMPAlgorithmCfg, AMPOnPolicyRunnerC
 @configclass
 class AMPRunnerCfg(AMPOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 10000
+    # 40000 轮（用户 2026-09-17 决定）。依据：10000 轮那次到最后一轮仍在单调改善
+    # （线速度误差 1.31→0.507、触地终止 25%→1.5%、任务奖励/步 1.88→4.51），未收敛；
+    # 斜率在变小，故加长训练而不是继续调配比。约 1.4 s/轮 → 40000 轮约 15–16 小时。
+    max_iterations = 40000
     # 每 500 轮存一次（runner 在 it % save_interval == 0 时写 model_<it>.pt）：
-    # 10000 轮、间隔 100 会产生 100 个 12 MB 的 checkpoint（约 1.2 GB）；间隔 500 则 21 个。
+    # 40000 轮、间隔 500 = 81 个 12 MB 的 checkpoint（约 1 GB）；若嫌多可改 1000。
     save_interval = 500
     experiment_name = "base_move_amp"
     include_history_steps = None
