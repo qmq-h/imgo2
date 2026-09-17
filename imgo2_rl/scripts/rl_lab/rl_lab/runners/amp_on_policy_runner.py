@@ -269,6 +269,14 @@ class AMPOnPolicyRunner:
         self.writer.add_scalar(
             'AMP/fraction_root_height_below_0_20m',
             locs['amp_low_height_fraction_sum'] / count, locs['it'])
+        # 判别器对「参考动作」与「策略动作」各自的原始打分（训练目标分别是 +1 / -1）。
+        # 这两条曲线是判断判别器是否还有区分能力的关键：若 expert 也显著为负，说明
+        # 判别器把专家数据判成假（AMP-07 的「坐标系域差」嫌疑），此时风格奖励失效、
+        # 任务奖励独自驱动训练；若二者分开，则是正常判别。此前只在控制台打印，未入库。
+        if locs.get('mean_expert_pred') is not None:
+            self.writer.add_scalar('AMP/disc_expert_pred', locs['mean_expert_pred'], locs['it'])
+        if locs.get('mean_policy_pred') is not None:
+            self.writer.add_scalar('AMP/disc_policy_pred', locs['mean_policy_pred'], locs['it'])
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 
