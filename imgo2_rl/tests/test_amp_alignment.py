@@ -63,34 +63,72 @@ class RewardContractTests(unittest.TestCase):
         self.assertIn("# from .amp_events import *", (self.AMP_EVENTS.parent / "__init__.py").read_text(
             encoding="utf-8-sig"), "if mdp re-exports amp_events, this guard needs revisiting")
 
-    def test_height_survives_filter_and_per_step_scale_is_preserved(self):
-        # Execute the actual config method without importing Isaac Sim.
+    def test_amp_task_terms_match_reference_per_step_scale(self):
+        """AMP-06：任务项的每步系数必须精确，高度项必须仍是任务里最强的项。
+
+        单位语义：AMP 风格奖励是**每步**（runner 里直接算），而 Isaac Lab 的 RewardManager
+        计算 `term × weight × dt`，weight 的语义是「每秒」。因此 weight 一律写成
+        `每步系数 / step_dt`，由代码换算。
+
+        2026-09-17 第二次调参（当前值）：速度项 1.0→4.0、高度项 -10→-4，并补
+        `lin_vel_z_l2` / `ang_vel_xy_l2` / `joint_pos_limits` 三个轻量姿态约束。
+        依据：a1 论文代码的真实每步系数是 1.67（配置里的 50 还会被 legged_robot 再乘 dt），
+        go2 用 4.0/2.0 + 辅助项。历史见 README AMP-06 与 docs/amp_experiments_2026-09-17.md。
+        """
         path = self.CONFIG
         tree = ast.parse(path.read_text(encoding="utf-8-sig"))  # 27 个上游文件带 UTF-8 BOM
         cfg_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Imgo2AmpMoveEnvCfg")
         method = next(n for n in cfg_class.body if isinstance(n, ast.FunctionDef) and n.name == "_keep_only_amp_task_rewards")
         namespace = {}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), "exec"), namespace)
+
+        expected_per_step = {
+            "track_lin_vel_xy_exp": 4.0,
+            "track_ang_vel_z_exp": 2.0,
+            "base_height_l2": -5.0,
+            "lin_vel_z_l2": -1.0,
+            "ang_vel_xy_l2": -0.05,
+            "joint_pos_limits": -2.0,
+        }
         for dt in (0.01, 0.02, 0.04):
             with self.subTest(step_dt=dt):
                 terms = SimpleNamespace(**{name: SimpleNamespace(weight=0.0, params={}) for name in (
-                    "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2", "feet_slide")})
+                    *expected_per_step, "feet_slide")})
                 terms.base_height_l2.params["asset_cfg"] = SimpleNamespace(body_names="")
                 cfg = SimpleNamespace(rewards=terms, sim=SimpleNamespace(dt=dt / 4), decimation=4,
                                       base_link_name="base")
                 namespace[method.name](cfg)
+
+                # 其它奖励项仍被过滤掉
                 self.assertIsNone(terms.feet_slide)
-                self.assertIsNotNone(terms.base_height_l2)
-                target = terms.base_height_l2.params["target_height"]
-                self.assertAlmostEqual(target, 0.30)
+
+                # 高度项保留：目标 0.30 m、无高度扫描传感器、body 名已解析成具体 body
+                self.assertAlmostEqual(terms.base_height_l2.params["target_height"], 0.30)
                 self.assertIsNone(terms.base_height_l2.params["sensor_cfg"])
-                # body_names must be resolved to a concrete body, otherwise Isaac Lab's
-                # SceneEntityCfg resolution raises at env construction
                 self.assertEqual(terms.base_height_l2.params["asset_cfg"].body_names, ["base"])
-                standing_reward = dt * (terms.track_lin_vel_xy_exp.weight + terms.track_ang_vel_z_exp.weight)
-                crawling_reward = standing_reward + dt * terms.base_height_l2.weight * (0.10 - target)**2
-                self.assertAlmostEqual(standing_reward, 1.3)
-                self.assertAlmostEqual(standing_reward - crawling_reward, 0.4)
+
+                # weight × step_dt 必须精确还原每步系数（防止写回手算魔数或漏乘 dt）
+                for name, per_step in expected_per_step.items():
+                    self.assertAlmostEqual(getattr(terms, name).weight * dt, per_step, places=6)
+
+                # 关键比例：高度项必须**强于**单个速度项（压住贴地爬行），
+                # 但不能强过两个速度项之和（否则会像 Run1 那样压住移动）。
+                lin_ps = terms.track_lin_vel_xy_exp.weight * dt
+                ang_ps = terms.track_ang_vel_z_exp.weight * dt
+                height_ps = abs(terms.base_height_l2.weight * dt)
+                self.assertGreater(height_ps, lin_ps)
+                self.assertLess(height_ps, lin_ps + ang_ps)
+
+    def test_amp_reward_weights_are_derived_not_hardcoded(self):
+        """防止回归成手写魔数：weight 必须由「每步系数 / step_dt」表达。"""
+        src = self.CONFIG.read_text(encoding="utf-8-sig")
+        for const in ("TRACK_LIN_VEL_PER_STEP", "TRACK_ANG_VEL_PER_STEP", "BASE_HEIGHT_PER_STEP",
+                      "LIN_VEL_Z_PER_STEP", "ANG_VEL_XY_PER_STEP", "JOINT_POS_LIMITS_PER_STEP"):
+            self.assertIn(const, src)
+        # 不应出现直接写死的 weight 数值
+        for magic in ("weight = 50.0", "weight = 2500", "weight = -500", "1.0 / step_dt",
+                      "0.3 / step_dt", "-10.0 / step_dt"):
+            self.assertNotIn(magic, src)
 
 
 HAS_TORCH = all(importlib.util.find_spec(name) is not None for name in ("torch", "numpy"))
