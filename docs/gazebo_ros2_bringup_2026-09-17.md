@@ -367,14 +367,61 @@ python imgo2_rl/scripts/rl_lab/amp/play.py \
 `test_amp_task_terms_match_reference_per_step_scale` 通过——即"每步系数 = weight × step_dt"这条契约
 在**没有 Isaac Lab 的机器上**也能独立复现。
 
-训练机上正式导出（导出后替换 `imgo2_deploy/policy/imgo2/amp/policy.pt`，并按 9.3 的三条契约复核）：
+训练机上正式导出（2026-09-18 用户确认：训练机有 GPU、`play.py` 可直接导出；本机沙箱内没有
+`/dev/nvidia*` 设备节点，`libcuda.so.580.159.03` 虽在但 `nvidia-smi` 无法与驱动通信，所以这里跑不了）：
 
 ```bash
+# 1) 必须在 imgo2_rl 目录下执行：play.py 的 log_root_path = "logs/amp_rsl_rl/<experiment_name>" 是相对路径
 cd <工作区根>/imgo2_rl
-python scripts/rl_lab/amp/play.py --task Imgo2-basemove-flat-amp-play --headless --num_envs 1 \
-    --load_run <run 目录名> --checkpoint model_5000.pt
+unset PYTHONPATH PYTHONHOME          # 与 ROS 终端分开；用 Isaac Lab 自己的解释器
+
+# 2) 找 45 维那次的 run 目录
+ls -t logs/amp_rsl_rl/base_move_amp/
+
+# 3) 导出（<isaaclab.sh> 换成该机 Isaac Lab 的实际路径；若该机把 isaaclab 装进 conda，
+#    直接用那个 python 即可。--checkpoint 走 retrieve_file_path，给存在的路径就行）
+<isaaclab.sh> -p scripts/rl_lab/amp/play.py \
+    --task Imgo2-basemove-flat-amp-play \
+    --headless --num_envs 1 --device cuda:0 \
+    --load_run 2026-09-17_17-19-04 \
+    --checkpoint logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04/model_5000.pt
+
+# 4) 看到 [INFO] num_obs: 45（证明 45 维接口生效）与
+#    [INFO] Exporting AMP actor policy to: ... 之后就可以 Ctrl-C：
+#    play.py 没有 --video 时那个回放循环不会自己退出，而导出发生在循环之前。
+ls -l logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04/exported/    # policy.pt  policy.onnx
 ```
+
+导出后按三条契约复核（① 可与 `play.py` 同机跑；② 需要部署自己的 libtorch 2.3.0，本机可代跑）：
+
+```bash
+# ① 导出件 vs checkpoint 的 actor：同批确定性输入，期望 max|diff| = 0.0
+python - <<'PY'
+import torch, torch.nn as nn
+run = "logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04"
+ck = torch.load(f"{run}/model_5000.pt", map_location="cpu", weights_only=False)["model_state_dict"]
+actor = nn.Sequential(nn.Linear(45, 512), nn.ELU(), nn.Linear(512, 256), nn.ELU(),
+                      nn.Linear(256, 128), nn.ELU(), nn.Linear(128, 12)).eval()
+actor.load_state_dict({k[len("actor."):]: v for k, v in ck.items() if k.startswith("actor.")})
+ts = torch.jit.load(f"{run}/exported/policy.pt").eval()
+x = torch.randn(128, 45)
+with torch.no_grad():
+    print("max|diff| =", (ts(x) - actor(x)).abs().max().item())
+PY
+```
+
+复核通过后把它拷进部署并按 9.3 节复核 ②③：
+
+```bash
+cp logs/amp_rsl_rl/base_move_amp/2026-09-17_17-19-04/exported/policy.pt \
+   <工作区根>/imgo2_deploy/policy/imgo2/amp/policy.pt
+cd <工作区根> && git add imgo2_deploy/policy/imgo2/amp/policy.pt && git commit -m "AMP: play.py 正式导出" && git push
+```
+
+（`.gitignore` 里 `imgo2_deploy/policy/imgo2/**/policy.pt` 是白名单，所以 `policy.pt` 能入库、
+`model_*.pt` 不入库；镜像侧 pull 下来即可看到导出件，并可复跑 ② 与 Gazebo 四项指标。）
 
 注意 `Imgo2AmpMovePlayEnvCfg` 会把命令固定成 `lin_vel_x = 1.0`、`y = 0`、`yaw = 0`
 （便于回放对比），所以 `play.py` 里看到的步态是 1.0 m/s 下的；要与部署侧四项指标对照，
-把同一个 checkpoint 放到 Gazebo 里用 `--key 3 --vx 1.0` 再跑一遍即可。
+把同一个 checkpoint 放到 Gazebo 里用 `--key 3 --vx 1.0` 再跑一遍即可。训练机上的步态量化用
+`eval_gait.py`（同样 headless、同样这把命令，换成 `--task Imgo2-basemove-flat-amp-play`）。
