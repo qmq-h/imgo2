@@ -3,10 +3,11 @@
 
 用法（需先起 Gazebo，见 README 6.2）：
     ros2 launch imgo2_deploy gazebo.launch.py gui:=false     # 另一个终端
-    python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 22
+    python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 22            # 键1 PPO
+    python3 imgo2_deploy/scripts/eval_gazebo_policy.py --key 3 --vx 0.5 --duration 22    # 键3 AMP
 
-脚本会自己发布 /joy（A=起身 → RB+DPadUp=键1 PPO，axes[1]=vx），随后从 /odom（p3d 真值）与
-/joint_states 统计四项指标；只依赖 rclpy + 标准库 math。
+脚本会自己发布 /joy（A=起身 → RB+方向键选策略，axes[1]=vx；1=DPadUp / 2=DPadRight / 3=DPadDown），
+随后从 /odom（p3d 真值）与 /joint_states 统计四项指标；只依赖 rclpy + 标准库 math。
 
 指标定义：
   位姿      z_mean/z_min/z_max（站立或行走高度）、roll/pitch 范围、yaw 漂移率、dx/dt
@@ -34,10 +35,13 @@ def pitch_of(q):
     return math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
 
 class Eval(Node):
-    def __init__(self, vx):
+    def __init__(self, vx, key=1):
         super().__init__("eval_gazebo_policy")
         q = QoSProfile(depth=2000, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.vx = vx
+        # 策略按键与手柄组合：1 = PPO (RB+DPadUp)，2 = himloco (RB+DPadRight)，3 = amp (RB+DPadDown)
+        # 见 imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp
+        self.key = key
         self.odom = []      # (t, x, z, yaw, roll, pitch)
         self.js = []        # (t, {name: (q, dq)})
         self.create_subscription(Odometry, "/odom", self.on_odom, q)
@@ -60,16 +64,22 @@ class Eval(Node):
         self.joy_pub.publish(j)
 
     def tick(self):
-        """按时间推进按键序列：0~6s 起身(A)，6s 起进 PPO 并持续给 vx。"""
+        """按时间推进按键序列：0~6s 起身(A)，6s 起按 --key 进策略并持续给 vx。"""
         el = time.time() - self.t0
         if el < 6.0:
             self.state = "getup"
             self.send_joy([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0.0] * 8)
         else:
-            if self.state != "ppo":
-                self.state = "ppo"
+            if self.state == "getup":
+                self.state = "policy"
                 self.entry_time = time.time()
-            self.send_joy([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], [0.0, self.vx, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+            # RB=buttons[5]；DPadUp=axes[7]>0（键1）/ DPadRight=axes[6]>0（键2）/ DPadDown=axes[7]<0（键3）
+            dpad = {1: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                    2: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                    3: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0]}[self.key]
+            axes = list(dpad)
+            axes[1] = self.vx
+            self.send_joy([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], axes)
 
 def autocorr_peak(sig, dt):
     """返回 (周期秒, 强度0~1, 步频Hz)；sig 需已去均值。"""
@@ -118,13 +128,14 @@ def phase_deg(sig_a, sig_b, dt):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vx", type=float, default=0.0)
+    ap.add_argument("--key", type=int, default=1, choices=[1, 2, 3], help="1=PPO 2=himloco 3=amp")
     ap.add_argument("--duration", type=float, default=22.0, help="含 6s 起身的总时长")
     ap.add_argument("--skip", type=float, default=3.0, help="进入策略后跳过的稳定时间")
     ap.add_argument("--json", type=str, default=None)
     a = ap.parse_args()
 
     rclpy.init()
-    n = Eval(a.vx)
+    n = Eval(a.vx, a.key)
     t_end = time.time() + a.duration
     while time.time() < t_end:
         n.tick()
@@ -136,7 +147,7 @@ def main():
     js = [e for e in n.js if e[0] >= t_start]
     out = {"vx_cmd": a.vx, "samples": {"odom": len(od), "joint_states": len(js)}}
     if len(od) < 20 or len(js) < 50:
-        print("样本不足：确认 Gazebo 在跑、策略已进入（键1）且 /odom、/joint_states 有数据")
+        print("样本不足：确认 Gazebo 在跑、策略已进入（--key 指定）且 /odom、/joint_states 有数据")
         print(json.dumps(out, ensure_ascii=False)); rclpy.shutdown(); sys.exit(1)
 
     # ---- 位姿 ----

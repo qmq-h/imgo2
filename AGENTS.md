@@ -35,6 +35,7 @@
   - **改完必须跑** `python imgo2_rl/scripts/tools/check_model_sync.py`：按逻辑关节名与逻辑 link 名比对两份已登记 URDF（Gazebo 份允许多 `base_imu`）的关节轴/限位、逐 link 质量/质心/惯量/碰撞、base 规范值；校验网格目录指纹（`8dc5b5995a11`，10 文件）与每个 mesh 引用都存在；对每份做 FK 复现录制数据；并枚举全仓 URDF，未登记即报错。
   - 网格全仓唯一一套：`imgo2_description/meshes`（改名曾用 LF 命名，2026-09-17 统一为 FL 命名，内容未变）。
 - 代码里的资源路径一律由 `Path(__file__)` 推导或走环境变量，不写机器绝对路径。RL 的模型路径经 `_REPO_ROOT`（`parents[5]`）指向 `imgo2_description/urdf/imgo2.urdf`；改动后跑 `python imgo2_rl/scripts/tools/check_asset_paths.py` 自检（它会从源码读出实际声明的路径，而不是复制一份预期值）。
+- **部署用的 `policy.pt` 一律由对应算法的 `play.py` 导出（headless 模式），不要手写导出脚本、也不要手工拼 TorchScript**（用户 2026-09-18 决定）。入口：`imgo2_rl/scripts/rl_lab/{ppo,amp,himloco}/play.py`；它内部调用 `export_policy_as_jit(actor_critic, normalizer=None, …)`，产物在 checkpoint 同级的 `exported/`（`policy.pt` + `policy.onnx`），再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`。前提是**配置的观测维数与 checkpoint 一致**（例如 AMP 的 45 维 actor；仓库 AMP 任务默认仍是 48 维，需先把 AMP-05 的配置改动落进仓库），否则 `runner.load()` 会在 `load_state_dict` 处尺寸不匹配而失败。导出后按三条契约复核：与 checkpoint 的 actor 在同一批确定性输入上 max diff = 0、能被部署自己的 libtorch 加载、部署 interface 的观测维数与顺序和训练侧一致。
 
 ## 删除与可复现性
 

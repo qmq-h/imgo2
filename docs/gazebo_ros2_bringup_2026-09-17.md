@@ -258,3 +258,90 @@ z 0.073 m + roll 180°（四脚朝天）。
   抖动更大（`vx=0` 某些 run 到 ~7°/s）。所以"步态奇怪/走一会儿朝反方向"要往策略权重与
   `kd=0.2`（阻尼偏低）上找，而不是继续查 Gazebo 物理。下一步可对比另外几份 PPO 导出
   （flat/23-24-09 或 rough 系列其它 checkpoint），或用 `axes[3]` 给 yaw 指令看它是否真在闭环控航向。
+
+## 9. 键 3（AMP `model_5000`）四项指标首测 + 部署导出约定（2026-09-18 补）
+
+### 9.1 被测对象与安装动作
+
+| 项目 | 值 |
+|---|---|
+| 训练 checkpoint | `policy/imgo2/amp/model_5000.pt`，sha256 `bb399eb2519fc3f1…`（文件名 5000 轮；文件内 `iter: 0`，无 `infos`，故轮次只能靠文件名） |
+| actor | **45 维输入** → 512 → 256 → 128 → 12，ELU（第一层 `[512,45]`） |
+| critic | 仍 48 维（`[512,48]`，保留 `base_lin_vel`，只用于训练） |
+| 部署接口 | `amp/config.yaml`：`num_observations: 45`，`observations: [ang_vel, gravity_vec, commands, dof_pos, dof_vel, actions]`（即原 48 维去掉开头的 `lin_vel`，与参考 `amp_go2` 的 45 维 actor 组成一致） |
+| 导出 | `amp/policy.pt`，sha256 `0e5bd661b1591a87…`，770931 B（旧 48 维那份 sha256 `e5a8bfec742038e0…`，可从 git 历史取回） |
+
+安装动作只有两处：换 `amp/policy.pt`、把 `amp/config.yaml` 的 `num_observations`/`observations` 改成 45 维。
+C++ 侧不用改（`rl_sdk.cpp` 按 `observations` 名单逐个取项，名单里没有 `lin_vel` 就自然拼出 45 维）。
+
+### 9.2 四项指标实测（Gazebo 无头，`--key 3`，窗口 = 进入策略后 3 s 起，24 s）
+
+| vx 命令 | z_mean（min–max） | roll / pitch 范围 | yaw 漂移 | dx / 实测速度 | 抖动 hip/thigh/shank | 周期 / 强度 / FL-FR 相位 |
+|---|---|---|---|---|---|---|
+| **0.0** | 0.270（0.262–0.280） | 2.55° / 2.39° | −3.75°/s | 0.584 m（0.039 m/s） | 31.7 / 36.5 / 67.0 | 0.192 s / 0.45 / −96° |
+| **0.5** | 0.282（0.269–0.296） | 6.93° / 4.38° | +2.89°/s | 2.271 m（**0.151 m/s**） | 46.7 / 70.7 / 120.2 | 0.296 s / 0.21 / 249° |
+
+对照（同一脚本、同一世界）：键 1 参考 `base_move/policy_flat.pt` 在 `vx=0.5` 是 **0.428 m/s**、
+z 0.288、roll 2.5°、thigh 抖动 45.3、周期强度 0.95、相位 175°；旧的 `model_9000.pt`（48 维）在
+`vx=0.5` 只有 **0.057 m/s**、z 0.182。
+
+**读法**：
+
+1. **管线是通的**：`rl_sim` 打印 `Successfully loaded Torch model: …/amp/policy.pt`，FSM 进入
+   `RLFSMStateAMPLocomotion`；45 维观测下正指令给正向前进（0.151 对 0.039 m/s），站姿高度正常
+   （0.27–0.28 m）、不翻车。所以"45 维 + 去掉 `lin_vel`"这条接口是自洽的——若观测顺序错位，
+   `gravity_vec`/`commands` 会乱，机器人不可能保持高度并按指令方向走。
+2. **但速度只跟到 30%**（0.5 命令 → 0.151 m/s），比旧的 48 维 AMP 好 2.6 倍，仍远低于 PPO（0.428）。
+3. **步态是高频抖**：周期 0.296 s ≈ 3.4 Hz、周期强度只有 0.21（PPO 是 0.95）、FL-FR 相位 249°
+   （trot 应接近 180°），shank 抖动 120 rad/s²（PPO 45）。`vx=0` 时也不安静（shank 67、漂 ~0.04 m/s、
+   yaw −3.75°/s）。⇒ 5000 轮还停在"原地快速倒腿/滑行"，尚未形成清晰步态，与
+   [AMP 对照报告](amp_standstill_diagnosis_2026-09-17.md) 的结论（风格奖励没在塑形、缺低姿态终止）
+   一致，属于"训练轮数与奖励结构"问题，不是部署接口问题。
+
+### 9.3 导出约定（用户 2026-09-18 决定）
+
+**以后导出部署用的 `policy.pt` 一律走对应算法目录下的 `play.py`，headless 模式**，不要手写导出脚本、
+不要手工拼 TorchScript：
+
+```bash
+cd ~/RL/imgo2                 # 训练机上跑（要有 NVIDIA 驱动 / Isaac Sim）
+unset PYTHONPATH              # 先清干净再 source，见第 6 节
+source ~/isaac/IsaacLab/isaaclab.sh -p $(which python3)   # 或该机既有的 Isaac Lab 启动方式
+python imgo2_rl/scripts/rl_lab/amp/play.py \
+    --task Imgo2-basemove-flat-amp --headless --num_envs 1 \
+    --load_run <run 目录名> --checkpoint model_5000.pt
+```
+
+`play.py`（`imgo2_rl/scripts/rl_lab/amp/play.py:117`）自己调用
+`export_policy_as_jit(runner.alg.actor_critic, normalizer=None, path=<run>/exported, filename="policy.pt")`，
+产物落在 checkpoint 同级的 `exported/policy.pt`（还有 `policy.onnx`）。
+
+**前提（本次未能满足，所以这里用的是等价替代）**：
+
+- **配置必须与 checkpoint 的观测维数一致**。仓库当前的 AMP 任务仍是 48 维 actor
+  （`amp_env_cfg.py` 保留 `observations.policy.base_lin_vel`），拿 45 维的 `model_5000.pt` 去 `play.py`
+  会在 `runner.load()` 的 `load_state_dict` 处直接尺寸不匹配报错。要先在训练侧把 AMP-05 的
+  "actor 去掉 `base_lin_vel`"（45 维）落进配置并推送，才能在这里跑通。
+- **本机没有 NVIDIA 驱动**（`nvidia-smi` 报无法与驱动通信），Isaac Sim 起不来，所以上面这条命令
+  只能在训练机执行。
+- 本次的 `policy.pt` 是用 **Isaac Lab `_TorchPolicyExporter` 的等价复刻**（同一个
+  `actor + Identity normalizer` 包装 + `torch.jit.script`，torch 2.7.0 CPU）导出的，并用两条数值契约
+  验证：① 对 `model_9000.pt` 的 actor 用同一流程重导出，与仓库里既有的 48 维 `policy.pt` 在 128 组
+  随机输入上 **max|diff| = 0.0**；② 新 45 维导出与 `model_5000.pt` 的 actor 也是 **0.0**；
+  ③ 两个文件都能被部署自己的 **libtorch 2.3.0**（`torch::jit::load`）加载，且同一确定性探针输入的
+  12 维输出与 Python 侧一致到 1e-6。⇒ 接口等价、可直接用于 sim2sim；正式物证仍应由训练机上的
+  `play.py` 产出，替换后按同样的三条契约复核一遍即可。
+
+### 9.4 复现这次测试的要点（本机受限环境）
+
+1. **必须在同一次 shell 调用里跑完 Gazebo + `rl_sim` + 评测**。分成多个后台进程/job 时 ROS 2 的
+   发现会失效：`rl_sim` 报 `Failed to call param_node service`、`Failed getting a result from calling
+   /controller_manager/list_controllers`，FSM 拿不到 `robot_name` 直接退。仓库里临时脚本见
+   `imgo2_deploy/build/run_gz_test.sh`（`build/` 被忽略，属复现脚手架，不入库）。
+2. `~/.ros`、`~/.gazebo` 只读 ⇒ 用工作区做假 HOME：`HOME=<repo>/imgo2_deploy/build/fakehome
+   ROS_LOG_DIR=$HOME/.ros/log`。
+3. `DISPLAY` **必须 unset**：本机 `DISPLAY=:1` 的 GLX 是坏的，gzserver 会以
+   `X_GLXCreateContext BadValue` 崩掉，`gui:=false` 也救不了。
+4. 评测脚本新增 `--key {1,2,3}`（1=PPO/`RB+DPadUp`、2=himloco/`RB+DPadRight`、3=amp/`RB+DPadDown`，
+   见 `fsm_robot/fsm_imgo2.hpp`）；`rl_sim` 每个控制周期都打印 `RL Controller [amp] x:…`，
+   日志几百 KB 是正常的，抓关键行用 `grep -v "RL Controller"`。

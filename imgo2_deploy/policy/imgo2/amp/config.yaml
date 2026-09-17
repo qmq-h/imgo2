@@ -1,15 +1,22 @@
-# AMP policy for model_9000.pt, reached with key 2 (gamepad RB+DPadRight).
-# Actor: 48 -> 512 -> 256 -> 128 -> 12, ELU.
-# Training actor observation order (velocity_env_cfg.py PolicyCfg):
-#   base_lin_vel 3, base_ang_vel 3, projected_gravity 3, velocity_commands 3,
-#   joint_pos_rel 12, joint_vel_rel 12, last_action 12  = 48
+# AMP policy for model_5000.pt, reached with key 3 (gamepad RB+DPadDown; the FSM
+# comment in fsm_imgo2.hpp is authoritative: 1 = PPO, 2 = himloco, 3 = amp).
+# Actor: 45 -> 512 -> 256 -> 128 -> 12, ELU.
+# Training actor observation order (velocity_env_cfg.py PolicyCfg with base_lin_vel
+# removed, i.e. the 45-dim actor of AMP-05 - same composition as the reference amp_go2):
+#   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
+#   joint_pos_rel 12, joint_vel_rel 12, last_action 12  = 45
+# The 5000-iteration checkpoint's critic still consumes 48 dims (it keeps base_lin_vel);
+# that is training-side only and never appears in this deployment interface.
+# Predecessor: model_9000.pt had a 48-dim actor (base_lin_vel first); its export
+# policy.pt sha256 e5a8bfec742038e0... is recoverable from git history.
+# Checkpoints: model_5000.pt sha256 bb399eb2519fc3f1... ; current policy.pt 0e5bd661b1591a87...
 # kp/kd and clip_actions follow the working reference deployment
 # (~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/config.yaml, which the
 # reference routes to its AMP policy); physical values follow the training side.
 imgo2/amp:
   model_name: "policy.pt"
-  num_observations: 48
-  observations: ["lin_vel", "ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
+  num_observations: 45
+  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: []
   observations_history_priority: "time"
   clip_obs: 100.0
