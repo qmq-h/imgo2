@@ -70,7 +70,7 @@ class RewardContractTests(unittest.TestCase):
         计算 `term × weight × dt`，weight 的语义是「每秒」。因此 weight 一律写成
         `每步系数 / step_dt`，由代码换算。
 
-        2026-09-17 第二次调参（当前值）：速度项 1.0→4.0、高度项 -10→-4，并补
+        2026-09-17 第二次调参（当前值）：速度项 1.0→4.0、高度项 -10→-5，并补
         `lin_vel_z_l2` / `ang_vel_xy_l2` / `joint_pos_limits` 三个轻量姿态约束。
         依据：a1 论文代码的真实每步系数是 1.67（配置里的 50 还会被 legged_robot 再乘 dt），
         go2 用 4.0/2.0 + 辅助项。历史见 README AMP-06 与 docs/amp_experiments_2026-09-17.md。

@@ -47,6 +47,10 @@
 
 ### 3.1 已确证的根因：任务奖励权重被 dt 缩小了 50 倍
 
+> **2026-09-18 更正**：本小节的「50 倍」是单位误读——参考的 `_prepare_reward_function()` 也会
+> `reward_scales[key] *= self.dt`，a1 写的 50 每步真值是 1.5，与我们当时的 1.0 同量级。
+> 见 [AMP 对照报告](amp_standstill_diagnosis_2026-09-17.md) 第 11.1 节。下面的实验记录保留原样。
+
 - 参考项目（legged_gym）的 `compute_reward` 是 `self.rew_buf += rew`，**不乘 dt**，
   所以 a1 的 `tracking_lin_vel = 1.5/(0.005*6) = 50` 就是**每步**系数。
 - Isaac Lab 的 `RewardManager.compute(dt)` 计算 `term × weight × dt`，`weight` 的语义是**每秒**。

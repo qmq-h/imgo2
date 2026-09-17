@@ -316,12 +316,14 @@ python imgo2_rl/scripts/rl_lab/amp/play.py \
 `export_policy_as_jit(runner.alg.actor_critic, normalizer=None, path=<run>/exported, filename="policy.pt")`，
 产物落在 checkpoint 同级的 `exported/policy.pt`（还有 `policy.onnx`）。
 
-**前提（本次未能满足，所以这里用的是等价替代）**：
+**前提**：
 
-- **配置必须与 checkpoint 的观测维数一致**。仓库当前的 AMP 任务仍是 48 维 actor
-  （`amp_env_cfg.py` 保留 `observations.policy.base_lin_vel`），拿 45 维的 `model_5000.pt` 去 `play.py`
-  会在 `runner.load()` 的 `load_state_dict` 处直接尺寸不匹配报错。要先在训练侧把 AMP-05 的
-  "actor 去掉 `base_lin_vel`"（45 维）落进配置并推送，才能在这里跑通。
+- **配置必须与 checkpoint 的观测维数一致**。2026-09-18 拉取 `b9a4913` 后这一条**已满足**：
+  `f028802` 已把 `observations.policy.base_lin_vel = None`（AMP-05）落进仓库，actor 观测为
+  `base_ang_vel 3 + projected_gravity 3 + velocity_commands 3 + joint_pos 12 + joint_vel 12 + last_action 12 = 45`。
+  本机已离线核对部署侧 `amp/config.yaml` 与训练侧配置**四处一致**（逐项见 9.5 节）；
+  在此之前（部署接口还是 48 维）拿 45 维 checkpoint 跑 `play.py` 会在 `runner.load()` 的
+  `load_state_dict` 处尺寸不匹配报错。
 - **本机没有 NVIDIA 驱动**（`nvidia-smi` 报无法与驱动通信），Isaac Sim 起不来，所以上面这条命令
   只能在训练机执行。
 - 本次的 `policy.pt` 是用 **Isaac Lab `_TorchPolicyExporter` 的等价复刻**（同一个
@@ -345,3 +347,34 @@ python imgo2_rl/scripts/rl_lab/amp/play.py \
 4. 评测脚本新增 `--key {1,2,3}`（1=PPO/`RB+DPadUp`、2=himloco/`RB+DPadRight`、3=amp/`RB+DPadDown`，
    见 `fsm_robot/fsm_imgo2.hpp`）；`rl_sim` 每个控制周期都打印 `RL Controller [amp] x:…`，
    日志几百 KB 是正常的，抓关键行用 `grep -v "RL Controller"`。
+
+### 9.5 部署接口 ↔ 训练配置的离线核对（2026-09-18 拉取 `b9a4913` 后补）
+
+`f028802` 落地后，训练侧 actor 观测与部署侧 `amp/config.yaml` 已可逐项对照（本机只用
+标准库读源码，不需要 GPU）。核对方法：从 `velocity_env_cfg.py` 的 `PolicyCfg` 按**声明顺序**
+取 ObsTerm 列表，减去 `amp_env_cfg.py` 里被置 `None` 的项，再映射到部署侧的观测名。
+
+| 项目 | 训练侧 | 部署侧 | 结论 |
+|---|---|---|---|
+| 观测项与顺序 | `base_ang_vel, projected_gravity, velocity_commands, joint_pos, joint_vel, actions`（`base_lin_vel`/`height_scan` 已置 None） | `observations: [ang_vel, gravity_vec, commands, dof_pos, dof_vel, actions]` | **逐项同序** |
+| 观测维数 | 3+3+3+12+12+12 = **45** | `num_observations: 45`（`rl_sdk.cpp` 按名单取项，没有 `lin_vel` 分支） | **一致** |
+| 观测缩放 | `base_ang_vel 0.25`、`joint_pos 1.0`、`joint_vel 0.05`；`projected_gravity`/`velocity_commands` 未设 scale（=1.0） | `ang_vel_scale 0.25`、`dof_pos_scale 1.0`、`dof_vel_scale 0.05`、`commands_scale [1,1,1]`、`gravity_vec` 无 scale | **一致**（`lin_vel_scale` 字段留着但已无消费者） |
+| 动作空间 | `clip {".*": (-3, 3)}`、`scale {".*_hip_joint": 0.125, 其余 0.25}` | `clip_actions ±3.0`、`action_scale 0.125/0.25` | **一致** |
+| 默认姿态 / 增益 | `assets/imgo2.py` 默认 `0.87 / −1.82`、`DCMotorCfg 25 / 0.5` | `default_dof_pos 0/0.87/−1.82`、`rl_kp 25 / rl_kd 0.5` | **一致** |
+
+另外在本机复核了训练侧这次提交自带的测试（`python3 -m unittest discover -s tests -p test_amp_alignment.py`）：
+**6 项通过 + 1 项跳过**（跳过的是需要 torch 的 CPU 回归），其中新增的
+`test_amp_task_terms_match_reference_per_step_scale` 通过——即"每步系数 = weight × step_dt"这条契约
+在**没有 Isaac Lab 的机器上**也能独立复现。
+
+训练机上正式导出（导出后替换 `imgo2_deploy/policy/imgo2/amp/policy.pt`，并按 9.3 的三条契约复核）：
+
+```bash
+cd <工作区根>/imgo2_rl
+python scripts/rl_lab/amp/play.py --task Imgo2-basemove-flat-amp-play --headless --num_envs 1 \
+    --load_run <run 目录名> --checkpoint model_5000.pt
+```
+
+注意 `Imgo2AmpMovePlayEnvCfg` 会把命令固定成 `lin_vel_x = 1.0`、`y = 0`、`yaw = 0`
+（便于回放对比），所以 `play.py` 里看到的步态是 1.0 m/s 下的；要与部署侧四项指标对照，
+把同一个 checkpoint 放到 Gazebo 里用 `--key 3 --vx 1.0` 再跑一遍即可。
