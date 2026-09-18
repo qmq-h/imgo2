@@ -584,3 +584,68 @@ amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-o
 **验证**：`test_amp_rlamp_recipe.py` 新增 3 项（helper 覆盖 policy+critic 且 critic 额外 lin_vel、
 **直接读参考基类源码**比对 `obs_scales`/`clip_actions` 与 a1 的 `action_scale`、其它变体不得被动到）；
 全仓 **65 项通过**。
+
+### 15.2 按用户要求继续对齐：指令范围 + 域随机化 + reset 分布 + 噪声（2026-09-18 晚）
+
+用户决定「**都对齐。除了关节 kp/kd，其它都对齐一下**」。落地为
+`apply_rlamp_env_settings(cfg, *, custom_origins=False)`（同样只作用于
+`flat-amp-rlamp` / `rough-amp-rlamp` 两个任务及它们的 play 版），
+另加 `AMPRLAmpRunnerCfg`（`min_normalized_std`）。逐项依据都来自
+`rl_amp/legged_gym/legged_gym/envs/{base/legged_robot.py,base/legged_robot_config.py}` 与
+`envs/a1/a1_amp_config.py`：
+
+| 项 | 参考（rl_amp / a1） | 我们原来 | 现在（rlamp 任务） | 依据 |
+|---|---|---|---|---|
+| `lin_vel_x` | `[-1.0, 2.0]` | `(-1.0, 1.5)` | `(-1.0, 2.0)` | `a1_amp_config.py` `commands.ranges` |
+| `lin_vel_y` | `±0.3` | `±1.0` | `±0.3` | 同上 |
+| `ang_vel_yaw` | `±1.57` | `±1.57` | 不变 | 同上（本来就一致） |
+| 指令重采样 / heading | `10 s` / `False` | 同 | 不变 | 同上（本来就一致） |
+| 摩擦 | 单一 `[0.25, 1.75]`（`randomize_friction`） | static `(0.3,1.0)`、dynamic `(0.3,0.8)` | static/dynamic 都 `(0.25, 1.75)` | `legged_robot.py:266-269` |
+| 恢复系数 | 不随机化（legged_gym 恒 0） | `(0.0, 0.5)` | `(0.0, 0.0)` | 参考无此项 |
+| base 质量 | `+= U(-1, 1)` kg | `(-1.0, 3.0)` | `(-1.0, 1.0)` | `legged_robot.py:315-316`（只改 body 0） |
+| 其它 body 质量缩放 | **没有** | `(0.7, 1.3)` scale | **关掉** | 参考 `domain_rand` 无此字段 |
+| CoM 偏移 | **没有** | `±0.05 m` | **关掉** | 同上 |
+| 外力/力矩 | **没有** | `±10 N / ±10 Nm`（reset） | **关掉** | 同上 |
+| PD 增益 | `×U(0.9, 1.1)`，**启动时随机一次** | `×U(0.5, 2.0)`，`mode="reset"` | `×U(0.9, 1.1)`、`mode="startup"` | `randomize_gains` |
+| 推力 | `±1.0 m/s`（x,y），每 `15 s` | `±0.5 m/s`，每 `10–15 s` | `±1.0 m/s`，每 `15 s` | `legged_robot.py:334/417`、`push_interval_s` |
+| reset 根姿态 | 平地：**不加** xy/偏航扰动；地形：xy `±1 m` | `±0.5 m` xy、`yaw ±3.14` | 平地 `(0,0)`、粗糙 xy `±1 m`、都不随机偏航 | `legged_robot.py:399-409` |
+| reset 根速度 | 6 维全 `U(-0.5, 0.5)` | 同 | 不变（本来就一致） | 同上 |
+| reset 关节角 | `default_dof_pos × U(0.5, 1.5)`、`dof_vel=0` | 无随机（`×1.0`） | `×U(0.5, 1.5)`、`dof_vel=0` | `legged_robot.py:411-425` |
+| actor 噪声 | `dof_pos 0.03` / `ang_vel 0.3`（覆盖基类 0.01/0.2）；其余同基类 | `0.01` / `0.2` | `0.03` / `0.3` | `a1_amp_config.py` `noise.noise_scales` |
+| `min_normalized_std` | `[0.01]*12` | `[0.05,0.02,0.05]*4` | `[0.01]*12`（`AMPRLAmpRunnerCfg`） | `a1_amp_config.py` runner |
+
+**关于 `ang_vel` 噪声的诚实说明**：参考的 actor 是 `privileged_obs_buf[:, 6:]`，**线速度与角速度
+都被切掉** ⇒ 加在 `[:, 3:6]` 上的噪声随即被丢弃，那条 `ang_vel = 0.3` 在参考里是**死代码**。
+我们保留 `base_ang_vel`（AMP-05 的决定，真机 IMU），所以它在**我们这里有效**；取参考声明的 0.3
+是对齐"声明值"的最直接做法，但严格说参考的 actor 行为里没有这一项。
+
+**关于地形/恢复系数**：`velocity_env_cfg.py` 的地形材质是
+`restitution=1.0` + `restitution_combine_mode="multiply"`（Isaac Lab 模板默认）。**没有改它**，
+原因是 `randomize_rigid_body_material` 会把**机器人**每个形状的 restitution 显式写成 0，
+multiply 组合下净恢复系数必然为 0；改共享地形材质会牵动 PPO/AMP 全部任务与已部署策略。
+（注意 play 配置会关掉该项随机化，所以**回放/评估**时机器人拿到的是资产默认材质 —— 这是
+改动前就存在的行为，不是本轮引入的。）
+
+**对齐的代价（减少随机化 ⇒ 更贴近标称动力学，鲁棒性下降）**：关掉 CoM/其它 body 质量/外力力矩、
+去掉初始姿态与偏航扰动、摩擦与 PD 增益范围收窄、关节初始角只按 ×[0.5,1.5] 缩放。
+另外 `lin_vel_x` 上限 2.0 m/s **超出我们录制动作数据覆盖的 0.842 m/s**，那一段没有专家参考可比。
+
+**仍未对齐（明确记录）**：
+
+1. **actor 观测 45 vs 42**（我们多 `base_ang_vel`）：与 §15 的建议一致，先不动；本轮实验只改配方/接口，
+   要严格 42 维请作为独立单变量另开任务。
+2. **关节 kp/kd**：`25.0/0.5`（我们）vs `20.0/0.5`（参考）—— 用户本轮明确排除。
+3. **共享资产/求解器**：`solver_velocity_iteration_count=1`（参考 `num_velocity_iterations=0`）、
+   接触 `contact_offset`、`armature`/`friction` 等 `IMGO2_CFG` 里的量。它们被所有任务（含已部署的
+   24500 策略）共用，改动会让既有基线与部署件不可比，故不动。
+4. **AMP 数据来源**：我们用的是自录真机动作（21 段），参考用 mocap；43 维观测的组成与顺序一致
+   （§3 已核对），但分布不同。
+
+**验证**：`test_amp_rlamp_recipe.py` 新增 6 项——
+常量值、helper 逐字段覆盖 + 两个任务的接线（粗糙版 `custom_origins=True`）、
+**把 helper 的 AST 抽出来用鸭子类型 cfg 真跑一遍**（Isaac Lab 的 configclass 在无 GPU 机器上
+无法实例化）、**直接读参考源码**比对 commands/domain_rand/noise（含"参考 `domain_rand` 不继承基类
+⇒ 确实没有 CoM/惯量/外力"的判据）、参考 reset 分布（正则抓 `torch_rand_float` 端点）、
+`AMPRLAmpRunnerCfg` 与任务注册（4 个 rlamp 任务都指向它）。全仓 **73 项通过**（原 65 项）。
+
+**状态**：**已实现，待训练验证**（离线只能证明"配置写成了参考的数值"，不能证明学出来的步态更好）。

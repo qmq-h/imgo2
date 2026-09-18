@@ -6,6 +6,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from imgo2_rl.assets.imgo2 import IMGO2_CFG, AMP_MOTION_FILES
 import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -451,6 +452,131 @@ def apply_rlamp_obs_and_action_scales(cfg) -> None:
     cfg.actions.joint_pos.clip = {".*": RLAMP_CLIP_ACTIONS}
 
 
+# ---------------------------------------------------------------------------------------
+# 指令范围 / 域随机化 / reset 分布 / 观测噪声：同样对齐 rl_amp（fan-ziqi）的 `a1_amp_config.py`
+# ---------------------------------------------------------------------------------------
+# 参考的 `class commands.ranges`：`lin_vel_x [-1.0, 2.0]`、`lin_vel_y ±0.3`、
+# `ang_vel_yaw ±1.57`（`resampling_time = 10.` 与 `heading_command = False` 我们本来就一致）。
+RLAMP_COMMAND_RANGES = {
+    "lin_vel_x": (-1.0, 2.0),
+    "lin_vel_y": (-0.3, 0.3),
+    "ang_vel_z": (-1.57, 1.57),
+}
+# 参考的 `class domain_rand`：**注意这个类没有继承 `LeggedRobotCfg.domain_rand`**，
+# 只列了下面这些字段 ⇒ 基类里的其它随机化在参考里**根本不存在**（不是"关掉了"，是"没有"）：
+#   randomize_friction / friction_range [0.25, 1.75]（legged_gym 的 friction 同时写进
+#   `friction` 与 `friction`+`rolling_friction`；Isaac Lab 拆成 static/dynamic ⇒ 两个填同一范围）、
+#   randomize_base_mass / added_mass_range [-1., 1.]（**只加在 base 上**，
+#   `legged_robot.py:315-316` 只改 body 0）、
+#   push_robots / push_interval_s 15 / max_push_vel_xy 1.0（`_push_robots` 把 x、y 速度都写成
+#   ±max_push_vel_xy，其余四维为 0）、
+#   randomize_gains / stiffness_multiplier_range [0.9, 1.1] / damping_multiplier_range [0.9, 1.1]
+#   （`randomize_gains` 在 `_process_...`/`__init__` 期只做**一次**，不是每回合重采）。
+# 参考**没有**：CoM 偏移、其它 body 的质量、外力/力矩、恢复系数随机化（legged_gym 的
+# restitution 恒为 0，`_process_rigid_shape_props` 不写这个字段）、惯量随机化。
+RLAMP_FRICTION_RANGE = (0.25, 1.75)
+RLAMP_BASE_MASS_RANGE = (-1.0, 1.0)
+RLAMP_GAIN_MULTIPLIER_RANGE = (0.9, 1.1)
+RLAMP_PUSH_INTERVAL_S = (15.0, 15.0)
+RLAMP_PUSH_VEL_XY = 1.0
+# 参考 `class noise(noise_scales)` 相对 legged_gym 基类**覆盖**了两项：
+#   `dof_pos = 0.03`（基类 0.01）、`ang_vel = 0.3`（基类 0.2）；其余（lin_vel 0.1 /
+#   dof_vel 1.5 / gravity 0.05）与基类相同 ⇒ 我们只需改这两项。
+# `legged_robot.py:466-478` 的 `noise_scale_vec` 在**缩放后**的观测上加
+# `noise_scale × obs_scale` 的均匀噪声 ⇒ 换算成 Isaac Lab "raw 空间先加噪声再乘 scale"
+# 就是 raw 噪声等于 `noise_scales` 的数值本身（我们的 `Unoise` 正是 raw 空间）。
+# ⚠️ 注意 `ang_vel` 这一条在参考里其实是**死代码**：参考的 actor 观测是
+# `privileged_obs_buf[:, 6:]`（`legged_robot_amp.py:269`，条件是
+# `num_obs == num_privileged_obs - 6`）⇒ 参考 actor（42 维）**既不看线速度也不看角速度**，
+# 加在 `[:, 3:6]` 上的噪声随即被切掉。我们保留 `base_ang_vel`（真机 IMU，用户决定），
+# 所以这一条在我们这里**有效**：取参考声明的 0.3 是对齐它"声明值"的最直接做法。
+RLAMP_NOISE_SCALES = {"ang_vel": 0.3, "dof_pos": 0.03}
+# reset 分布（参考 `legged_robot.py` 的 `_reset_root_states` / `_reset_dofs`）：
+#   * 平地（`custom_origins=False`）：姿态取 `init_state` 原值（**不加** xy/偏航扰动），
+#     根速度 6 维全部 U(-0.5, 0.5)；
+#   * 粗糙/高度场（`custom_origins=True`）：在上一行基础上，xy 再各加 U(-1, 1) m
+#     （`_create_envs` 里的初始摆放也是 ±1 m，但那只影响第一个 episode）；
+#   * 关节：`dof_pos = default_dof_pos × U(0.5, 1.5)`、`dof_vel = 0`（**乘默认角**，不是加偏移）。
+RLAMP_RESET_JOINT_SCALE_RANGE = (0.5, 1.5)
+RLAMP_RESET_VEL_RANGE = (-0.5, 0.5)
+RLAMP_ROUGH_RESET_XY_RANGE = (-1.0, 1.0)
+
+
+def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
+    """指令范围、域随机化、reset 分布、观测噪声统一到 rl_amp（fan-ziqi）的 `a1_amp_config.py`。
+
+    与 `apply_rlamp_task_rewards()`（奖励）/`apply_rlamp_obs_and_action_scales()`（观测缩放、
+    动作缩放与裁剪）分开，是为了让三块变量各自可查、可单独回滚。**用户 2026-09-18 的决定**：
+    除关节 kp/kd（参考 kp 20 / kd 0.5，我们 25 / 0.5，见 `IMGO2_CFG`）以外全部对齐。
+
+    `custom_origins=True` 用于粗糙地形版：参考只在"地形由 heightfield/trimesh 提供"的
+    分支里对初始 xy 加 ±1 m 扰动（`_get_env_origins` 的 `custom_origins`）。
+
+    ⚠️ 对齐的代价（写进 `docs/amp_gait_adjust_plan_2026-09-18.md` §15.2）：
+      * `lin_vel_x` 上限 2.0 m/s 超出我们录制动作数据覆盖的 0.842 m/s ⇒ 高速指令段没有
+        专家参考可比，AMP 风格项在那一段只能靠插值外推；
+      * 关掉 CoM/其它 body 质量/外力力矩随机化、把摩擦与 PD 增益范围收窄、去掉初始姿态
+        与偏航扰动、关节初始角只按 ×[0.5,1.5] 缩放，都是**减少**随机化 ⇒ 学到的策略会更贴合
+        标称动力学，sim2real 鲁棒性不如我们原来的配置；
+      * 参考 `randomize_gains` 是**启动时**随机一次，我们原来是 `mode="reset"`（每回合重采）。
+
+    参考源码行号：`legged_robot.py:266-269`（摩擦）、`315-316`（base 质量）、
+    `334`/`417`（推力）、`466-478`（噪声）、`399-409`（reset 根状态）、
+    `411-425`（reset 关节）、`738`（`push_interval` 换算）。
+    """
+    # ---------------------------------- 指令范围 ----------------------------------
+    for name, value in RLAMP_COMMAND_RANGES.items():
+        setattr(cfg.commands.base_velocity.ranges, name, value)
+
+    # ---------------------------------- 接触/摩擦 ----------------------------------
+    mat = cfg.events.randomize_rigid_body_material
+    mat.params["static_friction_range"] = RLAMP_FRICTION_RANGE
+    mat.params["dynamic_friction_range"] = RLAMP_FRICTION_RANGE
+    # 参考没有恢复系数随机化（legged_gym 的 restitution 恒 0）；写成 (0,0) 而不是删掉该项，
+    # 是为了保留"谁负责什么"的可追溯性（该项本身仍会把 restitution 显式写成 0）。
+    mat.params["restitution_range"] = (0.0, 0.0)
+
+    # ---------------------------------- 质量 ----------------------------------
+    cfg.events.randomize_rigid_body_mass_base.params["mass_distribution_params"] = RLAMP_BASE_MASS_RANGE
+    # 参考只随机化 base ⇒ 关掉"其它 body"的两项（质量缩放、CoM 偏移）
+    cfg.events.randomize_rigid_body_mass_others = None
+    cfg.events.randomize_com_positions = None
+
+    # ---------------------------------- 外力/力矩 ----------------------------------
+    # 参考没有这个随机化；原有的 ±10 N/Nm 是我们自己加的（非参考项）
+    cfg.events.randomize_apply_external_force_torque = None
+
+    # ---------------------------------- PD 增益 ----------------------------------
+    gains = cfg.events.randomize_actuator_gains
+    gains.mode = "startup"   # 参考在环境创建时随机一次（不是每回合重采）
+    gains.params["stiffness_distribution_params"] = RLAMP_GAIN_MULTIPLIER_RANGE
+    gains.params["damping_distribution_params"] = RLAMP_GAIN_MULTIPLIER_RANGE
+
+    # ---------------------------------- 推力 ----------------------------------
+    push = cfg.events.randomize_push_robot
+    push.mode = "interval"
+    push.interval_range_s = RLAMP_PUSH_INTERVAL_S
+    push.params["velocity_range"] = {"x": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY),
+                                     "y": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY)}
+
+    # ---------------------------------- reset 分布 ----------------------------------
+    xy = RLAMP_ROUGH_RESET_XY_RANGE if custom_origins else (0.0, 0.0)
+    cfg.events.randomize_reset_base.params["pose_range"] = {"x": xy, "y": xy, "yaw": (0.0, 0.0)}
+    cfg.events.randomize_reset_base.params["velocity_range"] = {
+        key: RLAMP_RESET_VEL_RANGE for key in ("x", "y", "z", "roll", "pitch", "yaw")}
+    joints = cfg.events.randomize_reset_joints
+    joints.params["position_range"] = RLAMP_RESET_JOINT_SCALE_RANGE
+    joints.params["velocity_range"] = (0.0, 0.0)
+
+    # ---------------------------------- 观测噪声（policy 组）----------------------------------
+    # 参考只对 actor 观测加噪声（privileged 不加），我们的 `policy.enable_corruption = True` /
+    # `critic.enable_corruption = False` 本来就是这个语义。
+    cfg.observations.policy.base_ang_vel.noise = Unoise(
+        n_min=-RLAMP_NOISE_SCALES["ang_vel"], n_max=RLAMP_NOISE_SCALES["ang_vel"])
+    cfg.observations.policy.joint_pos.noise = Unoise(
+        n_min=-RLAMP_NOISE_SCALES["dof_pos"], n_max=RLAMP_NOISE_SCALES["dof_pos"])
+
+
 @configclass
 class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
     """**rl_amp（fan-ziqi）配方**的平地版：只有线/角速度跟踪奖励，风格占约 2/3。
@@ -458,12 +584,19 @@ class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
     用途：与 `Imgo2AmpRoughEnvCfg`（粗糙地形、**同一配方**）组成一对，让"地形"成为单变量，
     对应 `paper_plan_imgo2.md` 里"比较平地训练、粗糙地形训练、动力学随机化训练的泛化能力"。
     AMP 侧沿用 `AMPRunnerCfg`（`coef 2.0 / lerp 0.3`），即参考的比例。
+
+    2026-09-18 用户决定「除关节 kp/kd 以外全部对齐参考」，于是本类在三个 helper 里依次改：
+    `apply_rlamp_task_rewards`（奖励）、`apply_rlamp_obs_and_action_scales`（观测缩放 + 动作
+    缩放/裁剪）、`apply_rlamp_env_settings`（指令范围 + 域随机化 + reset 分布 + 噪声）。
+    与参考仍**不一致**的只有：关节 kp/kd（用户排除）、actor 观测维数（我们 45 含
+    `base_ang_vel`，参考 42）、以及 AMP 判别的数据来源（我们录制的真机动作 vs 参考的 mocap）。
     """
 
     def __post_init__(self):
         super().__post_init__()
         apply_rlamp_task_rewards(self)
         apply_rlamp_obs_and_action_scales(self)
+        apply_rlamp_env_settings(self)
 
 
 @configclass
@@ -507,9 +640,11 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         部署契约（`amp/deploy/config.yaml`、C++ 接口）不变 —— 非对称 actor-critic；
       * 不加 `feet_air_time` / `collision` / `action_rate` 等任务项（那是 amp_go2 路线，
         平地版已单独做成 `Imgo2AmpGo2StyleEnvCfg`）；
-      * 不动域随机化（与 a1/rl_amp 原仓库一致：摩擦/质量/质心/PD/外力都开着）；
-      * 不照抄参考的指令范围（rl_amp 是 x[-1.0,2.0]、y±0.3；其中 2.0 m/s 超出我们录制数据
-        覆盖的 0.842 m/s）——保持我们自己的 x(-1.0,1.5)、y±1.0、yaw±1.57。
+      * **域随机化与指令范围已按用户 2026-09-18 决定对齐参考**
+        （`apply_rlamp_env_settings`：摩擦 [0.25,1.75]、base 质量 ±1 kg、PD 增益 ×[0.9,1.1]
+        且仅启动时随机一次、推力 ±1.0 m/s 每 15 s、关掉 CoM/其它 body 质量/外力力矩；
+        指令 x[-1.0,2.0]、y±0.3、yaw±1.57）。代价：对齐是**减少**随机化，鲁棒性不如原配置；
+        且 2.0 m/s 超出我们录制数据覆盖的 0.842 m/s，那一段没有专家参考可比。
 
     **风险（必须知道）**：rl_amp 配方**没有任何姿态/高度约束**，参考项目靠"风格项 + base 触地终止"
     兜底；而我们的风格项实测**梯度≈0**（见 `docs/amp_gait_adjust_plan_2026-09-18.md` §1–§3），
@@ -570,6 +705,9 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # （参考里这些权重都是 0），只留线/角速度跟踪；后者统一观测缩放与动作缩放/裁剪。
         apply_rlamp_task_rewards(self)
         apply_rlamp_obs_and_action_scales(self)
+        # 指令范围 + 域随机化 + reset 分布 + 噪声（含 `randomize_actuator_gains` 改成启动时随机）。
+        # `custom_origins=True`：参考的地形分支里初始 xy 有 ±1 m 扰动。
+        apply_rlamp_env_settings(self, custom_origins=True)
 
 
 @configclass

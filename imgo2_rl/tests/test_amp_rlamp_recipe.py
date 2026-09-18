@@ -15,6 +15,7 @@ Run: python3 -m unittest discover -s tests -p test_amp_rlamp_recipe.py
 """
 
 import ast
+import re
 from pathlib import Path
 import unittest
 
@@ -27,6 +28,16 @@ REWARDS_CFG = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/ve
 RLAMP_CANDIDATES = [
     Path.home() / "Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py",
     Path.home() / "RL/isaac/AMP/rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py",
+]
+# `legged_robot.py`：reset 根状态/关节、摩擦、质量、推力、噪声的实现
+RLAMP_ROBOT_ENV_CANDIDATES = [
+    Path.home() / "Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot.py",
+    Path.home() / "RL/isaac/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot.py",
+]
+# `legged_robot_amp.py`：actor 观测 = `privileged_obs_buf[:, 6:]`（切掉线速度与角速度）
+RLAMP_AMP_ENV_CANDIDATES = [
+    Path.home() / "Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot_amp.py",
+    Path.home() / "RL/isaac/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot_amp.py",
 ]
 # `normalization` / `obs_scales` / `clip_actions` 定义在基类配置里（a1 没有覆盖）
 RLAMP_BASE_CANDIDATES = [
@@ -77,6 +88,64 @@ def _reward_term_names():
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
     return names
+
+
+def _class_assigns(cls, *, literal=False):
+    """把一个类体里的赋值读成 {名字: 值}（值可以是 AST 节点，或 literal=True 时求值）。
+
+    literal 模式下无法求值的项（例如引用模块级 `MOTION_FILES` 的）会被跳过，而不是报错。
+    """
+    out = {}
+    for node in cls.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    if not literal:
+                        out[t.id] = node.value
+                        continue
+                    try:
+                        out[t.id] = _num(node.value)
+                    except Exception:
+                        pass
+    return out
+
+
+def _nested_class(cls, name):
+    return next(n for n in cls.body if isinstance(n, ast.ClassDef) and n.name == name)
+
+
+def _fake_env_cfg():
+    """重建 `apply_rlamp_env_settings()` 接触到的那层 cfg 结构（鸭子类型，无需 Isaac Lab）。
+
+    初值抄自 `velocity_env_cfg.py` 的 `EventCfg` / `CommandsCfg`（即"对齐前"的状态）。
+    """
+    from types import SimpleNamespace as NS
+    return NS(
+        commands=NS(base_velocity=NS(ranges=NS(
+            lin_vel_x=(-1.0, 1.5), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.57, 1.57)))),
+        events=NS(
+            randomize_rigid_body_material=NS(params={
+                "static_friction_range": (0.3, 1.0),
+                "dynamic_friction_range": (0.3, 0.8),
+                "restitution_range": (0.0, 0.5)}),
+            randomize_rigid_body_mass_base=NS(params={"mass_distribution_params": (-1.0, 3.0)}),
+            randomize_rigid_body_mass_others=NS(params={"mass_distribution_params": (0.7, 1.3)}),
+            randomize_com_positions=NS(params={"com_range": {"x": (-0.05, 0.05)}}),
+            randomize_apply_external_force_torque=NS(params={"force_range": (-10.0, 10.0)}),
+            randomize_actuator_gains=NS(mode="reset", params={
+                "stiffness_distribution_params": (0.5, 2.0),
+                "damping_distribution_params": (0.5, 2.0)}),
+            randomize_push_robot=NS(mode="interval", interval_range_s=(10.0, 15.0),
+                                    params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}}),
+            randomize_reset_base=NS(params={
+                "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+                "velocity_range": {k: (-0.5, 0.5) for k in
+                                   ("x", "y", "z", "roll", "pitch", "yaw")}}),
+            randomize_reset_joints=NS(params={"position_range": (1.0, 1.0),
+                                              "velocity_range": (0.0, 0.0)}),
+        ),
+        observations=NS(policy=NS(base_ang_vel=NS(noise="JUNK"), joint_pos=NS(noise="JUNK"))),
+    )
 
 
 class RLAmpRecipeTests(unittest.TestCase):
@@ -198,6 +267,254 @@ class RLAmpRecipeTests(unittest.TestCase):
         clip_actions = next(_num(n.value) for n in norm.body if isinstance(n, ast.Assign)
                             and any(isinstance(t, ast.Name) and t.id == "clip_actions" for t in n.targets))
         self.assertAlmostEqual(clip_actions, 100.0, places=9)
+
+    # -------------------------------------------------------------------------------
+    # 2026-09-18：用户决定「除关节 kp/kd 以外全部对齐参考」后的第二块（指令/域随机化/噪声）
+    # -------------------------------------------------------------------------------
+
+    def _rlamp_consts(self):
+        return {n.targets[0].id: _num(n.value) for n in self.tree.body
+                if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                and n.targets[0].id.startswith("RLAMP_")}
+
+    def test_env_setting_constants(self):
+        """指令范围 / 摩擦 / 质量 / 增益 / 推力 / 噪声的常量值必须与参考一致。"""
+        consts = self._rlamp_consts()
+        self.assertEqual(consts["RLAMP_COMMAND_RANGES"],
+                         {"lin_vel_x": (-1.0, 2.0), "lin_vel_y": (-0.3, 0.3),
+                          "ang_vel_z": (-1.57, 1.57)})
+        self.assertEqual(consts["RLAMP_FRICTION_RANGE"], (0.25, 1.75))
+        self.assertEqual(consts["RLAMP_BASE_MASS_RANGE"], (-1.0, 1.0))
+        self.assertEqual(consts["RLAMP_GAIN_MULTIPLIER_RANGE"], (0.9, 1.1))
+        self.assertEqual(consts["RLAMP_PUSH_INTERVAL_S"], (15.0, 15.0))
+        self.assertAlmostEqual(consts["RLAMP_PUSH_VEL_XY"], 1.0, places=9)
+        self.assertEqual(consts["RLAMP_NOISE_SCALES"], {"ang_vel": 0.3, "dof_pos": 0.03})
+        self.assertEqual(consts["RLAMP_RESET_JOINT_SCALE_RANGE"], (0.5, 1.5))
+        self.assertEqual(consts["RLAMP_RESET_VEL_RANGE"], (-0.5, 0.5))
+        self.assertEqual(consts["RLAMP_ROUGH_RESET_XY_RANGE"], (-1.0, 1.0))
+
+    def test_env_settings_helper_and_wiring(self):
+        """helper 必须逐项改到该改的字段，且两个 rlamp 任务都调用它。"""
+        src = ast.unparse(next(n for n in self.tree.body
+                               if isinstance(n, ast.FunctionDef)
+                               and n.name == "apply_rlamp_env_settings"))
+        for needle in (
+            "for name, value in RLAMP_COMMAND_RANGES.items()",
+            "setattr(cfg.commands.base_velocity.ranges, name, value)",
+            "mat.params['static_friction_range'] = RLAMP_FRICTION_RANGE",
+            "mat.params['dynamic_friction_range'] = RLAMP_FRICTION_RANGE",
+            "mat.params['restitution_range'] = (0.0, 0.0)",
+            "cfg.events.randomize_rigid_body_mass_base.params['mass_distribution_params'] = "
+            "RLAMP_BASE_MASS_RANGE",
+            "cfg.events.randomize_rigid_body_mass_others = None",
+            "cfg.events.randomize_com_positions = None",
+            "cfg.events.randomize_apply_external_force_torque = None",
+            "gains.mode = 'startup'",
+            "gains.params['stiffness_distribution_params'] = RLAMP_GAIN_MULTIPLIER_RANGE",
+            "gains.params['damping_distribution_params'] = RLAMP_GAIN_MULTIPLIER_RANGE",
+            "push.interval_range_s = RLAMP_PUSH_INTERVAL_S",
+            "push.params['velocity_range']",
+            "cfg.events.randomize_reset_base.params['pose_range']",
+            "cfg.events.randomize_reset_base.params['velocity_range']",
+            "joints.params['position_range'] = RLAMP_RESET_JOINT_SCALE_RANGE",
+            "joints.params['velocity_range'] = (0.0, 0.0)",
+            "cfg.observations.policy.base_ang_vel.noise = Unoise(",
+            "cfg.observations.policy.joint_pos.noise = Unoise(",
+        ):
+            self.assertIn(needle, src, f"helper 缺少：{needle}")
+        self.assertIn("apply_rlamp_env_settings(self)", _func_src(self.tree, "Imgo2AmpRLAmpEnvCfg",
+                                                                "__post_init__"))
+        # 粗糙版走参考的 custom_origins 分支（初始 xy ±1 m）
+        self.assertIn("apply_rlamp_env_settings(self, custom_origins=True)",
+                      _func_src(self.tree, "Imgo2AmpRoughEnvCfg", "__post_init__"))
+        self.assertIn("RLAMP_ROUGH_RESET_XY_RANGE if custom_origins else (0.0, 0.0)", src)
+
+    def test_env_settings_helper_behaviour_on_fake_cfg(self):
+        """真跑一遍 helper（AST 抽出来 exec，喂一个鸭子类型 cfg），确认改的是**值**不是字符串。
+
+        Isaac Lab 的 configclass 在无 GPU 机器上无法实例化（`import omni.kit` 失败），
+        所以这里只用标准库重建 helper 依赖的那一层结构，验证它的实际副作用。
+        """
+        names = {n.targets[0].id for n in self.tree.body
+                 if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                 and n.targets[0].id.startswith("RLAMP_")}
+        body = [n for n in self.tree.body
+                if (isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                    and n.targets[0].id in names)
+                or (isinstance(n, ast.FunctionDef) and n.name == "apply_rlamp_env_settings")]
+        self.assertTrue(any(isinstance(n, ast.FunctionDef) for n in body), "helper 没抽出来")
+        ns = {"Unoise": lambda n_min, n_max: ("Unoise", n_min, n_max)}
+        exec(compile(ast.Module(body=body, type_ignores=[]), "<amp_env_cfg>", "exec"), ns)
+
+        cfg = _fake_env_cfg()
+        ns["apply_rlamp_env_settings"](cfg)
+
+        # 指令
+        r = cfg.commands.base_velocity.ranges
+        self.assertEqual((r.lin_vel_x, r.lin_vel_y, r.ang_vel_z),
+                         ((-1.0, 2.0), (-0.3, 0.3), (-1.57, 1.57)))
+        # 摩擦与恢复系数
+        mat = cfg.events.randomize_rigid_body_material.params
+        self.assertEqual(mat["static_friction_range"], (0.25, 1.75))
+        self.assertEqual(mat["dynamic_friction_range"], (0.25, 1.75))
+        self.assertEqual(mat["restitution_range"], (0.0, 0.0))
+        # 质量：base ±1 kg；其它 body / CoM / 外力力矩被关掉
+        self.assertEqual(cfg.events.randomize_rigid_body_mass_base.params["mass_distribution_params"],
+                         (-1.0, 1.0))
+        self.assertIsNone(cfg.events.randomize_rigid_body_mass_others)
+        self.assertIsNone(cfg.events.randomize_com_positions)
+        self.assertIsNone(cfg.events.randomize_apply_external_force_torque)
+        # PD 增益：范围 ×[0.9,1.1] 且改成启动时随机一次
+        gains = cfg.events.randomize_actuator_gains
+        self.assertEqual(gains.mode, "startup")
+        self.assertEqual(gains.params["stiffness_distribution_params"], (0.9, 1.1))
+        self.assertEqual(gains.params["damping_distribution_params"], (0.9, 1.1))
+        # 推力：每 15 s、x/y 各 ±1.0 m/s
+        push = cfg.events.randomize_push_robot
+        self.assertEqual(push.interval_range_s, (15.0, 15.0))
+        self.assertEqual(push.params["velocity_range"], {"x": (-1.0, 1.0), "y": (-1.0, 1.0)})
+        # reset：平地不加 xy/偏航扰动，根速度 ±0.5（6 维），关节按 ×[0.5,1.5] 缩放、速度 0
+        base = cfg.events.randomize_reset_base.params
+        self.assertEqual(base["pose_range"], {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)})
+        self.assertEqual(base["velocity_range"], {k: (-0.5, 0.5) for k in
+                                                  ("x", "y", "z", "roll", "pitch", "yaw")})
+        joints = cfg.events.randomize_reset_joints.params
+        self.assertEqual(joints["position_range"], (0.5, 1.5))
+        self.assertEqual(joints["velocity_range"], (0.0, 0.0))
+        # 噪声：只改 policy 的 ang_vel / joint_pos，数值等于参考的 noise_scales
+        self.assertEqual(cfg.observations.policy.base_ang_vel.noise, ("Unoise", -0.3, 0.3))
+        self.assertEqual(cfg.observations.policy.joint_pos.noise, ("Unoise", -0.03, 0.03))
+
+        # 粗糙版：同样的 helper，但 reset xy 用参考的 ±1 m（`custom_origins=True`）
+        cfg2 = _fake_env_cfg()
+        ns["apply_rlamp_env_settings"](cfg2, custom_origins=True)
+        self.assertEqual(cfg2.events.randomize_reset_base.params["pose_range"],
+                         {"x": (-1.0, 1.0), "y": (-1.0, 1.0), "yaw": (0.0, 0.0)})
+        self.assertEqual(cfg2.commands.base_velocity.ranges.lin_vel_x, (-1.0, 2.0))
+
+    def test_reference_source_commands_dr_and_noise(self):
+        """本机有参考项目时，直接读它的 commands / domain_rand / noise 逐项比对。"""
+        ref = next((p for p in RLAMP_CANDIDATES if p.exists()), None)
+        base_ref = next((p for p in RLAMP_BASE_CANDIDATES if p.exists()), None)
+        if ref is None or base_ref is None:
+            self.skipTest("本机没有 rl_amp 参考项目，跳过")
+        consts = self._rlamp_consts()
+        tree = _module(ref)
+
+        # --- commands ---（参考的第三项叫 `ang_vel_yaw`，Isaac Lab 里是 `ang_vel_z`）
+        ref_names = {"lin_vel_x": "lin_vel_x", "lin_vel_y": "lin_vel_y", "ang_vel_z": "ang_vel_yaw"}
+        cmds_cls = _class(tree, "commands")
+        ranges = _class_assigns(_nested_class(cmds_cls, "ranges"), literal=True)
+        for key, value in consts["RLAMP_COMMAND_RANGES"].items():
+            self.assertEqual(tuple(ranges[ref_names[key]]), value, f"参考的 {key} 变了")
+        cmds = _class_assigns(cmds_cls, literal=True)
+        self.assertAlmostEqual(cmds["resampling_time"], 10.0, places=9)
+        self.assertFalse(cmds["heading_command"])
+        self.assertFalse(cmds["curriculum"])   # 参考没有指令课程
+
+        # --- domain_rand ---
+        dr_cls = _class(tree, "domain_rand")
+        dr = _class_assigns(dr_cls, literal=True)
+        self.assertTrue(dr["randomize_friction"])
+        self.assertEqual(tuple(dr["friction_range"]), consts["RLAMP_FRICTION_RANGE"])
+        self.assertTrue(dr["randomize_base_mass"])
+        self.assertEqual(tuple(dr["added_mass_range"]), consts["RLAMP_BASE_MASS_RANGE"])
+        self.assertTrue(dr["randomize_gains"])
+        self.assertEqual(tuple(dr["stiffness_multiplier_range"]), consts["RLAMP_GAIN_MULTIPLIER_RANGE"])
+        self.assertEqual(tuple(dr["damping_multiplier_range"]), consts["RLAMP_GAIN_MULTIPLIER_RANGE"])
+        self.assertTrue(dr["push_robots"])
+        self.assertAlmostEqual(dr["push_interval_s"], consts["RLAMP_PUSH_INTERVAL_S"][0], places=9)
+        self.assertAlmostEqual(dr["max_push_vel_xy"], consts["RLAMP_PUSH_VEL_XY"], places=9)
+        # 「参考没有 CoM/惯量/外力随机化」这个结论的依据：它的 domain_rand **不继承基类**
+        self.assertEqual(dr_cls.bases, [],
+                         "参考的 domain_rand 若开始继承基类，'没有这些字段'的结论就不成立")
+        for absent in ("randomize_com", "randomize_rigid_body_inertia",
+                       "randomize_apply_external_force_torque", "randomize_restitution"):
+            self.assertNotIn(absent, dr, f"参考里出现了 {absent}，对齐清单需要更新")
+
+        # --- noise：a1 相对基类只覆盖 dof_pos / ang_vel ---
+        noise_cls = _class(tree, "noise")
+        ns = _class_assigns(_nested_class(noise_cls, "noise_scales"), literal=True)
+        self.assertAlmostEqual(ns["dof_pos"], consts["RLAMP_NOISE_SCALES"]["dof_pos"], places=9)
+        self.assertAlmostEqual(ns["ang_vel"], consts["RLAMP_NOISE_SCALES"]["ang_vel"], places=9)
+        base_ns = _class_assigns(
+            _nested_class(_class(_module(base_ref), "noise"), "noise_scales"), literal=True)
+        for key in ("lin_vel", "dof_vel", "gravity"):
+            self.assertAlmostEqual(base_ns[key], ns[key], places=9,
+                                   msg=f"{key} 被参考覆盖了，对齐清单需要更新")
+        self.assertAlmostEqual(_class_assigns(noise_cls, literal=True)["noise_level"], 1.0, places=9)
+
+    def test_reference_source_reset_distribution(self):
+        """本机有参考项目时，直接读它的 reset 实现，确认我们对齐的是它的真实行为。"""
+        ref = next((p for p in RLAMP_ROBOT_ENV_CANDIDATES if p.exists()), None)
+        if ref is None:
+            self.skipTest("本机没有 rl_amp 参考项目，跳过")
+        consts = self._rlamp_consts()
+        src = Path(ref).read_text(encoding="utf-8-sig")
+
+        def _rand_float(needle):
+            """抓 `torch_rand_float(a, b, <needle>...)` 的两个端点（源码里写的是 `-1.` 这种字面量）。"""
+            m = re.search(r"torch_rand_float\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*" + needle, src)
+            self.assertIsNotNone(m, f"参考里找不到 torch_rand_float(..., {needle})")
+            return float(m.group(1)), float(m.group(2))
+
+        # 根速度：6 维全部 U(-0.5, 0.5)
+        self.assertEqual(_rand_float(r"\(len\(env_ids\), 6\)"), consts["RLAMP_RESET_VEL_RANGE"])
+        # 地形分支：xy 再各加 ±1 m（`custom_origins` 才走）
+        self.assertEqual(_rand_float(r"\(len\(env_ids\), 2\)"), consts["RLAMP_ROUGH_RESET_XY_RANGE"])
+        self.assertIn("if self.custom_origins:", src)
+        # 关节：乘默认角 ×U(0.5, 1.5)，速度置 0
+        self.assertEqual(_rand_float(r"\(len\(env_ids\), self.num_dof\)"),
+                         consts["RLAMP_RESET_JOINT_SCALE_RANGE"])
+        self.assertIn("self.dof_vel[env_ids] = 0.", src)
+
+    def test_other_variants_keep_their_commands_and_dr(self):
+        """flat-amp / go2 变体不得被这一轮对齐动到（它们各自是独立对照）。"""
+        for cls in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg"):
+            self.assertNotIn("apply_rlamp_env_settings",
+                             _func_src(self.tree, cls, "__post_init__"), cls)
+        flat = _func_src(self.tree, "Imgo2AmpMoveEnvCfg", "__post_init__")
+        self.assertIn("self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)", flat)
+        self.assertIn("self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)", flat)
+        self.assertIn("heading_command = False", flat)
+        # 基础 EventCfg 的原始值必须原样保留（我们只改 rlamp 任务里的副本字段）
+        events = ast.unparse(_class(_module(REWARDS_CFG), "EventCfg"))
+        self.assertIn("'static_friction_range': (0.3, 1.0)", events)
+        self.assertIn("'mass_distribution_params': (0.7, 1.3)", events)
+        self.assertIn("interval_range_s=(10.0, 15.0)", events)
+
+    def test_reference_actor_drops_lin_and_ang_vel(self):
+        """参考 actor（42 维）**不看线速度也不看角速度** —— 这决定了「actor 45 vs 42」的取舍。
+
+        源码依据：`legged_robot_amp.py` 里 `num_obs == num_privileged_obs - 6` 时
+        `obs_buf = privileged_obs_buf[:, 6:]`，而前 6 维正是 `base_lin_vel`+`base_ang_vel`。
+        这条同时说明参考的 `noise_scales.ang_vel = 0.3` 在它那边是死代码（噪声先加在
+        `[:, 3:6]` 上，随后被切掉）；我们保留 `base_ang_vel`，所以那条噪声在我们这边有效。
+        """
+        ref = next((p for p in RLAMP_AMP_ENV_CANDIDATES if p.exists()), None)
+        if ref is None:
+            self.skipTest("本机没有 rl_amp 参考项目，跳过")
+        src = Path(ref).read_text(encoding="utf-8-sig")
+        self.assertIn("if self.num_obs == self.num_privileged_obs - 6:", src)
+        self.assertIn("self.obs_buf = self.privileged_obs_buf[:, 6:]", src)
+        cfg = _module(next(p for p in RLAMP_CANDIDATES if p.exists()))
+        env_cls = _class(cfg, "env")
+        env = _class_assigns(env_cls, literal=True)
+        self.assertEqual(env["num_observations"], 42)
+        self.assertEqual(env["num_privileged_obs"], 48)
+
+    def test_rlamp_runner_aligns_min_normalized_std(self):
+        """rlamp 四个任务改用 `AMPRLAmpRunnerCfg`（`min_normalized_std=[0.01]*12`，参考值）。"""
+        agent = _module(AGENT_CFG)
+        cls = _class(agent, "AMPRLAmpRunnerCfg")
+        self.assertEqual([ast.unparse(b) for b in cls.bases], ["AMPRunnerCfg"])
+        src = ast.unparse(cls)
+        self.assertIn("min_normalized_std = [0.01, 0.01, 0.01] * 4", src)
+        self.assertIn("experiment_name = 'base_move_amp_rlamp'", src)
+        tasks = Path(TASKS_INIT).read_text(encoding="utf-8")
+        self.assertEqual(tasks.count("amp_rsl_rl_cfg:AMPRLAmpRunnerCfg"), 4)
+        self.assertEqual(tasks.count("amp_rsl_rl_cfg:AMPRunnerCfg"), 2)
+        self.assertEqual(tasks.count("amp_rsl_rl_cfg:AMPGo2RunnerCfg"), 2)
 
     def test_other_variants_keep_deployment_contract(self):
         """其它变体（含已部署的 flat-amp）不得被动到：髋 0.125、clip ±3、commands 1.0。"""

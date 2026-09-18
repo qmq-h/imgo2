@@ -103,7 +103,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRLAmpEnvCfg",
-        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRLAmpRunnerCfg",
     },
 )
 
@@ -113,7 +113,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRLAmpPlayEnvCfg",
-        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRLAmpRunnerCfg",
     },
 )
 
@@ -126,7 +126,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRoughEnvCfg",
-        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRLAmpRunnerCfg",
     },
 )
 
@@ -136,6 +136,6 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRoughPlayEnvCfg",
-        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRLAmpRunnerCfg",
     },
 )

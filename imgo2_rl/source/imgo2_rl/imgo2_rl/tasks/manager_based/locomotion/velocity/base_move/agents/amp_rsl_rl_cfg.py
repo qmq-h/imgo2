@@ -55,6 +55,19 @@ class AMPRunnerCfg(AMPOnPolicyRunnerCfg):
 
 
 @configclass
+class AMPRLAmpRunnerCfg(AMPRunnerCfg):
+    """rl_amp（fan-ziqi）配方的 runner：AMP 侧与 `AMPRunnerCfg` 相同，只对齐 `min_normalized_std`。
+
+    参考 `a1_amp_config.py` 的 `min_normalized_std = [0.01, 0.01, 0.01] * 4`（=12 项）。
+    **它在我们的实现里不生效**：`algorithm.clamp_noise_std = False`（AMP-06，用户决定：
+    不对探索 std 加下限 clamp）。照抄它是为了"参考配方可逐项追溯"，不是为了改变行为。
+    """
+
+    experiment_name = "base_move_amp_rlamp"
+    min_normalized_std = [0.01, 0.01, 0.01] * 4
+
+
+@configclass
 class AMPGo2RunnerCfg(AMPRunnerCfg):
     """amp_go2 配方的 runner：`coef 0.2` / `lerp 0.8`（风格上限只有 0.04/步）。
 
