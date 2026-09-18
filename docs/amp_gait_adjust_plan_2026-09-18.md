@@ -523,3 +523,40 @@ amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-o
 所以**平地对粗糙不再是严格的单变量对照**。若以后要做干净的泛化对比，要么给平地版也加一个
 （平地上扫描是常数，等于给 critic 187 个常量输入，无害但无信息），要么跑一个"粗糙 − 特权 critic"的消融。
 静态核算写进测试：`test_critic_dim_contract_235` 会从 `GridPatternCfg` 反算网格维度并断言 235。
+
+---
+
+## 15. actor / critic 与 rl_amp 的逐项对照（2026-09-18 晚，用户提问后核对）
+
+**结论：网络结构完全一致，critic 维度与组成也一致，但 actor 差一个 3 维块。**
+
+| | rl_amp（fan-ziqi，`a1_amp`） | 我们（`flat-amp` / `flat-amp-rlamp`） | 一致？ |
+|---|---|---|---|
+| 网络 | `actor/critic_hidden_dims = [512,256,128]`、`activation='elu'`、`init_noise_std=1.0` | 同 | ✅ |
+| **actor 维度** | **42** | **45** | ❌ |
+| actor 组成 | `projected_gravity 3 + commands 3 + dof_pos(相对) 12 + dof_vel 12 + actions 12` | `base_ang_vel 3 + projected_gravity 3 + commands 3 + joint_pos 12 + joint_vel 12 + last_action 12` | ❌ **差 `base_ang_vel` 这 3 维** |
+| **critic 维度** | **48** | **48** | ✅ |
+| critic 组成与顺序 | `lin_vel 3 + ang_vel 3 + gravity 3 + commands 3 + dof_pos 12 + dof_vel 12 + actions 12` | **完全相同（含顺序）** | ✅ |
+| critic 各项缩放 | `lin_vel 2.0 / ang_vel 0.25 / dof_pos 1.0 / dof_vel 0.05` | **全 1.0**（Isaac Lab 默认；我们只缩放了 policy 组） | ❌ |
+| actor 各项缩放 | `ang_vel 0.25 / dof_pos 1.0 / dof_vel 0.05`（gravity/commands 不缩放） | `ang_vel 0.25 / joint_pos 1.0 / joint_vel 0.05` | ✅（共同项一致） |
+| 动作 | `action_scale = 0.25`（统一）、`clip_actions = 100`（≈不裁剪） | 髋 `0.125` / 其余 `0.25`、`clip = ±3`（部署契约冻结值） | ❌（执行层差异） |
+| PD 增益 | `stiffness 20.0 / damping 0.5` | `stiffness 25.0 / damping 0.5` | ❌（物理差异，机器人不同） |
+
+**关键依据**：`rl_amp/legged_gym/legged_gym/envs/base/legged_robot_amp.py:250-271`——
+先把 48 维 privileged obs 拼好（含 `base_lin_vel`、`base_ang_vel`），然后
+`if self.num_obs == self.num_privileged_obs - 6: self.obs_buf = self.privileged_obs_buf[:, 6:]`
+**切掉前 6 维 = 线速度 3 + 角速度 3** ⇒ 参考的 actor **既不看线速度也不看角速度**，
+只靠 `projected_gravity` 感知姿态。我们（AMP-05）只去掉了线速度、保留了 `base_ang_vel`
+（真机 IMU 本来就有陀螺仪）。
+
+**要不要为了"忠于 fanziqi"把 actor 也改成 42？** 我的建议是**不改**，并把差异写清楚：
+1. 代价：`base_ang_vel` 是部署契约里的一项（`amp/deploy/policy/imgo2/amp/config.yaml` 的
+   `observations` 列表 + C++ 观测拼接都要同步），改动会连带导出与部署复核；而且丢掉真机已有的
+   陀螺仪信息会让学习更难（参考去掉它是为了"完全不依赖速度估计"的硬件通用性，不是硬件限制）。
+2. 本轮要检验的是**配方**（2 项奖励 + `coef/lerp`），观测集差异是另一个变量；混在一起改，
+   结果又说不清。
+3. 若确实要严格复现参考的 42 维：作为**独立单变量**做（改 actor 观测 → 新任务 → 重训 → 重导出 →
+   复核三条契约），别和这次配方实验叠在一起。
+
+**另一处可以顺手对齐但需要重训才能验证的**：critic 各项缩放（我们全 1.0，参考 2.0/0.25/1.0/0.05）。
+它只影响 critic 的输入尺度（不影响部署），但改了就等于换了价值网络的输入分布，必须重训才算验证。
