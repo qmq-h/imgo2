@@ -323,3 +323,38 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 --headless
 **成功判据**（用修好的回放工具：`eval_gait.py --task=Imgo2-basemove-flat-amp-go2-play`）：
 步周期 ≥0.45 s（现在 0.19）、`air_time_mean_s` 升向 0.2 s、线速度误差 ≤0.6 m/s、
 相位仍是 FL-FR≈±180° 的对角步、`mean_root_height_m` 别掉到 0.25 以下。
+
+---
+
+## 10. 澄清：`rl_amp` 里没有 go2 部分（2026-09-18 补充）
+
+用户一度说「主要参考 fan-ziqi 的设置」，随后明确「go2 部分的」。**核实结果：`rl_amp`
+（fan-ziqi）里没有 go2**——
+
+* `legged_gym/legged_gym/envs/` 只有 `a1 / anymal_b / anymal_c / base / cassie`；
+* 全仓 `find -iname "*go2*"`（排除 `.git`）**为空**；
+* 注册任务只有 `anymal_c_rough`、`anymal_c_flat`、`anymal_b`、`a1`、`a1_amp`、`cassie`。
+
+它的 AMP 骨架与 a1 同源、**奖励是 AMP-only**（除 `tracking_lin_vel 1.5/(.005*6)`、
+`tracking_ang_vel 0.5/(.005*6)` 外全部为 0，连 `base_height`、`lin_vel_z`、`dof_pos_limits`
+都是 0），地形 `mesh_type='plane'`、`measure_heights=False`，`coef 2.0 / lerp 0.3`，
+`λ_gp=10`，`terminate_after_contacts_on=["base"]`、`penalize_contacts_on=["thigh"]`。
+
+⇒ 所以"go2 那部分"只有 `ak1raljl/amp_go2` 有，而它已经在 §9 移植完成。
+本轮补齐了它最后一处未对齐的 go2 专属设置：**指令范围**
+`lin_vel_x [-1.2, 1.5]`、`lin_vel_y ±0.8`、`ang_vel_yaw ±1.0`
+（我们原来是 x `(-1.0, 1.5)`、y `±1.0`、yaw `±1.57`）。
+⚠️ 注意 `x > ~0.9 m/s` 段**我们的录制数据覆盖不到**（参考动作实测最快 0.842 m/s），
+照抄参考的 1.5 上限会放大"要求数据外步态"的矛盾；评估时以 0.3–0.9 为准。
+
+**已核对为"本来就一致"的 go2 设置**（无需改）：`env.num_observations = 45`（actor 无 `lin_vel`）、
+`obs_scales`（ang_vel 0.25 / dof_pos 1.0 / dof_vel 0.05）、`tracking_sigma 0.25`、
+`soft_dof_pos_limit 0.9`（我们的 `soft_joint_pos_limit_factor=0.9`）、
+`reference_state_initialization_prob`（他们都是"全部环境用参考帧初始化"，我们 1.0 等价）、
+PPO 全套超参（`init_noise_std 1.0`、`value_loss_coef 1.0`、`clip_param 0.2`、epochs 5 / minibatches 4、
+`lr 1e-3` adaptive、`gamma 0.99`、`lam 0.95`、`desired_kl 0.01`、`max_grad_norm 1.0`、
+`num_steps_per_env 24`、`entropy_coef 0.01`、replay buffer 1e6）、`λ_gp=10`、判别器 `[1024,512]`。
+**明确不一致且【不建议动】的**：`num_privileged_obs`（他们 235 含 187 维高度扫描在 critic 里；
+我们 48，actor 侧不受影响）、`clip_observations/clip_actions = 100`（我们的动作 clip ±3 是
+部署契约里冻结的值）、`self_collisions`、`max_iterations`（他们写 500000，a1 实际 checkpoint 是
+36450；我们保持 40000）。

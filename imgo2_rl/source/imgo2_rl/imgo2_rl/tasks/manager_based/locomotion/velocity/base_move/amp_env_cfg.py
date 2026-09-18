@@ -342,6 +342,14 @@ class Imgo2AmpGo2StyleEnvCfg(Imgo2AmpMoveEnvCfg):
         self.rewards.base_height_l2.params["target_height"] = AMP_GO2_BASE_HEIGHT_TARGET
         self.rewards.feet_air_time.params["threshold"] = AMP_GO2_FEET_AIR_TIME_THRESHOLD
 
+        # 指令范围也照抄参考（`go2_amp_config.py` 的 `class commands.ranges`）：
+        #   lin_vel_x [-1.2, 1.5]、lin_vel_y ±0.8、ang_vel_yaw ±1.0（我们原来 x (-1.0,1.5)、y ±1.0、yaw ±1.57）。
+        # 注意：**x > ~0.9 m/s 段我们自己的录制数据覆盖不到**（参考动作实测最快 0.842 m/s），
+        # 照抄参考的 1.5 上限会把"要求数据外的步态"这一点放大；评估时重点看 0.3–0.9。
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.2, 1.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.8, 0.8)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+
 
 @configclass
 class Imgo2AmpGo2StylePlayEnvCfg(Imgo2AmpGo2StyleEnvCfg):

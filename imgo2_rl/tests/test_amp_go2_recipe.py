@@ -165,6 +165,32 @@ class Go2RecipeTests(unittest.TestCase):
         self.assertAlmostEqual(target, 0.30, places=12)   # 参考 0.38 是 Go2 的站高
         self.assertAlmostEqual(thresh, 0.2, places=12)    # 参考硬编码 0.5，比我们参考周期还慢
 
+    def test_command_ranges_match_reference(self):
+        """指令范围照抄 amp_go2 的 go2 配置（x[-1.2,1.5] / y±0.8 / yaw±1.0）。"""
+        fn = next(n for n in _class(self.tree, "Imgo2AmpGo2StyleEnvCfg").body
+                  if isinstance(n, ast.FunctionDef) and n.name == "_apply_amp_go2_rewards")
+        src = ast.unparse(fn)
+        self.assertIn("ranges.lin_vel_x = (-1.2, 1.5)", src)
+        self.assertIn("ranges.lin_vel_y = (-0.8, 0.8)", src)
+        self.assertIn("ranges.ang_vel_z = (-1.0, 1.0)", src)
+
+    def test_go2_reference_source_command_ranges(self):
+        """本机有参考项目时，直接读它的 commands.ranges 比对。"""
+        ref = next((p for p in REFERENCE_CANDIDATES if p.exists()), None)
+        if ref is None:
+            self.skipTest("本机没有 amp_go2 参考项目，跳过")
+        cmds = _class(_module(ref), "commands")
+        ranges = next(n for n in cmds.body if isinstance(n, ast.ClassDef) and n.name == "ranges")
+        got = {}
+        for node in ranges.body:
+            if isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name):
+                        got[t.id] = ast.literal_eval(node.value)
+        self.assertEqual(got["lin_vel_x"], [-1.2, 1.5])
+        self.assertEqual(got["lin_vel_y"], [-0.8, 0.8])
+        self.assertEqual(got["ang_vel_yaw"], [-1.0, 1.0])
+
     def test_runner_cfg_matches_reference_style_weights(self):
         agent = _module(AGENT_CFG)
         cls = _class(agent, "AMPGo2RunnerCfg")
