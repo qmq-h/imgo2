@@ -44,9 +44,19 @@ parser.add_argument("--num_envs", type=int, default=8, help="Number of parallel 
 parser.add_argument("--steps", type=int, default=1000, help="Policy steps to record per env.")
 parser.add_argument("--warmup", type=int, default=50,
                     help="Steps recorded but excluded from the statistics (startup transient, default 50 = 1 s).")
+parser.add_argument("--command_vx", type=float, default=None,
+                    help="Override the play cfg's fixed forward command (m/s). The play cfg hard-codes "
+                         "1.0; use this to sweep 0.3/0.6/0.9 and compare against the reference baseline "
+                         "inside the range the recorded motions actually cover.")
+parser.add_argument("--command_yaw", type=float, default=None,
+                    help="Override the play cfg's fixed yaw-rate command (rad/s).")
 parser.add_argument("--agent", type=str, default=None, help="Agent config entry point (defaults per task).")
 parser.add_argument("--out", type=str, default=None, help="Write metrics JSON to this path.")
 parser.add_argument("--dump-timeseries", action="store_true", help="Also store raw per-step arrays in the JSON.")
+parser.add_argument("--dump-npz", type=str, default=None,
+                    help="Also save ALL raw arrays (含 43 维 AMP 观测) to this .npz — 有了它，"
+                         "判别器/步态分析可以完全离线做（配合 scripts/tools/probe_amp_discriminator.py），"
+                         "不必再占用 GPU 回放。建议写到被忽略的 logs/ 下。")
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + hydra_args
@@ -96,6 +106,16 @@ def main() -> dict:
 
     agent_cfg, agent_name = _resolve_agent_cfg(args_cli.task, args_cli.agent)
     agent_cfg.device = env_cfg.sim.device
+
+    # 指令覆盖：play 配置把指令钉死成 1.0 m/s / 0 / 0，但录制参考只覆盖到 ~0.84 m/s，
+    # 因此需要在数据覆盖内扫速才能分清「风格权重不足」与「指令超出数据覆盖」。
+    if args_cli.command_vx is not None:
+        env_cfg.commands.base_velocity.ranges.lin_vel_x = (args_cli.command_vx, args_cli.command_vx)
+    if args_cli.command_yaw is not None:
+        env_cfg.commands.base_velocity.ranges.ang_vel_z = (args_cli.command_yaw, args_cli.command_yaw)
+    cmd_lin_vel_x = tuple(env_cfg.commands.base_velocity.ranges.lin_vel_x)
+    cmd_ang_vel_z = tuple(env_cfg.commands.base_velocity.ranges.ang_vel_z)
+    print(f"[eval] 指令 lin_vel_x={cmd_lin_vel_x} ang_vel_z={cmd_ang_vel_z}")
     # 必须包 AmpVecEnvWrapper（与 train.py:96 / play.py:98 一致）：
     # num_privileged_obs / num_obs / obs_history_buf 都定义在 wrapper 上，
     # 用 .unwrapped 会得到 AmpManagerBasedRLEnv，runner 构造时即 AttributeError。
@@ -148,13 +168,16 @@ def main() -> dict:
     # ---- 回放采样 ----
     obs, _ = env.reset()
     rec = {k: [] for k in ("t", "contact", "base_z", "vel_err_xy", "vel_err_yaw",
-                           "joint_pos", "quat", "foot_pos_b", "ep_len", "done")}
+                           "joint_pos", "quat", "foot_pos_b", "ep_len", "done",
+                           "amp_obs", "cmd")}
     dt = base_env.step_dt
     with torch.inference_mode():
         for _ in range(args_cli.steps):
             # policy 是 get_inference_policy 返回的 callable（= actor 的动作均值，无采样噪声）
             actions = policy(obs)
             obs, _priv, _amp, _rew, _dones, _infos, _reset_ids, _term = env.step(actions)
+            # 策略侧 43 维 AMP 观测（判别器的输入域）：落盘后即可离线复现「风格项在看什么」
+            rec["amp_obs"].append(_amp.cpu().numpy())
             contact = contact_sensor.data.net_forces_w[:, sensor_foot_ids, :].norm(dim=-1) > 1.0
             rec["t"].append(float(env.episode_length_buf.float().mean().item()) * dt)
             rec["ep_len"].append(env.episode_length_buf.cpu().numpy())
@@ -169,6 +192,7 @@ def main() -> dict:
             rec["foot_pos_b"].append(
                 math_utils.quat_apply_inverse(rq, fp_rel).cpu().numpy())   # [E, 4, 3]
             cmd = base_env.command_manager.get_command("base_velocity")
+            rec["cmd"].append(cmd.cpu().numpy())
             lin_err = torch.norm(cmd[:, :2] - robot.data.root_lin_vel_b[:, :2], dim=1)
             ang_err = torch.abs(cmd[:, 2] - robot.data.root_ang_vel_b[:, 2])
             rec["vel_err_xy"].append(lin_err.cpu().numpy())
@@ -180,18 +204,22 @@ def main() -> dict:
     # 再由 gait_metrics.build_report 统一汇总（口径与聚合都在那个纯 numpy 模块里，
     # 配套 tests/test_gait_metrics.py，可在没有 GPU 的机器上回归）。
     metrics = build_report(
-        contact=np.stack(rec["contact"], axis=1),      # [E, T, F]
+        # **时间轴一律在 0**（build_report 会严格校验，写反会直接报错）：
+        # 曾经把 contact/joint_pos 用 axis=1 堆叠成 [E,T,...]，于是关节峰峰值被算成
+        # 「同一时刻跨环境的散布」≈0，12 个关节全打印 0.000。
+        contact=np.stack(rec["contact"]),              # [T, E, F]
         base_z=np.stack(rec["base_z"]),                # [T, E]
         vel_err_xy=np.stack(rec["vel_err_xy"]),
         vel_err_yaw=np.stack(rec["vel_err_yaw"]),
         quat=np.stack(rec["quat"]),                    # [T, E, 4] wxyz
         foot_pos_b=np.stack(rec["foot_pos_b"]),        # [T, E, 4, 3]
-        joint_pos=np.stack(rec["joint_pos"], axis=1),  # [T, E, 12]
+        joint_pos=np.stack(rec["joint_pos"]),          # [T, E, 12]
         ep_len=np.stack(rec["ep_len"]),                # [T, E]
         done=np.stack(rec["done"]),                    # [T, E]
         dt=dt, foot_names=foot_names, checkpoint=str(ckpt_path),
         iteration=int(state.get("iter", -1)), warmup=int(args_cli.warmup),
         t_series=np.asarray(rec["t"]), dump_timeseries=bool(args_cli.dump_timeseries),
+        meta={"cmd_lin_vel_x": cmd_lin_vel_x, "cmd_ang_vel_z": cmd_ang_vel_z},
     )
     per_foot = metrics["per_foot"]
     E, T = metrics["num_envs"], metrics["steps"]
@@ -203,13 +231,36 @@ def main() -> dict:
         out.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[eval] 已写出 {out}")
 
+    if args_cli.dump_npz:
+        npz = Path(args_cli.dump_npz)
+        npz.parent.mkdir(parents=True, exist_ok=True)
+        # 全部原始数组（时间轴在 0），供离线做判别器/步态分析：
+        #   amp_obs 是策略侧 43 维 AMP 观测 → 判别器探针的输入
+        #   joint_pos / foot_pos_b / quat / contact 用于重算任何指标，不必再跑 GPU
+        np.savez_compressed(
+            npz,
+            **{k: np.stack(v) for k, v in rec.items()},
+            cmd_lin_vel_x=np.asarray(cmd_lin_vel_x), cmd_ang_vel_z=np.asarray(cmd_ang_vel_z),
+            iter=np.asarray(int(state.get("iter", -1))),
+            checkpoint=np.asarray(str(ckpt_path)),
+        )
+        print(f"[eval] 已写出原始数组 {npz}（含 amp_obs，可用于离线判别器分析）")
+
     resets = metrics["resets_per_env"]
     print("\n===== 步态评估摘要 =====")
-    print(f"  回放 {E} 环境 × {T} 步（丢弃前 {warmup} 步）| 重置 {metrics['resets_total']} 次"
-          f"（{metrics['envs_with_reset']}/{E} 个环境）{resets if metrics['resets_total'] else ''}")
+    print(f"  指令 vx={metrics.get('cmd_lin_vel_x')} yaw_rate={metrics.get('cmd_ang_vel_z')}"
+          f" | 回放 {E} 环境 × {T} 步（丢弃前 {warmup} 步）")
+    if metrics["resets_total"]:
+        msg = (f"  重置 {metrics['resets_total']} 次（{metrics['envs_with_reset']}/{E} 个环境）："
+               f"末步 {metrics['resets_at_last_step']} 次 / 窗口内 {metrics['resets_before_last_step']} 次")
+        if metrics["resets_before_last_step"] == 0 and metrics["resets_at_last_step"] >= E:
+            msg += " ⇒ 全是片长到期的情节超时（每个环境各一次），不污染窗口统计"
+        else:
+            msg += f" ⇒ **窗口内发生过真重置**，逐足峰峰/步频会被截断，逐环境明细 {resets} 需人工判读"
+        print(msg)
     print(f"  基座高度 {metrics['base_height_mean']:.4f} ± {metrics['base_height_std']:.4f} m"
           f" | 末步情节缓冲 {metrics['episode_length_final_steps_mean']:.1f} 步"
-          f"（无重置时应≈{T}）")
+          f"（{metrics['steps_recorded']} 步片长，末步超时后归 0）")
     print(f"  速度误差 线 {metrics['vel_err_xy_mean']:.4f} m/s / 角 {metrics['vel_err_yaw_mean']:.4f} rad/s")
     print(f"  机身姿态 pitch 均值 {metrics['body_pitch_deg_mean']:+.2f}° RMS {metrics['body_pitch_deg_rms']:.2f}° "
           f"峰峰 {metrics['body_pitch_deg_ptp']:.2f}° | roll 均值 {metrics['body_roll_deg_mean']:+.2f}° RMS {metrics['body_roll_deg_rms']:.2f}°")

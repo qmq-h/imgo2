@@ -45,22 +45,52 @@ def run_lengths(contact_env, dt):
     return air, stance
 
 
-def circular_phase(events, ref_events, period):
-    """把 events 相对「参考足落地栅格」的相位做圆周平均。
+def circular_mean(angles):
+    """弧度数组 → (相位 in [0,1), 集中度 R in [0,1])；空数组返回 (None, None)。"""
+    a = np.asarray(angles, dtype=np.float64).ravel()
+    if a.size == 0:
+        return None, None
+    c_mean, s_mean = float(np.cos(a).mean()), float(np.sin(a).mean())
+    return float((np.arctan2(s_mean, c_mean) / (2.0 * np.pi)) % 1.0), float(np.hypot(c_mean, s_mean))
 
-    events / ref_events 均为步下标（可含小数）。返回 (phase in [0,1), 集中度 R in [0,1])；
-    样本不足返回 (None, None)。R 越接近 1 说明落地越规整（足端版的「周期强度」，
-    与 Gazebo 侧用关节信号自相关算的周期强度不是同一个量，不要混用数值）。
+
+def interpolated_phase_angles(events, ref_events):
+    """把事件相位**插值到相邻两个参考落地之间**，返回弧度数组。
+
+    为什么不用 `(t - ref[0]) % period`：真实步周期几乎不可能正好是整数个仿真步
+    （本例 0.193 s ÷ 0.02 s = 9.6 步），取模会把每周期 0.4 步的误差累积到上百个周期之后，
+    圆周平均被抹平 —— 2026-09-18 那次实测集中度只剩 **0.17**，而 Gazebo 侧同一 checkpoint
+    的相位是稳定的 ±180°。插值法对周期漂移免疫。
+
+    落在参考落地区间之外的事件被丢弃（首尾各一小段）。
+    """
+    ev = np.asarray(events, dtype=np.float64).ravel()
+    ref = np.asarray(ref_events, dtype=np.float64).ravel()
+    if ev.size == 0 or ref.size < 2:
+        return np.empty(0, dtype=np.float64)
+    j = np.searchsorted(ref, ev, side="right") - 1      # ref[j] <= t < ref[j+1]
+    ok = (j >= 0) & (j + 1 < ref.size)
+    if not ok.any():
+        return np.empty(0, dtype=np.float64)
+    ev, j = ev[ok], j[ok]
+    span = ref[j + 1] - ref[j]
+    good = span > 0
+    return 2.0 * np.pi * ((ev[good] - ref[j[good]]) / span[good])
+
+
+def circular_phase(events, ref_events, period):
+    """把 events 相对「固定周期参考栅格」的相位做圆周平均（`period` 与 events 同单位）。
+
+    返回 (phase in [0,1), 集中度 R in [0,1])；样本不足返回 (None, None)。
+    R 越接近 1 说明落地越规整（足端版的「周期强度」，与 Gazebo 侧用关节信号自相关算的
+    周期强度不是同一个量，不要混用数值）。**周期会漂移时请用 `interpolated_phase_angles`。**
     """
     ev = np.asarray(events, dtype=np.float64).ravel()
     ref = np.asarray(ref_events, dtype=np.float64).ravel()
     if ev.size == 0 or ref.size < 2 or not np.isfinite(period) or period <= 0:
         return None, None
     ang = 2.0 * np.pi * (((ev - ref[0]) % period) / period)
-    c_mean = float(np.cos(ang).mean())
-    s_mean = float(np.sin(ang).mean())
-    phase = float((np.arctan2(s_mean, c_mean) / (2.0 * np.pi)) % 1.0)
-    return phase, float(np.hypot(c_mean, s_mean))
+    return circular_mean(ang)
 
 
 def peak_to_peak_per_env(values):
@@ -120,20 +150,15 @@ def summarize_contact(contact, dt, foot_names, ref_index=0):
             landings_per_env.append(int(ev.size))
             # 相位必须以**该环境自己的**参考足落地栅格为零点；参考足在该环境里落地不足 2 次
             # 就没有周期可言，跳过（有测试专门喂这种「参考足整段不落地」的输入）。
-            # 注意单位：`ev` 是**步**下标，因此周期也必须用步，不能乘 dt 换成秒
-            # （曾经写成 p = mean(diff)*dt 再与步下标取模，合成 trot 立刻算出 0° 而不是 180°）。
+            # 用插值相位（对周期漂移免疫），不用取模。
             ref_ev = ref_landings.get(e, np.empty(0, dtype=int))
             if ev.size and ref_ev.size >= 2:
-                p_steps = float(np.mean(np.diff(ref_ev)))
-                if np.isfinite(p_steps) and p_steps > 0:
-                    ang = 2.0 * np.pi * (((ev - ref_ev[0]) % p_steps) / p_steps)
+                ang = interpolated_phase_angles(ev, ref_ev)
+                if ang.size:
                     angles.append(ang)
         phase, concentration = (None, None)
         if angles:
-            allang = np.concatenate(angles)
-            c_mean, s_mean = float(np.cos(allang).mean()), float(np.sin(allang).mean())
-            phase = float((np.arctan2(s_mean, c_mean) / (2.0 * np.pi)) % 1.0)
-            concentration = float(np.hypot(c_mean, s_mean))
+            phase, concentration = circular_mean(np.concatenate(angles))
 
         duty = float(c[:, :, f].mean())
         per_foot[name] = {
@@ -197,32 +222,61 @@ def body_attitude_summary(quat_wxyz, lean_threshold_deg=2.0, dt=None):
     return out
 
 
+def _expect(name, arr, shape):
+    """严格校验布局。**本模块所有采样输入的时间轴都在 0**，写错轴必须立刻报错。
+
+    2026-09-18 的教训：`eval_gait.py` 里一处 `np.stack(..., axis=1)` 把 joint_pos 变成
+    [E,T,J]，而 build_report 按 [T,E,J] 取 `[:, :, i]`，于是关节峰峰值算成了「同一时刻跨环境
+    的散布」≈ 0，12 个关节全打印成 0.000 —— 而其余指标看起来完全正常，极易漏过。
+    """
+    a = np.asarray(arr)
+    if a.shape == shape:
+        return a
+    hint = ""
+    if a.ndim == len(shape) and a.shape[::-1][:2] == shape[:2]:
+        hint = "（形状像是把时间轴与环境轴写反了：本模块一律要求时间在轴 0）"
+    raise ValueError(f"build_report: {name} 形状应为 {tuple(shape)}，收到 {tuple(a.shape)}{hint}")
+
+
 def build_report(contact, base_z, vel_err_xy, vel_err_yaw, quat, foot_pos_b, joint_pos,
                  ep_len, done, dt, foot_names, checkpoint="", iteration=-1,
-                 warmup=0, t_series=None, dump_timeseries=False):
+                 warmup=0, t_series=None, dump_timeseries=False, meta=None):
     """把回放采样到的原始数组汇总成报告字典。
 
     `eval_gait.py` 只负责采样与打印，**所有口径与聚合都在这里**，因此这条链路可以在没有
     GPU / Isaac Lab 的机器上用合成数据回归（`tests/test_gait_metrics.py`）。
 
-    入参都是**未裁剪**的整段数组（warmup 在这里切）：
-      contact [E,T,F]、base_z/vel_err_xy/vel_err_yaw [T,E]、quat [T,E,4]（wxyz）、
-      foot_pos_b [T,E,F,3]、joint_pos [T,E,J]、ep_len/done [T,E]
+    入参都是**未裁剪**的整段数组（warmup 在这里切），且**时间轴一律在 0**：
+      contact [T,E,F]、base_z/vel_err_xy/vel_err_yaw/ep_len/done [T,E]、
+      quat [T,E,4]（wxyz）、foot_pos_b [T,E,F,3]、joint_pos [T,E,J]
     """
     contact = np.asarray(contact).astype(np.int8)
-    E, T_full, F = contact.shape
+    if contact.ndim != 3:
+        raise ValueError(f"build_report: contact 形状应为 [T,E,F]，收到 {contact.shape}")
+    T_full, E, F = contact.shape
+    base_z = _expect("base_z", base_z, (T_full, E))
+    vel_err_xy = _expect("vel_err_xy", vel_err_xy, (T_full, E))
+    vel_err_yaw = _expect("vel_err_yaw", vel_err_yaw, (T_full, E))
+    quat = _expect("quat", quat, (T_full, E, 4))
+    foot_pos_b = _expect("foot_pos_b", foot_pos_b, (T_full, E, F, 3))
+    ep_len = _expect("ep_len", ep_len, (T_full, E))
+    done = _expect("done", done, (T_full, E))
+    if joint_pos.ndim != 3 or joint_pos.shape[:2] != (T_full, E):
+        raise ValueError(f"build_report: joint_pos 形状应为 [T,E,J]，收到 {joint_pos.shape}"
+                         "（把时间轴与环境轴写反是最容易犯的错）")
+
     warmup = int(max(0, min(warmup, T_full - 1)))
     sl = slice(warmup, None)
 
-    contact_w = contact[:, sl, :]
-    base_z = np.asarray(base_z, dtype=np.float64)[sl]
-    vel_err_xy = np.asarray(vel_err_xy, dtype=np.float64)[sl]
-    vel_err_yaw = np.asarray(vel_err_yaw, dtype=np.float64)[sl]
-    quat = np.asarray(quat, dtype=np.float64)[sl]
-    fp_all = np.asarray(foot_pos_b, dtype=np.float64)[sl]
-    joint_pos = np.asarray(joint_pos, dtype=np.float64)[sl]
-    ep_len = np.asarray(ep_len)[sl]
-    done = np.asarray(done)[sl]
+    contact_w = contact[sl].transpose(1, 0, 2)          # → [E,T,F]，交给 summarize_contact
+    base_z = base_z[sl].astype(np.float64)
+    vel_err_xy = vel_err_xy[sl].astype(np.float64)
+    vel_err_yaw = vel_err_yaw[sl].astype(np.float64)
+    quat = quat[sl].astype(np.float64)
+    fp_all = foot_pos_b[sl].astype(np.float64)
+    joint_pos = joint_pos[sl].astype(np.float64)
+    ep_len = ep_len[sl]
+    done = done[sl]
     T = contact_w.shape[1]
 
     metrics = {
@@ -238,16 +292,23 @@ def build_report(contact, base_z, vel_err_xy, vel_err_yaw, quat, foot_pos_b, joi
         "base_height_std": float(np.std(base_z)),
         "vel_err_xy_mean": float(np.mean(vel_err_xy)),
         "vel_err_yaw_mean": float(np.mean(vel_err_yaw)),
-        # 回放期间的重置会打断逐足时序，峰峰/步频类指标会被污染 —— 显式报出
+        # 回放期间的重置会打断逐足时序，峰峰/步频类指标会被污染 —— 显式报出，并把
+        # 「末步的情节超时」与「窗口内的真重置」分开：前者每个环境必然各一次（片长=horizon），
+        # 不污染统计；后者才会。
         "resets_total": int(done.sum()),
         "resets_per_env": [int(x) for x in done.sum(axis=0)],
         "envs_with_reset": int((done.sum(axis=0) > 0).sum()),
+        "resets_at_last_step": int(done[-1].sum()) if T else 0,
+        "resets_before_last_step": int(done[:-1].sum()) if T > 1 else 0,
         # 注意：episode_length_buf 在无重置时就是 0→T−1 的斜坡，它的**时间均值**恒为
-        # (T−1)/2，不含任何重置信息（2026-09-18 那份 JSON 里的 499.5 正是斜坡均值，
-        # 不是「情节长度 500 步」）。判断有没有被重置要看 done 计数与**末步缓冲值**。
+        # (T−1)/2，不含任何重置信息（2026-09-18 v1 那份 JSON 里的 499.5 正是斜坡均值，
+        # 不是「情节长度 500 步」）。判断有没有被重置要看 done 计数与**末步缓冲值**：
+        # 末步缓冲≈steps_recorded 才说明整段没被重置（若末步刚好超时，则会是 0）。
         "episode_length_final_steps_per_env": [int(x) for x in ep_len[-1]],
         "episode_length_final_steps_mean": float(np.mean(ep_len[-1])),
     }
+    if meta:
+        metrics.update(meta)
 
     # ---- 机身姿态（前倾/侧倾），带 dt 以便区分「单调漂移」与「来回摆」----
     metrics.update(body_attitude_summary(quat, dt=dt))
@@ -292,7 +353,7 @@ def build_report(contact, base_z, vel_err_xy, vel_err_yaw, quat, foot_pos_b, joi
         metrics["timeseries"] = {
             "t": (np.asarray(t_series)[sl].tolist() if t_series is not None
                   else (np.arange(T) * dt).tolist()),
-            "contact": contact_w.tolist(),
+            "contact": contact[sl].tolist(),   # 与输入同布局：[T,E,F]
             "base_z": base_z.tolist(),
         }
     return metrics

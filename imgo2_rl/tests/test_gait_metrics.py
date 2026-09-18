@@ -20,7 +20,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/tools"))
-from gait_metrics import (  # noqa: E402
+from gait_metrics import (
+    circular_mean,
+    interpolated_phase_angles,  # noqa: E402
     body_attitude_summary,
     build_report,
     circular_phase,
@@ -113,6 +115,24 @@ class PhaseTests(unittest.TestCase):
         self.assertAlmostEqual(clean, 0.5, places=6)
         self.assertLess(abs(dirty - clean), 0.08)
 
+    def test_interpolated_phase_survives_a_drifting_period(self):
+        """真实步周期不是整数个仿真步（0.193 s ÷ 0.02 s = 9.6 步），取模会累积误差。"""
+        ref = np.cumsum(np.linspace(20.0, 24.0, 60))       # 周期从 20 步漂到 24 步
+        ev = ref[:-1] + 0.5 * np.diff(ref)                 # 每次都取半周期处
+        phase, concentration = circular_mean(interpolated_phase_angles(ev, ref))
+        self.assertAlmostEqual(phase, 0.5, places=6)
+        self.assertGreater(concentration, 0.999)
+        # 取模法在同一组数据上会被抹平（这正是 2026-09-18 实测集中度只有 0.17 的原因）
+        _, r_mod = circular_phase(ev, ref, float(np.mean(np.diff(ref))))
+        self.assertLess(r_mod, 0.9)
+        self.assertGreater(concentration, r_mod)
+
+    def test_interpolated_phase_drops_events_outside_reference(self):
+        ref = [10.0, 20.0, 30.0]
+        ang = interpolated_phase_angles([5.0, 15.0, 35.0], ref)   # 只有 15 落在区间内
+        self.assertEqual(len(ang), 1)
+        self.assertAlmostEqual(float(ang[0]) / (2 * np.pi), 0.5, places=9)
+
     def test_missing_samples_return_none(self):
         self.assertEqual(circular_phase([], [1.0, 5.0], 4.0), (None, None))
         self.assertEqual(circular_phase([1.0], [1.0], 4.0), (None, None))
@@ -186,12 +206,13 @@ class BuildReportTests(unittest.TestCase):
     FEET = ["FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"]
 
     def _inputs(self, warmup=20):
-        contact = np.zeros((self.E, self.T, 4), dtype=np.int8)
+        # 布局：**时间轴在 0**（build_report 的契约）
+        contact = np.zeros((self.T, self.E, 4), dtype=np.int8)
         foot_pos = np.zeros((self.T, self.E, 4, 3))
         for e in range(self.E):
             for f, shift in enumerate(self.SHIFT):
                 phase = (np.arange(self.T) - shift) % self.PERIOD
-                contact[e, phase < self.DUTY, f] = 1
+                contact[phase < self.DUTY, e, f] = 1
                 foot_pos[:, e, f, 0] = 0.3 * phase / self.PERIOD          # 摆动/支撑全程推进
                 foot_pos[:, e, f, 2] = 0.1 * (phase >= self.DUTY)         # 摆动期抬起
         quat = np.zeros((self.T, self.E, 4))
@@ -249,12 +270,36 @@ class BuildReportTests(unittest.TestCase):
         r = build_report(**kw)
         self.assertEqual(r["resets_total"], 1)
         self.assertEqual(r["envs_with_reset"], 1)
+        # 窗口内的真重置 ≠ 末步的情节超时，两者必须分开报
+        self.assertEqual(r["resets_before_last_step"], 1)
+        self.assertEqual(r["resets_at_last_step"], 0)
         self.assertLess(r["episode_length_final_steps_per_env"][1],
                         r["episode_length_final_steps_per_env"][0])
 
+    def test_horizon_timeout_is_not_confused_with_midwindow_reset(self):
+        kw = self._inputs()
+        kw["done"][-1, :] = 1                       # 8/8 环境在最后一步同时超时
+        kw["ep_len"][-1, :] = 0
+        r = build_report(**kw)
+        self.assertEqual(r["envs_with_reset"], self.E)
+        self.assertEqual(r["resets_at_last_step"], self.E)
+        self.assertEqual(r["resets_before_last_step"], 0)
+
+    def test_transposed_input_is_rejected(self):
+        """写反时间轴/环境轴必须立刻报错，而不是算出「全是 0」的假指标。"""
+        kw = self._inputs()
+        kw["joint_pos"] = np.transpose(kw["joint_pos"], (1, 0, 2))   # [E,T,12]
+        with self.assertRaises(ValueError) as ctx:
+            build_report(**kw)
+        self.assertIn("joint_pos", str(ctx.exception))
+        kw = self._inputs()
+        kw["base_z"] = np.transpose(kw["base_z"])                    # [E,T]
+        with self.assertRaises(ValueError):
+            build_report(**kw)
+
     def test_env_stuck_in_air_is_reported_consistently(self):
         kw = self._inputs()
-        kw["contact"][0, :, 0] = 0                        # 0 号环境的 FL 整段不落地
+        kw["contact"][:, 0, 0] = 0                        # 0 号环境的 FL 整段不落地
         r = build_report(**kw)
         m = r["per_foot"]["FL_FOOT"]
         self.assertAlmostEqual(m["contact_air_fraction_per_env"][0], 1.0, places=12)
@@ -264,7 +309,9 @@ class BuildReportTests(unittest.TestCase):
         r = build_report(dump_timeseries=True, **self._inputs())
         self.assertEqual(len(r["timeseries"]["t"]), r["steps"])
         self.assertEqual(len(r["timeseries"]["base_z"]), r["steps"])
-        self.assertEqual(len(r["timeseries"]["contact"][0]), r["steps"])
+        # contact 与输入同布局 [T,E,F]
+        self.assertEqual(len(r["timeseries"]["contact"]), r["steps"])
+        self.assertEqual(len(r["timeseries"]["contact"][0]), r["num_envs"])
 
 
 if __name__ == "__main__":
