@@ -52,3 +52,21 @@ class AMPRunnerCfg(AMPOnPolicyRunnerCfg):
         # 关闭后 `min_normalized_std` 不再生效。
         clamp_noise_std=False,
     )
+
+
+@configclass
+class AMPGo2RunnerCfg(AMPRunnerCfg):
+    """amp_go2 配方的 runner：`coef 0.2` / `lerp 0.8`（风格上限只有 0.04/步）。
+
+    对照 `~/Desktop/AMP/amp_go2-main/legged_gym/.../go2/go2_amp_config.py`：
+    `amp_reward_coef = 0.2`、`amp_task_reward_lerp = 0.8`。按我们的混合公式
+    `r = (1-lerp)·coef·style + lerp·task`，风格上限 = 0.2 × 0.2 = **0.04/步** ——
+    即"任务奖励负责步态，AMP 只做轻量风格先验"。
+    """
+
+    experiment_name = "base_move_amp_go2"
+    amp_reward_coef = 0.2
+    amp_task_reward_lerp = 0.8
+    # amp_go2 的 `min_normalized_std = [0.01]*12`；我们的 `clamp_noise_std=False` 让它不生效，
+    # 这里照抄以保持可追溯（用户 2026-09-17 关掉 clamp 的决定，本配置不动那条）。
+    min_normalized_std = [0.01, 0.01, 0.01] * 4

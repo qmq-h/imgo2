@@ -245,3 +245,74 @@
 **对方案选择的意义**：想在单节律数据上拿到**特定**步频，只能像 go2 那样把它写进任务奖励；
 想靠 AMP 出步态，就得按 rl_amp/a1 的配置（任务项近乎清零、风格占优），并接受"AMP 只保证像数据、
 不保证节律"。我们（单节律数据 + 目标 1.67 Hz + 要上真机）属于前者。
+
+---
+
+## 9. 落地：amp_go2 配方的移植（2026-09-18 已实现，**待训练验证**）
+
+用户决定「尽可能参考 amp_go2 操作试试看」，于是**新增**一个任务而不是改动原配方：
+
+| | 任务 ID | 环境配置 | agent 配置 |
+|---|---|---|---|
+| 原（AMP-only） | `Imgo2-basemove-flat-amp` | `Imgo2AmpMoveEnvCfg` | `AMPRunnerCfg`（coef 2.0 / lerp 0.3） |
+| **新（amp_go2 配方）** | **`Imgo2-basemove-flat-amp-go2`** | `Imgo2AmpGo2StyleEnvCfg` | `AMPGo2RunnerCfg`（**coef 0.2 / lerp 0.8**） |
+| 回放 | `Imgo2-basemove-flat-amp-go2-play` | `Imgo2AmpGo2StylePlayEnvCfg` | 同上 |
+
+> 注意别忘了：**amp_go2 自己也是在平地训的**（`go2_amp_config.py` 里 `mesh_type = 'plane'`），
+> 所以这次移植是「平地 + amp_go2 奖励设计」，不是粗糙地形。要走粗糙地形，还要叠加上一轮说的
+> 地形相对 height / `amp_root_z` / `terrain_levels` 那几处（另开一次改动与训练）。
+
+**奖励逐字照抄**（`AMP_GO2_RAW_WEIGHTS`）。之所以能照抄：legged_gym 的
+`_prepare_reward_function()` 会 `scales[key] *= self.dt`，Isaac Lab 的 `RewardManager.compute(dt)`
+也做 `term × weight × dt` —— **两边 `weight` 语义相同**。
+
+| 我们的项 | amp_go2 项 | 原始权重 | 每步系数（×0.02） |
+|---|---|---|---|
+| `track_lin_vel_xy_exp` | `tracking_lin_vel` | 4.0 | 0.08 |
+| `track_ang_vel_z_exp` | `tracking_ang_vel` | 2.0 | 0.04 |
+| `lin_vel_z_l2` | `lin_vel_z` | −1.0 | −0.02 |
+| `ang_vel_xy_l2` | `ang_vel_xy` | −0.05 | −0.001 |
+| `joint_acc_l2` | `dof_acc` | −2.5e-7 | −5e-9 |
+| `joint_torques_l2` | `torques` | −1e-4 | −2e-6 |
+| `base_height_l2` | `base_height` | −1.0 | **−0.02**（原配方 −5.0，弱 250 倍） |
+| `action_rate_l2` | `action_rate` | −0.01 | −2e-4 |
+| `undesired_contacts` | `collision` | −1.0 | −0.02（只惩罚 `.*_THIGH`，同参考） |
+| `joint_pos_limits` | `dof_pos_limits` | −2.0 | −0.04 |
+| `feet_air_time` | `feet_air_time` | 1.0 | 0.02 |
+
+风格侧：`coef 0.2` / `lerp 0.8` ⇒ 混合后风格上限 **0.2 × 0.2 = 0.04/步**，即"任务奖励负责步态、
+AMP 只做轻量风格先验"（与我们原配方的 0.540/步 差 13 倍）。
+
+**两处有意偏离参考**（已写进代码注释与测试）：
+1. `base_height` 目标 **0.30 m**（参考 0.38 是 Go2 的站高；Imgo2 参考动作的根高是 0.297）；
+2. `feet_air_time` 阈值 **0.2 s**（参考硬编码 0.5 s，语义是奖励"滞空 >0.5 s / 周期 ≥1 s"，比我们
+   参考动作的 0.600 s 周期还慢；0.2 s 让该项在参考节律上恰好中性）。
+
+**离线验证（已做）**：`tests/test_amp_go2_recipe.py` 9 项，其中一项**直接读本机参考项目
+`~/Desktop/AMP/amp_go2-main` 的 `class scales` 逐项比对**（数值一致、参考里没有漏抄的非零项）；
+另校验 11 个项名真实存在于 `RewardsCfg`、重建项的 `SceneEntityCfg` 正则非空、每步换算等价、
+runner 权重、任务注册且旧任务未被改动。全仓 40 项测试通过。
+
+**没做/必须由训练验证**：Isaac Lab 的配置类无法在无 Isaac Sim 的沙箱里实例化
+（`import omni.log` 失败），所以**一次都没跑过**。按工作区约定先跑短训练做前置检查：
+
+```bash
+cd <repo>/imgo2_rl
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 \
+    --num_envs=256 --max_iterations=100 --seed=42 --headless     # 前置检查
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 --headless   # 正式训练
+```
+
+**风险与判据（重点盯三条）**：
+1. **`base_height` 弱了 250 倍** ⇒ 我们自己的 Run2 就是在弱高度项下退化成贴地滑行（0.172 m、贴地率 0.89）。
+   短训练里看 `AMP/mean_root_height_m`、`AMP/fraction_root_height_below_0_20m`；若爬行，**只把
+   `base_height` 单独调回**（单变量），其它照抄参考。
+2. **回报量级缩小约 12 倍**（每步 ~0.16 对 ~1.97）⇒ `Loss/value_function` 应从 ~29 降到 ~1–2；
+   若价值损失不收敛，检查回报尺度是否需要整体放大（PPO 通常自适应，但本项目未验证过这么小的尺度）。
+3. **`feet_air_time` 阈值 0.2 s 是否够力**：该项在每步系数 0.02 下只能给到百分之几每步的激励，
+   若步频不动，先确认这一项确实被计算（`Episode_Reward/feet_air_time` 应出现在日志里且非零），
+   再考虑把它的系数往上调（仍是单变量）。
+
+**成功判据**（用修好的回放工具：`eval_gait.py --task=Imgo2-basemove-flat-amp-go2-play`）：
+步周期 ≥0.45 s（现在 0.19）、`air_time_mean_s` 升向 0.2 s、线速度误差 ≤0.6 m/s、
+相位仍是 FL-FR≈±180° 的对角步、`mean_root_height_m` 别掉到 0.25 以下。

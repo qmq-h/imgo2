@@ -1,6 +1,7 @@
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -159,7 +160,7 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # ------------------------------Rewards------------------------------
         self._keep_only_amp_task_rewards()
 
-        if self.__class__.__name__ == "Imgo2AmpMoveEnvCfg":
+        if self.__class__.__name__ in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg"):
             self.disable_zero_weight_rewards()
 
     def _keep_only_amp_task_rewards(self):
@@ -219,21 +220,133 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
 class Imgo2AmpMovePlayEnvCfg(Imgo2AmpMoveEnvCfg):
     def __post_init__(self):
         super().__post_init__()
+        apply_amp_play_overrides(self)
 
-        # ------------------------------Scene------------------------------
-        self.scene.num_envs = 1
 
-        # ------------------------------Events------------------------------
-        self.events.reference_state_initialization = None
-        self.events.randomize_rigid_body_material = None
-        self.events.randomize_rigid_body_mass_base = None
-        self.events.randomize_rigid_body_mass_others = None
-        self.events.randomize_apply_external_force_torque = None
-        self.events.randomize_push_robot = None
-        self.events.randomize_com_positions = None
-        self.events.randomize_actuator_gains = None
+##
+# amp_go2 配方（2026-09-18）：把参考项目 ak1raljl/amp_go2 的奖励设计等价移植过来
+##
 
-        # ------------------------------Commands------------------------------
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+
+def apply_amp_play_overrides(cfg) -> None:
+    """`*-amp-play` 任务共用的回放覆盖（单环境、关域随机化、指令固定）。
+
+    回放/评估（`play.py`、`eval_gait.py`）依赖这些覆盖：关掉参考状态初始化与全部随机化，
+    把指令钉成常数，否则 8 个环境的统计不可比。
+    """
+    # ------------------------------Scene------------------------------
+    cfg.scene.num_envs = 1
+
+    # ------------------------------Events------------------------------
+    cfg.events.reference_state_initialization = None
+    cfg.events.randomize_rigid_body_material = None
+    cfg.events.randomize_rigid_body_mass_base = None
+    cfg.events.randomize_rigid_body_mass_others = None
+    cfg.events.randomize_apply_external_force_torque = None
+    cfg.events.randomize_push_robot = None
+    cfg.events.randomize_com_positions = None
+    cfg.events.randomize_actuator_gains = None
+
+    # ------------------------------Commands------------------------------
+    cfg.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+    cfg.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+    cfg.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+
+
+# amp_go2 的原始权重（`go2_amp_config.py` 的 `class scales`，11 个非零项，逐字抄录）。
+# 键是我们 `RewardsCfg`（velocity_env_cfg.py）里的项名，值是 legged_gym 的**原始权重**。
+#
+# 单位语义（这是能与参考逐字对上的原因）：legged_gym 的 `_prepare_reward_function()` 会做
+# `reward_scales[key] *= self.dt`，Isaac Lab 的 `RewardManager.compute(dt)` 做 `term*weight*dt`
+# —— **两边 weight 的语义相同**，所以 `weight_il = weight_lg`（当 step_dt 都是 0.02 时）。
+AMP_GO2_DT = 0.02  # amp_go2 的 step_dt = sim.dt 0.005 × decimation 4
+AMP_GO2_RAW_WEIGHTS = {
+    "track_lin_vel_xy_exp": 4.0,    # ← tracking_lin_vel
+    "track_ang_vel_z_exp": 2.0,     # ← tracking_ang_vel
+    "lin_vel_z_l2": -1.0,           # ← lin_vel_z
+    "ang_vel_xy_l2": -0.05,         # ← ang_vel_xy
+    "joint_acc_l2": -2.5e-7,        # ← dof_acc
+    "joint_torques_l2": -1e-4,      # ← torques
+    "base_height_l2": -1.0,         # ← base_height（比我们 AMP-only 配方的每步 -5.0 弱 250 倍）
+    "action_rate_l2": -0.01,        # ← action_rate
+    "undesired_contacts": -1.0,     # ← collision（amp_go2 只惩罚 thigh）
+    "joint_pos_limits": -2.0,       # ← dof_pos_limits
+    "feet_air_time": 1.0,           # ← feet_air_time
+}
+# 必须偏离参考的两处（理由见 Imgo2AmpGo2StyleEnvCfg 的 docstring）
+AMP_GO2_BASE_HEIGHT_TARGET = 0.30       # amp_go2 用 0.38（Go2 站高）；Imgo2 参考动作是 0.297
+AMP_GO2_FEET_AIR_TIME_THRESHOLD = 0.2   # amp_go2 硬编码 0.5，比我们参考的 0.6 s 周期还慢
+# amp_go2 `penalize_contacts_on = ["thigh"]`；a1 还含 calf 并把两者纳入终止
+AMP_GO2_CONTACT_PENALTY_BODIES = ".*_THIGH"
+
+
+def _amp_go2_term(name: str, foot_body_names):
+    """重建被 `_keep_only_amp_task_rewards()` 清空的那 5 项（定义与 `RewardsCfg` 保持一致）。
+
+    注意 `SceneEntityCfg` 的参数必须给出能匹配到 body/joint 的正则：Isaac Lab 在构造环境时解析
+    每个 `SceneEntityCfg`，遇到 `""` 会报 "Not all regular expressions are matched!"。
+    """
+    if name == "joint_acc_l2":
+        return RewTerm(func=mdp.joint_acc_l2, weight=0.0,
+                       params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")})
+    if name == "joint_torques_l2":
+        return RewTerm(func=mdp.joint_torques_l2, weight=0.0,
+                       params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")})
+    if name == "action_rate_l2":
+        return RewTerm(func=mdp.action_rate_l2, weight=0.0)
+    if name == "undesired_contacts":
+        return RewTerm(func=mdp.undesired_contacts, weight=0.0,
+                       params={"sensor_cfg": SceneEntityCfg(
+                           "contact_forces", body_names=AMP_GO2_CONTACT_PENALTY_BODIES),
+                           "threshold": 1.0})
+    if name == "feet_air_time":
+        return RewTerm(func=mdp.feet_air_time, weight=0.0,
+                       params={"command_name": "base_velocity",
+                               "threshold": AMP_GO2_FEET_AIR_TIME_THRESHOLD,
+                               "sensor_cfg": SceneEntityCfg("contact_forces", body_names=foot_body_names)})
+    raise KeyError(f"没有为 {name} 定义 amp_go2 版的奖励项")
+
+
+@configclass
+class Imgo2AmpGo2StyleEnvCfg(Imgo2AmpMoveEnvCfg):
+    """amp_go2（`ak1raljl/amp_go2`）配方的等价移植：**任务奖励负责步态，AMP 只做轻量先验**。
+
+    与现有 `Imgo2AmpMoveEnvCfg`（AMP-only：6 项任务、每步 4.0/2.0/-5.0）的区别，就是参考项目
+    与我们的差别 —— 参考在 `go2_amp_config.py` 里保留了 legged_gym 的整套步态奖励
+    （`feet_air_time`、`collision`、`action_rate`、`dof_acc`、`torques`），并把风格权重压到很小
+    （`coef 0.2` / `lerp 0.8` ⇒ 风格 ≤ 0.04/步）。依据见
+    `docs/amp_gait_adjust_plan_2026-09-18.md` §7/§8：三个数据集的对照显示「节律」在这套判别器
+    +损失+`λ_gp=10` 下天生是弱信号，所以参考能走的步态来自任务奖励，而不是风格项。
+
+    与参考的**两处有意偏离**（必须写清楚，否则会被当成抄漏）：
+      * `base_height` 权重照抄 -1.0（每步 -0.02，比我们原来的每步 -5.0 弱 250 倍），但目标高度
+        用 Imgo2 的 0.30 m（参考是 Go2 的 0.38）；
+      * `feet_air_time` 阈值用 0.2 s（参考硬编码 0.5 s，等于奖励"滞空 >0.5 s / 周期 ≥1 s"，
+        比我们参考动作的 0.600 s 周期还慢；0.2 s 让该项在参考节律上恰好中性）。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._apply_amp_go2_rewards()
+
+    def _apply_amp_go2_rewards(self) -> None:
+        step_dt = self.sim.dt * self.decimation
+        for name, raw in AMP_GO2_RAW_WEIGHTS.items():
+            term = getattr(self.rewards, name, None)
+            if term is None:  # 被 _keep_only_amp_task_rewards() 清空的项，按参考重建
+                term = _amp_go2_term(name, self.foot_body_names)
+                setattr(self.rewards, name, term)
+            # weight_il = raw × dt_lg / step_dt_il ⇒ 每步系数 = raw × dt_lg，与 legged_gym 等价
+            term.weight = raw * AMP_GO2_DT / step_dt
+
+        self.rewards.base_height_l2.params["target_height"] = AMP_GO2_BASE_HEIGHT_TARGET
+        self.rewards.feet_air_time.params["threshold"] = AMP_GO2_FEET_AIR_TIME_THRESHOLD
+
+
+@configclass
+class Imgo2AmpGo2StylePlayEnvCfg(Imgo2AmpGo2StyleEnvCfg):
+    """`*-play` 版：与 `Imgo2AmpMovePlayEnvCfg` 相同的回放覆盖，用于 play/eval_gait。"""
+
+    def __post_init__(self):
+        super().__post_init__()
+        apply_amp_play_overrides(self)

@@ -70,3 +70,27 @@ gym.register(
         "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
     },
 )
+
+# amp_go2 配方（2026-09-18，用户要求"尽可能参考 amp_go2"）：任务侧保留 legged_gym 整套步态奖励
+# （feet_air_time / collision / action_rate / dof_acc / torques），AMP 只做轻量风格先验
+# （coef 0.2 / lerp 0.8）。与上面的 Imgo2-basemove-flat-amp 并存，便于对照与回滚。
+# 依据：docs/amp_gait_adjust_plan_2026-09-18.md §7/§8。
+gym.register(
+    id="Imgo2-basemove-flat-amp-go2",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpGo2StyleEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPGo2RunnerCfg",
+    },
+)
+
+gym.register(
+    id="Imgo2-basemove-flat-amp-go2-play",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpGo2StylePlayEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPGo2RunnerCfg",
+    },
+)
