@@ -307,8 +307,15 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 --headless
 1. **`base_height` 弱了 250 倍** ⇒ 我们自己的 Run2 就是在弱高度项下退化成贴地滑行（0.172 m、贴地率 0.89）。
    短训练里看 `AMP/mean_root_height_m`、`AMP/fraction_root_height_below_0_20m`；若爬行，**只把
    `base_height` 单独调回**（单变量），其它照抄参考。
-2. **回报量级缩小约 12 倍**（每步 ~0.16 对 ~1.97）⇒ `Loss/value_function` 应从 ~29 降到 ~1–2；
-   若价值损失不收敛，检查回报尺度是否需要整体放大（PPO 通常自适应，但本项目未验证过这么小的尺度）。
+2. ~~回报量级缩小约 12 倍会拖慢 critic~~ —— **2026-09-18 当晚更正：这条是过度担心**。
+   两条理由：① advantage 在 `rollout_storage.py:138` 被归一化 `(adv-mean)/std`，策略梯度对整体尺度不变；
+   ② Adam 逐参数尺度不变（梯度缩 c 倍 → m 缩 c、v 缩 c²，`m/√v` 不变），而 actor / critic 参数集不相交，
+   共享优化器也不会让两个损失互相压制。唯一实际差异是 `use_clipped_value_loss` 的 `clip_param=0.2`
+   （单位是回报）在微小尺度下不再生效 ≈ 退回普通 MSE。⇒ **照抄 amp_go2 的绝对数值无害，不必刻意放大**；
+   `Loss/value_function` 从 ~29 掉到 ~1 属预期，不是异常。
+   顺带更正一条相关的误读（2026-09-18）：amp_go2 与我们原来的**风格占比其实几乎一样**
+   （它 style ≤0.04 / task ≈0.12 ≈ 25:75；我们 0.540 / 1.402 ≈ 28:72），
+   差的是**绝对尺度**与**任务奖励的内容**，不是占比。
 3. **`feet_air_time` 阈值 0.2 s 是否够力**：该项在每步系数 0.02 下只能给到百分之几每步的激励，
    若步频不动，先确认这一项确实被计算（`Episode_Reward/feet_air_time` 应出现在日志里且非零），
    再考虑把它的系数往上调（仍是单变量）。
