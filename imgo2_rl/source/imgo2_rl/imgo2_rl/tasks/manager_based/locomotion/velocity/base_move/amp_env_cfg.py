@@ -163,7 +163,8 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # ------------------------------Rewards------------------------------
         self._keep_only_amp_task_rewards()
 
-        if self.__class__.__name__ in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg"):
+        if self.__class__.__name__ in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg",
+                                       "Imgo2AmpRLAmpEnvCfg", "Imgo2AmpRoughEnvCfg"):
             self.disable_zero_weight_rewards()
 
     def _keep_only_amp_task_rewards(self):
@@ -368,23 +369,88 @@ class Imgo2AmpGo2StylePlayEnvCfg(Imgo2AmpGo2StyleEnvCfg):
 
 
 ##
-# 粗糙地形版（2026-09-18）：AMP-only 配方保持不变，只做「地形相关」的最小改动
+# rl_amp（fan-ziqi）配方：只留线/角速度跟踪奖励，风格由 AMP 负责
+##
+
+# 参考 `~/Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py` 的
+# `class scales`：除 `tracking_lin_vel = 1.5 * 1./(.005*6)`、`tracking_ang_vel = 0.5 * 1./(.005*6)`
+# 外**全部为 0**（连 `base_height`/`lin_vel_z`/`ang_vel_xy`/`dof_pos_limits` 都是 0）。
+# 这两个表达式算出的是 legged_gym 的**原始权重** 50.0 / 16.6667；
+# legged_gym 的 `_prepare_reward_function()` 会再乘 dt=0.02 ⇒ **每步 1.0 / 0.3333**。
+# 两边 weight 语义相同（都乘 dt），所以 `weight_il = raw × dt_lg / step_dt`。
+RLAMP_DT = 0.02
+RLAMP_TRACK_LIN_VEL_RAW = 1.5 * 1.0 / (0.005 * 6)
+RLAMP_TRACK_ANG_VEL_RAW = 0.5 * 1.0 / (0.005 * 6)
+# 参考的 AMP 侧：`amp_reward_coef = 2.0`、`amp_task_reward_lerp = 0.3`（= 我们的 `AMPRunnerCfg`），
+# `λ_gp = 10`、判别器 `[1024,512]`、PPO 全套超参与我们逐项相同。按 `r = (1-lerp)·coef·style + lerp·task`
+# 折算：风格上限 2.0×0.7 = **1.40/步**，任务上限 0.3×1.333 = **0.40/步**
+# ⇒ 上限比 ≈1:1，而实测风格原始分约 0.39 时风格 ≈0.55/步、任务 ≈0.27/步 ⇒ **风格约占 2/3**。
+RLAMP_KEEP_REWARDS = ("track_lin_vel_xy_exp", "track_ang_vel_z_exp")
+
+
+def apply_rlamp_task_rewards(cfg) -> None:
+    """把任务奖励换成 rl_amp（fan-ziqi）的配方：**只留线/角速度跟踪**，其余全为 0。
+
+    与 `Imgo2AmpMoveEnvCfg._keep_only_amp_task_rewards()`（AMP-only 6 项、每步 4.0/2.0/−5.0）
+    的区别就是"谁负责步态与姿态"：参考把这个责任完全交给 AMP 风格项，因此**没有高度项、
+    没有姿态项、没有任何步态项**。这也是它唯一的防退化机制是「base 触地终止」的原因
+    （rl_amp 的 `terminate_after_contacts_on = ["base"]`、`collision` 权重为 0）。
+    """
+    for attr in dir(cfg.rewards):
+        if attr.startswith("__"):
+            continue
+        term = getattr(cfg.rewards, attr)
+        if hasattr(term, "weight") and attr not in RLAMP_KEEP_REWARDS:
+            setattr(cfg.rewards, attr, None)
+    step_dt = cfg.sim.dt * cfg.decimation
+    # 跟踪核：参考 `tracking_sigma = 0.25`（= std 0.5），与我们 `RewardsCfg` 的默认一致。
+    cfg.rewards.track_lin_vel_xy_exp.weight = RLAMP_TRACK_LIN_VEL_RAW * RLAMP_DT / step_dt
+    cfg.rewards.track_ang_vel_z_exp.weight = RLAMP_TRACK_ANG_VEL_RAW * RLAMP_DT / step_dt
+
+
+@configclass
+class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
+    """**rl_amp（fan-ziqi）配方**的平地版：只有线/角速度跟踪奖励，风格占约 2/3。
+
+    用途：与 `Imgo2AmpRoughEnvCfg`（粗糙地形、**同一配方**）组成一对，让"地形"成为单变量，
+    对应 `paper_plan_imgo2.md` 里"比较平地训练、粗糙地形训练、动力学随机化训练的泛化能力"。
+    AMP 侧沿用 `AMPRunnerCfg`（`coef 2.0 / lerp 0.3`），即参考的比例。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        apply_rlamp_task_rewards(self)
+
+
+@configclass
+class Imgo2AmpRLAmpPlayEnvCfg(Imgo2AmpRLAmpEnvCfg):
+    """`*-play` 版：与其它 AMP play 相同的回放覆盖。"""
+
+    def __post_init__(self):
+        super().__post_init__()
+        apply_amp_play_overrides(self)
+
+
+##
+# 粗糙地形版（2026-09-18）：**配方改为忠于 rl_amp**（只留速度跟踪），地形相关四处改动
 ##
 
 
 @configclass
 class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
-    """AMP-only 配方的粗糙地形版。
+    """**rl_amp（fan-ziqi）配方**的粗糙地形版。
 
-    **配方（奖励/AMP/PPO）与平地版 `Imgo2AmpMoveEnvCfg` 完全相同**（6 项任务每步 4.0/2.0/-5.0，
-    `coef 2.0 / lerp 0.3`），只有地形与"因地形而必须改"的四处：
+    **奖励 = 参考原样**：只留 `tracking_lin_vel`、`tracking_ang_vel`（每步 1.0 / 0.3333），
+    `base_height`/`lin_vel_z`/`ang_vel_xy`/`dof_pos_limits`/`feet_air_time`/`collision`/
+    `action_rate`/`dof_acc`/`torques` **全为 0**；AMP 侧 `coef 2.0 / lerp 0.3`（风格约占 2/3）。
+    与它成对的平地版是 `Imgo2AmpRLAmpEnvCfg`（同一配方）⇒ 平地对粗糙是可解释的单变量对照。
+
+    除配方之外，只有地形与"因地形而必须改"的四处：
 
     1. 地形：恢复 `ROUGH_TERRAINS_CFG` 生成器 + `terrain_levels` 课程；子地形范围沿用仓库里
        已有的 PPO rough 任务（`rough_env_cfg.py`）—— 我们的机器人站高只有 0.30 m，
        用 Isaac Lab 默认的 boxes 0.05–0.2 m / stairs 0.05–0.15 m 太陡。
-    2. **高度奖励改成地形相对**：恢复 9 射线的 `height_scanner_base`（只给奖励用，不进观测），
-       `base_height_l2.params["sensor_cfg"]` 指向它 ⇒ 目标是「离脚下地形 0.30 m」，
-       而不是世界系 0.30 m（平地那套在斜坡上会自相矛盾）。
+    2. 恢复 9 射线 `height_scanner_base`（**只给 AMP 观测用**，不进 actor；rl_amp 配方没有高度奖励）
     3. **AMP 观测的根高改成地形相对**：`observations.amp.root_z` 传同一个扫描器
        ⇒ 43 维 AMP 观测的最后一维是「离地形的高度」，与专家数据（平地 0.297 m）同口径；
        否则这一维会被地形起伏主导（见 `mdp/observations.py:amp_root_z` 的说明）。
@@ -395,9 +461,17 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
     **刻意不做**（保持"简单配置"，一次只改一个变量）：
       * 不把 `height_scanner`（187 维网格）加进 actor 观测 —— 保持 **45 维盲走**，
         部署契约（`amp/deploy/config.yaml`、C++ 接口）不变（代价：blind + 单帧更难）；
-      * 不加 `feet_air_time` / `action_rate` / `collision` 等任务项（那是 amp_go2 路线，
+      * 不加 `feet_air_time` / `collision` / `action_rate` 等任务项（那是 amp_go2 路线，
         平地版已单独做成 `Imgo2AmpGo2StyleEnvCfg`）；
-      * 不动域随机化（与平地版一致：摩擦/质量/质心/PD/外力都开着，与 a1 原仓库一致）。
+      * 不动域随机化（与 a1/rl_amp 原仓库一致：摩擦/质量/质心/PD/外力都开着）；
+      * 不照抄参考的指令范围（rl_amp 是 x[-1.0,2.0]、y±0.3；其中 2.0 m/s 超出我们录制数据
+        覆盖的 0.842 m/s）——保持我们自己的 x(-1.0,1.5)、y±1.0、yaw±1.57。
+
+    **风险（必须知道）**：rl_amp 配方**没有任何姿态/高度约束**，参考项目靠"风格项 + base 触地终止"
+    兜底；而我们的风格项实测**梯度≈0**（见 `docs/amp_gait_adjust_plan_2026-09-18.md` §1–§3），
+    因此"趴地滑行"（Run2 实测 0.172 m、贴地率 0.89）的风险比平地版更高。训练时务必盯
+    `AMP/mean_root_height_m` 与 `AMP/fraction_root_height_below_0_20m`；若趴地，就回到
+    `Imgo2AmpMoveEnvCfg` 的 6 项配方（含 −5/步 高度项）或只把高度项单独加回（单变量）。
     """
 
     def __post_init__(self):
@@ -417,11 +491,10 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # `terrain_generator.curriculum` 置 True）
         self.curriculum.terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
-        # ------------------------------奖励用扫描器（不进观测）------------------------------
-        # 9 条射线、只挂在 base 正下方；`MySceneCfg` 里已声明（prim_path 指 /Robot/base，
-        # mesh_prim_paths 指地面），这里恢复它并把高度奖励改成地形相对。
+        # ------------------------------扫描器（只给 AMP 观测用，不进 actor）------------------------------
+        # 9 条射线、悬在 base 正上方；`MySceneCfg` 里已声明（prim_path 指 /Robot/base，
+        # mesh_prim_paths 指地面）。注意 rl_amp 配方**没有高度奖励**，所以它只服务下面第 3 条。
         self.scene.height_scanner_base = MySceneCfg.height_scanner_base
-        self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")
 
         # ------------------------------AMP 观测：根高改地形相对------------------------------
         self.observations.amp.root_z.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")
@@ -429,6 +502,11 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # ------------------------------Events：关掉参考状态初始化------------------------------
         # 理由见类 docstring 第 4 条：它写的是参考动作的绝对根高，没有地形补偿。
         self.events.reference_state_initialization = None
+
+        # ------------------------------奖励：改成忠于 rl_amp 的两项------------------------------
+        # 必须在最后调用：它会把 `base_height_l2`/`lin_vel_z_l2`/`ang_vel_xy_l2`/`joint_pos_limits`
+        # 一并清空（参考里这些权重都是 0），只留线/角速度跟踪。
+        apply_rlamp_task_rewards(self)
 
 
 @configclass

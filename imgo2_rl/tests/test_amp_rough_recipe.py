@@ -56,12 +56,10 @@ class RoughRecipeTests(unittest.TestCase):
             self.assertIn(needle, self.src, f"AMP rough 里缺少 {needle}")
             self.assertIn(needle, ppo, f"PPO rough 里没有 {needle}（两边应一致）")
 
-    def test_height_reward_is_terrain_relative(self):
-        """奖励用的 9 射线扫描器要恢复，且 base_height_l2 必须指向它（地形相对高度）。"""
+    def test_height_scanner_restored_for_amp_obs_only(self):
+        """9 射线扫描器要恢复，但**只服务 AMP 观测的根高**：rl_amp 配方没有高度奖励。"""
         self.assertIn("scene.height_scanner_base = MySceneCfg.height_scanner_base", self.src)
-        self.assertIn(
-            "rewards.base_height_l2.params['sensor_cfg'] = SceneEntityCfg('height_scanner_base')",
-            self.src)
+        self.assertNotIn("base_height_l2", self.src)
 
     def test_amp_root_z_is_terrain_relative(self):
         """AMP 观测的根高必须传同一个扫描器，否则这一维被地形起伏主导。"""
@@ -90,20 +88,19 @@ class RoughRecipeTests(unittest.TestCase):
         self.assertNotIn("scene.height_scanner = MySceneCfg.height_scanner", self.src)
         self.assertNotIn("observations.critic.height_scan = ObsTerm", self.src)
 
-    def test_recipe_unchanged_from_flat_amp(self):
-        """粗糙版不得改动奖励配方（6 项、每步系数、AMP 权重）—— 那是平地版的责任。"""
-        flat_cls = _class(self.tree, "Imgo2AmpMoveEnvCfg")
-        keep = next(n for n in flat_cls.body
+    def test_rough_uses_rlamp_recipe(self):
+        """粗糙版的任务奖励 = rl_amp 的两项（由 helper 套用），不得自己写 weight、不得引入 go2 项。"""
+        self.assertIn("apply_rlamp_task_rewards(self)", self.src)
+        self.assertNotIn(".weight =", self.src)
+        for term in ("feet_air_time", "undesired_contacts", "action_rate_l2", "joint_acc_l2",
+                     "lin_vel_z_l2", "ang_vel_xy_l2", "joint_pos_limits"):
+            self.assertNotIn(term, self.src, f"粗糙 AMP 版不应引入 {term}")
+        # 原来的 AMP-only 6 项配方必须原封不动（它属于平地版）
+        keep = next(n for n in _class(self.tree, "Imgo2AmpMoveEnvCfg").body
                     if isinstance(n, ast.FunctionDef) and n.name == "_keep_only_amp_task_rewards")
         flat = ast.unparse(keep)
-        for needle in ("TRACK_LIN_VEL_PER_STEP = 4.0", "TRACK_ANG_VEL_PER_STEP = 2.0",
-                       "BASE_HEIGHT_PER_STEP = -5.0"):
+        for needle in ("TRACK_LIN_VEL_PER_STEP = 4.0", "BASE_HEIGHT_PER_STEP = -5.0"):
             self.assertIn(needle, flat)
-        # 粗糙版的 __post_init__ 里不能出现任何 weight 赋值
-        self.assertNotIn(".weight =", self.src)
-        # 也不得引入 amp_go2 的任务项
-        for term in ("feet_air_time", "undesired_contacts", "action_rate_l2", "joint_acc_l2"):
-            self.assertNotIn(term, self.src, f"粗糙 AMP 版不应引入 {term}（那是 go2 路线）")
 
     def test_play_variant_reuses_play_overrides(self):
         play = _class(self.tree, "Imgo2AmpRoughPlayEnvCfg")
@@ -111,13 +108,14 @@ class RoughRecipeTests(unittest.TestCase):
 
     def test_tasks_registered(self):
         src = Path(TASKS_INIT).read_text(encoding="utf-8")
-        for task in ("Imgo2-basemove-rough-amp", "Imgo2-basemove-rough-amp-play"):
+        for task in ("Imgo2-basemove-rough-amp-rlamp", "Imgo2-basemove-rough-amp-rlamp-play"):
             self.assertIn(task, src)
         self.assertIn("amp_env_cfg:Imgo2AmpRoughEnvCfg", src)
         self.assertIn("amp_env_cfg:Imgo2AmpRoughPlayEnvCfg", src)
-        # 平地版与 go2 版必须仍在
+        # 平地版（AMP-only 6 项）、go2 版、以及成对的平地 rlamp 版都必须仍在
         self.assertIn("amp_env_cfg:Imgo2AmpMoveEnvCfg", src)
         self.assertIn("amp_env_cfg:Imgo2AmpGo2StyleEnvCfg", src)
+        self.assertIn("amp_env_cfg:Imgo2AmpRLAmpEnvCfg", src)
 
 
 if __name__ == "__main__":

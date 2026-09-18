@@ -95,11 +95,33 @@ gym.register(
     },
 )
 
-# 粗糙地形版 AMP（2026-09-18）：**奖励/AMP/PPO 配方与平地 AMP-only 完全相同**，只加地形 +
-# 地形相对高度（奖励与 AMP 观测的根高）+ 关掉无地形补偿的参考状态初始化；actor 保持 45 维盲走。
+# rl_amp（fan-ziqi）配方的平地版：只留线/角速度跟踪奖励（每步 1.0 / 0.3333），
+# AMP 侧 coef 2.0 / lerp 0.3（风格约占 2/3）。与下面的 rough 版是**同一配方**，成对使用。
+gym.register(
+    id="Imgo2-basemove-flat-amp-rlamp",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRLAmpEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+    },
+)
+
+gym.register(
+    id="Imgo2-basemove-flat-amp-rlamp-play",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRLAmpPlayEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+    },
+)
+
+# 粗糙地形版 AMP（2026-09-18）：**配方忠于 rl_amp**（只有线/角速度跟踪，其余全 0），
+# 只加地形 + 地形相对根高（AMP 观测）+ 关掉无地形补偿的参考状态初始化；actor 保持 45 维盲走。
 # 依据与"刻意不做"的清单见 amp_env_cfg.Imgo2AmpRoughEnvCfg 的 docstring。
 gym.register(
-    id="Imgo2-basemove-rough-amp",
+    id="Imgo2-basemove-rough-amp-rlamp",
     entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
@@ -109,7 +131,7 @@ gym.register(
 )
 
 gym.register(
-    id="Imgo2-basemove-rough-amp-play",
+    id="Imgo2-basemove-rough-amp-rlamp-play",
     entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={

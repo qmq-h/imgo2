@@ -466,3 +466,43 @@ python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp \
     --num_envs=256 --max_iterations=100 --seed=42 --headless     # 前置检查
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp --headless
 ```
+
+---
+
+## 14. 更正 §13：粗糙版改为**忠于 rl_amp**的配方（2026-09-18 晚，用户决定）
+
+用户明确要求：「忠于 AMP，使用 fan-ziqi 版本的设置，**只有 lin vel 和 ang 的速度跟踪奖励**，
+amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-only 相同（6 项 4.0/2.0/−5.0）"作废，
+粗糙版改为 rl_amp 的原样配方，并**补一个同配方的平地版**，让"地形"成为单变量。
+
+**参考数值**（`rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py` 的 `class scales`）：
+
+| | 参考原样 | 我们的实现 | 每步系数 |
+|---|---|---|---|
+| `tracking_lin_vel` | `1.5 * 1./(.005*6)` = **50.0** | `RLAMP_TRACK_LIN_VEL_RAW` | **1.0** |
+| `tracking_ang_vel` | `0.5 * 1./(.005*6)` = **16.6667** | `RLAMP_TRACK_ANG_VEL_RAW` | **0.3333** |
+| 其余 14 项（`lin_vel_z`/`ang_vel_xy`/`orientation`/`torques`/`dof_vel`/`dof_acc`/`base_height`/`feet_air_time`/`collision`/`feet_stumble`/`action_rate`/`stand_still`/`dof_pos_limits`/`termination`） | **0** | `apply_rlamp_task_rewards()` 一律清空 | 0 |
+| AMP 侧 | `coef 2.0 / lerp 0.3`（= 我们的 `AMPRunnerCfg`） | 同 | 风格上限 **1.40/步**、任务上限 **0.40/步** ⇒ 上限比 ≈3.5:1；按实测 `style_raw≈0.39` 折算，实际 **风格 ≈2/3** |
+
+**新增任务**（成对，配方完全相同）：`Imgo2-basemove-flat-amp-rlamp`、`Imgo2-basemove-rough-amp-rlamp`
+（各带 `-play`）；`Imgo2AmpRLAmpEnvCfg` / `Imgo2AmpRoughEnvCfg`。
+
+**粗糙版保留的四处地形相关改动**（与 §13 相同）：① terrain generator + `terrain_levels` 课程
+② 恢复 9 射线 `height_scanner_base`（**只给 AMP 观测用**，因为 rl_amp 没有高度奖励）
+③ `mdp.amp_root_z` 传该扫描器 ⇒ AMP 观测最后一维是"离地形高度" ④ 关掉无地形补偿的参考状态初始化。
+
+**不照抄参考的两处**（已在代码注释标注）：指令范围保持我们原来的
+`x(-1.0,1.5) / y±1.0 / yaw±1.57`（rl_amp 是 `x[-1.0,2.0] / y±0.3`，其中 2.0 m/s 超出我们录制数据
+覆盖的 0.842 m/s）；`only_positive_rewards`（参考基类默认 `True`，会把总回报在 0 处截断，
+我们的框架没有这一层，属已知差异）。
+
+**风险（比 §13 更高，必须盯）**：rl_amp 配方**没有任何姿态/高度约束**（连 `lin_vel_z`/`ang_vel_xy`
+都是 0），参考项目靠"风格项 + base 触地终止"兜底；而我们的风格项实测**梯度≈0**（§1–§3），
+所以「趴地滑行」的风险显著上升（Run2 实测高度 0.172 m、贴地率 0.89 就是在弱高度项下出现的）。
+训练时**必须**盯 `AMP/mean_root_height_m` 与 `AMP/fraction_root_height_below_0_20m`；
+一旦趴地，退回 `flat-amp`/`rough` 的 6 项配方（含 −5/步高度项），或只把高度项单独加回（单变量）。
+
+**离线验证**：新增 `tests/test_amp_rlamp_recipe.py` **8 项**（只保留两项、helper 清空其余、
+项名存在于 `RewardsCfg`、**直接读参考源码比对**原始权重 50/16.667 与非零项集合、
+每步 1.0/0.3333 与风格:任务比例、runner 用 2.0/0.3、平地与粗糙同配方、原 6 项配方未被改动），
+并同步更新 `test_amp_rough_recipe.py` ⇒ 全仓 **60 项通过**。
