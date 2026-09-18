@@ -148,7 +148,10 @@ class AMPOnPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         debug_printed_initial_obs = False
-        tot_iter = self.current_learning_iteration + num_learning_iterations
+        # `start_iter` 供 log() 里的 ETA 用（resume 时 tot_time 只统计本次运行的时间，
+        # 平均每轮耗时要用「本次已跑轮数」而不是「绝对轮号 + 1」来算）。
+        start_iter = self.current_learning_iteration
+        tot_iter = start_iter + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             # 必须每轮同步，否则 save() 写进 checkpoint 的 'iter' 恒为该次运行起点（通常 0），
             # resume 时会从错误位置继续（AMP/PPO 曾缺这一行，HIM runner 有）。
@@ -218,7 +221,11 @@ class AMPOnPolicyRunner:
                 self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
             ep_infos.clear()
         
-        self.current_learning_iteration += num_learning_iterations
+        # 循环内已把 current_learning_iteration 同步到 it（AMP-08），所以**不能**再 `+= num_learning_iterations`：
+        # 那会让收尾保存的文件名与 checkpoint 里的 'iter' 都虚高（10000 轮的运行会存成 model_19999.pt /
+        # iter=19999，而最后一个是 9999），`--resume` 取「最新 checkpoint」时正好会踩到它。
+        # 收尾保存应当落在 tot_iter 上（= 起点 + 本次轮数），与循环内 `it % save_interval` 的命名一致。
+        self.current_learning_iteration = tot_iter
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 
     def log(self, locs, width=80, pad=35):
@@ -289,7 +296,10 @@ class AMPOnPolicyRunner:
         if locs.get('mean_policy_pred') is not None:
             self.writer.add_scalar('AMP/disc_policy_pred', locs['mean_policy_pred'], locs['it'])
 
-        str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
+        # 分母必须是**总轮数**（起点 + 本次轮数）。此前写的是
+        # `self.current_learning_iteration + num_learning_iterations`，而循环内已经把它更新成当前轮 ⇒
+        # 控制台会显示「当前轮 / 当前轮 + 总轮数」（例如 4391/14391），看起来像把轮数加了两遍。
+        str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
 
         if mean_air_time is None:
             air_line = f"""{'Mean last air time (s):':>{pad}} n/a\n"""
@@ -336,8 +346,8 @@ class AMPOnPolicyRunner:
                        f"""{'Total timesteps:':>{pad}} {self.tot_timesteps}\n"""
                        f"""{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"""
                        f"""{'Total time:':>{pad}} {self.tot_time:.2f}s\n"""
-                       f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] + 1) * (
-                               locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
+                       f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] - locs['start_iter'] + 1) * (
+                               locs['tot_iter'] - locs['it']):.1f}s\n""")
         print(log_string)
 
     def _feet_air_metrics(self):

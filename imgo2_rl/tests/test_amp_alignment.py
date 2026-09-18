@@ -6,6 +6,7 @@ Run: python -m unittest discover -s tests -p test_amp_alignment.py -v
 import ast
 import importlib.util
 import math
+import re
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -68,6 +69,38 @@ class RewardContractTests(unittest.TestCase):
                               f"{name} 的 learn() 循环内未同步迭代计数，checkpoint 的 iter 会失真")
                 # save() 必须写这个字段，否则 load() 无从恢复
                 self.assertIn("'iter': self.current_learning_iteration", src)
+
+    def test_runner_progress_line_and_final_save_use_absolute_totals(self):
+        """进度条分母 / ETA / 收尾 checkpoint 名都必须用「总轮数」，不能用「当前轮 + 总轮数」。
+
+        2026-09-18 用户看到控制台显示 `Learning iteration 4391/14391`：分母被写成
+        `self.current_learning_iteration + locs['num_learning_iterations']`，而 AMP-08 的修复
+        已经让循环内把 `current_learning_iteration` 更新成**当前轮** ⇒ 看起来像把轮数加了两遍。
+        同一个错误还有两个连带后果：
+          * ETA 用 `num_learning_iterations - it`，resume 时会少算 `start_iter` 那么多轮的时间；
+          * 循环结束后 `self.current_learning_iteration += num_learning_iterations` 会再加一次，
+            于是收尾保存写成 `model_19999.pt` / `iter=19999`（10000 轮 + 起点 9999），而
+            `--resume` 默认取「最新 checkpoint」时正好会踩到它。
+        HIM runner 一直是对的（用 `start_iter` / `locs['tot_iter']`），所以三个 runner 一起检查。
+        """
+        runners = ROOT / "scripts/rl_lab/rl_lab/runners"
+        buggy_denominator = "self.current_learning_iteration + locs['num_learning_iterations']"
+        buggy_eta = re.compile(r"\(\s*locs\['num_learning_iterations'\]\s*-\s*locs\['it'\]")
+        for name in ("amp_on_policy_runner.py", "ppo_on_policy_runner.py", "him_on_policy_runner.py"):
+            with self.subTest(runner=name):
+                src = (runners / name).read_text(encoding="utf-8")
+                self.assertIn("self.current_learning_iteration = it", src)
+                # 分母 = 总轮数
+                self.assertIn("{locs['it']}/{locs['tot_iter']}", src)
+                self.assertNotIn(buggy_denominator, src)
+                # ETA：平均每轮耗时按「本次已跑轮数」算；剩余轮数必须含起点
+                self.assertIn("locs['it'] - locs['start_iter'] + 1", src)
+                self.assertIsNone(buggy_eta.search(src), f"{name} 的 ETA 剩余轮数漏了起点")
+                # 循环内同步过计数的两个 runner：收尾不能再加一次，必须落在 tot_iter
+                if name != "him_on_policy_runner.py":
+                    self.assertNotIn("self.current_learning_iteration += num_learning_iterations", src)
+                    self.assertIn("self.current_learning_iteration = tot_iter", src)
+                    self.assertIn("locs['tot_iter'] - locs['it']", src)
 
     def test_amp_runner_logs_feet_air_metrics(self):
         """训练日志必须能看到「滞空」物理量，否则每次确认步频都要占 GPU 回放。

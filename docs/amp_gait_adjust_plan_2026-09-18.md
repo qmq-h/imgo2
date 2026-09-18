@@ -752,3 +752,34 @@ x∈[−1, 2.0]、y±0.3，旧轮是 x∈[−1, 1.5]、y±1.0）；② **任务�
 `period_s`（参考 0.600）、`phase_fl_fr_deg`（参考 ±180 ⇒ trot）、`lift_z_m`（参考 0.083–0.121）、
 `joint_peak_to_peak_rad`（shank 中位 0.635）、`stride_x_m`（同速档均 0.295）、机身高/速度误差。
 若周期真的落到 0.6 s 附近，那么"高频倒腿"就解决了，剩下的是速度跟踪与抬脚幅度的事。
+
+### 16.1 控制台进度条分母把轮数加了两遍（2026-09-18，用户实跑发现，已修）
+
+用户看到 `Learning iteration 3410/43410`，即 `43410 = 3410 + 40000`。
+
+**根因**：`learn()` 里 `tot_iter = 起点 + 本次轮数`，循环内每轮执行
+`self.current_learning_iteration = it`（AMP-08 的修复，为了 checkpoint 的 `iter` 正确），
+而进度条分母写的仍是 `self.current_learning_iteration + locs['num_learning_iterations']`
+⇒ 每次打印都等于「当前轮 + 总轮数」。同一个错误串出三处：
+
+| 位置 | 旧写法 | 后果 |
+|---|---|---|
+| 进度条分母 | `self.current_learning_iteration + locs['num_learning_iterations']` | 显示 `3410/43410`，看起来像轮数加了两遍 |
+| ETA | `tot_time / (it + 1) × (num_learning_iterations − it)` | resume 时平均每轮耗时没除掉起点、剩余轮数少算 `start_iter` |
+| 收尾保存 | 循环后 `self.current_learning_iteration += num_learning_iterations` | 再加一次 ⇒ 10000 轮的运行存成 `model_19999.pt`、`iter=19999`；`--resume` 取最新 checkpoint 会踩到 |
+
+**修法**（`amp_on_policy_runner.py`、`ppo_on_policy_runner.py`；HIM runner 用 `start_iter`/`locs['tot_iter']`，
+一直是对的，未动）：分母改 `locs['tot_iter']`；新增局部量 `start_iter`，ETA 改
+`tot_time / (it − start_iter + 1) × (tot_iter − it)`；收尾改 `self.current_learning_iteration = tot_iter`
+⇒ 40000 轮的运行最后落在 `model_40000.pt` / `iter=40000`。
+
+**验证**：`test_amp_alignment.py` 新增
+`test_runner_progress_line_and_final_save_use_absolute_totals`——对三个 runner 同时断言
+「分母 = `{locs['it']}/{locs['tot_iter']}`」「ETA 用本次已跑轮数」「剩余轮数含起点」（用正则精确匹配旧写法，
+避免误伤 HIM 的等价表达），并对 AMP/PPO 额外断言收尾不再 `+=`、必须 `= tot_iter`。全仓 **82 项通过**。
+**仍未验证**：控制台实际输出要等下一次启动；**正在跑的这次是旧代码**——它的收尾文件会虚高，
+循环内每 500 轮的 checkpoint 不受影响（`iter` 正确），Ctrl-C 中断则不会产生收尾文件。
+
+**顺带确认**：这个 run 用的是 `AMPRunnerCfg` 的默认 `max_iterations = 40000`（启动时没传
+`--max_iterations`），按实测 ~1.0 s/轮，跑满约 11 小时；中途任意 checkpoint（每 500 轮）都能直接
+拿来做 `eval_gait.py` 评估。
