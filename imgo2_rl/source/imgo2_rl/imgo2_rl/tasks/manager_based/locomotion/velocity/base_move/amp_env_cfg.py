@@ -445,7 +445,7 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
     `action_rate`/`dof_acc`/`torques` **全为 0**；AMP 侧 `coef 2.0 / lerp 0.3`（风格约占 2/3）。
     与它成对的平地版是 `Imgo2AmpRLAmpEnvCfg`（同一配方）⇒ 平地对粗糙是可解释的单变量对照。
 
-    除配方之外，只有地形与"因地形而必须改"的四处：
+    除配方之外，有地形与"因地形而必须改"的四处，外加一处**为学得动而加的特权输入**：
 
     1. 地形：恢复 `ROUGH_TERRAINS_CFG` 生成器 + `terrain_levels` 课程；子地形范围沿用仓库里
        已有的 PPO rough 任务（`rough_env_cfg.py`）—— 我们的机器人站高只有 0.30 m，
@@ -459,8 +459,8 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
        env_origins）⇒ 在抬高的地形格子上会把机器人初始化到地面以下。粗糙地形下改为普通 reset。
 
     **刻意不做**（保持"简单配置"，一次只改一个变量）：
-      * 不把 `height_scanner`（187 维网格）加进 actor 观测 —— 保持 **45 维盲走**，
-        部署契约（`amp/deploy/config.yaml`、C++ 接口）不变（代价：blind + 单帧更难）；
+      * （已按用户决定加上）`height_scanner`（187 维网格）**只喂 critic**，actor 保持 **45 维盲走**，
+        部署契约（`amp/deploy/config.yaml`、C++ 接口）不变 —— 非对称 actor-critic；
       * 不加 `feet_air_time` / `collision` / `action_rate` 等任务项（那是 amp_go2 路线，
         平地版已单独做成 `Imgo2AmpGo2StyleEnvCfg`）；
       * 不动域随机化（与 a1/rl_amp 原仓库一致：摩擦/质量/质心/PD/外力都开着）；
@@ -480,6 +480,9 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # ------------------------------Scene：地形------------------------------
         self.scene.terrain.terrain_type = "generator"
         self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+        # 187 维高度网格：**只喂 critic**（特权信息，见下面的 Observations 段）
+        self.scene.height_scanner = MySceneCfg.height_scanner
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         gen = self.scene.terrain.terrain_generator
         gen.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
         gen.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
@@ -495,6 +498,20 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # 9 条射线、悬在 base 正上方；`MySceneCfg` 里已声明（prim_path 指 /Robot/base，
         # mesh_prim_paths 指地面）。注意 rl_amp 配方**没有高度奖励**，所以它只服务下面第 3 条。
         self.scene.height_scanner_base = MySceneCfg.height_scanner_base
+
+        # ------------------------------Observations：critic 用特权高度扫描，actor 仍盲走------------------------------
+        # 非对称 actor-critic：critic 多 187 维地形信息（48 → 235，正好等于 amp_go2 的
+        # `num_privileged_obs = 235`），**actor 保持 45 维** ⇒ 部署契约（`amp/config.yaml`、
+        # C++ 接口）不变。判别器吃的是 `observations.amp`（43 维），与此无关。
+        # 代价：粗糙版因此比平地版多一个变量（"critic 是否看地形"），平地对粗糙的对照不再严格单变量。
+        self.observations.critic.height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+            scale=1.0,
+        )
+        # actor 侧保持 None（45 维）；这两条是刻意的，别顺手改成一致
+        assert self.observations.policy.height_scan is None, "actor 必须保持 45 维盲走"
 
         # ------------------------------AMP 观测：根高改地形相对------------------------------
         self.observations.amp.root_z.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")

@@ -506,3 +506,20 @@ amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-o
 项名存在于 `RewardsCfg`、**直接读参考源码比对**原始权重 50/16.667 与非零项集合、
 每步 1.0/0.3333 与风格:任务比例、runner 用 2.0/0.3、平地与粗糙同配方、原 6 项配方未被改动），
 并同步更新 `test_amp_rough_recipe.py` ⇒ 全仓 **60 项通过**。
+
+### 14.1 粗糙版加特权 height scan（critic 48 → 235，actor 仍 45）（2026-09-18 晚）
+
+用户决定「就给粗糙版加」。落地：`Imgo2AmpRoughEnvCfg` 里恢复 187 维 `height_scanner`
+（`GridPatternCfg(resolution=0.1, size=[1.6,1.0])` → 17×11）并**只**接到 critic：
+
+| | 维度 | 说明 |
+|---|---|---|
+| actor（policy） | **45**（不变） | `observations.policy.height_scan` 保持 `None`，并在代码里用 `assert` 守住 |
+| critic | **48 → 235** | 多出的 187 维 = 地形高度网格；**正好等于 amp_go2 的 `num_privileged_obs = 235`** |
+| 判别器 | 43（不变） | 它吃 `observations.amp`，与 critic 无关 |
+| 部署契约 | **不变** | `amp/deploy/config.yaml` 的 `num_observations: 45` 与 C++ 接口都不受影响 |
+
+**代价（必须记住）**：粗糙版从此比平地版多一个变量（"critic 是否看地形"），
+所以**平地对粗糙不再是严格的单变量对照**。若以后要做干净的泛化对比，要么给平地版也加一个
+（平地上扫描是常数，等于给 critic 187 个常量输入，无害但无信息），要么跑一个"粗糙 − 特权 critic"的消融。
+静态核算写进测试：`test_critic_dim_contract_235` 会从 `GridPatternCfg` 反算网格维度并断言 235。

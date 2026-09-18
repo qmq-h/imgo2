@@ -82,11 +82,36 @@ class RoughRecipeTests(unittest.TestCase):
         """参考状态初始化写的是绝对根高、没有地形补偿 ⇒ 粗糙地形必须关掉。"""
         self.assertIn("events.reference_state_initialization = None", self.src)
 
-    def test_actor_stays_blind_45d(self):
-        """不把 187 维高度网格加进 actor：45 维盲走，部署契约不变。"""
+    def test_privileged_height_scan_goes_to_critic_only(self):
+        """187 维高度网格**只喂 critic**（非对称 actor-critic），actor 必须仍是 45 维盲走。"""
+        self.assertIn("scene.height_scanner = MySceneCfg.height_scanner", self.src)
+        self.assertIn("observations.critic.height_scan = ObsTerm", self.src)
+        # actor 侧不得出现 height_scan 的 ObsTerm（保持 None ⇒ 45 维、部署契约不变）
         self.assertNotIn("observations.policy.height_scan = ObsTerm", self.src)
-        self.assertNotIn("scene.height_scanner = MySceneCfg.height_scanner", self.src)
-        self.assertNotIn("observations.critic.height_scan = ObsTerm", self.src)
+        self.assertIn("observations.policy.height_scan is None", self.src)   # 断言守住这条
+        # 扫描项的裁剪/缩放要与基类 CriticCfg 一致（clip ±1、scale 1.0）
+        self.assertIn("clip=(-1.0, 1.0)", self.src)
+
+    def test_critic_dim_contract_235(self):
+        """critic = 48 + 187 = 235：与 amp_go2 的 num_privileged_obs 相同（静态核算）。"""
+        vel = _tree(ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py")
+        scene = _class(vel, "MySceneCfg")
+        scanner = next(n for n in scene.body if isinstance(n, ast.Assign)
+                       and any(isinstance(t, ast.Name) and t.id == "height_scanner" for t in n.targets))
+        grid = next(n for n in ast.walk(scanner) if isinstance(n, ast.Call)
+                    and getattr(n.func, "attr", None) == "GridPatternCfg")
+        kw = {k.arg: ast.literal_eval(k.value) for k in grid.keywords}
+        nx = int(round(kw["size"][0] / kw["resolution"])) + 1
+        ny = int(round(kw["size"][1] / kw["resolution"])) + 1
+        self.assertEqual(nx * ny, 187, "高度网格维度变了，privileged obs 维度也要跟着更新")
+        self.assertEqual(48 + nx * ny, 235, "critic 维度应为 235（= amp_go2 的 num_privileged_obs）")
+
+    def test_flat_variants_keep_critic_blind(self):
+        """平地版（AMP-only / go2 / rlamp）不得加 height scan：保持 48 维与干净配对。"""
+        for cls in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg", "Imgo2AmpRLAmpEnvCfg"):
+            src = _init_src(_class(self.tree, cls))
+            self.assertNotIn("height_scanner = MySceneCfg", src)
+            self.assertNotIn("critic.height_scan = ObsTerm", src)
 
     def test_rough_uses_rlamp_recipe(self):
         """粗糙版的任务奖励 = rl_amp 的两项（由 helper 套用），不得自己写 weight、不得引入 go2 项。"""
