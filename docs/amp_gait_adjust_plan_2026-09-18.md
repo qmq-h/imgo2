@@ -632,8 +632,9 @@ multiply 组合下净恢复系数必然为 0；改共享地形材质会牵动 PP
 
 **仍未对齐（明确记录）**：
 
-1. **actor 观测 45 vs 42**（我们多 `base_ang_vel`）：与 §15 的建议一致，先不动；本轮实验只改配方/接口，
-   要严格 42 维请作为独立单变量另开任务。
+1. **actor 观测 45 vs 42**（我们多 `base_ang_vel`）：**用户 2026-09-18 拍板保持 45 维**（理由：它是部署契约项、
+   真机 IMU 本就有、且本轮已改六块变量不宜再叠）。要严格 42 维时作为**独立单变量**另开任务/新 run，
+   并同步 `amp/config.yaml` + C++ 观测拼接后重训、重导出、复核三条契约（README 问题表 AMP-09）。
 2. **关节 kp/kd**：`25.0/0.5`（我们）vs `20.0/0.5`（参考）—— 用户本轮明确排除。
 3. **共享资产/求解器**：`solver_velocity_iteration_count=1`（参考 `num_velocity_iterations=0`）、
    接触 `contact_offset`、`armature`/`friction` 等 `IMGO2_CFG` 里的量。它们被所有任务（含已部署的
