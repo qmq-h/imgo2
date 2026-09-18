@@ -69,6 +69,27 @@ class RewardContractTests(unittest.TestCase):
                 # save() 必须写这个字段，否则 load() 无从恢复
                 self.assertIn("'iter': self.current_learning_iteration", src)
 
+    def test_amp_runner_logs_feet_air_metrics(self):
+        """训练日志必须能看到「滞空」物理量，否则每次确认步频都要占 GPU 回放。
+
+        2026-09-18 加的 `feet_air_time` 奖励项只会体现在 Episode_Reward/feet_air_time（奖励值），
+        看不到物理量；这里锁定 runner 额外记录两条与 eval_gait.py 同口径的标量，
+        并要求取不到接触传感器时安全降级（返回 None 而不是抛错）。
+        """
+        src = (ROOT / "scripts/rl_lab/rl_lab/runners/amp_on_policy_runner.py").read_text(encoding="utf-8")
+        self.assertIn("AMP/mean_last_air_time_s", src)
+        self.assertIn("AMP/mean_air_time_fraction", src)
+        self.assertIn("def _feet_air_metrics", src)
+        # 口径：四足 last_air_time 均值 + 当前腾空足比例
+        self.assertIn('find_bodies(".*_FOOT", preserve_order=True)', src)
+        self.assertIn("last_air_time", src)
+        self.assertIn("current_air_time", src)
+        # 鲁棒性：没有接触传感器/没有 track_air_time 时不能崩
+        self.assertIn("return None, None", src)
+        self.assertIn("if mean_air_time is None:", src)
+        # 控制台也要打印（终端里能直接看）
+        self.assertIn("{air_line}", src)
+
     def test_amp_reference_reset_term_is_imported_and_defined(self):
         cfg_src = self.CONFIG.read_text(encoding="utf-8-sig")
         events_src = self.AMP_EVENTS.read_text(encoding="utf-8-sig")

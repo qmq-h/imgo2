@@ -75,6 +75,8 @@ class AMPOnPolicyRunner:
         self.policy_cfg = train_cfg["policy"]
         self.device = device
         self.env = env
+        # 四足足端在接触传感器里的下标，第一次记录指标时解析（见 _feet_air_metrics）
+        self._foot_ids = None
         if self.env.num_privileged_obs is not None:
             num_critic_obs = self.env.num_privileged_obs 
         else:
@@ -269,6 +271,15 @@ class AMPOnPolicyRunner:
         self.writer.add_scalar(
             'AMP/fraction_root_height_below_0_20m',
             locs['amp_low_height_fraction_sum'] / count, locs['it'])
+        # 「滞空」物理量：训练日志里原本只有 Episode_Reward/feet_air_time（奖励值），
+        # 看不到物理量，于是每次想确认步频有没有动都得占用 GPU 跑一次回放。
+        # 这里直接写两条标量（与 eval_gait.py 的 air_time_mean_s / air_fraction 同口径）：
+        #   mean_last_air_time_s     —— 四足「最近一次滞空时长」的均值（参考 0.20–0.24 s；实测 0.067–0.085 s）
+        #   mean_air_time_fraction   —— 当前腾空足比例（≈ 1 − 占空比；实测 0.40–0.50）
+        mean_air_time, air_fraction = self._feet_air_metrics()
+        if mean_air_time is not None:
+            self.writer.add_scalar('AMP/mean_last_air_time_s', mean_air_time, locs['it'])
+            self.writer.add_scalar('AMP/mean_air_time_fraction', air_fraction, locs['it'])
         # 判别器对「参考动作」与「策略动作」各自的原始打分（训练目标分别是 +1 / -1）。
         # 这两条曲线是判断判别器是否还有区分能力的关键：若 expert 也显著为负，说明
         # 判别器把专家数据判成假（AMP-07 的「坐标系域差」嫌疑），此时风格奖励失效、
@@ -280,6 +291,13 @@ class AMPOnPolicyRunner:
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 
+        if mean_air_time is None:
+            air_line = f"""{'Mean last air time (s):':>{pad}} n/a\n"""
+        else:
+            # 参考 0.20–0.24 s；我们 24500 轮时实测 0.067–0.085 s（步频 3.1 倍的直接体现）
+            air_line = (f"""{'Mean last air time (s):':>{pad}} {mean_air_time:.4f}"""
+                        f"""  [target ~0.20, was 0.067-0.085]\n"""
+                        f"""{'Mean air-borne feet frac:':>{pad}} {air_fraction:.3f}\n""")
         if len(locs['rewbuffer']) > 0:
             log_string = (f"""{'#' * width}\n"""
                           f"""{str.center(width, ' ')}\n\n"""
@@ -294,6 +312,7 @@ class AMPOnPolicyRunner:
                           f"""{'Mean AMP reward/step:':>{pad}} {mean_amp_reward_step:.4f}\n"""
                           f"""{'Mean AMP disc pred/step:':>{pad}} {mean_amp_disc_pred_step:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
+                          f"""{air_line}"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
                         #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
@@ -307,7 +326,8 @@ class AMPOnPolicyRunner:
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
                           f"""{'Mean AMP reward/step:':>{pad}} {mean_amp_reward_step:.4f}\n"""
                           f"""{'Mean AMP disc pred/step:':>{pad}} {mean_amp_disc_pred_step:.4f}\n"""
-                          f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n""")
+                          f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
+                          f"""{air_line}""")
                         #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
                         #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
 
@@ -319,6 +339,26 @@ class AMPOnPolicyRunner:
                        f"""{'ETA:':>{pad}} {self.tot_time / (locs['it'] + 1) * (
                                locs['num_learning_iterations'] - locs['it']):.1f}s\n""")
         print(log_string)
+
+    def _feet_air_metrics(self):
+        """四足滞空物理量 → (最近一次滞空时长均值 s, 当前腾空足比例)；拿不到传感器时返回 (None, None)。
+
+        口径与 `scripts/tools/eval_gait.py` 的 `air_time_mean_s` / `air_fraction` 一致，
+        这样训练时在 TensorBoard 上就能盯步频，不必每次回放。
+        """
+        try:
+            sensor = self.env.unwrapped.scene.sensors.get("contact_forces")
+        except AttributeError:
+            return None, None
+        if sensor is None or not hasattr(sensor.data, "last_air_time"):
+            return None, None
+        if self._foot_ids is None:
+            self._foot_ids = sensor.find_bodies(".*_FOOT", preserve_order=True)[0]
+        if len(self._foot_ids) == 0:
+            return None, None
+        last_air = sensor.data.last_air_time[:, self._foot_ids]
+        current_air = sensor.data.current_air_time[:, self._foot_ids]
+        return float(last_air.mean().item()), float((current_air > 0).float().mean().item())
 
     def save(self, path, infos=None):
         torch.save({
