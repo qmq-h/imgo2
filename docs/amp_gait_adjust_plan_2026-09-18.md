@@ -611,6 +611,7 @@ amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-o
 | reset 根姿态 | 平地：**不加** xy/偏航扰动；地形：xy `±1 m` | `±0.5 m` xy、`yaw ±3.14` | 平地 `(0,0)`、粗糙 xy `±1 m`、都不随机偏航 | `legged_robot.py:399-409` |
 | reset 根速度 | 6 维全 `U(-0.5, 0.5)` | 同 | 不变（本来就一致） | 同上 |
 | reset 关节角 | `default_dof_pos × U(0.5, 1.5)`、`dof_vel=0` | 无随机（`×1.0`） | `×U(0.5, 1.5)`、`dof_vel=0` | `legged_robot.py:411-425` |
+| 参考状态初始化概率 | **0.85**（85% 参考状态 / 15% 自然 reset） | `1.0` | `0.85` | `a1_amp_config.py` 的 `env` |
 | actor 噪声 | `dof_pos 0.03` / `ang_vel 0.3`（覆盖基类 0.01/0.2）；其余同基类 | `0.01` / `0.2` | `0.03` / `0.3` | `a1_amp_config.py` `noise.noise_scales` |
 | `min_normalized_std` | `[0.01]*12` | `[0.05,0.02,0.05]*4` | `[0.01]*12`（`AMPRLAmpRunnerCfg`） | `a1_amp_config.py` runner |
 
@@ -642,11 +643,53 @@ multiply 组合下净恢复系数必然为 0；改共享地形材质会牵动 PP
 4. **AMP 数据来源**：我们用的是自录真机动作（21 段），参考用 mocap；43 维观测的组成与顺序一致
    （§3 已核对），但分布不同。
 
-**验证**：`test_amp_rlamp_recipe.py` 新增 6 项——
+#### 15.2.1 冒烟训练发现的崩溃与修正（2026-09-18 晚，用户本机实跑）
+
+**现象**：`--task=Imgo2-basemove-flat-amp-rlamp` 在**环境构造阶段**就崩：
+
+```
+File ".../amp_env_cfg.py", line 564, in apply_rlamp_env_settings
+    cfg.events.randomize_reset_base.params["pose_range"] = ...
+AttributeError: 'NoneType' object has no attribute 'params'
+```
+
+**根因**：`Imgo2AmpMoveEnvCfg.__post_init__`（`amp_env_cfg.py:155-156`）把
+`randomize_reset_base` / `randomize_reset_joints` **设成了 `None`**（AMP 任务的 reset 由
+`reference_state_initialization` 负责），所以 helper 不能「就地改值」，只能**新建 EventTerm**。
+离线测试没抓到，是因为我手写的鸭子类型 cfg 把这两项填成了对象（不是 `None`）——**测试与被测的
+前置条件不一致**；现已把 fake cfg 改成照抄真实覆盖（`None`），并让 helper 走新建分支。
+
+**修法**：
+
+1. helper 里改成 `cfg.events.randomize_reset_base = EventTerm(func=mdp.reset_root_state_uniform, mode="reset", params={...})`
+   与 `... = EventTerm(func=mdp.reset_joints_by_scale, ...)`；
+2. 同时把 `reference_state_initialization_prob` 从 `1.0` 改成参考的 **0.85**（`RLAMP_REFERENCE_INIT_PROB`）
+   —— 否则参考初始化会把那 85% 也覆盖掉，新建的 reset 分布等于白写；
+3. `apply_amp_play_overrides()` 里把这两项重新置 `None`（回放/评估要确定性初始状态；
+   其它 AMP 变体本来就是 `None`，行为不变）。
+
+**顺序前提（已写成测试）**：`EventManager` 按 `cfg.__dict__` 顺序执行 reset 项
+（`event_manager.py:337`，不排序），而 `reference_state_initialization` 是 `AMPEventCfg` 的
+**子类字段** ⇒ dataclass 字段序里排在最后 ⇒ 它覆盖前 85% 的 env，净效果才是参考的
+「85% 参考状态 / 15% 自然 reset」。新建事件时**必须用 `EventCfg` 里已有的字段名**：真实字段名赋值
+保持原位置，拼错的名字会成为新键并被追加到 `reference_state_initialization` **之后**（顺序反转）。
+粗糙版本来就关掉了参考初始化 ⇒ 100% 走这套 reset 分布（已在类 docstring 里写明）。
+
+**验证**：本轮测试 73 → **76 项**，新增 3 条针对这次崩溃的：
+① `test_helper_never_mutates_events_the_amp_base_nulls`（读源码交叉检查：helper 读到的
+`cfg.events.X` 若未新建，就不许出现在基类置 `None` 的名单里；同时守住新建名必须是真实字段）、
+② `test_reference_init_runs_last_among_reset_terms`（reset 项执行顺序不变量）、
+③ `test_dataclass_field_order_survives_event_recreation`（用标准库 dataclass 复现
+`_custom_post_init` 机制，证明「给已有字段名赋值不改变顺序、新名字会追加到最后」）。
+另外行为测试改为从「基类置 None」的前置状态开跑（正是实跑崩掉的那条路径）。
+**仍待验证**：需要用户在终端重跑一次冒烟训练，确认环境能构造、能跑满 100 轮。
+
+**验证**：`test_amp_rlamp_recipe.py` 从 9 项增加到 **20 项**——
 常量值、helper 逐字段覆盖 + 两个任务的接线（粗糙版 `custom_origins=True`）、
 **把 helper 的 AST 抽出来用鸭子类型 cfg 真跑一遍**（Isaac Lab 的 configclass 在无 GPU 机器上
-无法实例化）、**直接读参考源码**比对 commands/domain_rand/noise（含"参考 `domain_rand` 不继承基类
-⇒ 确实没有 CoM/惯量/外力"的判据）、参考 reset 分布（正则抓 `torch_rand_float` 端点）、
-`AMPRLAmpRunnerCfg` 与任务注册（4 个 rlamp 任务都指向它）。全仓 **73 项通过**（原 65 项）。
+无法实例化）、**直接读参考源码**比对 commands/domain_rand/noise（含「参考 `domain_rand` 不继承
+基类 ⇒ 确实没有 CoM/惯量/外力」的判据）、参考 reset 分布（正则抓 `torch_rand_float` 端点）、
+参考 actor 的 42 维切片、`AMPRLAmpRunnerCfg` 与任务注册（4 个 rlamp 任务都指向它），
+以及 §15.2.1 的三条崩溃防回归。全仓 **76 项通过**（原 65 项）。
 
 **状态**：**已实现，待训练验证**（离线只能证明"配置写成了参考的数值"，不能证明学出来的步态更好）。

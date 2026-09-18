@@ -251,6 +251,9 @@ def apply_amp_play_overrides(cfg) -> None:
     cfg.events.randomize_push_robot = None
     cfg.events.randomize_com_positions = None
     cfg.events.randomize_actuator_gains = None
+    # rlamp 任务会把这两项**重建**出来（见 `apply_rlamp_env_settings`）；回放/评估要确定性初始状态
+    cfg.events.randomize_reset_base = None
+    cfg.events.randomize_reset_joints = None
 
     # ------------------------------Commands------------------------------
     cfg.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
@@ -500,6 +503,11 @@ RLAMP_NOISE_SCALES = {"ang_vel": 0.3, "dof_pos": 0.03}
 RLAMP_RESET_JOINT_SCALE_RANGE = (0.5, 1.5)
 RLAMP_RESET_VEL_RANGE = (-0.5, 0.5)
 RLAMP_ROUGH_RESET_XY_RANGE = (-1.0, 1.0)
+# 参考 `a1_amp_config.py` 的 `env`：`reference_state_initialization = True`、
+# `reference_state_initialization_prob = 0.85` ⇒ **85% 的 reset 用参考动作状态、15% 走
+# `_reset_dofs`/`_reset_root_states`**（就是上面那套 reset 分布）。我们原来是 1.0（全都用参考状态）
+# ⇒ 若不改这一项，上面重建的 reset 随机化在平地版上会被参考状态初始化**完全覆盖**而失效。
+RLAMP_REFERENCE_INIT_PROB = 0.85
 
 
 def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
@@ -511,6 +519,14 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
 
     `custom_origins=True` 用于粗糙地形版：参考只在"地形由 heightfield/trimesh 提供"的
     分支里对初始 xy 加 ±1 m 扰动（`_get_env_origins` 的 `custom_origins`）。
+
+    ⚠️ **reset 项是"重建"而不是"改值"**：`Imgo2AmpMoveEnvCfg.__post_init__` 把
+    `randomize_reset_base` / `randomize_reset_joints` 设成了 `None`（AMP 的 reset 由参考状态
+    初始化负责），所以这里必须**新建** `EventTerm`——直接写 `.params[...]` 会在第一次构造配置时
+    抛 `AttributeError: 'NoneType' object has no attribute 'params'`（2026-09-18 冒烟训练实测）。
+    `EventManager` 按 `cfg.__dict__` 顺序执行 reset 项，而 `reference_state_initialization` 是
+    子类字段 ⇒ **排在最后**、会覆盖它前面那 85% 的 env ⇒ 净效果正是参考的"85% 参考状态 /
+    15% 自然 reset"（粗糙版关掉了参考初始化，于是 100% 走这套 reset 分布，见类 docstring）。
 
     ⚠️ 对齐的代价（写进 `docs/amp_gait_adjust_plan_2026-09-18.md` §15.2）：
       * `lin_vel_x` 上限 2.0 m/s 超出我们录制动作数据覆盖的 0.842 m/s ⇒ 高速指令段没有
@@ -560,13 +576,29 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
                                      "y": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY)}
 
     # ---------------------------------- reset 分布 ----------------------------------
+    # 2026-09-18 冒烟训练发现：这两项在 AMP 基类里是 `None`，必须**新建** EventTerm。
+    # 语义核对：`reset_root_state_uniform` 把姿态写成 `default_root_state + env_origins + 采样`、
+    # 速度写成 `default_root_vel + 采样`（`events.py`）；我们的默认根速度是 0 ⇒ 等价于参考的
+    # "直接设成 U(-0.5,0.5)"。
     xy = RLAMP_ROUGH_RESET_XY_RANGE if custom_origins else (0.0, 0.0)
-    cfg.events.randomize_reset_base.params["pose_range"] = {"x": xy, "y": xy, "yaw": (0.0, 0.0)}
-    cfg.events.randomize_reset_base.params["velocity_range"] = {
-        key: RLAMP_RESET_VEL_RANGE for key in ("x", "y", "z", "roll", "pitch", "yaw")}
-    joints = cfg.events.randomize_reset_joints
-    joints.params["position_range"] = RLAMP_RESET_JOINT_SCALE_RANGE
-    joints.params["velocity_range"] = (0.0, 0.0)
+    cfg.events.randomize_reset_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": xy, "y": xy, "yaw": (0.0, 0.0)},
+            "velocity_range": {key: RLAMP_RESET_VEL_RANGE
+                               for key in ("x", "y", "z", "roll", "pitch", "yaw")},
+        },
+    )
+    cfg.events.randomize_reset_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={"position_range": RLAMP_RESET_JOINT_SCALE_RANGE, "velocity_range": (0.0, 0.0)},
+    )
+    # 参考的 85% 参考状态 / 15% 自然 reset（粗糙版没有参考初始化，100% 走上面这套）
+    init = cfg.events.reference_state_initialization
+    if init is not None:
+        init.params["reference_state_initialization_prob"] = RLAMP_REFERENCE_INIT_PROB
 
     # ---------------------------------- 观测噪声（policy 组）----------------------------------
     # 参考只对 actor 观测加噪声（privileged 不加），我们的 `policy.enable_corruption = True` /

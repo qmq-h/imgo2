@@ -114,10 +114,14 @@ def _nested_class(cls, name):
     return next(n for n in cls.body if isinstance(n, ast.ClassDef) and n.name == name)
 
 
-def _fake_env_cfg():
+def _fake_env_cfg(*, reference_init=True):
     """重建 `apply_rlamp_env_settings()` 接触到的那层 cfg 结构（鸭子类型，无需 Isaac Lab）。
 
-    初值抄自 `velocity_env_cfg.py` 的 `EventCfg` / `CommandsCfg`（即"对齐前"的状态）。
+    初值抄自**真实的 AMP 配置**：`EventCfg` / `CommandsCfg` 的对齐前取值，外加
+    `Imgo2AmpMoveEnvCfg.__post_init__`（`amp_env_cfg.py:149-159`）对 AMP 任务做的覆盖
+    —— 其中 `randomize_reset_base` / `randomize_reset_joints` 被设成 **None**。这一点必须照抄：
+    2026-09-18 的冒烟训练正是死在这里（helper 对 None 取 `.params`）。
+    `reference_init=False` 对应粗糙版（它把参考状态初始化关掉了）。
     """
     from types import SimpleNamespace as NS
     return NS(
@@ -137,15 +141,25 @@ def _fake_env_cfg():
                 "damping_distribution_params": (0.5, 2.0)}),
             randomize_push_robot=NS(mode="interval", interval_range_s=(10.0, 15.0),
                                     params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}}),
-            randomize_reset_base=NS(params={
-                "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-                "velocity_range": {k: (-0.5, 0.5) for k in
-                                   ("x", "y", "z", "roll", "pitch", "yaw")}}),
-            randomize_reset_joints=NS(params={"position_range": (1.0, 1.0),
-                                              "velocity_range": (0.0, 0.0)}),
+            # AMP 基类把这两项关掉了 ⇒ None（我们要"重建"，不是"改值"）
+            randomize_reset_base=None,
+            randomize_reset_joints=None,
+            reference_state_initialization=(
+                NS(params={"reference_state_initialization_prob": 1.0}) if reference_init else None),
         ),
         observations=NS(policy=NS(base_ang_vel=NS(noise="JUNK"), joint_pos=NS(noise="JUNK"))),
     )
+
+
+def _fake_helper_namespace():
+    """helper 依赖的模块级名字（`Unoise` / `EventTerm` / `mdp`）的替身。"""
+    from types import SimpleNamespace as NS
+    return {
+        "Unoise": lambda n_min, n_max: ("Unoise", n_min, n_max),
+        "EventTerm": lambda func, mode, params: NS(func=func, mode=mode, params=params),
+        "mdp": NS(reset_root_state_uniform="reset_root_state_uniform",
+                  reset_joints_by_scale="reset_joints_by_scale"),
+    }
 
 
 class RLAmpRecipeTests(unittest.TestCase):
@@ -292,6 +306,7 @@ class RLAmpRecipeTests(unittest.TestCase):
         self.assertEqual(consts["RLAMP_RESET_JOINT_SCALE_RANGE"], (0.5, 1.5))
         self.assertEqual(consts["RLAMP_RESET_VEL_RANGE"], (-0.5, 0.5))
         self.assertEqual(consts["RLAMP_ROUGH_RESET_XY_RANGE"], (-1.0, 1.0))
+        self.assertAlmostEqual(consts["RLAMP_REFERENCE_INIT_PROB"], 0.85, places=9)
 
     def test_env_settings_helper_and_wiring(self):
         """helper 必须逐项改到该改的字段，且两个 rlamp 任务都调用它。"""
@@ -314,14 +329,19 @@ class RLAmpRecipeTests(unittest.TestCase):
             "gains.params['damping_distribution_params'] = RLAMP_GAIN_MULTIPLIER_RANGE",
             "push.interval_range_s = RLAMP_PUSH_INTERVAL_S",
             "push.params['velocity_range']",
-            "cfg.events.randomize_reset_base.params['pose_range']",
-            "cfg.events.randomize_reset_base.params['velocity_range']",
-            "joints.params['position_range'] = RLAMP_RESET_JOINT_SCALE_RANGE",
-            "joints.params['velocity_range'] = (0.0, 0.0)",
+            # reset 两项必须**新建 EventTerm**（AMP 基类里是 None，改值会崩）
+            "cfg.events.randomize_reset_base = EventTerm(func=mdp.reset_root_state_uniform",
+            "cfg.events.randomize_reset_joints = EventTerm(func=mdp.reset_joints_by_scale",
+            "'position_range': RLAMP_RESET_JOINT_SCALE_RANGE",
+            "init.params['reference_state_initialization_prob'] = RLAMP_REFERENCE_INIT_PROB",
+            "if init is not None:",
             "cfg.observations.policy.base_ang_vel.noise = Unoise(",
             "cfg.observations.policy.joint_pos.noise = Unoise(",
         ):
             self.assertIn(needle, src, f"helper 缺少：{needle}")
+        # 必须用"新建"而不是就地改字段：`randomize_reset_base.params[...]` / `joints.params[...]`
+        self.assertNotIn("randomize_reset_base.params[", src)
+        self.assertNotIn("joints.params[", src)
         self.assertIn("apply_rlamp_env_settings(self)", _func_src(self.tree, "Imgo2AmpRLAmpEnvCfg",
                                                                 "__post_init__"))
         # 粗糙版走参考的 custom_origins 分支（初始 xy ±1 m）
@@ -343,10 +363,13 @@ class RLAmpRecipeTests(unittest.TestCase):
                     and n.targets[0].id in names)
                 or (isinstance(n, ast.FunctionDef) and n.name == "apply_rlamp_env_settings")]
         self.assertTrue(any(isinstance(n, ast.FunctionDef) for n in body), "helper 没抽出来")
-        ns = {"Unoise": lambda n_min, n_max: ("Unoise", n_min, n_max)}
+        ns = _fake_helper_namespace()
         exec(compile(ast.Module(body=body, type_ignores=[]), "<amp_env_cfg>", "exec"), ns)
 
         cfg = _fake_env_cfg()
+        # 前置条件：AMP 基类把 reset 随机化关成了 None（冒烟训练就是死在这一步）
+        self.assertIsNone(cfg.events.randomize_reset_base)
+        self.assertIsNone(cfg.events.randomize_reset_joints)
         ns["apply_rlamp_env_settings"](cfg)
 
         # 指令
@@ -373,24 +396,32 @@ class RLAmpRecipeTests(unittest.TestCase):
         push = cfg.events.randomize_push_robot
         self.assertEqual(push.interval_range_s, (15.0, 15.0))
         self.assertEqual(push.params["velocity_range"], {"x": (-1.0, 1.0), "y": (-1.0, 1.0)})
-        # reset：平地不加 xy/偏航扰动，根速度 ±0.5（6 维），关节按 ×[0.5,1.5] 缩放、速度 0
-        base = cfg.events.randomize_reset_base.params
-        self.assertEqual(base["pose_range"], {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)})
-        self.assertEqual(base["velocity_range"], {k: (-0.5, 0.5) for k in
-                                                  ("x", "y", "z", "roll", "pitch", "yaw")})
-        joints = cfg.events.randomize_reset_joints.params
-        self.assertEqual(joints["position_range"], (0.5, 1.5))
-        self.assertEqual(joints["velocity_range"], (0.0, 0.0))
+        # reset：**新建**的事件（mode/func 也要对），平地不加 xy/偏航扰动、根速度 ±0.5（6 维）
+        base_ev = cfg.events.randomize_reset_base
+        self.assertEqual((base_ev.mode, base_ev.func), ("reset", "reset_root_state_uniform"))
+        self.assertEqual(base_ev.params["pose_range"],
+                         {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)})
+        self.assertEqual(base_ev.params["velocity_range"], {k: (-0.5, 0.5) for k in
+                                                            ("x", "y", "z", "roll", "pitch", "yaw")})
+        joints_ev = cfg.events.randomize_reset_joints
+        self.assertEqual((joints_ev.mode, joints_ev.func), ("reset", "reset_joints_by_scale"))
+        self.assertEqual(joints_ev.params["position_range"], (0.5, 1.5))
+        self.assertEqual(joints_ev.params["velocity_range"], (0.0, 0.0))
+        # 参考状态初始化概率：1.0 → 参考的 0.85（否则上面这套 reset 会被完全覆盖）
+        self.assertEqual(cfg.events.reference_state_initialization.params[
+            "reference_state_initialization_prob"], 0.85)
         # 噪声：只改 policy 的 ang_vel / joint_pos，数值等于参考的 noise_scales
         self.assertEqual(cfg.observations.policy.base_ang_vel.noise, ("Unoise", -0.3, 0.3))
         self.assertEqual(cfg.observations.policy.joint_pos.noise, ("Unoise", -0.03, 0.03))
 
-        # 粗糙版：同样的 helper，但 reset xy 用参考的 ±1 m（`custom_origins=True`）
-        cfg2 = _fake_env_cfg()
+        # 粗糙版：同样的 helper，但 reset xy 用参考的 ±1 m（`custom_origins=True`），
+        # 且参考状态初始化已被关掉（`None`）—— helper 不能因此崩，也不该往 None 上写
+        cfg2 = _fake_env_cfg(reference_init=False)
         ns["apply_rlamp_env_settings"](cfg2, custom_origins=True)
         self.assertEqual(cfg2.events.randomize_reset_base.params["pose_range"],
                          {"x": (-1.0, 1.0), "y": (-1.0, 1.0), "yaw": (0.0, 0.0)})
         self.assertEqual(cfg2.commands.base_velocity.ranges.lin_vel_x, (-1.0, 2.0))
+        self.assertIsNone(cfg2.events.reference_state_initialization)
 
     def test_reference_source_commands_dr_and_noise(self):
         """本机有参考项目时，直接读它的 commands / domain_rand / noise 逐项比对。"""
@@ -468,6 +499,96 @@ class RLAmpRecipeTests(unittest.TestCase):
                          consts["RLAMP_RESET_JOINT_SCALE_RANGE"])
         self.assertIn("self.dof_vel[env_ids] = 0.", src)
 
+    def test_dataclass_field_order_survives_event_recreation(self):
+        """用标准库 dataclass 复现 `_custom_post_init` 的机制，验证"重建事件"不改变执行顺序。
+
+        依据：`configclass.py:392` 的 `setattr(obj, key, deepcopy(value))` 按 `dir(obj)`（字母序）遍历，
+        但**给已存在的键赋值不改变 `__dict__` 的插入位置** ⇒ `reference_state_initialization`
+        仍然最后执行；拼错的新名字会被追加到最后（所以上面那条测试要守住字段名）。
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class Ev:
+            material: object = None
+            reset_joints: object = None
+            reset_base: object = None
+            reference_init: object = None
+
+        ev = Ev(material="m")
+        order_before = list(ev.__dict__)
+        for key in sorted(dir(ev)):        # 模仿 `_custom_post_init` 的 deepcopy 赋值顺序
+            if not key.startswith("__"):
+                setattr(ev, key, ev.__dict__[key])
+        self.assertEqual(list(ev.__dict__), order_before, "deepcopy 循环不该改变属性顺序")
+        ev.reset_base = "REBUILT"          # 重建（字段名已存在）
+        self.assertEqual(list(ev.__dict__), order_before)
+        self.assertEqual(list(ev.__dict__)[-1], "reference_init")
+        ev.typo_name = "OOPS"              # 拼错 ⇒ 新键被追加到最后（顺序会反转）
+        self.assertEqual(list(ev.__dict__)[-1], "typo_name")
+
+    def test_helper_never_mutates_events_the_amp_base_nulls(self):
+        """通用防回归：helper 里**就地改**的 event，不能是 AMP 基类设成 `None` 的那些。
+
+        2026-09-18 冒烟训练就崩在这里（`Imgo2AmpMoveEnvCfg.__post_init__` 把
+        `randomize_reset_base` / `randomize_reset_joints` 设成 None，helper 却去取 `.params`）。
+        这条用源码交叉检查：helper 读到的 `cfg.events.X` 只要没被"新建 EventTerm"覆盖，
+        就不允许出现在基类置 None 的名单里。
+
+        顺带守住第二件事：**新建的 event 名必须是 `EventCfg` 里真实存在的字段**。
+        `EventManager` 用 `cfg.__dict__` 顺序执行（`event_manager.py:337`），真实字段名赋值会
+        保持原有位置（在 `reference_state_initialization` 之前），而拼错的名字会成为新键、被追加到
+        最后 ⇒ 顺序反转 ⇒ 那 85% 参考状态初始化反过来被 reset 随机化覆盖。
+        """
+        base_src = _func_src(self.tree, "Imgo2AmpMoveEnvCfg", "__post_init__")
+        nulled = set(re.findall(r"self\.events\.(\w+) = None", base_src))
+        self.assertIn("randomize_reset_base", nulled, "AMP 基类不再关这两项？对齐清单需要复核")
+        self.assertIn("randomize_reset_joints", nulled)
+
+        helper = ast.unparse(next(n for n in self.tree.body if isinstance(n, ast.FunctionDef)
+                                  and n.name == "apply_rlamp_env_settings"))
+        read = set(re.findall(r"cfg\.events\.(\w+)", helper))
+        created = set(re.findall(r"cfg\.events\.(\w+) = EventTerm", helper))
+        self.assertEqual(created, {"randomize_reset_base", "randomize_reset_joints"})
+        for name in sorted(read - created):
+            self.assertNotIn(name, nulled,
+                             f"{name} 在 AMP 基类里是 None：helper 必须新建 EventTerm，不能就地改")
+
+        fields = [n.targets[0].id for n in _class(_module(REWARDS_CFG), "EventCfg").body
+                  if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)]
+        for name in sorted(created):
+            self.assertIn(name, fields, f"{name} 不是 EventCfg 的字段（拼错会破坏 reset 执行顺序）")
+
+    def test_reference_init_runs_last_among_reset_terms(self):
+        """`EventManager` 按 `cfg.__dict__` 顺序执行 reset 项 ⇒ 参考状态初始化必须排在最后。
+
+        源码依据：`event_manager.py:337` 用 `self.cfg.__dict__.items()` 迭代（不排序），
+        而 `AMPEventCfg` 的 `reference_state_initialization` 是**子类字段** ⇒ dataclass 字段序里
+        排在父类 `EventCfg` 的全部字段之后。这一点是「85% 参考状态 / 15% 自然 reset」成立的前提：
+        若顺序反过来，reset 随机化会覆盖那 85%，`reference_state_initialization_prob=0.85`
+        就退化成 100% 随机 reset（平地版会变成与我们原来的配置完全不同的分布）。
+        """
+        base = _class(_module(REWARDS_CFG), "EventCfg")
+        reset_terms = []
+        for node in base.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                kw = {k.arg: k.value for k in node.value.keywords}
+                mode = kw.get("mode")
+                if isinstance(mode, ast.Constant) and mode.value == "reset":
+                    reset_terms.append(node.targets[0].id)
+        self.assertIn("randomize_reset_base", reset_terms)
+        self.assertIn("randomize_reset_joints", reset_terms)
+        sub_terms = [n.targets[0].id for n in _class(self.tree, "AMPEventCfg").body
+                     if isinstance(n, ast.Assign)]
+        self.assertEqual(sub_terms, ["reference_state_initialization"],
+                         "AMPEventCfg 若再加字段，'参考初始化最后跑' 的结论要重新确认")
+        order = reset_terms + sub_terms
+        self.assertEqual(order[-1], "reference_state_initialization", order)
+        self.assertLess(order.index("randomize_reset_base"),
+                        order.index("reference_state_initialization"))
+        self.assertLess(order.index("randomize_reset_joints"),
+                        order.index("reference_state_initialization"))
+
     def test_other_variants_keep_their_commands_and_dr(self):
         """flat-amp / go2 变体不得被这一轮对齐动到（它们各自是独立对照）。"""
         for cls in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg"):
@@ -502,6 +623,10 @@ class RLAmpRecipeTests(unittest.TestCase):
         env = _class_assigns(env_cls, literal=True)
         self.assertEqual(env["num_observations"], 42)
         self.assertEqual(env["num_privileged_obs"], 48)
+        # 参考的 reset 分布：85% 用参考动作状态、15% 走自然 reset（我们原来写的是 1.0）
+        self.assertTrue(env["reference_state_initialization"])
+        self.assertAlmostEqual(env["reference_state_initialization_prob"], 0.85, places=9)
+        self.assertAlmostEqual(self._rlamp_consts()["RLAMP_REFERENCE_INIT_PROB"], 0.85, places=9)
 
     def test_rlamp_runner_aligns_min_normalized_std(self):
         """rlamp 四个任务改用 `AMPRLAmpRunnerCfg`（`min_normalized_std=[0.01]*12`，参考值）。"""
