@@ -560,3 +560,27 @@ amp 风格和这个奖励的比例也是。」⇒ §13 里"配方与平地 AMP-o
 
 **另一处可以顺手对齐但需要重训才能验证的**：critic 各项缩放（我们全 1.0，参考 2.0/0.25/1.0/0.05）。
 它只影响 critic 的输入尺度（不影响部署），但改了就等于换了价值网络的输入分布，必须重训才算验证。
+
+### 15.1 按用户要求统一：critic 缩放 + commands 缩放 + 动作缩放/裁剪（2026-09-18 晚）
+
+用户决定「critic 缩放和动作缩放 + clip 和 fanziqi 统一一下」。落地为
+`apply_rlamp_obs_and_action_scales()`（只作用于两个 rlamp 任务，不动其它变体）：
+
+| 项 | 参考（rl_amp） | 我们原来 | 现在（rlamp 任务） | 影响面 |
+|---|---|---|---|---|
+| critic `lin_vel` 缩放 | **2.0** | 1.0（Isaac Lab 默认） | 2.0 | 仅 critic |
+| critic `ang_vel` / `dof_pos` / `dof_vel` | **0.25 / 1.0 / 0.05** | 1.0 / 1.0 / 1.0 | 同参考 | 仅 critic |
+| **commands 缩放**（actor+critic） | **`[2.0, 2.0, 0.25]`**（`legged_robot.py:515` 的 `commands_scale`） | `1.0` | `(2.0, 2.0, 0.25)` | **动到 actor 输入尺度**（用户只点名了 critic；我按"统一"一并处理，若要改回只需一行） |
+| 动作缩放 | **0.25 统一**（`a1_amp_config.py:72`） | 髋 0.125 / 其余 0.25 | 0.25 统一 | **部署契约** |
+| 动作裁剪 | **±100**（≈不裁剪） | ±3 | ±100 | **部署契约** |
+
+**代价与后续必做（重要）**：动作缩放与裁剪、commands 缩放都属于**部署契约**。
+这两个任务的策略将来若导出到 `imgo2_deploy/policy/imgo2/amp/`，`config.yaml` 必须同步：
+`action_scale`（全 0.25）、`clip_actions_lower/upper`（±100）、`commands_scale`（`[2.0, 2.0, 0.25]`）
+—— 都是 yaml 字段，C++ 不用改（`rl_sdk.cpp` 按 yaml 取值）。**现在不要改那份 yaml**：
+它服务的是已部署的 24500 策略（髋 0.125 / ±3），改了会让当前部署件行为改变。
+`base_ang_vel` 的 actor 侧缩放（0.25）本来就与参考一致，未动。
+
+**验证**：`test_amp_rlamp_recipe.py` 新增 3 项（helper 覆盖 policy+critic 且 critic 额外 lin_vel、
+**直接读参考基类源码**比对 `obs_scales`/`clip_actions` 与 a1 的 `action_scale`、其它变体不得被动到）；
+全仓 **65 项通过**。

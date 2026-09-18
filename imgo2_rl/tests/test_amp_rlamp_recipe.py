@@ -28,6 +28,11 @@ RLAMP_CANDIDATES = [
     Path.home() / "Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py",
     Path.home() / "RL/isaac/AMP/rl_amp/legged_gym/legged_gym/envs/a1/a1_amp_config.py",
 ]
+# `normalization` / `obs_scales` / `clip_actions` 定义在基类配置里（a1 没有覆盖）
+RLAMP_BASE_CANDIDATES = [
+    Path.home() / "Desktop/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot_config.py",
+    Path.home() / "RL/isaac/AMP/rl_amp/legged_gym/legged_gym/envs/base/legged_robot_config.py",
+]
 
 # rl_amp 里**非零**的跟踪项 → 我们的项名
 RLAMP_REFERENCE_MAP = {
@@ -143,6 +148,67 @@ class RLAmpRecipeTests(unittest.TestCase):
         self.assertAlmostEqual(style_cap, 1.40, places=9)
         self.assertAlmostEqual(task_cap, 0.40, places=6)
         self.assertGreater(style_cap / task_cap, 3.0)   # 风格明显主导
+
+    def test_obs_and_action_scales_match_reference(self):
+        """critic 缩放、commands 缩放、动作缩放与裁剪都要与参考一致（用户 2026-09-18 要求）。"""
+        src = ast.unparse(next(n for n in self.tree.body
+                               if isinstance(n, ast.FunctionDef)
+                               and n.name == "apply_rlamp_obs_and_action_scales"))
+        consts = {n.targets[0].id: _num(n.value) if not isinstance(n.value, ast.Tuple)
+                  else tuple(_num(e) for e in n.value.elts)
+                  for n in self.tree.body if isinstance(n, ast.Assign)
+                  and isinstance(n.targets[0], ast.Name) and n.targets[0].id.startswith("RLAMP_")}
+        self.assertAlmostEqual(consts["RLAMP_ACTION_SCALE"], 0.25, places=9)
+        self.assertEqual(consts["RLAMP_COMMANDS_SCALE"], (2.0, 2.0, 0.25))
+        self.assertEqual(consts["RLAMP_CLIP_ACTIONS"], (-100.0, 100.0))
+        # helper 必须覆盖 policy 与 critic 两组、且 critic 额外有 lin_vel
+        self.assertIn('for group in (\'policy\', \'critic\')', src)
+        self.assertIn('obs.base_ang_vel.scale = RLAMP_OBS_SCALES[\'ang_vel\']', src)
+        self.assertIn('obs.velocity_commands.scale = RLAMP_COMMANDS_SCALE', src)
+        self.assertIn('if group == \'critic\':', src)
+        self.assertIn('obs.base_lin_vel.scale = RLAMP_OBS_SCALES[\'lin_vel\']', src)
+        self.assertIn('cfg.actions.joint_pos.scale = RLAMP_ACTION_SCALE', src)
+        self.assertIn("clip = {'.*': RLAMP_CLIP_ACTIONS}", src)
+        # 两个 rlamp 任务都调用
+        for cls in ("Imgo2AmpRLAmpEnvCfg", "Imgo2AmpRoughEnvCfg"):
+            self.assertIn("apply_rlamp_obs_and_action_scales(self)",
+                          _func_src(self.tree, cls, "__post_init__"))
+
+    def test_reference_source_obs_and_action_values(self):
+        """本机有参考项目时，直接读它的 normalization / action_scale 比对。"""
+        ref = next((p for p in RLAMP_CANDIDATES if p.exists()), None)
+        base_ref = next((p for p in RLAMP_BASE_CANDIDATES if p.exists()), None)
+        if ref is None or base_ref is None:
+            self.skipTest("本机没有 rl_amp 参考项目，跳过")
+        tree = _module(ref)
+        norm = _class(_module(base_ref), "normalization")
+        scales = next(n for n in norm.body if isinstance(n, ast.ClassDef) and n.name == "obs_scales")
+        got = {t.id: _num(v) for node in scales.body if isinstance(node, ast.Assign)
+               for t, v in zip(node.targets, [node.value]) if isinstance(t, ast.Name)}
+        self.assertAlmostEqual(got["lin_vel"], 2.0, places=9)
+        self.assertAlmostEqual(got["ang_vel"], 0.25, places=9)
+        self.assertAlmostEqual(got["dof_pos"], 1.0, places=9)
+        self.assertAlmostEqual(got["dof_vel"], 0.05, places=9)
+        # action_scale 在 a1_amp_config 的 control 块里
+        ctrl = _class(tree, "control")
+        action_scale = next(_num(n.value) for n in ctrl.body if isinstance(n, ast.Assign)
+                            and any(isinstance(t, ast.Name) and t.id == "action_scale" for t in n.targets))
+        self.assertAlmostEqual(action_scale, 0.25, places=9)
+        # clip_actions 在 normalization 块里
+        clip_actions = next(_num(n.value) for n in norm.body if isinstance(n, ast.Assign)
+                            and any(isinstance(t, ast.Name) and t.id == "clip_actions" for t in n.targets))
+        self.assertAlmostEqual(clip_actions, 100.0, places=9)
+
+    def test_other_variants_keep_deployment_contract(self):
+        """其它变体（含已部署的 flat-amp）不得被动到：髋 0.125、clip ±3、commands 1.0。"""
+        for cls in ("Imgo2AmpMoveEnvCfg", "Imgo2AmpGo2StyleEnvCfg"):
+            src = _func_src(self.tree, cls, "__post_init__")
+            self.assertNotIn("RLAMP_ACTION_SCALE", src)
+            self.assertNotIn("apply_rlamp_obs_and_action_scales", src)
+        # flat-amp 的 action 配置仍是髋 0.125 / 其余 0.25、clip ±3
+        flat = _func_src(self.tree, "Imgo2AmpMoveEnvCfg", "__post_init__")
+        self.assertIn("'.*_hip_joint': 0.125", flat)
+        self.assertIn("clip = {'.*': (-3.0, 3.0)}", flat)
 
     def test_amp_runner_uses_reference_ratio(self):
         """两个 rlamp 任务都用 `AMPRunnerCfg`（coef 2.0 / lerp 0.3），即参考的比例。"""

@@ -408,6 +408,49 @@ def apply_rlamp_task_rewards(cfg) -> None:
     cfg.rewards.track_ang_vel_z_exp.weight = RLAMP_TRACK_ANG_VEL_RAW * RLAMP_DT / step_dt
 
 
+# 参考的观测缩放与裁剪（`rl_amp` 基类 `legged_robot_config.py` 的 `class normalization`）：
+#   obs_scales: lin_vel 2.0 / ang_vel 0.25 / dof_pos 1.0 / dof_vel 0.05；clip_observations 100.
+#   `commands_scale = [lin_vel, lin_vel, ang_vel] = [2.0, 2.0, 0.25]`（`legged_robot.py:515`），
+#   而且 **actor 与 critic 共用同一个缓冲区** ⇒ 两边的 commands 都带这个缩放。
+#   `clip_actions = 100.`（≈不裁剪，见 `a1_amp_config.py` 的 `normalization`）。
+RLAMP_OBS_SCALES = {"lin_vel": 2.0, "ang_vel": 0.25, "dof_pos": 1.0, "dof_vel": 0.05}
+RLAMP_COMMANDS_SCALE = (2.0, 2.0, 0.25)
+RLAMP_CLIP_ACTIONS = (-100.0, 100.0)
+RLAMP_ACTION_SCALE = 0.25   # a1_amp_config.py:72（基类默认是 0.5，参考覆盖成 0.25）
+
+
+def apply_rlamp_obs_and_action_scales(cfg) -> None:
+    """把观测缩放、动作缩放与裁剪统一到 rl_amp（fan-ziqi）的取值。
+
+    与 `apply_rlamp_task_rewards()` 分开，是为了让"奖励配方"和"输入/动作接口"两个变量各自可查。
+
+    * **critic**：`lin_vel 2.0 / ang_vel 0.25 / dof_pos 1.0 / dof_vel 0.05`
+      （Isaac Lab 默认全是 1.0，我们此前的 AMP 任务也只缩放了 policy 组 ⇒ 这是真实偏差）。
+    * **commands**（actor 与 critic 都改）：参考的 `commands_scale = [2.0, 2.0, 0.25]`；
+      Isaac Lab 的 `ObsTerm.scale` 支持元组（`observation_manager.py:551-558` 会校验长度），
+      正好可以逐分量表达。**注意这动到了 actor 的输入尺度**（不只是 critic）。
+    * **动作**：`action_scale = 0.25` 统一（我们原来是髋 0.125 / 其余 0.25），
+      `clip = ±100`（参考 `clip_actions = 100.`，即实际不裁剪；我们原来是 ±3）。
+
+    ⚠️ 后两项属于**部署契约**：这两个任务的策略将来要导出到
+    `imgo2_deploy/policy/imgo2/amp/` 时，`config.yaml` 必须同步
+    （`action_scale` 全 0.25、`clip_actions_*` ±100、`commands_scale [2,2,0.25]`）。
+    **现在不要改那份 yaml**——它服务的是已部署的 24500 策略（髋 0.125 / ±3）。
+    """
+    step_dt = cfg.sim.dt * cfg.decimation   # 未使用，保留以便将来按需换算
+    assert step_dt > 0
+    for group in ("policy", "critic"):
+        obs = getattr(cfg.observations, group)
+        obs.base_ang_vel.scale = RLAMP_OBS_SCALES["ang_vel"]
+        obs.joint_pos.scale = RLAMP_OBS_SCALES["dof_pos"]
+        obs.joint_vel.scale = RLAMP_OBS_SCALES["dof_vel"]
+        obs.velocity_commands.scale = RLAMP_COMMANDS_SCALE
+        if group == "critic":
+            obs.base_lin_vel.scale = RLAMP_OBS_SCALES["lin_vel"]
+    cfg.actions.joint_pos.scale = RLAMP_ACTION_SCALE
+    cfg.actions.joint_pos.clip = {".*": RLAMP_CLIP_ACTIONS}
+
+
 @configclass
 class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
     """**rl_amp（fan-ziqi）配方**的平地版：只有线/角速度跟踪奖励，风格占约 2/3。
@@ -420,6 +463,7 @@ class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         apply_rlamp_task_rewards(self)
+        apply_rlamp_obs_and_action_scales(self)
 
 
 @configclass
@@ -520,10 +564,12 @@ class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
         # 理由见类 docstring 第 4 条：它写的是参考动作的绝对根高，没有地形补偿。
         self.events.reference_state_initialization = None
 
-        # ------------------------------奖励：改成忠于 rl_amp 的两项------------------------------
-        # 必须在最后调用：它会把 `base_height_l2`/`lin_vel_z_l2`/`ang_vel_xy_l2`/`joint_pos_limits`
-        # 一并清空（参考里这些权重都是 0），只留线/角速度跟踪。
+        # ------------------------------奖励与接口：全部统一到 rl_amp------------------------------
+        # 必须在最后调用：`apply_rlamp_task_rewards` 会把
+        # `base_height_l2`/`lin_vel_z_l2`/`ang_vel_xy_l2`/`joint_pos_limits` 一并清空
+        # （参考里这些权重都是 0），只留线/角速度跟踪；后者统一观测缩放与动作缩放/裁剪。
         apply_rlamp_task_rewards(self)
+        apply_rlamp_obs_and_action_scales(self)
 
 
 @configclass
