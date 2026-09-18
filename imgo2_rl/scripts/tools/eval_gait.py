@@ -8,20 +8,24 @@
     cd <工作区根>/imgo2_rl
     python scripts/tools/eval_gait.py \
         --task=Imgo2-basemove-flat-amp-play \
-        --checkpoint=logs/amp_rsl_rl/base_move_amp/<run>/model_5000.pt \
-        --num_envs=8 --steps=1000 --out docs/gait_eval_amp_5000.json
+        --checkpoint=logs/amp_rsl_rl/base_move_amp/<run>/model_24500.pt \
+        --num_envs=8 --steps=1000 --warmup=50 --out ../docs/gait_eval_amp_24500.json
 
 输出：终端摘要 + JSON（逐足指标 + 原始接触/关节时序可选）。
-只用 Isaac Lab 与 numpy，不引入新依赖。
+**统计口径全部在 `gait_metrics.py`**（纯 numpy，可离线回归，见 `tests/test_gait_metrics.py`），
+本脚本只负责采样与打印。
 
-指标口径（每只足、每个环境分别统计后取均值）：
-  * duty factor   — 支撑相时间占比 = 1 − 空中时间占比
-  * stride freq   — 单位时间落地次数（由 first_contact 事件计数）
+指标口径（每只足、每个环境分别统计后再聚合；聚合顺序也必须自洽）：
+  * duty factor   — 支撑相时间占比 = 1 − 空中时间占比（时间加权）
+  * stride freq   — 单位时间落地次数（0→1 上升沿计数），另有落地间隔均值 `step_period_s`
   * air/stance    — 平均单次空中/支撑时长（s）
-  * swing amp     — 摆动期该腿 shank 关节的角度变化幅度（rad）
-  * phase offset  — 相对前左腿（FL）的落地相位（0~1，用于判断 trot/pace/bound）
-  * base height   — 基座高度的均值/标准差（与训练日志对照）
-  * vel error     — 与指令的线/角速度误差（与训练日志对照，验证回放一致性）
+  * phase offset  — 相对前左腿（FL）落地栅格的相位（0~1 周期）+ 圆周集中度 R；
+                    用**全部**落地事件、**全部**环境做圆周平均，避免单次抖动带偏
+  * stride/lift   — 足端在 base 系的 x 行程与 z 抬脚高度（峰峰），与参考基线同口径
+  * base height / vel error — 与训练日志对照，验证回放一致性
+  * warmup        — 前 N 步（默认 50，即 1 s）只用于落地，不计入统计；
+                    出生在 0.35 m、稳态 0.31 m，开头那段下落会污染峰峰类指标
+  * 重置计数      — 回放期间若环境被终止重置，逐足峰峰会被打断污染，摘要里显式报出
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ parser.add_argument("--task", type=str, required=True, help="Task name, e.g. Img
 parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint.")
 parser.add_argument("--num_envs", type=int, default=8, help="Number of parallel envs to sample.")
 parser.add_argument("--steps", type=int, default=1000, help="Policy steps to record per env.")
+parser.add_argument("--warmup", type=int, default=50,
+                    help="Steps recorded but excluded from the statistics (startup transient, default 50 = 1 s).")
 parser.add_argument("--agent", type=str, default=None, help="Agent config entry point (defaults per task).")
 parser.add_argument("--out", type=str, default=None, help="Write metrics JSON to this path.")
 parser.add_argument("--dump-timeseries", action="store_true", help="Also store raw per-step arrays in the JSON.")
@@ -56,6 +62,10 @@ import torch  # noqa: E402
 
 import imgo2_rl.tasks  # noqa: F401, E402
 from isaaclab_tasks.utils.parse_cfg import load_cfg_from_registry  # noqa: E402
+from isaaclab.utils import math as math_utils  # noqa: E402
+# 指标口径全在纯 numpy 模块里，便于在没有 GPU 的机器上回归（tests/test_gait_metrics.py）。
+# sys.path[0] 就是本文件所在目录，直接 import 即可。
+from gait_metrics import build_report  # noqa: E402
 
 
 def _resolve_agent_cfg(task: str, agent: str | None):
@@ -72,14 +82,23 @@ def _resolve_agent_cfg(task: str, agent: str | None):
 
 
 def main() -> dict:
-    env_cfg, _ = __import__("isaaclab_tasks.utils.parse_cfg", fromlist=["parse_env_cfg"]).parse_env_cfg(
-        args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
+    # parse_env_cfg 直接返回 cfg（不是元组）；早期写成 `env_cfg, _ = ...` 会报
+    # "cannot unpack non-iterable ... object"。
+    from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
+
+    env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
     # play 配置里 num_envs 被写死为 1，这里按命令行覆盖，便于多样本统计
     env_cfg.scene.num_envs = args_cli.num_envs
 
     agent_cfg, agent_name = _resolve_agent_cfg(args_cli.task, args_cli.agent)
+    # 必须包 AmpVecEnvWrapper（与 train.py:96 / play.py:98 一致）：
+    # num_privileged_obs / num_obs / obs_history_buf 都定义在 wrapper 上，
+    # 用 .unwrapped 会得到 AmpManagerBasedRLEnv，runner 构造时即 AttributeError。
+    from rl_lab.wrapper import AmpVecEnvWrapper
+
     env = gym.make(args_cli.task, cfg=env_cfg)
-    env = env.unwrapped
+    env = AmpVecEnvWrapper(env, include_history_steps=agent_cfg.include_history_steps)
+    print("[eval] 环境已包装")
 
     # ---- 载入 checkpoint ----
     ckpt_path = Path(args_cli.checkpoint)
@@ -88,101 +107,90 @@ def main() -> dict:
     if not ckpt_path.exists():
         raise FileNotFoundError(f"checkpoint 不存在: {ckpt_path}")
 
-    # 只需要策略网络做推理，因此直接构造 ActorCritic 并载入 state_dict，
-    # 不经过 runner（避免依赖判别器/AMP 数据加载）。
-    policy = _build_policy(env, agent_cfg)
+    # 走与 scripts/rl_lab/amp/play.py 完全相同的加载路径（AMPOnPolicyRunner.load），
+    # 避免自拼 ActorCritic 时把维度/字段弄错。runner.load 也会恢复 iter。
+    from rl_lab.runners import AMPOnPolicyRunner
+
+    runner = AMPOnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     state = torch.load(ckpt_path, map_location=args_cli.device, weights_only=False)
-    policy.load_state_dict(state["model_state_dict"])
-    policy.eval()
-    print(f"[eval] 载入 {ckpt_path.name}（iter={state.get('iter', '?')}） actor 输入 {policy.num_actor_obs if hasattr(policy,'num_actor_obs') else '?'}")
+    runner.load(ckpt_path)
+    print(f"[eval] 载入 {ckpt_path.name}（iter={state.get('iter', '?')}）")
+    policy = runner.get_inference_policy(device=env.device)
 
     # ---- 传感器与索引 ----
-    contact_sensor = env.scene.sensors.get("contact_forces")
+    base_env = env.unwrapped          # AmpManagerBasedRLEnv：scene / command_manager 在这里
+    contact_sensor = base_env.scene.sensors.get("contact_forces")
     if contact_sensor is None:
         raise RuntimeError("场景里没有 contact_forces 传感器；确认 IMGO2_CFG.spawn.activate_contact_sensors=True")
-    foot_names = [n for n in contact_sensor.body_names if "FOOT" in n.upper()]
-    foot_ids = [contact_sensor.body_names.index(n) for n in foot_names]
-    robot = env.scene["robot"]
-    shank_ids, _ = robot.find_joints([".*_shank_joint"])
+    # 足端索引：直接从 **机器人本体** 取，最可靠。
+    # 接触传感器的 body_names 由 prim_path=".../Robot/.*" 展开而来，顺序取决于 USD 树，
+    # 不保证等于 FL,FR,RL,RR；而 contact_forces.data.net_forces_w 的最后一维又必须按
+    # 传感器自己的顺序索引 —— 因此两者分别解析：
+    #   * 步幅/抬脚用 robot.body_names（与 robot.data.body_pos_w 同序）
+    #   * 接触用 contact_sensor.find_bodies（与 net_forces_w 同序）
+    FOOT_ORDER = ["FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"]
+    robot = base_env.scene["robot"]
+    robot_foot_ids = robot.find_bodies(FOOT_ORDER, preserve_order=True)[0]
+    foot_names = [robot.body_names[i] for i in robot_foot_ids]
+    sensor_foot_ids = contact_sensor.find_bodies(FOOT_ORDER, preserve_order=True)[0]
+    sensor_feet = [contact_sensor.body_names[i] for i in sensor_foot_ids]
+    print(f"[eval] 机器人足端顺序 : {foot_names}")
+    print(f"[eval] 接触传感器顺序 : {sensor_feet}")
+    if foot_names != FOOT_ORDER or sensor_feet != FOOT_ORDER:
+        print(f"[eval] 注意: 解析顺序与声明 {FOOT_ORDER} 不同，已按解析结果索引各自的数据")
+    joint_ids, _ = robot.find_joints(list(base_env.cfg.joint_names), preserve_order=True)
 
     # ---- 回放采样 ----
     obs, _ = env.reset()
-    rec = {k: [] for k in ("t", "contact", "base_z", "vel_err_xy", "vel_err_yaw", "joint_pos")}
-    cmd = None
-    dt = env.step_dt
+    rec = {k: [] for k in ("t", "contact", "base_z", "vel_err_xy", "vel_err_yaw",
+                           "joint_pos", "quat", "foot_pos_b", "ep_len", "done")}
+    dt = base_env.step_dt
     with torch.inference_mode():
         for _ in range(args_cli.steps):
-            actions = policy.act_inference(obs) if hasattr(policy, "act_inference") else policy(obs)[0]
-            obs, _, _, _, _ = env.step(actions)
-            contact = contact_sensor.data.net_forces_w[:, foot_ids, :].norm(dim=-1) > 1.0
+            # policy 是 get_inference_policy 返回的 callable（= actor 的动作均值，无采样噪声）
+            actions = policy(obs)
+            obs, _priv, _amp, _rew, _dones, _infos, _reset_ids, _term = env.step(actions)
+            contact = contact_sensor.data.net_forces_w[:, sensor_foot_ids, :].norm(dim=-1) > 1.0
             rec["t"].append(float(env.episode_length_buf.float().mean().item()) * dt)
+            rec["ep_len"].append(env.episode_length_buf.cpu().numpy())
+            rec["done"].append(_dones.cpu().numpy().astype(np.int8))
             rec["contact"].append(contact.cpu().numpy().astype(np.int8))
             rec["base_z"].append(robot.data.root_pos_w[:, 2].cpu().numpy())
-            cmd = env.command_manager.get_command("base_velocity")
+            rec["quat"].append(robot.data.root_quat_w.cpu().numpy())   # wxyz
+            # 足端在 base 系的位置：与 amp_foot_pos_base 同一口径（世界位置减 root 再逆旋）
+            fp_w = robot.data.body_pos_w[:, robot_foot_ids, :]
+            fp_rel = fp_w - robot.data.root_pos_w[:, :3].unsqueeze(1)
+            rq = robot.data.root_quat_w.unsqueeze(1).expand(-1, fp_rel.shape[1], -1)
+            rec["foot_pos_b"].append(
+                math_utils.quat_apply_inverse(rq, fp_rel).cpu().numpy())   # [E, 4, 3]
+            cmd = base_env.command_manager.get_command("base_velocity")
             lin_err = torch.norm(cmd[:, :2] - robot.data.root_lin_vel_b[:, :2], dim=1)
             ang_err = torch.abs(cmd[:, 2] - robot.data.root_ang_vel_b[:, 2])
             rec["vel_err_xy"].append(lin_err.cpu().numpy())
             rec["vel_err_yaw"].append(ang_err.cpu().numpy())
-            rec["joint_pos"].append(robot.data.joint_pos[:, shank_ids].cpu().numpy())
+            rec["joint_pos"].append(robot.data.joint_pos[:, joint_ids].cpu().numpy())
 
     # ---- 统计 ----
-    contact = np.stack(rec["contact"], axis=1)          # [E, T, F]
-    t = np.asarray(rec["t"])                            # [T]
-    E, T, F = contact.shape
-    metrics: dict = {"checkpoint": str(ckpt_path), "iter": int(state.get("iter", -1)),
-                     "num_envs": E, "steps": T, "step_dt": dt, "feet": foot_names,
-                     "base_height_mean": float(np.nanmean(rec["base_z"])),
-                     "base_height_std": float(np.nanstd(rec["base_z"])),
-                     "vel_err_xy_mean": float(np.nanmean(rec["vel_err_xy"])),
-                     "vel_err_yaw_mean": float(np.nanmean(rec["vel_err_yaw"]))}
-
-    per_foot = {}
-    for f, name in enumerate(foot_names):
-        c = contact[:, :, f]                            # [E, T]
-        # 落地事件（0→1）计数 → 步频
-        first = np.zeros_like(c[:, 1:])
-        first[c[:, 1:] > c[:, :-1]] = 1
-        n_steps = first.sum(axis=1)                     # [E]
-        duration = T * dt
-        # 单次空中/支撑时长
-        air_runs, stance_runs = [], []
-        for e in range(E):
-            seq = c[e]
-            # 简单的游程统计
-            idx = np.flatnonzero(np.diff(seq))
-            bounds = np.concatenate(([0], idx + 1, [T]))
-            for a, b in zip(bounds[:-1], bounds[1:]):
-                (stance_runs if seq[a] else air_runs).append((b - a) * dt)
-        per_foot[name] = {
-            "air_fraction": float(1.0 - c.mean()),
-            "duty_factor": float(c.mean()),
-            "stride_freq_hz": float(n_steps.mean() / duration),
-            "air_time_mean_s": float(np.mean(air_runs)) if air_runs else 0.0,
-            "stance_time_mean_s": float(np.mean(stance_runs)) if stance_runs else 0.0,
-        }
-    # 相位：每只足相对 FL 的落地时刻差 / 周期
-    fl = contact[:, :, 0]
-    ref_first = np.flatnonzero(np.diff(fl[0]) > 0)
-    if len(ref_first) >= 2:
-        period = float(np.mean(np.diff(ref_first))) * dt
-        for f, name in enumerate(foot_names):
-            ff = np.flatnonzero(np.diff(contact[0, :, f]) > 0)
-            if len(ff) and len(ref_first):
-                off = (ff[0] - ref_first[0]) * dt
-                per_foot[name]["phase_offset_vs_FL"] = float((off % period) / period) if period > 0 else None
-    metrics["per_foot"] = per_foot
-
-    # shank 摆动幅度（每腿）
-    jp = np.stack(rec["joint_pos"], axis=1)             # [E, T, legs]
-    metrics["shank_peak_to_peak_rad"] = {
-        f"leg{i}": float(np.nanmean(jp[:, :, i].max(axis=1) - jp[:, :, i].min(axis=1)))
-        for i in range(jp.shape[2])
-    }
-    metrics["episode_length_mean_steps"] = float(np.mean(rec["t"]) / dt)
-
-    if args_cli.dump_timeseries:
-        metrics["timeseries"] = {"t": t.tolist(), "contact": contact.tolist(),
-                                 "base_z": np.stack(rec["base_z"]).tolist()}
+    # 丢弃前 warmup 步（出生在 0.35 m、稳态 ~0.31 m，开头下落会污染峰峰类指标），
+    # 再由 gait_metrics.build_report 统一汇总（口径与聚合都在那个纯 numpy 模块里，
+    # 配套 tests/test_gait_metrics.py，可在没有 GPU 的机器上回归）。
+    metrics = build_report(
+        contact=np.stack(rec["contact"], axis=1),      # [E, T, F]
+        base_z=np.stack(rec["base_z"]),                # [T, E]
+        vel_err_xy=np.stack(rec["vel_err_xy"]),
+        vel_err_yaw=np.stack(rec["vel_err_yaw"]),
+        quat=np.stack(rec["quat"]),                    # [T, E, 4] wxyz
+        foot_pos_b=np.stack(rec["foot_pos_b"]),        # [T, E, 4, 3]
+        joint_pos=np.stack(rec["joint_pos"], axis=1),  # [T, E, 12]
+        ep_len=np.stack(rec["ep_len"]),                # [T, E]
+        done=np.stack(rec["done"]),                    # [T, E]
+        dt=dt, foot_names=foot_names, checkpoint=str(ckpt_path),
+        iteration=int(state.get("iter", -1)), warmup=int(args_cli.warmup),
+        t_series=np.asarray(rec["t"]), dump_timeseries=bool(args_cli.dump_timeseries),
+    )
+    per_foot = metrics["per_foot"]
+    E, T = metrics["num_envs"], metrics["steps"]
+    warmup = metrics["warmup_steps"]
 
     if args_cli.out:
         out = Path(args_cli.out)
@@ -190,34 +198,37 @@ def main() -> dict:
         out.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[eval] 已写出 {out}")
 
+    resets = metrics["resets_per_env"]
     print("\n===== 步态评估摘要 =====")
-    print(f"  基座高度 {metrics['base_height_mean']:.4f} ± {metrics['base_height_std']:.4f} m")
+    print(f"  回放 {E} 环境 × {T} 步（丢弃前 {warmup} 步）| 重置 {metrics['resets_total']} 次"
+          f"（{metrics['envs_with_reset']}/{E} 个环境）{resets if metrics['resets_total'] else ''}")
+    print(f"  基座高度 {metrics['base_height_mean']:.4f} ± {metrics['base_height_std']:.4f} m"
+          f" | 末步情节缓冲 {metrics['episode_length_final_steps_mean']:.1f} 步"
+          f"（无重置时应≈{T}）")
     print(f"  速度误差 线 {metrics['vel_err_xy_mean']:.4f} m/s / 角 {metrics['vel_err_yaw_mean']:.4f} rad/s")
-    print(f"  {'足':10}{'占空比':>9}{'步频Hz':>9}{'空中s':>9}{'支撑s':>9}{'相位':>8}")
+    print(f"  机身姿态 pitch 均值 {metrics['body_pitch_deg_mean']:+.2f}° RMS {metrics['body_pitch_deg_rms']:.2f}° "
+          f"峰峰 {metrics['body_pitch_deg_ptp']:.2f}° | roll 均值 {metrics['body_roll_deg_mean']:+.2f}° RMS {metrics['body_roll_deg_rms']:.2f}°")
+    yaw_line = f"           yaw 峰峰 {metrics['body_yaw_drift_deg']:.2f}°"
+    if "body_yaw_drift_rate_deg_s" in metrics:
+        yaw_line += f"（累积漂移率 {metrics['body_yaw_drift_rate_deg_s']:+.3f} °/s）"
+    print(yaw_line + f" | 判定为恒定倾斜: {metrics['body_pitch_is_constant_lean']}")
+    print(f"  步态周期 {metrics['gait_period_s']:.4f} s（参考 0.600 s / 1.67 Hz）"
+          f" | 参考值取自 docs/gait_reference_baseline.json")
+    print(f"  {'足':10}{'占空比':>8}{'步频Hz':>8}{'步幅x_m':>9}{'抬脚z_m':>9}{'相位°':>8}{'集中度':>8}")
     for name, m in per_foot.items():
-        ph = m.get("phase_offset_vs_FL")
-        print(f"  {name:10}{m['duty_factor']:9.3f}{m['stride_freq_hz']:9.3f}"
-              f"{m['air_time_mean_s']:9.4f}{m['stance_time_mean_s']:9.4f}"
-              f"{(f'{ph:.2f}' if ph is not None else '-'):>8}")
-    print("  shank 峰峰值(rad): " + ", ".join(f"{k}={v:.3f}" for k, v in metrics["shank_peak_to_peak_rad"].items()))
+        ph = m.get("phase_deg_vs_FL")
+        conc = m.get("phase_concentration")
+        print(f"  {name:10}{m['duty_factor']:8.3f}{m['stride_freq_hz']:8.3f}"
+              f"{m['foot_stride_x_m']:9.3f}{m['foot_lift_z_m']:9.3f}"
+              f"{(f'{ph:+.1f}' if ph is not None else '-'):>8}"
+              f"{(f'{conc:.2f}' if conc is not None else '-'):>8}")
+    print("  参考基线: 步频 1.67 Hz | 步幅x 0.215(0.6m/s)/0.268(0.9)/0.366(1.2) | 抬脚z 0.083/0.112/0.121")
+    print("  trot 判据: FL 与 FR 相位应相差 180°；集中度越接近 1 落地越规整")
+    print("  关节峰峰值(rad，每腿 hip/thigh/shank 按序): "
+          + ", ".join(f"{k}={v:.3f}" for k, v in metrics["joint_peak_to_peak_rad"].items()))
 
     env.close()
     return metrics
-
-
-def _build_policy(env, agent_cfg):
-    """构造与训练一致的 actor-critic（只需策略网络做推理）。"""
-    from rl_lab.modules import ActorCritic
-
-    policy_cfg = dict(agent_cfg.policy.to_dict()) if hasattr(agent_cfg.policy, "to_dict") else dict(agent_cfg.policy)
-    num_actor_obs = env.observation_space["policy"].shape[-1] if isinstance(env.observation_space, gym.spaces.Dict) \
-        else env.observation_space.shape[-1]
-    num_critic_obs = env.observation_space["critic"].shape[-1] if isinstance(env.observation_space, gym.spaces.Dict) \
-        else num_actor_obs
-    policy = ActorCritic(num_actor_obs=num_actor_obs, num_critic_obs=num_critic_obs,
-                         num_actions=env.action_space.shape[-1], **policy_cfg).to(args_cli.device)
-    policy.num_actor_obs = num_actor_obs
-    return policy
 
 
 if __name__ == "__main__":

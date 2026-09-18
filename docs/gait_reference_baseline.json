@@ -12,7 +12,10 @@
       "hip_peak_to_peak_rad": 0.0073,
       "foot_z_peak_to_peak_m": 0.0085,
       "shank_vel_absmax_rad_s": 0.406,
-      "root_speed_mean_m_s": 0.03
+      "root_speed_mean_m_s": 0.03,
+      "foot_stride_x_m": 0.139,
+      "foot_stride_y_m": 0.0022,
+      "foot_lift_z_m": 0.0085
     },
     "imgo2_backward_0.5_turn_left_0.5": {
       "frames": 250,
@@ -24,7 +27,10 @@
       "hip_peak_to_peak_rad": 0.1497,
       "foot_z_peak_to_peak_m": 0.0895,
       "shank_vel_absmax_rad_s": 5.307,
-      "root_speed_mean_m_s": 0.406
+      "root_speed_mean_m_s": 0.406,
+      "foot_stride_x_m": 0.1504,
+      "foot_stride_y_m": 0.0397,
+      "foot_lift_z_m": 0.0895
     },
     "imgo2_backward_0.5_turn_right_0.5": {
       "frames": 250,
@@ -36,7 +42,10 @@
       "hip_peak_to_peak_rad": 0.1761,
       "foot_z_peak_to_peak_m": 0.0913,
       "shank_vel_absmax_rad_s": 5.886,
-      "root_speed_mean_m_s": 0.4046
+      "root_speed_mean_m_s": 0.4046,
+      "foot_stride_x_m": 0.1181,
+      "foot_stride_y_m": 0.0494,
+      "foot_lift_z_m": 0.0913
     },
     "imgo2_backward_0.6": {
       "frames": 250,
@@ -48,7 +57,10 @@
       "hip_peak_to_peak_rad": 0.1234,
       "foot_z_peak_to_peak_m": 0.0917,
       "shank_vel_absmax_rad_s": 5.85,
-      "root_speed_mean_m_s": 0.4907
+      "root_speed_mean_m_s": 0.4907,
+      "foot_stride_x_m": 0.1674,
+      "foot_stride_y_m": 0.0339,
+      "foot_lift_z_m": 0.0917
     },
     "imgo2_backward_0.9": {
       "frames": 250,
@@ -60,7 +72,10 @@
       "hip_peak_to_peak_rad": 0.1478,
       "foot_z_peak_to_peak_m": 0.1039,
       "shank_vel_absmax_rad_s": 7.336,
-      "root_speed_mean_m_s": 0.7939
+      "root_speed_mean_m_s": 0.7939,
+      "foot_stride_x_m": 0.2802,
+      "foot_stride_y_m": 0.0354,
+      "foot_lift_z_m": 0.1039
     },
     "imgo2_backward_1.2": {
       "frames": 249,
@@ -72,7 +87,10 @@
       "hip_peak_to_peak_rad": 0.3027,
       "foot_z_peak_to_peak_m": 0.131,
       "shank_vel_absmax_rad_s": 9.83,
-      "root_speed_mean_m_s": 1.0691
+      "root_speed_mean_m_s": 1.0691,
+      "foot_stride_x_m": 0.3821,
+      "foot_stride_y_m": 0.0799,
+      "foot_lift_z_m": 0.131
     },
     "imgo2_forward_0.3": {
       "frames": 250,
@@ -84,7 +102,10 @@
       "hip_peak_to_peak_rad": 0.1012,
       "foot_z_peak_to_peak_m": 0.0933,
       "shank_vel_absmax_rad_s": 5.45,
-      "root_speed_mean_m_s": 0.3102
+      "root_speed_mean_m_s": 0.3102,
+      "foot_stride_x_m": 0.1174,
+      "foot_stride_y_m": 0.0212,
+      "foot_lift_z_m": 0.0933
     },
     "imgo2_forward_0.5_turn_left_0.5": {
       "frames": 250,
@@ -96,7 +117,10 @@
       "hip_peak_to_peak_rad": 0.108,
       "foot_z_peak_to_peak_m": 0.0983,
       "shank_vel_absmax_rad_s": 5.726,
-      "root_speed_mean_m_s": 0.4358
+      "root_speed_mean_m_s": 0.4358,
+      "foot_stride_x_m": 0.16,
+      "foot_stride_y_m": 0.0269,
+      "foot_lift_z_m": 0.0983
     },
     "imgo2_forward_0.5_turn_right_0.5": {
       "frames": 249,
@@ -108,7 +132,10 @@
       "hip_peak_to_peak_rad": 0.0923,
       "foot_z_peak_to_peak_m": 0.0826,
       "shank_vel_absmax_rad_s": 6.327,
-      "root_speed_mean_m_s": 0.4322
+      "root_speed_mean_m_s": 0.4322,
+      "foot_stride_x_m": 0.216,
+      "foot_stride_y_m": 0.0235,
+      "foot_lift_z_m": 0.0826
     },
     "imgo2_forward_0.6": {
       "frames": 250,
@@ -120,7 +147,10 @@
       "hip_peak_to_peak_rad": 0.0881,
       "foot_z_peak_to_peak_m": 0.0827,
       "shank_vel_absmax_rad_s": 6.029,
-      "root_speed_mean_m_s": 0.481
+      "root_speed_mean_m_s": 0.481,
+      "foot_stride_x_m": 0.2149,
+      "foot_stride_y_m": 0.0212,
+      "foot_lift_z_m": 0.0827
     },
     "imgo2_forward_0.9": {
       "frames": 250,
@@ -132,7 +162,10 @@
       "hip_peak_to_peak_rad": 0.0914,
       "foot_z_peak_to_peak_m": 0.1122,
       "shank_vel_absmax_rad_s": 6.88,
-      "root_speed_mean_m_s": 0.6454
+      "root_speed_mean_m_s": 0.6454,
+      "foot_stride_x_m": 0.2679,
+      "foot_stride_y_m": 0.0251,
+      "foot_lift_z_m": 0.1122
     },
     "imgo2_forward_1.2": {
       "frames": 250,
@@ -144,7 +177,10 @@
       "hip_peak_to_peak_rad": 0.164,
       "foot_z_peak_to_peak_m": 0.1206,
       "shank_vel_absmax_rad_s": 10.321,
-      "root_speed_mean_m_s": 0.8417
+      "root_speed_mean_m_s": 0.8417,
+      "foot_stride_x_m": 0.3663,
+      "foot_stride_y_m": 0.0422,
+      "foot_lift_z_m": 0.1206
     },
     "imgo2_left_0.3": {
       "frames": 250,
@@ -156,7 +192,10 @@
       "hip_peak_to_peak_rad": 0.2616,
       "foot_z_peak_to_peak_m": 0.0902,
       "shank_vel_absmax_rad_s": 5.37,
-      "root_speed_mean_m_s": 0.2466
+      "root_speed_mean_m_s": 0.2466,
+      "foot_stride_x_m": 0.0428,
+      "foot_stride_y_m": 0.0721,
+      "foot_lift_z_m": 0.0902
     },
     "imgo2_left_0.6": {
       "frames": 250,
@@ -168,7 +207,10 @@
       "hip_peak_to_peak_rad": 0.5513,
       "foot_z_peak_to_peak_m": 0.0885,
       "shank_vel_absmax_rad_s": 6.505,
-      "root_speed_mean_m_s": 0.4902
+      "root_speed_mean_m_s": 0.4902,
+      "foot_stride_x_m": 0.0629,
+      "foot_stride_y_m": 0.1554,
+      "foot_lift_z_m": 0.0885
     },
     "imgo2_right_0.3": {
       "frames": 250,
@@ -180,7 +222,10 @@
       "hip_peak_to_peak_rad": 0.3415,
       "foot_z_peak_to_peak_m": 0.0884,
       "shank_vel_absmax_rad_s": 6.01,
-      "root_speed_mean_m_s": 0.2506
+      "root_speed_mean_m_s": 0.2506,
+      "foot_stride_x_m": 0.0237,
+      "foot_stride_y_m": 0.0924,
+      "foot_lift_z_m": 0.0884
     },
     "imgo2_right_0.6": {
       "frames": 250,
@@ -192,7 +237,10 @@
       "hip_peak_to_peak_rad": 0.6792,
       "foot_z_peak_to_peak_m": 0.1046,
       "shank_vel_absmax_rad_s": 7.948,
-      "root_speed_mean_m_s": 0.5212
+      "root_speed_mean_m_s": 0.5212,
+      "foot_stride_x_m": 0.0217,
+      "foot_stride_y_m": 0.1965,
+      "foot_lift_z_m": 0.1046
     },
     "imgo2_stance": {
       "frames": 100,
@@ -204,7 +252,10 @@
       "hip_peak_to_peak_rad": 0.0031,
       "foot_z_peak_to_peak_m": 0.0015,
       "shank_vel_absmax_rad_s": 0.027,
-      "root_speed_mean_m_s": 0.012
+      "root_speed_mean_m_s": 0.012,
+      "foot_stride_x_m": 0.0241,
+      "foot_stride_y_m": 0.0008,
+      "foot_lift_z_m": 0.0015
     },
     "imgo2_turn_left_0.5": {
       "frames": 250,
@@ -216,7 +267,10 @@
       "hip_peak_to_peak_rad": 0.0731,
       "foot_z_peak_to_peak_m": 0.084,
       "shank_vel_absmax_rad_s": 4.755,
-      "root_speed_mean_m_s": 0.0913
+      "root_speed_mean_m_s": 0.0913,
+      "foot_stride_x_m": 0.0194,
+      "foot_stride_y_m": 0.017,
+      "foot_lift_z_m": 0.084
     },
     "imgo2_turn_left_1.0": {
       "frames": 249,
@@ -228,7 +282,10 @@
       "hip_peak_to_peak_rad": 0.1156,
       "foot_z_peak_to_peak_m": 0.0833,
       "shank_vel_absmax_rad_s": 4.781,
-      "root_speed_mean_m_s": 0.1099
+      "root_speed_mean_m_s": 0.1099,
+      "foot_stride_x_m": 0.0262,
+      "foot_stride_y_m": 0.0315,
+      "foot_lift_z_m": 0.0833
     },
     "imgo2_turn_right_0.5": {
       "frames": 250,
@@ -240,7 +297,10 @@
       "hip_peak_to_peak_rad": 0.0997,
       "foot_z_peak_to_peak_m": 0.0848,
       "shank_vel_absmax_rad_s": 5.001,
-      "root_speed_mean_m_s": 0.0926
+      "root_speed_mean_m_s": 0.0926,
+      "foot_stride_x_m": 0.0467,
+      "foot_stride_y_m": 0.0269,
+      "foot_lift_z_m": 0.0848
     },
     "imgo2_turn_right_1.0": {
       "frames": 250,
@@ -252,7 +312,10 @@
       "hip_peak_to_peak_rad": 0.1766,
       "foot_z_peak_to_peak_m": 0.0897,
       "shank_vel_absmax_rad_s": 5.738,
-      "root_speed_mean_m_s": 0.1128
+      "root_speed_mean_m_s": 0.1128,
+      "foot_stride_x_m": 0.0806,
+      "foot_stride_y_m": 0.0492,
+      "foot_lift_z_m": 0.0897
     }
   },
   "walking_summary": {
@@ -267,6 +330,102 @@
     "thigh_peak_to_peak_rad_median": 0.4772,
     "foot_z_peak_to_peak_m_median": 0.0902,
     "shank_vel_absmax_rad_s_median": 5.886,
-    "note": "stride_period 由足端 z 的 FFT 主频取倒数；stance 动作不计入 walking_summary"
+    "note": "stride_period 由足端 z 的 FFT 主频取倒数；stance 动作不计入 walking_summary；另外 imgo2_backward_0.3 被排除——它实际是**静止片段**（root 速度 0.03 m/s、足端抬脚仅 8.5 mm、shank 峰峰 0.13 rad），不是「后退 0.3 m/s」，其 FFT 主频 3.31 s 无意义。"
+  },
+  "by_speed_prefix": {
+    "imgo2_forward_0.3": {
+      "n": 1,
+      "stride_period_s": 0.6001,
+      "foot_stride_x_m": 0.1174,
+      "foot_lift_z_m": 0.0933,
+      "shank_peak_to_peak_rad": 0.6261,
+      "root_speed_mean_m_s": 0.3102
+    },
+    "imgo2_forward_0.6": {
+      "n": 1,
+      "stride_period_s": 0.6001,
+      "foot_stride_x_m": 0.2149,
+      "foot_lift_z_m": 0.0827,
+      "shank_peak_to_peak_rad": 0.6708,
+      "root_speed_mean_m_s": 0.481
+    },
+    "imgo2_forward_0.9": {
+      "n": 1,
+      "stride_period_s": 0.6001,
+      "foot_stride_x_m": 0.2679,
+      "foot_lift_z_m": 0.1122,
+      "shank_peak_to_peak_rad": 0.8261,
+      "root_speed_mean_m_s": 0.6454
+    },
+    "imgo2_forward_1.2": {
+      "n": 1,
+      "stride_period_s": 0.598,
+      "foot_stride_x_m": 0.3663,
+      "foot_lift_z_m": 0.1206,
+      "shank_peak_to_peak_rad": 0.9903,
+      "root_speed_mean_m_s": 0.8417
+    }
+  },
+  "how_to_use": "判读策略：若步频远高于参考的 1.67 Hz 但 foot_stride_x_m 远小于同速档参考值，就是「步幅偏小、靠步频补速度」；若步幅接近参考而步频仍高，则是接触时序/相位问题；若 duty_factor 接近 1，说明不是迈步而是滑行。 注意 foot_stride_x_m / foot_lift_z_m 只取 **FL 一条腿**（与各 motion 的 FL 一致）；逐腿值与前后腿关系见 per_leg_stride_x_m，策略侧的逐腿对照见 docs/gait_eval_amp_24500_2026-09-18.md §3.2。",
+  "per_leg_stride_x_m": {
+    "_note": "足端 base 系 x 的峰峰值（米）。口径：解析 imgo2_motion/*.txt 的 Frames，取 [:, 19:31] 的第 0/3/6/9 列（FL/FR/RL/RR）——与 eval_gait.py 的 foot_pos_b（世界位置减 root 再按 root 四元数逆旋）同口径，因此可与策略回放直接比。各 motion 的 FL 列与上面的 foot_stride_x_m 逐项吻合，可交叉验证。",
+    "by_motion": {
+      "imgo2_forward_0.3": {
+        "FL": 0.1174,
+        "FR": 0.1296,
+        "RL": 0.1128,
+        "RR": 0.1015,
+        "mean": 0.1153,
+        "rear_over_front": 0.867
+      },
+      "imgo2_forward_0.6": {
+        "FL": 0.2149,
+        "FR": 0.1816,
+        "RL": 0.1842,
+        "RR": 0.1893,
+        "mean": 0.1925,
+        "rear_over_front": 0.942
+      },
+      "imgo2_forward_0.9": {
+        "FL": 0.2679,
+        "FR": 0.2817,
+        "RL": 0.2618,
+        "RR": 0.2507,
+        "mean": 0.2655,
+        "rear_over_front": 0.932
+      },
+      "imgo2_forward_1.2": {
+        "FL": 0.3663,
+        "FR": 0.3524,
+        "RL": 0.3282,
+        "RR": 0.3654,
+        "mean": 0.3531,
+        "rear_over_front": 0.965
+      },
+      "imgo2_backward_0.6": {
+        "FL": 0.1674,
+        "FR": 0.1707,
+        "RL": 0.1836,
+        "RR": 0.1743,
+        "mean": 0.174,
+        "rear_over_front": 1.058
+      },
+      "imgo2_backward_0.9": {
+        "FL": 0.2802,
+        "FR": 0.2844,
+        "RL": 0.292,
+        "RR": 0.2899,
+        "mean": 0.2866,
+        "rear_over_front": 1.031
+      },
+      "imgo2_backward_1.2": {
+        "FL": 0.3821,
+        "FR": 0.3889,
+        "RL": 0.3888,
+        "RR": 0.3924,
+        "mean": 0.388,
+        "rear_over_front": 1.013
+      }
+    }
   }
 }
