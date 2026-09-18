@@ -163,7 +163,7 @@ class Go2RecipeTests(unittest.TestCase):
         target = _literal_assign(self.tree, "AMP_GO2_BASE_HEIGHT_TARGET")
         thresh = _literal_assign(self.tree, "AMP_GO2_FEET_AIR_TIME_THRESHOLD")
         self.assertAlmostEqual(target, 0.30, places=12)   # 参考 0.38 是 Go2 的站高
-        self.assertAlmostEqual(thresh, 0.2, places=12)    # 参考硬编码 0.5，比我们参考周期还慢
+        self.assertAlmostEqual(thresh, 0.3, places=12)    # 用户 2026-09-18 定 0.3 s；参考硬编码 0.5 更慢
 
     def test_command_ranges_match_reference(self):
         """指令范围照抄 amp_go2 的 go2 配置（x[-1.2,1.5] / y±0.8 / yaw±1.0）。"""

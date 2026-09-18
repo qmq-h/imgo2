@@ -275,7 +275,7 @@ AMP_GO2_RAW_WEIGHTS = {
 }
 # 必须偏离参考的两处（理由见 Imgo2AmpGo2StyleEnvCfg 的 docstring）
 AMP_GO2_BASE_HEIGHT_TARGET = 0.30       # amp_go2 用 0.38（Go2 站高）；Imgo2 参考动作是 0.297
-AMP_GO2_FEET_AIR_TIME_THRESHOLD = 0.2   # amp_go2 硬编码 0.5，比我们参考的 0.6 s 周期还慢
+AMP_GO2_FEET_AIR_TIME_THRESHOLD = 0.3   # 用户 2026-09-18 定 0.3 s（参考硬编码 0.5 更慢）
 # amp_go2 `penalize_contacts_on = ["thigh"]`；a1 还含 calf 并把两者纳入终止
 AMP_GO2_CONTACT_PENALTY_BODIES = ".*_THIGH"
 
@@ -321,8 +321,12 @@ class Imgo2AmpGo2StyleEnvCfg(Imgo2AmpMoveEnvCfg):
     与参考的**两处有意偏离**（必须写清楚，否则会被当成抄漏）：
       * `base_height` 权重照抄 -1.0（每步 -0.02，比我们原来的每步 -5.0 弱 250 倍），但目标高度
         用 Imgo2 的 0.30 m（参考是 Go2 的 0.38）；
-      * `feet_air_time` 阈值用 0.2 s（参考硬编码 0.5 s，等于奖励"滞空 >0.5 s / 周期 ≥1 s"，
-        比我们参考动作的 0.600 s 周期还慢；0.2 s 让该项在参考节律上恰好中性）。
+      * `feet_air_time` 阈值用 **0.3 s**（用户 2026-09-18 决定；参考硬编码 0.5 s，等于奖励
+        "滞空 >0.5 s / 周期 ≥1 s"，比我们参考动作的 0.600 s 周期还慢）。
+        0.3 s 对应的目标周期：我们实测占空比 0.50–0.56（腾空比例 0.44–0.50），
+        滞空 0.3 s ⇒ 周期 **0.60–0.69 s（1.45–1.67 Hz）**，正好落在参考的 0.600 s / 1.67 Hz 附近。
+        该项每步奖励 = Σ_落地足 (滞空 − θ)，稳态下 ≈ (1−占空比) − θ/周期 ⇒ 对周期的推动 ∂/∂T = θ/T²，
+        因此阈值越大推力越强（θ=0 时该项对步频完全没有激励）。
     """
 
     def __post_init__(self):
