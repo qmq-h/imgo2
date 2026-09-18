@@ -1,8 +1,10 @@
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG
 from isaaclab.utils import configclass
 
 from imgo2_rl.assets.imgo2 import IMGO2_CFG, AMP_MOTION_FILES
@@ -16,6 +18,7 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.mdp import amp_events as m
 from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     EventCfg,
     LocomotionVelocityRoughEnvCfg,
+    MySceneCfg,
     ObservationsCfg,
 )
 
@@ -358,6 +361,84 @@ class Imgo2AmpGo2StyleEnvCfg(Imgo2AmpMoveEnvCfg):
 @configclass
 class Imgo2AmpGo2StylePlayEnvCfg(Imgo2AmpGo2StyleEnvCfg):
     """`*-play` 版：与 `Imgo2AmpMovePlayEnvCfg` 相同的回放覆盖，用于 play/eval_gait。"""
+
+    def __post_init__(self):
+        super().__post_init__()
+        apply_amp_play_overrides(self)
+
+
+##
+# 粗糙地形版（2026-09-18）：AMP-only 配方保持不变，只做「地形相关」的最小改动
+##
+
+
+@configclass
+class Imgo2AmpRoughEnvCfg(Imgo2AmpMoveEnvCfg):
+    """AMP-only 配方的粗糙地形版。
+
+    **配方（奖励/AMP/PPO）与平地版 `Imgo2AmpMoveEnvCfg` 完全相同**（6 项任务每步 4.0/2.0/-5.0，
+    `coef 2.0 / lerp 0.3`），只有地形与"因地形而必须改"的四处：
+
+    1. 地形：恢复 `ROUGH_TERRAINS_CFG` 生成器 + `terrain_levels` 课程；子地形范围沿用仓库里
+       已有的 PPO rough 任务（`rough_env_cfg.py`）—— 我们的机器人站高只有 0.30 m，
+       用 Isaac Lab 默认的 boxes 0.05–0.2 m / stairs 0.05–0.15 m 太陡。
+    2. **高度奖励改成地形相对**：恢复 9 射线的 `height_scanner_base`（只给奖励用，不进观测），
+       `base_height_l2.params["sensor_cfg"]` 指向它 ⇒ 目标是「离脚下地形 0.30 m」，
+       而不是世界系 0.30 m（平地那套在斜坡上会自相矛盾）。
+    3. **AMP 观测的根高改成地形相对**：`observations.amp.root_z` 传同一个扫描器
+       ⇒ 43 维 AMP 观测的最后一维是「离地形的高度」，与专家数据（平地 0.297 m）同口径；
+       否则这一维会被地形起伏主导（见 `mdp/observations.py:amp_root_z` 的说明）。
+    4. **关掉 AMP 参考状态初始化**：`reset_amp_reference_state()` 把根高写成参考动作的**绝对**
+       高度（0.297 m）+ 一个常数偏移，**没有地形补偿**（`amp_events.py:60-61` 只把 x/y 加上
+       env_origins）⇒ 在抬高的地形格子上会把机器人初始化到地面以下。粗糙地形下改为普通 reset。
+
+    **刻意不做**（保持"简单配置"，一次只改一个变量）：
+      * 不把 `height_scanner`（187 维网格）加进 actor 观测 —— 保持 **45 维盲走**，
+        部署契约（`amp/deploy/config.yaml`、C++ 接口）不变（代价：blind + 单帧更难）；
+      * 不加 `feet_air_time` / `action_rate` / `collision` 等任务项（那是 amp_go2 路线，
+        平地版已单独做成 `Imgo2AmpGo2StyleEnvCfg`）；
+      * 不动域随机化（与平地版一致：摩擦/质量/质心/PD/外力都开着，与 a1 原仓库一致）。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # ------------------------------Scene：地形------------------------------
+        self.scene.terrain.terrain_type = "generator"
+        self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+        gen = self.scene.terrain.terrain_generator
+        gen.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+        gen.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+        gen.sub_terrains["random_rough"].noise_step = 0.01
+        gen.sub_terrains["pyramid_stairs"].step_height_range = (0.025, 0.08)
+        gen.sub_terrains["pyramid_stairs_inv"].step_height_range = (0.025, 0.08)
+
+        # 高度课程（`LocomotionVelocityRoughEnvCfg.__post_init__` 会在它非 None 时把
+        # `terrain_generator.curriculum` 置 True）
+        self.curriculum.terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+
+        # ------------------------------奖励用扫描器（不进观测）------------------------------
+        # 9 条射线、只挂在 base 正下方；`MySceneCfg` 里已声明（prim_path 指 /Robot/base，
+        # mesh_prim_paths 指地面），这里恢复它并把高度奖励改成地形相对。
+        self.scene.height_scanner_base = MySceneCfg.height_scanner_base
+        self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")
+
+        # ------------------------------AMP 观测：根高改地形相对------------------------------
+        self.observations.amp.root_z.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")
+
+        # ------------------------------Events：关掉参考状态初始化------------------------------
+        # 理由见类 docstring 第 4 条：它写的是参考动作的绝对根高，没有地形补偿。
+        self.events.reference_state_initialization = None
+
+
+@configclass
+class Imgo2AmpRoughPlayEnvCfg(Imgo2AmpRoughEnvCfg):
+    """`*-play` 版：与平地 play 相同的回放覆盖（单环境、关域随机化、指令固定）。
+
+    注意粗糙地形下回放仍会生成地形（保留课程配置），所以 `eval_gait.py` 的足端指标
+    （占空比/步周期/相位）在斜坡上含义与平地不同 —— 评估时优先看 `base_height`（地形相对）
+    与接触时序，别直接和 `docs/gait_reference_baseline.json`（平地录制）逐项比。
+    """
 
     def __post_init__(self):
         super().__post_init__()

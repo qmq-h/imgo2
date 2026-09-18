@@ -419,3 +419,50 @@ PPO 全套超参（`init_noise_std 1.0`、`value_loss_coef 1.0`、`clip_param 0.
 与 `AMP/mean_air_time_fraction`（当前腾空足比例 ≈ 1 − 占空比；实测 0.40–0.50），
 并在控制台按行打印；取不到接触传感器时安全降级为 `n/a`。
 `Episode_Reward/feet_air_time`（奖励值本身）由 RewardManager 自动记录，一直都有。
+
+---
+
+## 13. 粗糙地形版 AMP（2026-09-18 实现，**待训练验证**）
+
+用户决定「着手一个 rough 版本，用简单配置、先对齐 AMP 原仓库」。落地为**新任务**
+`Imgo2-basemove-rough-amp`（回放 `-play`），用 `AMPRunnerCfg`（`coef 2.0 / lerp 0.3`）。
+
+**核心原则：配方一行都不改。** 奖励（6 项、每步 4.0/2.0/−5.0/−1.0/−0.05/−2.0）、AMP 超参、
+PPO、动作/观测口径全部与平地版 `Imgo2-basemove-flat-amp` 相同 —— 这样"地形"才是**单变量**，
+平地对粗糙地形才是可解释的对照。只做**四处因地形而必须**的改动：
+
+| # | 改动 | 为什么必须 |
+|---|---|---|
+| 1 | 恢复 `ROUGH_TERRAINS_CFG` 生成器 + `terrain_levels` 课程；子地形范围**沿用仓库已有 PPO rough 任务**（boxes 0.025–0.1 m、stairs 0.025–0.08 m、noise 0.01–0.06） | 平地版把 `terrain_generator`/课程都关掉了；Isaac Lab 默认子地形（boxes 0.05–0.2 m、stairs 0.05–0.15 m）对站高只有 0.30 m 的机器人太陡 |
+| 2 | 恢复 9 射线 `height_scanner_base`（**只给奖励**），`base_height_l2` 改成**地形相对** | 平地版目标 0.30 m 是世界系；斜坡/台阶上世界系目标自相矛盾，改地形相对才能继续承担"防趴滑" |
+| 3 | `mdp.amp_root_z` 新增可选 `sensor_cfg`（默认 `None` ⇒ **平地行为不变**），粗糙版传同一扫描器 | 专家数据永远是平地 0.297 m；粗糙地形上世界系根高随地形起伏，会把 43 维 AMP 观测的最后一维变成地形噪声 |
+| 4 | **关掉参考状态初始化** | `reset_amp_reference_state()` 写的是参考动作的**绝对**根高 + 常数偏移（`amp_events.py:60-61` 只给 x/y 加 `env_origins`），**没有地形补偿** ⇒ 在抬高的地形格子上会把机器人初始化到地面以下 |
+
+**刻意不做**（保持"简单配置"）：不把 187 维高度网格加进 actor（**保持 45 维盲走**，
+`amp/deploy/config.yaml` 与 C++ 接口不变）；不引入 `feet_air_time`/`collision`/`action_rate`
+等 go2 任务项（那是 `flat-amp-go2` 路线，要混就另开一次实验）；不动域随机化（与平地版、
+以及 a1 原仓库一致：摩擦/质量/质心/PD/外力都开着）。
+
+**离线验证**：`tests/test_amp_rough_recipe.py` 9 项 AST 契约（地形与课程恢复、子地形范围与
+PPO rough 一致、高度奖励与 AMP 根高均为地形相对、参考初始化已关、actor 仍盲走、
+配方未被改动、任务注册齐全）→ 全仓 **52 项通过**。
+
+**未验证 / 风险**：
+1. Isaac Lab 配置类在本机沙箱无法实例化（`import omni.log`），**一次都没跑过**；
+2. **本仓库的 rough 任务（含 PPO rough）从来没有在本机跑过的记录**，
+   `height_scanner_base` 对生成地形的射线命中（`mesh_prim_paths=["/World/ground"]`）
+   也只按上游惯例配置 ⇒ 短训练要确认：`mean_root_height_m` 的量级是否合理（地形相对后应在 0.30 附近，
+   而不是被地形高度抬到 0.4+）、`terrain_levels` 是否在涨；
+3. **blind + 单帧无历史**在粗糙地形上明显更难（要重试的可能方向：给 critic 加高度扫描做
+   非对称 actor-critic、或加观测历史），预期需要比平地更多的轮次才能站住；
+4. 评估口径：`eval_gait.py` 的足端指标在斜坡上含义与平地不同，别直接与
+   `docs/gait_reference_baseline.json`（平地录制）逐项比 —— 先看 `base_height`（地形相对）与接触时序。
+
+**命令**：
+
+```bash
+cd <repo>/imgo2_rl
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp \
+    --num_envs=256 --max_iterations=100 --seed=42 --headless     # 前置检查
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp --headless
+```

@@ -94,3 +94,26 @@ gym.register(
         "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPGo2RunnerCfg",
     },
 )
+
+# 粗糙地形版 AMP（2026-09-18）：**奖励/AMP/PPO 配方与平地 AMP-only 完全相同**，只加地形 +
+# 地形相对高度（奖励与 AMP 观测的根高）+ 关掉无地形补偿的参考状态初始化；actor 保持 45 维盲走。
+# 依据与"刻意不做"的清单见 amp_env_cfg.Imgo2AmpRoughEnvCfg 的 docstring。
+gym.register(
+    id="Imgo2-basemove-rough-amp",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRoughEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+    },
+)
+
+gym.register(
+    id="Imgo2-basemove-rough-amp-play",
+    entry_point="rl_lab.envs:AmpManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.amp_env_cfg:Imgo2AmpRoughPlayEnvCfg",
+        "amp_rsl_rl_cfg": f"{agents.__name__}.amp_rsl_rl_cfg:AMPRunnerCfg",
+    },
+)

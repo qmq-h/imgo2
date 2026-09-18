@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2024-2025 Ziqi Fan
+# Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
@@ -99,7 +99,23 @@ def amp_foot_pos_base(
     return _apply_flat_mapping(foot_pos_b, mapping)
 
 
-def amp_root_z(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """Root height for AMP discriminator observations."""
+def amp_root_z(
+    env: ManagerBasedEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """Root height for AMP discriminator observations.
+
+    `sensor_cfg=None`（平地）：返回**世界系**根高 —— 与录制数据同口径（平地约 0.297 m）。
+    给了高度扫描器（粗糙地形）：返回**离脚下地形的高度**（世界系根高 − 脚下射线的平均命中高度）。
+
+    为什么粗糙地形必须换口径：专家数据永远是平地的 0.297 m，而粗糙地形上世界系根高会随地形起伏
+    （我们的地形 ±0.1–0.3 m），判别器会把"地形高度差"当成域差 —— 这一维（43 维 AMP 观测的最后
+    一维）就从步态信息变成地形噪声。
+    """
     asset: Articulation = env.scene[asset_cfg.name]
-    return asset.data.root_pos_w[:, 2:3]
+    root_z = asset.data.root_pos_w[:, 2:3]
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        root_z = root_z - torch.mean(sensor.data.ray_hits_w[..., 2], dim=1, keepdim=True)
+    return root_z
