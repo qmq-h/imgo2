@@ -89,8 +89,13 @@ def main() -> dict:
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
     # play 配置里 num_envs 被写死为 1，这里按命令行覆盖，便于多样本统计
     env_cfg.scene.num_envs = args_cli.num_envs
+    # 与 scripts/rl_lab/amp/play.py:73-74 保持一致：agent_cfg 的 device 必须跟着 --device 走，
+    # 否则 `--device=cpu` 时环境在 CPU、策略被 .to(cuda:0)，会在 runner 里报
+    # "No CUDA GPUs are available"（这也是本脚本能被用来做 CPU 冒烟测试的前提）。
+    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
 
     agent_cfg, agent_name = _resolve_agent_cfg(args_cli.task, args_cli.agent)
+    agent_cfg.device = env_cfg.sim.device
     # 必须包 AmpVecEnvWrapper（与 train.py:96 / play.py:98 一致）：
     # num_privileged_obs / num_obs / obs_history_buf 都定义在 wrapper 上，
     # 用 .unwrapped 会得到 AmpManagerBasedRLEnv，runner 构造时即 AttributeError。

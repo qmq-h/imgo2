@@ -332,10 +332,14 @@ class AMPOnPolicyRunner:
 
 
     def load(self, path, load_optimizer=True):
+        # map_location=self.device：① 在 GPU 机上等价于原来的行为（同设备重映射是恒等的），
+        # ② 让「在另一块 GPU 上存的 checkpoint」和「CPU 冒烟测试（--device=cpu）」都能载入 ——
+        #    否则 torch.load 会按存档里的设备号恢复 storage，CPU-only 机器直接报
+        #    "Attempting to deserialize object on a CUDA device but torch.cuda.is_available() is False"。
         try:
-            loaded_dict = torch.load(path, weights_only=True)
+            loaded_dict = torch.load(path, weights_only=True, map_location=self.device)
         except pickle.UnpicklingError:
-            loaded_dict = torch.load(path, weights_only=False)
+            loaded_dict = torch.load(path, weights_only=False, map_location=self.device)
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
         self.alg.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'])
         self.alg.amp_normalizer = _unpack_normalizer(loaded_dict['amp_normalizer'])
