@@ -88,9 +88,9 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 
 | 验证 | 结果 |
 |---|---|
-| `python3 -m unittest test_towing_tow_drag` | **17 项通过** |
-| `python3 -m unittest test_towing_policy_contract` | **25 项通过**（含 5 项关节顺序回归） |
-| 全量离线测试（11 个测试文件） | **184 项通过**（本轮之前 179 项） |
+| `python3 -m unittest test_towing_tow_drag` | **20 项通过** |
+| `python3 -m unittest test_towing_policy_contract` | **24 项通过**（含 5 项关节顺序回归） |
+| 全量离线测试（11 个测试文件） | **186 项通过** |
 | `check_model_sync.py` / `check_asset_paths.py` / `check_cart_model.py` | 退出码均为 0 |
 | `tow_drag.py --help`（只用标准库） | 退出码 0，不需要 Isaac Lab |
 
@@ -127,7 +127,39 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 与 Isaac Lab 顺序不同（记录差异来源）；`test_towing_tow_drag.py` 另加源码契约，禁止退回
 「直接比较关节名列表」的写法。
 
-### 5.2 其它覆盖与测试抓到的缺陷
+### 5.2 第二次实跑暴露的问题：记录器与入口都建运行目录
+
+第二次实跑（`20260920T142354Z_38639b47`）已经**通过了关节顺序检查**（说明 §5.1 的修复生效），
+但随即报：
+
+```text
+[FAILED] FileExistsError: [Errno 17] File exists:
+  '/root/Desktop/Imgo2/imgo2_rl/logs/towing/tow_drag/20260920T142354Z_38639b47'
+```
+
+**根因**：目录归属在两处重复。`main()` 在开头就用 `output.mkdir(parents=True, exist_ok=False)`
+独占创建运行目录（保证新运行绝不落进已有目录），而 `TowRecorder` 照抄了 `CartRecorder` 的
+「自己建目录」语义又建了一次 ⇒ 自己撞自己。`CartRecorder` 服务「一个运行里多个 case 子目录」，
+每个实例收到的是**尚不存在**的子目录；拖曳运行只有一个目录，我把它传给了 recorder。
+
+**修法**：明确职责——运行目录由入口用 `exist_ok=False` **独占创建**，`TowRecorder` 只负责
+写入，并要求目录已存在、拒绝覆盖已存在的 `tow.csv`/`config.json`。
+
+**为什么离线没抓到**：当时的单测只**单独构造 recorder**（沿用了 `CartRecorder` 的用法），
+没有覆盖「入口先建目录、再交给 recorder」这条集成路径。现已补上三条：
+`test_accepts_an_already_created_run_directory`（模拟入口已建目录）、
+`test_requires_an_existing_directory`、`test_refuses_to_overwrite_existing_artifacts`，
+以及一条源码契约（入口保留 `mkdir(exist_ok=False)`，`TowRecorder` 内**没有任何** `mkdir`
+调用——用 AST 判断，避免匹配到文档字符串里的字样）。
+
+### 5.3 顺带清理：删掉语义重复的 `apply_joint_mapping`
+
+`apply_joint_mapping()`（部署侧语义：策略第 i 个 ↔ 该数组第 `joint_mapping[i]` 号）在 Isaac Lab
+里已被 `asset_permutation()` 取代，且**没有任何运行时消费者**。两个名字相近的「重排」API
+并存正是 §5.1 那次搞混的温床，故删除该方法；`joint_mapping` **字段**保留（它是部署契约的一部分，
+仍与 `amp/config.yaml` 交叉核对）。
+
+### 5.4 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约
 （`positions=` 作用点、`write_data_to_sim()` 必须早于 `sim.step()` 且晚于施力、失败路径

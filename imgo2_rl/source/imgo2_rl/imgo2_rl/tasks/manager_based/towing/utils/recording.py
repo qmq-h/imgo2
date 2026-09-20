@@ -58,10 +58,26 @@ TOW_FIELDS = (
 
 
 class TowRecorder:
-    """逐物理步记录机器人/负载/绳状态；与 CartRecorder 同样的严格校验。"""
+    """逐物理步记录机器人/负载/绳状态，写进**调用方已独占创建**的实验目录。
+
+    与 `CartRecorder` 的差别在目录归属：`CartRecorder` 服务「一个运行里多个 case 子目录」，
+    所以每个实例自己建目录；拖曳运行只有一个目录，由入口用 `mkdir(exist_ok=False)`
+    独占创建（保证新运行绝不落进已有目录），这里只做写入。因此本类要求目录**已存在**，
+    并额外拒绝覆盖已存在的 `tow.csv`/`config.json`（写坏已有产物要提前拦住）。
+
+    （第一版照抄了 `CartRecorder` 的「自己建目录」语义，于是入口先建目录、recorder 再建
+    一次，实跑时报 `FileExistsError` 自己撞自己；离线单测当时只单独构造 recorder，没覆盖
+    这条集成路径。）
+    """
 
     def __init__(self, directory: Path, config: dict):
-        directory.mkdir(parents=True, exist_ok=False)
+        directory = Path(directory)
+        if not directory.is_dir():
+            raise FileNotFoundError(
+                f"记录目录必须已存在（由调用方用 exist_ok=False 独占创建）：{directory}")
+        for name in ("tow.csv", "config.json"):
+            if (directory / name).exists():
+                raise FileExistsError(f"拒绝覆盖已有产物：{directory / name}")
         self.directory = directory
         write_json(directory / "config.json", config)
         self._stream = (directory / "tow.csv").open("w", newline="", encoding="utf-8")

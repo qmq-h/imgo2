@@ -12,8 +12,8 @@
 - `last_action` 是**裁剪后**的网络输出（部署 `obs.actions = Forward()`，而 `Forward()`
   末尾就 clamp，`ComputeOutput()` 用的也是这份值）；
 - 观测在拼接后整体 clip 到 ±`clip_obs`，再喂网络；
-- 关节状态按**策略顺序**传入（AMP 与 URDF 声明顺序一致；非恒等映射用
-  `LowLevelPolicyCfg.apply_joint_mapping` 先重排）。
+- 关节状态按**策略顺序**传入（AMP 的策略顺序是逐腿，而 Isaac Lab 的资产顺序是广度优先，
+  必须先用 `LowLevelPolicyCfg.asset_permutation()` 重排）。
 
 重导入（torch / Isaac Lab）只发生在本模块，`policy_cfg.py` 仍是纯标准库，便于离线校验。
 """
@@ -134,7 +134,7 @@ class FrozenLowLevelPolicy:
 
 def parts_from_robot_state(*, base_ang_vel, projected_gravity, velocity_command,
                            joint_pos, joint_vel) -> _Parts:
-    """构造观测部件；关节量需已按策略顺序（必要时先 apply_joint_mapping）。
+    """构造观测部件；关节量需已按策略顺序（用 asset_permutation() 重排后再传入）。
 
     独立成函数是为了让「哪些量、什么顺序、什么坐标系」在调用处一眼可见：
     `base_ang_vel` 是**体系**角速度，`projected_gravity` 是体系重力方向（单位向量）。

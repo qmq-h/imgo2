@@ -132,17 +132,6 @@ class AmpContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.cfg.joint_targets([0.0] * 3)
 
-    def test_joint_mapping_reorders_robot_order_to_policy_order(self):
-        self.assertEqual(self.cfg.apply_joint_mapping(tuple(range(12))), tuple(range(12)))
-        # 非恒等置换：策略第 i 个取数组第 mapping[i] 号
-        swapped = policy_cfg.LowLevelPolicyCfg(**{
-            **{f: getattr(self.cfg, f) for f in self.cfg.__dataclass_fields__},
-            "joint_mapping": (3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8)})
-        swapped.validate()
-        values = tuple(f"j{i}" for i in range(12))
-        self.assertEqual(swapped.apply_joint_mapping(values),
-                         ("j3", "j4", "j5", "j0", "j1", "j2", "j9", "j10", "j11", "j6", "j7", "j8"))
-
 
 # 2026-09-20 训练机实跑 `tow_drag.py` 时报告的 PhysX DOF 顺序：按运动学树广度优先，
 # 全部 hip → 全部 thigh → 全部 shank。**不是** URDF 的声明顺序（URDF 是逐腿）。

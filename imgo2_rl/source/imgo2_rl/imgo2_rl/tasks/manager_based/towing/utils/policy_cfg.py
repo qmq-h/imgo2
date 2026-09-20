@@ -89,17 +89,6 @@ class LowLevelPolicyCfg:
         return tuple(default + scale * value
                      for default, scale, value in zip(self.default_dof_pos, self.action_scale, action))
 
-    def apply_joint_mapping(self, values) -> tuple:
-        """把「机器人自身顺序」的值重排成「策略顺序」。
-
-        部署侧的语义是「策略第 i 个关节 ↔ 该数组第 joint_mapping[i] 号」；它服务的是
-        部署那份模型（MuJoCo 场景的关节声明顺序就是策略顺序，所以是恒等）。
-        **Isaac Lab 里不能用它**：那里的顺序不同，见 `asset_permutation()`。
-        """
-        if len(values) != self.num_joints:
-            raise ValueError(f"Expected {self.num_joints} values, got {len(values)}")
-        return tuple(values[index] for index in self.joint_mapping)
-
     def asset_permutation(self, asset_joint_names) -> tuple[int, ...]:
         """给出「策略第 i 个关节 ↔ **资产数组**第 perm[i] 号」的置换（供 Isaac Lab 用）。
 

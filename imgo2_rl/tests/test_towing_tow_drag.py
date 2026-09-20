@@ -124,9 +124,15 @@ class TowRecorderTests(unittest.TestCase):
         row.update(changes)
         return row
 
+    def _run_directory(self, tmp):
+        """按入口的方式独占创建运行目录（recorder 不再自己建目录）。"""
+        directory = Path(tmp) / "run"
+        directory.mkdir(parents=True, exist_ok=False)
+        return directory
+
     def test_writes_header_and_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp) / "run"
+            directory = self._run_directory(tmp)
             with recording.TowRecorder(directory, {"policy": "amp"}) as logger:
                 logger.append(self._row(0.005))
                 logger.append(self._row(0.010))
@@ -137,7 +143,7 @@ class TowRecorderTests(unittest.TestCase):
 
     def test_rejects_non_finite_and_unsorted_samples(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with recording.TowRecorder(Path(tmp) / "run", {}) as logger:
+            with recording.TowRecorder(self._run_directory(tmp), {}) as logger:
                 logger.append(self._row(0.005))
                 with self.assertRaises(ValueError):
                     logger.append(self._row(0.005))                       # 时间不递增
@@ -146,11 +152,31 @@ class TowRecorderTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     logger.append({**self._row(0.010), "extra": 1.0})     # 字段集不符
 
-    def test_refuses_to_overwrite_an_existing_run(self):
+    def test_accepts_an_already_created_run_directory(self):
+        """入口先用 mkdir(exist_ok=False) 独占建目录，recorder 必须能直接写进去。
+
+        第一版 recorder 自己又建一次目录，实跑时报 FileExistsError（自己撞自己）；
+        这条测试把「目录由入口创建」的集成契约固定下来。
+        """
         with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp) / "run"
+            directory = self._run_directory(tmp)          # 模拟入口已建目录
+            recording.TowRecorder(directory, {"policy": "amp"}).close()
+            self.assertTrue((directory / "tow.csv").is_file())
+            self.assertTrue((directory / "config.json").is_file())
+
+    def test_requires_an_existing_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                recording.TowRecorder(Path(tmp) / "missing", {})
+
+    def test_refuses_to_overwrite_existing_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = self._run_directory(tmp)
             recording.TowRecorder(directory, {}).close()
             with self.assertRaises(FileExistsError):
+                recording.TowRecorder(directory, {})
+            (directory / "tow.csv").unlink()
+            with self.assertRaises(FileExistsError):          # config.json 仍在
                 recording.TowRecorder(directory, {})
 
 
@@ -186,15 +212,25 @@ class InterfaceContractTests(unittest.TestCase):
                           "失败路径不得调用 application.close()，否则退出码会被吞掉")
 
     def test_does_not_modify_locomotion_configuration(self):
-        """只允许改 prim_path 与初始位姿，不得动增益/动作缩放/观测。"""
+        """只允许改 prim_path 与初始位姿，不得动增益/动作缩放/观测/奖励。
+
+        用 AST 判断而不是字符串匹配：注释或文档字符串里提到这些名字不应触发失败。
+        """
         scene_source = SCENE_CFG.read_text(encoding="utf-8")
         self.assertIn("IMGO2_CFG.replace(prim_path=", scene_source)
-        for forbidden in ("DCMotorCfg(", "action_scale", "observations", "rewards"):
-            self.assertNotIn(forbidden, scene_source,
-                             f"场景配置不应触碰 locomotion 的 {forbidden}")
-        for forbidden in ("velocity_env_cfg", "amp_env_cfg"):
-            self.assertNotIn(forbidden, self.source,
-                             f"拖曳入口不应导入/修改 {forbidden}")
+        touched = set()
+        for node in ast.walk(ast.parse(scene_source)):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                touched.add(node.func.id)
+            if isinstance(node, ast.Attribute):
+                touched.add(node.attr)
+        forbidden = {"DCMotorCfg", "action_scale", "observations", "rewards",
+                     "ImplicitActuatorCfg", "actuators"}
+        self.assertEqual(touched & forbidden, set(),
+                         f"场景配置不应触碰 locomotion 的 {sorted(touched & forbidden)}")
+        for imported in ("velocity_env_cfg", "amp_env_cfg"):
+            self.assertNotIn(imported, self.source,
+                             f"拖曳入口不应导入/修改 {imported}")
 
     def test_policy_is_loaded_through_the_contract_adapter(self):
         self.assertIn("FrozenLowLevelPolicy", self.source)
@@ -215,6 +251,24 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("joint_targets[:, asset_to_policy]", self.source)
         # 不允许退回「直接比较关节名列表」的写法
         self.assertNotIn("robot.joint_names) != list(policy_cfg.joint_names", self.source)
+
+    def test_run_directory_is_created_once_by_the_entry_point(self):
+        """目录归属：入口用 mkdir(exist_ok=False) 独占创建，recorder 只负责写入。
+
+        第一版两边都建目录，实跑报 FileExistsError（自己撞自己）。这条把职责固定住。
+        """
+        self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
+        self.assertIn("recorder = TowRecorder(output, config)", self.source)
+        recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
+                           ).read_text(encoding="utf-8")
+        calls = []
+        for node in ast.walk(ast.parse(recorder_source)):
+            if isinstance(node, ast.ClassDef) and node.name == "TowRecorder":
+                for inner in ast.walk(node):
+                    if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+                            and inner.func.attr in ("mkdir", "makedirs")):
+                        calls.append(inner.func.attr)
+        self.assertEqual(calls, [], "TowRecorder 不应自己创建目录（由入口独占创建）")
 
     def test_initial_pose_is_set_before_the_scene_is_built(self):
         """场景构造时就会按 init_state 摆资产，之后再改配置不会生效（--spawn-height 会失效）。"""
