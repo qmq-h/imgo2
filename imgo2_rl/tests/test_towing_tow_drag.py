@@ -291,6 +291,18 @@ class InterfaceContractTests(unittest.TestCase):
         # 不允许退回「直接比较关节名列表」的写法
         self.assertNotIn("robot.joint_names) != list(policy_cfg.joint_names", self.source)
 
+    def test_verdict_logic_lives_in_the_stdlib_tool(self):
+        """判读必须放在 scripts/tools 的标准库工具里，否则新判据无法用真实轨迹离线复算。"""
+        self.assertIn("from summarize_tow import summarize_tow", self.source)
+        tool = RL / "scripts/tools/summarize_tow.py"
+        self.assertTrue(tool.is_file(), tool)
+        tool_source = tool.read_text(encoding="utf-8")
+        for imported in ("torch", "isaaclab", "numpy"):
+            self.assertNotIn(f"import {imported}", tool_source,
+                             f"离线判读工具不得依赖 {imported}")
+        # 入口只负责采样，不再自己重算判据
+        self.assertNotIn("failures.append(", self.source)
+
     def test_run_directory_is_created_once_by_the_entry_point(self):
         """目录归属：入口用 mkdir(exist_ok=False) 独占创建，recorder 只负责写入。
 

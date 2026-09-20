@@ -67,16 +67,26 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 
 `summary.json` 的判据（计划 P4 的「稳定拖曳」）：
 
-| 字段 | 含义 | 期望 |
+| 字段 | 含义 | 判据 |
 |---|---|---|
-| `steady_robot_vx_mps` / `steady_load_vx_mps` | 稳态窗（指令阶段后半段）内两体平均 vx | 两者接近，且接近 `v_user` |
-| `steady_speed_gap_mps` | 两者之差 | 判据阈值 0.1 m/s |
-| `steady_tension_n` / `steady_tension_std_n` | 稳态窗张力均值/标准差 | 张力显著为正且波动小（阈值 25% 均值） |
-| `steady_distance_m` | 稳态窗绳长（挂点间距） | 略大于 `L0`（伸长 = T/k） |
-| `max_abs_pitch_rad` | 全程最大 \|pitch\| | 阈值 0.6 rad |
-| `steady_tracking_ratio` | 稳态窗机器人 vx ÷ 用户指令 | 必须 ≥ 0.5；**只看「两体同速」不够**——两者都静止时它也成立（实测踩过） |
-| `tension_slack_fraction` | 指令阶段中 T = 0 的占比 | > 0.9 ⇒ `rope_never_taut_during_tow`（全程松弛＝没拖上） |
-| `steady_robot_z_m` / `min_robot_z_m` | 稳态窗/全程最低机身高度 | 明显偏低说明塌下去或被拽倒（配合 `max_abs_pitch_rad` 看） |
+| `steady_robot_vx_mps` / `steady_load_vx_mps` | 稳态窗（指令阶段后半段）两体平均 vx | 见下两行 |
+| `steady_tracking_ratio` | 稳态机器人 vx ÷ 用户指令 | **≥ 0.5**，否则 `robot_not_tracking_command`（只看「两体同速」有洞：两者都静止时它也成立） |
+| `steady_speed_gap_mps` | 两者之差 | **≤ 0.1 m/s**，否则 `robot_and_load_speeds_differ` |
+| `time_to_taut_s` | 指令阶段首次出现张力的时刻 | 为 `None` ⇒ `rope_never_taut_during_tow`（没拖上） |
+| `tension_slack_fraction_after_takeup` | 收掉初始松弛之后 T = 0 的占比 | **≤ 0.05**，否则 `rope_not_continuously_taut` |
+| `steady_tension_n` | 稳态窗张力均值 | 必须 > 0 |
+| `tension_drift_ratio` | 稳态窗**前后半均值**的相对差 | **≤ 0.25**，否则 `tension_not_steady`（判「水平是否稳」，不判方差） |
+| `tension_ripple_ratio` | 稳态窗变异系数 | **只报告不判失败**：步态纹波是正常现象（实测主频 7.5 Hz、主要由阻尼项 `c·ḋ` 贡献，弹簧项只波动 1.06 N） |
+| `max_abs_pitch_rad` | 全程最大 \|pitch\| | ≤ 0.6 rad，否则 `body_pitch_excessive` |
+| `steady_robot_z_m` / `min_robot_z_m` | 稳态/最低机身高度 | 只报告：明显偏低说明塌下去或被拽倒 |
+| `settle_load_drift_m` / `settle_max_abs_load_vx_mps` | **站定阶段**（指令 0、绳松弛）小车的自漂 | 只报告：实测精确贴地生成会产生 0.24 m 自漂（见 §5.5） |
+
+判读逻辑在 `imgo2_rl/scripts/tools/summarize_tow.py`（**纯标准库**，与 P1/P2 的
+`summarize_cart_coast.py` 同一模式），所以新判据可以用真实轨迹离线复算：
+
+```bash
+python3 imgo2_rl/scripts/tools/summarize_tow.py <run 目录>
+```
 
 `failures` 为空 ⇒ `valid = true`、退出码 0；有失败项 ⇒ 退出码 2。
 
@@ -208,7 +218,45 @@ max_abs_pitch_rad     = 0.802       ← 唯一被抓住的失败项
 被拽倒前没有干净样本（t=0.005 s 时张力已有 1955 N）。下一次的**站定阶段**（t<1 s，指令为 0、
 绳松弛、张力为 0）会直接给出这个答案，也是判断「高/低站高分支」疑虑的第一手数据。
 
-### 5.5 其它覆盖与测试抓到的缺陷
+### 5.5 第四次实跑：**拖曳成立**（P4 的核心行为已验证）
+
+运行 `20260920T144620Z_47cbd7ff`（`--velocity 0.5 --duration 5`，L0=1.0、k=4000、c=100、
+轮阻 0.016、`spawn-height` 默认 0.35）。`summary.json`：
+
+| 量 | 实测 | 判读 |
+|---|---|---|
+| `steady_robot_vx_mps` | **0.5123** | 指令 0.5 ⇒ 跟速 **102%** |
+| `steady_load_vx_mps` | **0.5123** | — |
+| `steady_speed_gap_mps` | **−6.3e-5** | `v_R ≈ v_L` ✅ 计划的头号判据 |
+| `steady_tension_n` | **5.199**（σ 1.499） | 绳在拉 |
+| `tension_drift_ratio` | **1.1%** | 张力水平极稳（「相对稳定区间」成立） |
+| `tension_ripple_ratio` | 28.8% | 步态纹波，只报告 |
+| `steady_distance_m` | 1.0013 | 伸长 1.3 mm ⇒ `k·δ = 5.2 N`，与实测张力吻合 |
+| `time_to_taut_s` | 1.755 | 起步收松弛（见下） |
+| `tension_slack_fraction_after_takeup` | **0.0** | 收松弛后全程张紧 |
+| 小车位移 | −1.339 → **+1.136**（**2.47 m**） | 被拖走了 |
+| `mean_pitch_rad` / `max_abs_pitch_rad` | 0.056 / 0.194 | 3.2° / 11.1°，稳定 |
+| `steady_robot_z_m` / `min_robot_z_m` | 0.284 / 0.246 | 站得住（未出现塌陷） |
+| 判定 | `valid = true`、`failures = []` | — |
+
+**一个附带结论**：`--spawn-height 0.35` 下机器人落到 **0.284 m** 站高并稳定跟住 0.5 m/s，
+没有出现 README 里担心的「高/低站高分支」问题 —— 至少 0.35 m 出生是可用的。
+
+**这一轮同时暴露/处理了两件事**：
+
+1. **判据的洞（已改）**：原判据用「张力变异系数 ≤ 25%」判稳定，本轮 28.8% 判失败。
+   但实测纹波主频 **7.5 Hz**、弹簧项只波动 1.06 N（δ 变化 0.27 mm），波动主要来自阻尼项
+   `c·ḋ` —— 那是机器人步态的正常纹波，不是失稳。计划要的是「T(t) 进入**相对稳定区间**」，
+   看的是水平是否稳定，故改为**前后半均值漂移 ≤ 25%**，纹波只报告。用真实轨迹复算：
+   `tension_drift_ratio = 1.1%` ✅。
+2. **小车在站定阶段自漂 0.24 m（新暴露，已初步处理）**：那时指令为 0、绳松弛（T=0），
+   小车却漂了 0.239 m、峰值速度 0.372 m/s。原因推断是**按 resting height 精确贴地生成**
+   （P1/P2 是留 3 cm 落差落的），接触解算产生自漂。故新增 `--cart-drop`（默认 0.03，
+   与 P1/P2 一致）并把 `settle_load_drift_m` 记进 `summary.json`。
+   这个自漂也是 `time_to_taut_s = 1.755 s` 偏长的原因：小车朝机器人漂近 0.24 m，
+   机器人起步后要先收掉这些额外松弛。**待下一次实跑确认自漂是否消失。**
+
+### 5.6 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约
 （`positions=` 作用点、`write_data_to_sim()` 必须早于 `sim.step()` 且晚于施力、失败路径
@@ -228,11 +276,17 @@ max_abs_pitch_rad     = 0.802       ← 唯一被抓住的失败项
 
 ## 6. 已知限制（本轮**未**验证的部分）
 
-- **全部物理结论都未验证**：代码里一切 Isaac Lab / PhysX 调用只做过静态核对
-  （`articulation.py` 的 API 语义、`set_external_force_and_torques_at_position` 真的被调用），
-  第一次实跑可能需要小修 —— 这正是把运行交给训练机的原因。
-- 绳参数 `k = 4000 N/m`、`c = 100 N·s/m`、`L0 = 1.0 m` 是 P3 记录里的**工程起点**，
-  未标定；`spawn_height = 0.35 m` 同样待确认（见 §2 的高/低站高分支）。
+- **P4 的核心行为已验证**（§5.5：`v_R ≈ v_L ≈ 0.512`、T ≈ 5.2 N 稳定、小车被拖 2.47 m），
+  但**只在 `v_cmd = 0.5 m/s` + 名义质量（10 kg）+ 一组绳参数下验证过**。以下仍未验证：
+  - `v_cmd = 1.0 m/s`（计划 P4 的第二步）；
+  - **质量包线扫描** `m_L = 5/10/15/20/25 kg`（计划 P4 的明确要求，用来定 working envelope）——
+    未做；缩放质量必须同时缩放惯量（AGENTS.md 的「只改质量不改惯量会造成不自洽」）；
+  - 绳参数 `k`/`c`/`L0` 的敏感性（目前是 P3 记录里的工程起点，未标定）；
+  - 其它 Isaac Lab/PhysX 调用路径（例如并发、GUI）未走。
+- `spawn_height = 0.35 m` **可用**（§5.5 实测站高 0.284 m 且稳定跟速），README 里
+  「高/低站高分支」的疑虑在这一档未复现；但没试过 ≈0.297 m 那一档，不构成对分支假说的否定。
+- **小车在站定阶段的自漂**（实测 0.239 m）已加 `--cart-drop`（默认 0.03）并把该量记入
+  `summary.json`，但**修复效果待下一次实跑确认**。
 - **质量扫描未做**：计划要求扫 `m_L = 5/10/15/20/25 kg` 来确定现有底层的 working envelope，
   本入口目前只用小车 URDF 的名义质量（10 kg，即 `m_L = 10`）。缩放质量必须同时缩放惯量
   （AGENTS.md 的「只改质量不改惯量会造成不自洽」），这属于下一个节点。

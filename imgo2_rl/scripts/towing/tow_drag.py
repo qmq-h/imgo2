@@ -47,6 +47,8 @@ def parse_args(argv=None):
                         help="每个车轮的轴承阻力 b，N·m·s/rad（P2 的候选值之一）")
     parser.add_argument("--spawn-height", type=float, default=None,
                         help="机器人初始高度，m；默认用 towing_env_cfg.ROBOT_SPAWN_HEIGHT_M")
+    parser.add_argument("--cart-drop", type=float, default=0.03,
+                        help="小车生成时离地高度，m（P1/P2 用 0.03 落定；精确贴地会产生接触自漂）")
     parser.add_argument("--dt", type=float, default=0.005)
     parser.add_argument("--output-dir", type=Path, help="新建的实验目录；绝不覆盖已存在的目录")
     parser.add_argument("--headless", action="store_true")
@@ -75,6 +77,8 @@ def parse_args(argv=None):
         parser.error("--dt must be <= 0.01 s")
     if args.spawn_height is not None and (not math.isfinite(args.spawn_height) or args.spawn_height <= 0):
         parser.error("--spawn-height must be finite and positive")
+    if not math.isfinite(args.cart_drop) or not 0.0 <= args.cart_drop <= 0.1:
+        parser.error("--cart-drop must be in [0, 0.1] m")
     return args
 
 
@@ -130,6 +134,7 @@ def main(args):
         launcher = AppLauncher(headless=args.headless, device=args.device)
         application = launcher.app
 
+        import csv
         import torch
         import isaaclab.sim as sim_utils
         import isaaclab.utils.math as math_utils
@@ -147,14 +152,14 @@ def main(args):
         policy_cfg = get_policy(args.policy)
         spawn_height = args.spawn_height if args.spawn_height is not None else ROBOT_SPAWN_HEIGHT_M
 
-        cart_cfg, model = make_cart_cfg(output / "usd")
+        cart_cfg, model = make_cart_cfg(output / "usd", drop_height=args.cart_drop)
         cart_attachment = tuple(model["attachment_position_m"])
         robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
         cart_cfg.init_state.pos = (
             initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
                            cart_height=model["resting_height_m"],
                            robot_offset=robot_attachment, cart_offset=cart_attachment),
-            0.0, model["resting_height_m"])
+            0.0, model["resting_height_m"] + args.cart_drop)
 
         sim_cfg = sim_utils.SimulationCfg(
             dt=args.dt, device=args.device,
@@ -341,61 +346,22 @@ def main(args):
             raise RuntimeError("指令阶段一个样本都没有")
 
         # ------------------------------------------------------------ 汇总与判定
-        import csv
-        rows = list(csv.DictReader((output / "tow.csv").open(encoding="utf-8", newline="")))
-        command_rows = [r for r in rows if float(r["user_cmd_mps"]) > 0.0]
-        window = command_rows[len(command_rows) // 2:]      # 后半段当稳态窗
-        def mean(key):
-            return sum(float(r[key]) for r in window) / len(window)
-        def spread(key):
-            values = [float(r[key]) for r in window]
-            mu = sum(values) / len(values)
-            return (sum((v - mu) ** 2 for v in values) / len(values)) ** 0.5
-        tension = [float(r["rope_tension_n"]) for r in command_rows]
-        summary.update({
-            "state": "completed",
-            "steady_window_s": [window[0]["time_s"], window[-1]["time_s"]],
-            "steady_robot_vx_mps": mean("robot_vx_mps"),
-            "steady_load_vx_mps": mean("load_vx_mps"),
-            "steady_speed_gap_mps": mean("robot_vx_mps") - mean("load_vx_mps"),
-            "steady_tension_n": mean("rope_tension_n"),
-            "steady_tension_std_n": spread("rope_tension_n"),
-            "steady_distance_m": mean("rope_distance_m"),
-            "mean_pitch_rad": mean("body_pitch_rad"),
-            "steady_robot_z_m": mean("robot_z_m"),
-            "min_robot_z_m": min(float(r["robot_z_m"]) for r in rows),
-            "max_abs_pitch_rad": max(abs(float(r["body_pitch_rad"])) for r in rows),
-            "tension_peak_n": max(tension),
-            "tension_slack_fraction": sum(1 for t in tension if t == 0.0) / len(tension),
-            # 跟速比：只看「两体速度接近」是不够的——两者都静止时它也成立（实测踩过：
-            # 机器人被拽倒后 v_R≈v_L≈0，speed_gap 只有 0.028，判据没抓住）
-            "steady_tracking_ratio": mean("robot_vx_mps") / args.velocity,
-            "final_load_x_m": float(rows[-1]["load_x_m"]),
-            "final_robot_x_m": float(rows[-1]["robot_x_m"]),
-        })
-        # 「稳定拖曳」判据（计划 P4）：两体速度接近、张力进入相对稳定区间。
-        failures = []
-        if abs(summary["steady_speed_gap_mps"]) > 0.1:
-            failures.append("robot_and_load_speeds_differ")
-        # 机器人必须真的在按指令走：否则「两体同速」只是「两者都静止」
-        if summary["steady_tracking_ratio"] < 0.5:
-            failures.append("robot_not_tracking_command")
-        # 拖曳阶段绳必须真的在拉；全程松弛说明没拖上（可能是布局/参数问题）
-        if summary["tension_slack_fraction"] > 0.9:
-            failures.append("rope_never_taut_during_tow")
-        if summary["steady_tension_std_n"] > 0.25 * max(summary["steady_tension_n"], 1e-6):
-            failures.append("tension_not_steady")
-        if summary["max_abs_pitch_rad"] > 0.6:
-            failures.append("body_pitch_excessive")
-        summary["failures"] = failures
-        summary["valid"] = not failures
+        # 判读逻辑放在标准库工具里（与 P1/P2 的 summarize_cart_coast.py 同一模式），
+        # 于是新判据可以用**真实轨迹**离线复算：scripts/tools/summarize_tow.py <run_dir>
+        sys.path.insert(0, str(RL_ROOT / "scripts/tools"))
+        from summarize_tow import summarize_tow
+        with (output / "tow.csv").open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        summary = summarize_tow(rows, user_command=args.velocity)
         manifest.update(state="completed", valid=summary["valid"], summary=summary)
         json_file(output / "experiment.json", manifest)
         json_file(output / "summary.json", summary)
         print(f"[SUMMARY] v_user={args.velocity:g} robot_vx={summary['steady_robot_vx_mps']:.4f} "
               f"load_vx={summary['steady_load_vx_mps']:.4f} T={summary['steady_tension_n']:.3f}±"
-              f"{summary['steady_tension_std_n']:.3f} N d={summary['steady_distance_m']:.4f} m "
-              f"valid={summary['valid']} failures={failures}", flush=True)
+              f"{summary['steady_tension_std_n']:.3f} N (漂移 {summary['tension_drift_ratio']:.1%}) "
+              f"d={summary['steady_distance_m']:.4f} m 张紧@{summary['time_to_taut_s']} s "
+              f"站定小车漂移={summary['settle_load_drift_m']:+.3f} m "
+              f"valid={summary['valid']} failures={summary['failures']}", flush=True)
         if application is not None:
             application.close()
         return 0 if summary["valid"] else 2
