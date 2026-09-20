@@ -783,3 +783,36 @@ x∈[−1, 2.0]、y±0.3，旧轮是 x∈[−1, 1.5]、y±1.0）；② **任务�
 **顺带确认**：这个 run 用的是 `AMPRunnerCfg` 的默认 `max_iterations = 40000`（启动时没传
 `--max_iterations`），按实测 ~1.0 s/轮，跑满约 11 小时；中途任意 checkpoint（每 500 轮）都能直接
 拿来做 `eval_gait.py` 评估。
+
+## 17. 2026-09-20：给平地 rlamp 加回随机持续外力（用户决定）
+
+背景：§15.2 按「都对齐 rl_amp」把 `randomize_apply_external_force_torque` 关成了 `None`
+（参考 `a1_amp_config.py` 的 `domain_rand` 里根本没有这一项）。用户 2026-09-20 要求把这个力
+加回**平地 rlamp**，理由是 sim2real 鲁棒性——这是对参考的**主动偏离**，已写进代码注释与本节。
+
+| 项 | 取值 | 说明 |
+|---|---|---|
+| 触发 | `mode="reset"` | 每个 episode 重置时采样一次 |
+| 作用对象 | `base`（`SceneEntityCfg("robot", body_names=["base"])`） | 沿用仓库原来的 `EventCfg` 口径 |
+| 力 / 力矩 | `±10 N` / `±10 Nm` | 对 5.53 kg 机体 ≈1.8 m/s² ≈0.18 g |
+| 持续时长 | **整个 episode** | `apply_external_force_torque` 写进 `set_external_force_and_torque` 缓冲，每个物理步生效 |
+| 开关 | `apply_rlamp_env_settings(cfg, external_force=True/False)` | 平地版 `True`；粗糙版仍 `False`（忠于参考） |
+| 回放/评估 | `apply_amp_play_overrides()` 继续置 `None` | 评估保持确定性 |
+
+**两个必须记住的后果**：
+
+1. **这是一次新的训练条件**。2026-09-18 那轮跑满 **24420 轮**的 run
+   （`logs/amp_rsl_rl/base_move_amp_rlamp/2026-09-18_20-18-37`，最后 checkpoint `model_24000.pt`）
+   是**没有外力**的，它的 `params/env.yaml` 就是记录。**不要拿加力后的配置去 `--resume` 它**：
+   那会把"无外力 → 有外力"两种条件混在同一次训练里，结果无法解释。要么用加力配置**新开 run**，
+   要么先把它按原配置补到 30000（`--resume --load_run 2026-09-18_20-18-37 --checkpoint model_24000.pt --max_iterations 6000`）。
+2. **平地/粗糙这对模板不再只差地形**（粗糙版仍无外力）。要做干净的单变量对照，给粗糙版也加一行
+   `apply_rlamp_env_settings(self, custom_origins=True, external_force=True)`；反过来，如果想把
+   "有力/无力"做成一个独立的研究臂，更稳的做法是**另注册一个任务名**（例如
+   `Imgo2-basemove-flat-amp-rlamp-force`），让 `flat-amp-rlamp` 保持忠于参考。
+
+**验证**：`tests/test_amp_rlamp_recipe.py` 扩到 **20 项**（常量、helper 源码分支、平地/粗糙调用差异、
+行为测试里 `external_force=True` 会新建 `EventTerm(mode='reset', func=apply_external_force_torque)`、
+`asset_cfg=('robot', ['base'])`、`±10`，而默认 `False` 时为 `None`）⇒ 全仓 **83 项通过**。
+**未验证**：本机无 GPU，配置类无法实例化，未训练；力的大小是否合适（±10 N 对 5.5 kg 是不是偏大、
+要不要改成 interval 模式施加）需要按训练表现再定。

@@ -125,6 +125,7 @@ def _fake_env_cfg(*, reference_init=True):
     """
     from types import SimpleNamespace as NS
     return NS(
+        base_link_name="base",       # 外力项要按它构造 SceneEntityCfg
         commands=NS(base_velocity=NS(ranges=NS(
             lin_vel_x=(-1.0, 1.5), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.57, 1.57)))),
         events=NS(
@@ -158,7 +159,9 @@ def _fake_helper_namespace():
         "Unoise": lambda n_min, n_max: ("Unoise", n_min, n_max),
         "EventTerm": lambda func, mode, params: NS(func=func, mode=mode, params=params),
         "mdp": NS(reset_root_state_uniform="reset_root_state_uniform",
-                  reset_joints_by_scale="reset_joints_by_scale"),
+                  reset_joints_by_scale="reset_joints_by_scale",
+                  apply_external_force_torque="apply_external_force_torque"),
+        "SceneEntityCfg": lambda name, **kw: (name, kw.get("body_names")),
     }
 
 
@@ -306,6 +309,8 @@ class RLAmpRecipeTests(unittest.TestCase):
         self.assertEqual(consts["RLAMP_RESET_JOINT_SCALE_RANGE"], (0.5, 1.5))
         self.assertEqual(consts["RLAMP_RESET_VEL_RANGE"], (-0.5, 0.5))
         self.assertEqual(consts["RLAMP_ROUGH_RESET_XY_RANGE"], (-1.0, 1.0))
+        self.assertEqual(consts["RLAMP_EXTERNAL_FORCE_RANGE"], (-10.0, 10.0))
+        self.assertEqual(consts["RLAMP_EXTERNAL_TORQUE_RANGE"], (-10.0, 10.0))
         self.assertAlmostEqual(consts["RLAMP_REFERENCE_INIT_PROB"], 0.85, places=9)
 
     def test_env_settings_helper_and_wiring(self):
@@ -323,7 +328,11 @@ class RLAmpRecipeTests(unittest.TestCase):
             "RLAMP_BASE_MASS_RANGE",
             "cfg.events.randomize_rigid_body_mass_others = None",
             "cfg.events.randomize_com_positions = None",
+            "cfg.events.randomize_apply_external_force_torque = EventTerm(func=mdp.apply_external_force_torque",
             "cfg.events.randomize_apply_external_force_torque = None",
+            "'force_range': RLAMP_EXTERNAL_FORCE_RANGE",
+            "'torque_range': RLAMP_EXTERNAL_TORQUE_RANGE",
+            "body_names=[cfg.base_link_name]",
             "gains.mode = 'startup'",
             "gains.params['stiffness_distribution_params'] = RLAMP_GAIN_MULTIPLIER_RANGE",
             "gains.params['damping_distribution_params'] = RLAMP_GAIN_MULTIPLIER_RANGE",
@@ -342,11 +351,12 @@ class RLAmpRecipeTests(unittest.TestCase):
         # 必须用"新建"而不是就地改字段：`randomize_reset_base.params[...]` / `joints.params[...]`
         self.assertNotIn("randomize_reset_base.params[", src)
         self.assertNotIn("joints.params[", src)
-        self.assertIn("apply_rlamp_env_settings(self)", _func_src(self.tree, "Imgo2AmpRLAmpEnvCfg",
-                                                                "__post_init__"))
-        # 粗糙版走参考的 custom_origins 分支（初始 xy ±1 m）
-        self.assertIn("apply_rlamp_env_settings(self, custom_origins=True)",
-                      _func_src(self.tree, "Imgo2AmpRoughEnvCfg", "__post_init__"))
+        # 平地版：加了随机持续外力（用户 2026-09-20）；粗糙版：忠于参考（无外力）+ custom_origins
+        self.assertIn("apply_rlamp_env_settings(self, external_force=True)",
+                      _func_src(self.tree, "Imgo2AmpRLAmpEnvCfg", "__post_init__"))
+        rough_call = _func_src(self.tree, "Imgo2AmpRoughEnvCfg", "__post_init__")
+        self.assertIn("apply_rlamp_env_settings(self, custom_origins=True)", rough_call)
+        self.assertNotIn("external_force=True", rough_call)
         self.assertIn("RLAMP_ROUGH_RESET_XY_RANGE if custom_origins else (0.0, 0.0)", src)
 
     def test_env_settings_helper_behaviour_on_fake_cfg(self):
@@ -386,7 +396,7 @@ class RLAmpRecipeTests(unittest.TestCase):
                          (-1.0, 1.0))
         self.assertIsNone(cfg.events.randomize_rigid_body_mass_others)
         self.assertIsNone(cfg.events.randomize_com_positions)
-        self.assertIsNone(cfg.events.randomize_apply_external_force_torque)
+        self.assertIsNone(cfg.events.randomize_apply_external_force_torque)   # 默认不加外力
         # PD 增益：范围 ×[0.9,1.1] 且改成启动时随机一次
         gains = cfg.events.randomize_actuator_gains
         self.assertEqual(gains.mode, "startup")
@@ -422,6 +432,15 @@ class RLAmpRecipeTests(unittest.TestCase):
                          {"x": (-1.0, 1.0), "y": (-1.0, 1.0), "yaw": (0.0, 0.0)})
         self.assertEqual(cfg2.commands.base_velocity.ranges.lin_vel_x, (-1.0, 2.0))
         self.assertIsNone(cfg2.events.reference_state_initialization)
+
+        # 平地版开着外力：**新建** EventTerm，作用在 base、reset 时采样、±10 N / ±10 Nm
+        cfg3 = _fake_env_cfg()
+        ns["apply_rlamp_env_settings"](cfg3, external_force=True)
+        force = cfg3.events.randomize_apply_external_force_torque
+        self.assertEqual((force.mode, force.func), ("reset", "apply_external_force_torque"))
+        self.assertEqual(force.params["force_range"], (-10.0, 10.0))
+        self.assertEqual(force.params["torque_range"], (-10.0, 10.0))
+        self.assertEqual(force.params["asset_cfg"], ("robot", ["base"]))
 
     def test_reference_source_commands_dr_and_noise(self):
         """本机有参考项目时，直接读它的 commands / domain_rand / noise 逐项比对。"""
@@ -549,7 +568,8 @@ class RLAmpRecipeTests(unittest.TestCase):
                                   and n.name == "apply_rlamp_env_settings"))
         read = set(re.findall(r"cfg\.events\.(\w+)", helper))
         created = set(re.findall(r"cfg\.events\.(\w+) = EventTerm", helper))
-        self.assertEqual(created, {"randomize_reset_base", "randomize_reset_joints"})
+        self.assertEqual(created, {"randomize_reset_base", "randomize_reset_joints",
+                                     "randomize_apply_external_force_torque"})
         for name in sorted(read - created):
             self.assertNotIn(name, nulled,
                              f"{name} 在 AMP 基类里是 None：helper 必须新建 EventTerm，不能就地改")
