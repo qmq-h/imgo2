@@ -1,6 +1,6 @@
 # P1/P2 小车建模与拖曳任务架构
 
-日期：2026-09-20。状态：**P1/P2 已实现并通过本机离线检查，Isaac Lab 物理验收待训练机执行。用户已明确本机不运行 Isaac Lab，代码仍面向 Isaac Lab。** 当前完成项、验证与限制统一见 [实现记录](cart_p1_p2_implementation_2026-09-20.md)。
+日期：2026-09-20。状态：**P1/P2 已实现并在训练机完成物理验收（见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)）；P3 绳索力已实现并通过离线验证（见 [P3 记录](towing_p3_rope_2026-09-20.md)），接入场景属 P4。** 当前完成项、验证与限制统一见 [实现记录](cart_p1_p2_implementation_2026-09-20.md)。
 
 ## 1. 已确定的安排
 
@@ -12,7 +12,7 @@
 
 ## 2. 文件安排
 
-下图 P1/P2 文件现已创建；P3/P4/P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。仿真入口尚未运行，不作为已验收功能。
+下图 P1/P2 与 P3 文件现已创建；P4/P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。P1/P2 仿真入口已在训练机验收；P3 的 `mdp/rope.py` 只有离线验证，尚未接入场景。
 
 ```text
 imgo2_description/
@@ -32,7 +32,7 @@ imgo2_rl/
 │           ├── mdp/
 │           │   ├── __init__.py           # 已建
 │           │   ├── resistance.py         # P2 轮轴阻力
-│           │   └── rope.py               # P3 绳索张力与力矩
+│           │   └── rope.py               # P3 绳索张力与力矩（已建，离线验证通过）
 │           ├── agents/
 │           │   ├── __init__.py           # 已建
 │           │   └── rsl_rl_ppo_cfg.py     # P10+ 上层 PPO 训练配置
@@ -93,7 +93,11 @@ P4 起 `utils/low_level_policy.py` 接收速度指令并生成底层动作，`ut
 
 **骨架阶段已完成**：直接 URDF 与目录安排确定，建立 `manager_based/towing/` 和 `mdp/agents/utils` 初始化文件，清理冲突提案。
 
-**当前待验证（CART-01）**：训练机完成导入/落地/滑行实测。空 actuator 力矩直通层的替代后端测试已通过，真实 PhysX 尚待验证；目录/语法检查不能替代 P1/P2 验收。
+**P1/P2 验收已完成（2026-09-20，训练机）**：导入/落地/滑行/阻力扫描/dt 复核全部通过，空 actuator 力矩直通层已在真实 PhysX 中确认（结果与解析黏性模型吻合 1% 以内），详见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)。CART-01 已收口；遗留的是另两条与本架构无关的缺陷登记（CART-02 入口退出码、CART-03 离线重算报错）。
+
+**P3 已实现、仅离线验证**：`mdp/rope.py` 提供单侧弹簧阻尼张力、力对与力臂力矩，31 项标准库测试通过（含动量守恒、能量不增、松弛段不做功、numpy/torch 后端一致、`mdp` 包脱离仿真器可导入）。**尚未接入场景**（需要 P4 的第二个刚体），因此 rope 的物理行为、k/c/L0 取值与 dt 敏感性均**未验证**。见 [P3 记录](towing_p3_rope_2026-09-20.md)。
+
+**当前待验证（P4+）**：把绳力接进机器人与小车的组合环境，复现计划里 `v_cmd = 0.5/1.0 m/s` 的稳定拖曳检查与 `m_L` 包线扫描。
 
 验证使用 `C:/Users/qmq/AppData/Local/Python/pythoncore-3.14-64/python.exe`（Python 3.14）：四个新文件编译通过；调用本机 Isaac Lab 的实际 `import_packages` 辅助函数对隔离包做发现/导入，通过，并确认 agents 被导入、mdp/utils 按黑名单跳过。文档 UTF-8 与本地链接检查通过；`git diff --check` 通过，`git ls-files -i -c --exclude-standard` 为空。骨架聚合 SHA256 为 `38af375746e0e6ca53f3ae65c04de6889b145c2bb1ef7da37008b9932d82d743`（按排序的相对路径、NUL、文件内容依次拼接计算）。
 
