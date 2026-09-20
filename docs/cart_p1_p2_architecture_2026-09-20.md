@@ -12,7 +12,7 @@
 
 ## 2. 文件安排
 
-下图 P1/P2 与 P3 文件现已创建；P4/P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。P1/P2 仿真入口已在训练机验收；P3 的 `mdp/rope.py` 只有离线验证，尚未接入场景。
+下图 P1–P4 文件现已创建；P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。P1/P2 仿真入口已在训练机验收；P3 的 `mdp/rope.py` 与 P4 的拖曳入口都只有离线验证，物理验收待训练机。
 
 ```text
 imgo2_description/
@@ -28,7 +28,7 @@ imgo2_rl/
 │       └── towing/
 │           ├── __init__.py               # 已建；后续任务注册
 │           ├── cart_scene_cfg.py         # P1/P2 平地与小车场景
-│           ├── towing_env_cfg.py         # P4+ 机器人与小车组合环境
+│           ├── towing_env_cfg.py         # P4 机器人与小车组合环境（已建）
 │           ├── mdp/
 │           │   ├── __init__.py           # 已建
 │           │   ├── resistance.py         # P2 轮轴阻力
@@ -38,16 +38,20 @@ imgo2_rl/
 │           │   └── rsl_rl_ppo_cfg.py     # P10+ 上层 PPO 训练配置
 │           └── utils/
 │               ├── __init__.py           # 已建
-│               ├── recording.py          # P2 起：轨迹、参数与状态
-│               ├── policy_cfg.py         # P4+ 底层 checkpoint 与接口契约
-│               └── low_level_policy.py   # P4+ AMP/PPO 冻结策略适配
+│               ├── recording.py          # P2 起：轨迹、参数与状态（P4 增拖曳记录）
+│               ├── policy_cfg.py         # P4 底层 checkpoint 与接口契约（已建）
+│               └── low_level_policy.py   # P4 AMP 冻结策略适配（已建；PPO 待做）
 ├── scripts/
 │   ├── towing/
-│   │   └── cart_coast.py                 # P1 drop / P2 coast 实验入口
+│   │   ├── cart_coast.py                 # P1 drop / P2 coast 实验入口
+│   │   └── tow_drag.py                   # P4 机器人拖曳小车实验入口（已建）
 │   └── tools/
 │       └── summarize_cart_coast.py       # 标准库离线指标与 SVG 曲线
 └── tests/
-    └── test_cart_coast_metrics.py        # 指标实现后添加行为测试
+    ├── test_cart_coast_metrics.py        # P1/P2 指标与接口测试
+    ├── test_towing_rope.py              # P3 绳力测试
+    ├── test_towing_policy_contract.py   # P4 冻结策略契约测试
+    └── test_towing_tow_drag.py          # P4 拖曳入口测试
 ```
 
 `agents/` 将来训练上层策略，不重训底层 AMP/PPO。CLI 启动脚本仍放 `scripts/`，可复用任务定义在 `manager_based/towing/`；P10 根据实际 wrapper 选择现有训练入口或补专用入口，当前不复制算法 runner。
@@ -95,9 +99,11 @@ P4 起 `utils/low_level_policy.py` 接收速度指令并生成底层动作，`ut
 
 **P1/P2 验收已完成（2026-09-20，训练机）**：导入/落地/滑行/阻力扫描/dt 复核全部通过，空 actuator 力矩直通层已在真实 PhysX 中确认（结果与解析黏性模型吻合 1% 以内），详见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)。CART-01 已收口；遗留的是另两条与本架构无关的缺陷登记（CART-02 入口退出码、CART-03 离线重算报错）。
 
-**P3 已实现、仅离线验证**：`mdp/rope.py` 提供单侧弹簧阻尼张力、力对与力臂力矩，31 项标准库测试通过（含动量守恒、能量不增、松弛段不做功、numpy/torch 后端一致、`mdp` 包脱离仿真器可导入）。**尚未接入场景**（需要 P4 的第二个刚体），因此 rope 的物理行为、k/c/L0 取值与 dt 敏感性均**未验证**。见 [P3 记录](towing_p3_rope_2026-09-20.md)。
+**P3 已实现、仅离线验证**：`mdp/rope.py` 提供单侧弹簧阻尼张力、力对与力臂力矩，31 项标准库测试通过（含动量守恒、能量不增、松弛段不做功、numpy/torch 后端一致、`mdp` 包脱离仿真器可导入）。见 [P3 记录](towing_p3_rope_2026-09-20.md)。
 
-**当前待验证（P4+）**：把绳力接进机器人与小车的组合环境，复现计划里 `v_cmd = 0.5/1.0 m/s` 的稳定拖曳检查与 `m_L` 包线扫描。
+**P4 已实现、物理验收待训练机**：`utils/policy_cfg.py`（AMP 45 维契约，与部署 yaml 逐项交叉核对）、`utils/low_level_policy.py`（TorchScript 适配器）、`towing_env_cfg.py`（机器人+小车场景，只改 `prim_path`）、`scripts/towing/tow_drag.py`（拖曳入口），另有 36 项离线测试。**尚未做**：PPO 底层契约、按 `policy_type` 分别记录、质量扫描（§5 要求的两点）。见 [P4 上半](towing_p4_policy_contract_2026-09-20.md) 与 [P4 下半](towing_p4_tow_drag_2026-09-20.md)。
+
+**当前待验证（P4+）**：在训练机**串行**执行拖曳入口，按 `summary.json` 判「稳定拖曳」，并确认 `--spawn-height` 与绳参数 k/c/L0；之后才是质量扫描、PPO 契约与上层策略。
 
 验证使用 `C:/Users/qmq/AppData/Local/Python/pythoncore-3.14-64/python.exe`（Python 3.14）：四个新文件编译通过；调用本机 Isaac Lab 的实际 `import_packages` 辅助函数对隔离包做发现/导入，通过，并确认 agents 被导入、mdp/utils 按黑名单跳过。文档 UTF-8 与本地链接检查通过；`git diff --check` 通过，`git ls-files -i -c --exclude-standard` 为空。骨架聚合 SHA256 为 `38af375746e0e6ca53f3ae65c04de6889b145c2bb1ef7da37008b9932d82d743`（按排序的相对路径、NUL、文件内容依次拼接计算）。
 
