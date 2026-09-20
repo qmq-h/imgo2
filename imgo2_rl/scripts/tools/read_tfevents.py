@@ -29,6 +29,12 @@
     CRC 只拿来跳过（不校验），所以尾部"正在写一半"的帧会被安全丢弃 —— 训练进行中也能读。
 
 限制：只认 `simple_value` 标量（rsl_rl 正好只写这个）；histogram / image / tensor 一律跳过。
+
+⚠️ **同一个文件里有两种 x 轴**：rsl_rl 里绝大多数 tag 用**迭代轮号**当 x，但
+`Train/mean_reward/time`、`Train/mean_episode_length/time` 用的是 `self.tot_time`
+（**墙钟秒**）—— 两者相差一个"每轮秒数"（本仓库约 1.25），所以"所有 tag 的最大 step"
+并不是迭代数。本工具因此把表头写成 `iterations=<取自某个迭代轴 tag 的值>`，并把带
+`/time` 后缀的 tag 单独点名（表格里每个 tag 仍按**它自己的** x 轴取值）。
 """
 
 from __future__ import annotations
@@ -157,6 +163,32 @@ def resolve_event_file(run: str | None, root: str) -> str:
     return max(hits, key=os.path.getmtime)
 
 
+CLOCK_AXIS_SUFFIX = "/time"
+# 优先用来代表「迭代轮号」的 tag（rsl_rl 每轮必写、且 x 轴就是 locs['it']）
+ITERATION_AXIS_TAGS = ("Train/mean_reward", "Loss/value_function")
+
+
+def iteration_step(series: dict[str, list[tuple[int, float]]]) -> tuple[int, str]:
+    """给出「当前跑到第几轮」以及这个数字的来源 tag。
+
+    不能直接对全部 tag 取 max：`*/time` 系列用 `tot_time`（墙钟秒）当 x 轴，数值比轮号大
+    （本仓库约 ×1.25），会把进度报高。优先用已知的迭代轴 tag，其次在非 `*/time` 的 tag 里取
+    最大的末 step。
+    """
+    for tag in ITERATION_AXIS_TAGS:
+        if series.get(tag):
+            return series[tag][-1][0], tag
+    candidates = [(points[-1][0], tag) for tag, points in series.items()
+                  if points and not tag.endswith(CLOCK_AXIS_SUFFIX)]
+    if candidates:
+        step, tag = max(candidates)
+        return step, tag
+    if series:
+        points = max(series.values(), key=lambda pts: pts[-1][0] if pts else -1)
+        return points[-1][0], "(未知，可能是时钟轴)"
+    return -1, "(空文件)"
+
+
 def value_at(points: list[tuple[int, float]], step: int) -> float:
     """取"不超过 step 的最后一个值"；没有则返回 nan。"""
     got = [val for at, val in points if at <= step]
@@ -176,9 +208,13 @@ def main(argv: list[str] | None = None) -> int:
 
     path = resolve_event_file(args.run or args.event_file, args.root)
     series = read_scalars(path)
-    last_step = max((points[-1][0] for points in series.values() if points), default=-1)
+    last_step, axis_tag = iteration_step(series)
     print(f"# {path}")
-    print(f"# last_step={last_step}, tags={len(series)}")
+    print(f"# iterations={last_step}（x 轴取自 {axis_tag}）, tags={len(series)}")
+    clock_tags = sorted(tag for tag in series if tag.endswith(CLOCK_AXIS_SUFFIX))
+    if clock_tags:
+        print(f"# 注意：{len(clock_tags)} 个 tag 的 x 轴是墙钟秒而不是迭代轮号（不要拿它们当进度）："
+              + ", ".join(clock_tags))
 
     if args.tags:
         for tag in sorted(series):

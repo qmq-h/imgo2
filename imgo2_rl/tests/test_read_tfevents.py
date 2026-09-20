@@ -116,10 +116,38 @@ class ReadTfeventsTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             rt.resolve_event_file(os.path.join(self.tmp.name, "nope"), root)
 
+    def test_clock_axis_tags_do_not_inflate_the_iteration(self):
+        """`*/time` 系列用墙钟秒当 x 轴（rsl_rl 的 tot_time），不能被当成迭代轮号。
+
+        2026-09-18 我自己的第一版工具就对全部 tag 取 max step，于是把秒数（6903）当成轮号报出去，
+        而真实进度是 5595 —— 两者相差一个「每轮秒数」。这里用合成数据锁住这个陷阱。
+        """
+        path = os.path.join(self.tmp.name, "events.out.tfevents.4")
+        # 真实文件里每个 tag 各写一条记录、各自的 step 不同：迭代轴记轮号，*/time 记墙钟秒
+        _write(path, [_event(10, {"Train/mean_reward": 1.0}),
+                      _event(80, {"Train/mean_reward": 2.0}),
+                      _event(60, {"Train/mean_reward/time": 12.0}),
+                      _event(100, {"Train/mean_reward/time": 100.0})])
+        series = rt.read_scalars(path)
+        self.assertEqual(series["Train/mean_reward"][-1][0], 80)
+        self.assertEqual(series["Train/mean_reward/time"][-1][0], 100)   # 秒
+        step, tag = rt.iteration_step(series)
+        self.assertEqual((step, tag), (80, "Train/mean_reward"))
+        import contextlib
+        import io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(rt.main([path]), 0)
+        out = buffer.getvalue()
+        self.assertIn("iterations=80", out)
+        self.assertIn("墙钟秒", out)                                       # 明确提示时钟轴 tag
+
     def test_main_cli_prints_table_and_tags(self):
         path = os.path.join(self.tmp.name, "events.out.tfevents.3")
-        _write(path, [_event(0, {"AMP/mean_root_height_m": 0.25, "Custom/metric": 9.0}),
-                      _event(1000, {"AMP/mean_root_height_m": 0.30, "Custom/metric": 5.0})])
+        _write(path, [_event(0, {"AMP/mean_root_height_m": 0.25, "Custom/metric": 9.0,
+                                 "Train/mean_reward": 1.0}),
+                      _event(1000, {"AMP/mean_root_height_m": 0.30, "Custom/metric": 5.0,
+                                    "Train/mean_reward": 2.0})])
         import contextlib
         import io
 
@@ -130,7 +158,7 @@ class ReadTfeventsTests(unittest.TestCase):
             return buffer.getvalue()
 
         out = run([path, "--steps", "0,1000"])
-        self.assertIn("last_step=1000", out)
+        self.assertIn("iterations=1000", out)
         self.assertIn("AMP/mean_root_height_m", out)
         self.assertIn("0.3000", out)
         self.assertNotIn("Custom/metric", out)            # 默认 match 里没有它

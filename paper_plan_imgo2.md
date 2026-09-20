@@ -1,383 +1,417 @@
-# Imgo2 小论文与毕设选题规划
+IsaacLab 接下来实施计划
+阶段	IsaacLab 实现任务	验收标准	状态
+P0	复用现有 locomotion	无负载下正常接收 \(v_x\) cmd	✅ 已完成
+P1	建立 wheeled cart USD/Articulation	车体 + 4 passive wheels 可正常落地滚动	⬜
+P2	标定 wheel resistance	给 cart 初速度后能自然减速停止	\(v_L(t)\)、停止距离合理
+P3	实现 rope model	Go2 与 cart 之间只产生拉力	slack 时 \(T=0\)，taut 时 \(T>0\)
+P4	联调 towing	Go2 能稳定把 cart 从静止拉起来	无爆炸、穿模、异常振荡
+P5	实现测量量	记录 \(T,v_R,v_L,d,\theta_{\rm pitch}\) 等	可导出 CSV/plot
+P6	Direct-command baseline	直接给 locomotion 阶跃启停 cmd	获得完整 start/stop transient
+P7	参数扫描	mass × resistance × velocity	确认不同负载动态确实存在差异
+P8	Fixed-ramp baseline	cmd 前加入固定加速度限制器	找不同工况下合理 \(a_{\max}\)
+P9	验证研究假设	比较 Direct / 不同 Ramp	证明不存在统一最优 ramp
+P10	上层环境	upper policy 输出 \(\dot v_{\rm ref}\)	frozen locomotion 正常执行
+P11	训练 adaptive shaper	history/load interaction → \(\dot v_{\rm ref}\)	未知负载自适应启停
+P12	完整实验	Direct / Ramp / Adaptive / Oracle	论文数据
+现在最先做 P1：负载小车
 
-## 1. 当前项目资产判断
+第一版不要做真实万向脚轮。
 
-本项目已经具备做一篇四足机器人强化学习应用型小论文的基础：
+IsaacLab 里建立：
 
-- 机器人本体模型：`imgo2_model/` 中已有 URDF、MJCF 相关模型和网格文件，可支撑仿真训练与部署验证。
-- 强化学习环境：`imgo2_rl/` 中已有 Isaac Lab 扩展，包含平地、粗糙地形、HIM-Loco、AMP 等任务雏形。
-- 动作数据：`imgo2_dataset/datasets/imgo2_motion/` 中已有多组前进、后退、横移、转向与组合速度参考动作。
-- 部署框架：`imgo2_deploy/` 中已有 ROS/Gazebo/MuJoCo/sim2sim/sim2real 结构，但真机部署尚未完全闭环。
+$$ \text{cart body}+4\times\text{wheel} $$
 
-因此，短期小论文建议以“仿真训练 + 泛化验证 + 部署接口验证”为主，不把真机实验作为论文成败核心。毕设可以在此基础上继续补齐 sim2real。
+每个 wheel：
 
-## 2. 值得探索的方向
+$$ \text{RevoluteJoint} $$
 
-### 方向 A：面向自研 Imgo2 四足机器人的 AMP 风格步态学习
+不设置 actuator：
 
-核心问题：如何利用有限参考动作数据，让自研四足机器人在仿真中学到更自然、稳定、可控的多速度步态。
+$$ \tau_{\rm drive}=0 $$
 
-可用资产：
+第一阶段甚至只允许小车沿 \(x\) 方向运动都可以，因为现在验证的是纵向拖曳瞬态，不是 trailer steering。
 
-- `imgo2_dataset/datasets/imgo2_motion/` 中已有多速度、多方向动作数据。
-- `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/.../base_move/amp_env_cfg.py` 中已经包含 AMP 观察量、参考状态初始化、关节映射等关键结构。
-- AMP 当前还有训练稳定性问题，可把“参考动作适配与训练稳定化”作为工程贡献点。
+建议 USD 层级类似：
 
-潜在贡献点：
+Cart
+├── base_link
+├── wheel_FL
+│   └── revolute_joint_FL
+├── wheel_FR
+│   └── revolute_joint_FR
+├── wheel_RL
+│   └── revolute_joint_RL
+├── wheel_RR
+│   └── revolute_joint_RR
+└── rope_attachment
 
-- 设计 Imgo2 参考轨迹到仿真关节顺序的动作映射方法。
-- 构建基于 AMP + 任务奖励混合的步态学习框架。
-- 对比 PPO、AMP、AMP 加稳定化策略在速度跟踪、姿态稳定、足端滑移、能耗上的差异。
+其中 rope_attachment 非常重要，后面绳索力作用在这里。
 
-风险：
+P2：先不要接 Go2，单独验证小车
 
-- AMP 训练目前出现过 `normal expects all elements of std >= 0.0`，需要先修复数值稳定性。
-- 如果 AMP 结果不稳定，论文节奏会受影响。
+这是我最建议你做的一步。
 
-适合程度：高，创新性和项目贴合度都较好，但需要解决训练稳定性。
+给 cart：
 
-### 方向 B：面向粗糙地形的 Imgo2 鲁棒运动控制策略
+$$ v_L(0)=0.5,\ 1.0\;m/s $$
 
-核心问题：如何通过 Isaac Lab 中的地形随机化、动力学随机化和奖励设计，提高 Imgo2 在复杂地形下的速度跟踪与稳定运动能力。
+然后完全不施加外力，让它自己滑。
 
-可用资产：
+记录：
 
-- `rough_env_cfg.py` 已经有粗糙地形、台阶、随机高度、质量/质心随机化、足端滑移、足端腾空时间、镜像约束等奖励设计。
-- PPO 与 HIM-Loco 训练入口已经存在。
-- 真机部署不是必需项，仿真地形泛化结果即可形成完整论文。
+$$ v_L(t) $$
 
-潜在贡献点：
+和：
 
-- 针对自研小型四足机器人设计轻量化鲁棒运动控制训练框架。
-- 比较平地训练、粗糙地形训练、动力学随机化训练的泛化能力。
-- 加入高度扫描仅用于 critic 或 privileged observation，形成 sim2real 友好的 actor 输入。
+$$ x_L(t) $$
 
-风险：
+最终得到：
 
-- 纯 PPO 粗糙地形控制属于常见路线，创新性偏工程应用，需要把“自研机器人适配 + 消融实验 + 部署接口”写扎实。
+$$ D_{\rm coast} $$
 
-适合程度：最高，是最稳的小论文主线。
+如果出现：
 
-### 方向 C：HIM-Loco 风格的隐式运动表征在 Imgo2 上的迁移与验证
+$$ 1m/s\rightarrow5m+ $$
 
-核心问题：历史观察与隐式表征是否能提升 Imgo2 在未知地形和动力学扰动下的鲁棒性。
+才停下来，说明 wheel resistance 太低。
 
-可用资产：
+如果：
 
-- `himloco_env_cfg.py` 和 `himloco_rsl_rl_cfg.py` 已经存在。
-- 可以与 PPO 粗糙地形策略做对比。
+$$ 1m/s\rightarrow0.1m $$
 
-潜在贡献点：
+就停，说明阻力太大。
 
-- 设计 actor 无显式地形高度、critic 使用高度信息的非对称训练结构。
-- 比较 PPO 与 HIM-Loco 在速度跟踪、姿态稳定、扰动恢复上的表现。
-- 作为自研机器人平台上的复现实验与改进验证。
+我们希望第一版大概进入：
 
-风险：
+$$ \boxed{0.5\sim2m} $$
 
-- 如果只是复现 HIM-Loco，创新性不足。
-- 需要较清楚地解释“隐式表征”与普通历史堆叠的区别。
+这种有明显惯性但又不会无限滑行的范围。这个数字先作为工程调试目标，以后用真车实测替换，不要作为论文中的“真实工业脚轮标准值”。
 
-适合程度：中高，适合与方向 B 合并成主线。
+轮轴可以先采用：
 
-### 方向 D：Imgo2 强化学习策略的 sim2sim/sim2real 部署框架
+$$ \tau_{\rm resist} = -\tau_c\operatorname{sgn}(\omega)-b\omega $$
 
-核心问题：如何把 Isaac Lab 中训练得到的策略可靠迁移到 MuJoCo/Gazebo/ROS 部署框架中。
+甚至第一版只：
 
-可用资产：
+$$ \tau=-b\omega $$
 
-- `imgo2_deploy/` 已有推理运行时、观察缓存、策略配置、MuJoCo sim2sim、ROS/Gazebo 框架。
-- 已有 `rl_sim_mujoco.cpp`、`rl_sim.cpp`、`rl_real_imgo2.cpp` 等部署入口。
+都可以。
 
-潜在贡献点：
+这一阶段不要碰 RL。
 
-- 梳理训练环境与部署环境之间的 observation/action 对齐。
-- 实现 Isaac Lab policy 到 C++ 推理部署的流程。
-- 用 MuJoCo/Gazebo 完成 sim2sim 验证。
+P3：实现绳索
 
-风险：
+我建议第一版甚至不要做 rope USD / 多刚体绳索。
 
-- sim2real 依赖硬件、SDK、安全调试，时间不可控。
-- 作为小论文主线风险偏高，但非常适合作为毕设核心章节。
+直接在 environment step 中计算虚拟 rope force。
 
-适合程度：小论文中作为验证补充，毕设中作为主线。
+机器人后挂点：
 
-## 3. 推荐小论文主线
+$$ p_R $$
 
-推荐题目方向：
+cart 挂点：
 
-> 面向自研四足机器人 Imgo2 的基于强化学习的鲁棒运动控制方法研究
+$$ p_L $$
 
-更偏小论文的题目可以写成：
+定义：
 
-> 基于 Isaac Lab 的小型四足机器人鲁棒运动控制策略训练与验证
+$$ d=\|p_L-p_R\| $$
 
-如果 AMP 训练稳定后，可升级为：
+绳长：
 
-> 融合参考动作先验的自研四足机器人鲁棒步态学习方法
+$$ L_0 $$
 
-建议主线采用“PPO/HIM-Loco 鲁棒控制”为基础，“AMP 步态先验”为增强实验：
+伸长：
 
-1. 先保证 PPO 粗糙地形策略能稳定收敛。
-2. 再加入 HIM-Loco 或历史观察机制，提高复杂地形泛化能力。
-3. 最后尝试 AMP，如果结果好则作为主要创新；如果结果一般，则作为探索性对比。
+$$ \delta=d-L_0 $$
 
-这样做的好处是论文不会被 AMP 单点风险卡死。
+然后：
 
-## 4. 可形成论文贡献的技术点
+$$ T= \begin{cases} 0,&\delta\leq0\\ \max(0,k\delta+c\dot d),&\delta>0 \end{cases} $$
 
-### 贡献 1：自研 Imgo2 机器人在 Isaac Lab 中的训练环境构建
+方向：
 
-包括：
+$$ e=\frac{p_L-p_R}{d} $$
 
-- URDF/关节/足端命名适配。
-- 12 自由度关节动作空间定义。
-- 平地和粗糙地形速度跟踪任务设计。
-- 训练环境与部署配置中的 joint/action/observation 对齐。
+于是：
 
-### 贡献 2：面向粗糙地形的奖励函数与随机化策略
+$$ F_R=Te $$ $$ F_L=-Te $$
 
-重点写：
+分别施加到 Go2 rear attachment 和 cart attachment。
 
-- 速度跟踪奖励：线速度、角速度。
-- 姿态稳定奖励：base height、roll/pitch、z 方向速度。
-- 足端行为奖励：air time、feet slide、contact force、feet height。
-- 对称步态约束：joint mirror。
-- 动力学随机化：质量、质心、摩擦、关节增益等。
+这样你马上就有：
 
-### 贡献 3：PPO、HIM-Loco、AMP 风格策略的对比验证
+$$ \boxed{T(t)} $$
 
-建议不要把算法说成完全原创，而是强调“面向 Imgo2 平台的适配、融合和系统验证”。
+而且自然支持：
 
-可比较：
+$$ \text{slack}\leftrightarrow\text{taut} $$
 
-- PPO baseline。
-- PPO + dynamics randomization。
-- HIM-Loco/history observation。
-- AMP 或 AMP + task reward。
+第一版不要模拟一根会碰地、弯曲的真实 rope，那只会增加 PhysX 接触问题，对当前论文问题几乎没收益。
 
-### 贡献 4：部署闭环的工程验证
+P4：接入你现有 locomotion
 
-小论文中做到 sim2sim 即可：
+这一步你的代码结构应该尽量保持：
 
-- 导出策略。
-- 在 MuJoCo 或 Gazebo 中加载模型与策略。
-- 验证 observation/action 顺序一致。
-- 展示相同速度指令下的仿真运动效果。
+user cmd
+   │
+   ▼
+existing locomotion policy
+   │
+   ▼
+Go2
+   │
+ rope force
+   │
+   ▼
+cart
 
-毕设中继续做 sim2real：
+先完全不改 locomotion。
 
-- 电机 SDK 接入。
-- 状态估计与安全状态机。
-- 策略频率、PD 参数、限幅保护。
-- 低速直线、原地转向、急停测试。
+例如：
 
-## 5. 实验设计
+$$ v_{\rm cmd}=0.5m/s $$
 
-### 基础实验
+运行 5 秒。
 
-| 实验编号 | 实验内容 | 目的 |
-|---|---|---|
-| E1 | 平地 PPO 速度跟踪 | 证明基础控制可行 |
-| E2 | 粗糙地形 PPO | 验证地形泛化 |
-| E3 | PPO + 动力学随机化 | 验证鲁棒性提升 |
-| E4 | HIM-Loco/history observation | 验证历史信息或隐式表征收益 |
-| E5 | AMP 风格训练 | 验证参考动作先验能否改善步态质量 |
-| E6 | sim2sim 部署验证 | 验证训练策略可部署 |
+检查：
 
-### 消融实验
+$$ v_R\approx v_L $$
 
-建议至少做 3 个消融，方便支撑 3-4 区论文：
+以及稳定拖曳阶段：
 
-- 去掉动力学随机化：观察粗糙地形成功率和姿态稳定性下降。
-- 去掉足端滑移/腾空时间奖励：观察步态质量变化。
-- 去掉 joint mirror：观察左右/对角步态对称性变化。
-- AMP 中去掉参考状态初始化：观察训练稳定性和收敛速度。
+$$ T(t) $$
 
-### 评价指标
+是否进入相对稳定区间。
 
-建议记录以下指标：
+然后：
 
-- 速度跟踪误差：`|vx_cmd - vx|`、`|vy_cmd - vy|`、`|wz_cmd - wz|`。
-- 姿态稳定性：roll/pitch RMS，base height RMS。
-- 运动效率：平均关节功率或 torque cost。
-- 足端质量：feet slide、contact force、air time variance。
-- 鲁棒性：不同地形等级下的通过率或 episode return。
-- 部署一致性：Isaac Lab 与 MuJoCo/Gazebo 中同一策略的轨迹差异。
+$$ v_{\rm cmd}=1.0m/s $$
 
-## 6. 小论文结构建议
+再试。
 
-### 摘要
+这里需要先回答一个非常现实的问题
 
-写清楚三件事：
+你现有 locomotion 到底能拉多大的东西？
 
-- 自研四足机器人 Imgo2 需要低成本获得稳定运动能力。
-- 提出基于 Isaac Lab 的鲁棒运动控制训练框架，并融合地形/动力学随机化和步态先验。
-- 实验表明方法提升了速度跟踪、地形适应性和部署一致性。
+先扫：
 
-### 第 1 章 引言
+$$ m_L= 5,\ 10,\ 15,\ 20,\ 25\ kg $$
 
-强调：
+不是为了论文结果，而是确定 working envelope。
 
-- 四足机器人强化学习控制的意义。
-- 自研平台模型、动力学和部署链路带来的适配问题。
-- 本文关注“有限硬件条件下，先通过高保真仿真获得可迁移控制策略”。
+可能最终发现：
 
-### 第 2 章 Imgo2 机器人建模与训练环境
+$$ 5\sim15kg $$
 
-内容：
+比较合理，那后面训练就用这个范围，不需要强行做到 25 kg。
 
-- 机器人结构、自由度、电机与关节定义。
-- URDF/MJCF/Isaac Lab 环境构建。
-- 动作空间、观察空间、指令空间。
+P5：现在就把 Logger 写好
 
-### 第 3 章 鲁棒运动控制策略设计
+这个最好不要等 RL 做完。
 
-内容：
+每个 timestep 至少记录：
 
-- PPO 或 HIM-Loco 训练框架。
-- 奖励函数。
-- 地形课程与动力学随机化。
-- AMP 参考动作先验，可作为一个小节。
+$$ t $$ $$ v_{\rm user} $$ $$ v_{\rm ref} $$ $$ v_R $$ $$ v_L $$ $$ T $$ $$ d $$ $$ \theta_{\rm pitch} $$ $$ \omega_{\rm pitch} $$
 
-### 第 4 章 实验与分析
+以及：
 
-内容：
+$$ \text{foot slip} $$
 
-- 训练设置。
-- 平地与粗糙地形结果。
-- 消融实验。
-- sim2sim 部署验证。
+后面最好再加：
 
-### 第 5 章 结论
+$$ \tau_{\rm joint} $$
 
-内容：
+最终 CSV：
 
-- 总结 Imgo2 上的训练与验证结果。
-- 说明真机部署和更复杂运动技能作为后续工作。
+time
+user_cmd
+ref_cmd
+robot_vx
+load_vx
+rope_tension
+rope_distance
+body_pitch
+body_pitch_rate
+foot_slip
+...
 
-## 7. 8 周执行计划
+这套 logger 后面直接就是论文画图的数据来源。
 
-### 第 1 周：整理环境与基线
+P6：第一组真正重要的实验——阶跃停止
 
-- 跑通 `Imgo2-basemove-flat-ppo` 和 `Imgo2-basemove-rough-ppo`。
-- 确认训练日志、视频、模型 checkpoint 能稳定保存。
-- 记录机器人关节顺序、动作尺度、观察量维度。
+先稳定拖：
 
-产出：
+$$ v_{\rm cmd}=0.8m/s $$
 
-- baseline 曲线。
-- 训练环境截图或视频。
-- 论文第 2 章初稿。
+例如：
 
-### 第 2 周：粗糙地形与随机化实验
+$$ t<5s:\quad v_{\rm cmd}=0.8 $$
 
-- 固定 PPO baseline。
-- 开启/关闭质量、质心、摩擦、关节增益随机化。
-- 记录不同地形难度下的成功率和速度误差。
+突然：
 
-产出：
+$$ t\geq5s:\quad v_{\rm cmd}=0 $$
 
-- E1-E3 数据。
-- 奖励函数和随机化策略表格。
+即：
 
-### 第 3 周：HIM-Loco/history observation 对比
+$$ \boxed{0.8\rightarrow0} $$
 
-- 跑通 `Imgo2-basemove-rough-himloco`。
-- 与 PPO 在同一地形和速度指令下对比。
-- 如果 HIM-Loco 训练效果一般，可以保留为“历史观察机制对比”。
+不要加任何 smoothing。
 
-产出：
+然后画：
 
-- PPO vs HIM-Loco 曲线。
-- 论文第 3 章方法框架图。
+$$ v_R(t),\quad v_L(t),\quad T(t) $$
 
-### 第 4 周：AMP 问题修复与探索
+再画：
 
-- 修复 AMP 训练中的 std 数值稳定性问题。
-- 确认参考动作路径使用 `imgo2_dataset/datasets/imgo2_motion/`。
-- 检查并验证 `[LF, LH, RF, RH]` 到 `[FL, FR, RL, RR]` 的映射。
-- 训练短周期 AMP，先看是否收敛和姿态是否自然。
+$$ \theta_{\rm pitch}(t) $$
 
-产出：
+重点观察 \(t=5s\) 后：
 
-- AMP 可行性判断。
-- 如果 AMP 效果好，作为论文亮点；如果一般，只作为对比实验。
+$$ T_{\rm steady}\rightarrow0 $$
 
-### 第 5 周：消融实验
+到底有多快，以及机器人有没有明显瞬态响应。
 
-- 去掉动力学随机化。
-- 去掉足端相关奖励。
-- 去掉镜像约束。
-- 可选：去掉 AMP 参考状态初始化。
+这一步实际上是项目的第一个 Go/No-Go
 
-产出：
+如果 Direct Stop 下：
 
-- 消融表格。
-- 关键指标柱状图。
+$$ T\rightarrow0 $$
 
-### 第 6 周：sim2sim 验证
+但机器人：
 
-- 导出训练策略。
-- 对齐 `imgo2_deploy/policy/imgo2/base.yaml` 中的关节名、动作尺度、观测量。
-- 在 MuJoCo 或 Gazebo 中完成低速直线和原地转向测试。
+pitch 几乎不变；
+没有 slip；
+locomotion 完全不受影响；
+不同负载都差不多；
 
-产出：
+那么我们就要重新审视这个研究问题。
 
-- sim2sim 视频。
-- 部署流程图。
-- 部署一致性分析。
+反过来，如果明显出现：
 
-### 第 7 周：论文初稿
+$$ m_L\uparrow \Rightarrow \text{transient response变化明显} $$
 
-- 完成摘要、引言、方法、实验。
-- 补齐表格、图、训练曲线。
-- 把“项目工程量”转化为“方法适配与系统验证”。
+那课题就立住了。
 
-产出：
+P7：然后做参数扫描
 
-- 小论文完整初稿。
+暂时不要 RL。
 
-### 第 8 周：修改与投稿准备
+先固定：
 
-- 精简题目和创新点。
-- 检查实验是否支撑结论。
-- 准备目标 3-4 区期刊格式。
-- 同步整理毕设章节目录。
+$$ v_0=\{0.4,0.7,1.0\}\ m/s $$
 
-产出：
+质量：
 
-- 投稿版小论文。
-- 毕设大纲。
+$$ m_L=\{5,10,15,20\}\ kg $$
 
-## 8. 毕设衔接方案
+轮阻：
 
-小论文完成后，毕设可以扩展为：
+$$ F_r=\{\text{Low, Medium, High}\} $$
 
-> 自研四足机器人 Imgo2 的强化学习运动控制与部署系统设计
+于是：
 
-毕设章节建议：
+$$ 3\times4\times3=36 $$
 
-1. 绪论。
-2. Imgo2 机器人结构与动力学模型。
-3. Isaac Lab 强化学习训练环境构建。
-4. 鲁棒运动控制策略训练与对比。
-5. sim2sim 部署系统设计。
-6. sim2real 实现与真机实验，如果时间允许。
-7. 总结与展望。
+个工况。
 
-如果真机部署来不及，毕设仍可用“仿真训练 + MuJoCo/Gazebo 部署 + 真机部署接口设计”形成完整工作量。
+对每个工况执行同样：
 
-## 9. 最推荐的落地路线
+$$ v_0\rightarrow0 $$
 
-优先级建议如下：
+获得：
 
-1. 先做方向 B：粗糙地形鲁棒运动控制，保证论文基本盘。
-2. 并行推进方向 C：HIM-Loco/history observation，作为方法增强。
-3. 尝试方向 A：AMP 参考动作先验，结果好则升级为论文亮点。
-4. 小论文只做方向 D 的 sim2sim 验证，毕设再补 sim2real。
+$$ T_{\rm peak}, \quad \max|\dot T|, \quad \theta_{\rm peak}, \quad D_{\rm stop}, \quad t_{\rm settle} $$
 
-一句话概括：
+这一阶段就能看出你的研究问题到底主要受：
 
-> 以 PPO 粗糙地形控制保底，以 HIM-Loco/AMP 做增量创新，以 sim2sim 部署证明工程闭环。
+$$ m_L $$
 
+还是：
+
+$$ F_r $$
+
+还是：
+
+$$ m_L+F_r $$
+
+影响。
+
+P8：Fixed Ramp 是训练 RL 前最后一道验证
+
+加入非常简单的 command manager：
+
+$$ v_{\rm ref}^{t+1} = v_{\rm ref}^{t} + \operatorname{clip} ( v_{\rm user}-v_{\rm ref}^{t}, -a_{\max}\Delta t, a_{\max}\Delta t ) $$
+
+测试：
+
+$$ a_{\max} = \{0.2,0.4,0.6,0.8,1.0\}\ m/s^2 $$
+
+于是你可以得到：
+
+$$ J(a_{\max};m_L,F_r) $$
+
+真正需要看到的是：
+
+$$ \boxed{ a_{\max}^{*} \text{随 load dynamics 改变} } $$
+
+例如：
+
+Load	合理减速度
+轻载 + 高阻	0.8
+中载 + 中阻	0.5
+重载 + 低阻	0.3
+
+具体数字现在未知，但如果实验呈现这种趋势，Adaptive Upper Policy 就有了充分理由。
+
+如果最后发现：
+
+$$ a_{\max}=0.5 $$
+
+所有工况都很好，那其实没必要训练神经网络——这也是为什么我建议先做这一阶段。
+
+最后才进入 Upper Policy
+
+确认上述假设成立以后，再把：
+
+user cmd
+   │
+   ▼
+┌────────────────────┐
+│ Adaptive Cmd Shaper│
+│ history → a_ref    │
+└─────────┬──────────┘
+          ▼
+        v_ref
+          │
+          ▼
+   Frozen Locomotion
+
+接进去。
+
+你已有 locomotion：
+
+$$ \boxed{\text{不更新参数}} $$
+
+只训练上层：
+
+$$ \pi_{\rm upper} $$
+
+我建议第一版 action 就 1 维：
+
+$$ \boxed{a_t^{upper}=\dot v_{\rm ref}} $$
+
+不要让它直接输出关节动作。
+
+这样整个问题会非常干净。
+
+所以你现在实际 Todo 可以压缩成 7 项
+ 1. Cart USD：车体 + 4 passive wheels + attachment
+ 2. Cart 单体测试：初速度 → 自然停止，调 wheel resistance
+ 3. Rope force：实现 unilateral spring-damper
+ 4. Go2 + Cart：现有 locomotion 稳定拖动
+ 5. Logger：\(v_R,v_L,T,d,\theta_{\rm pitch}\)
+ 6. Direct Stop：不同 \(m_L,F_r,v_0\) 做阶跃停止
+ 7. Fixed Ramp Sweep：验证不同 load 是否需要不同 acceleration/deceleration profile
+
+做到第 7 项先停一下。
