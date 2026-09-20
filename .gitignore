@@ -126,3 +126,6 @@ Thumbs.db
 # imgo2_rl/datasets/imgo2_motion/ 是 AMP 训练实际加载的 21 份参考动作；
 # imgo2_rl/tests/ 含 AMP 修复文件集与提交训练前的前置检查。
 # 详见 docs/amp_alignment_review.md。
+
+# 本地研究草稿：保留在工作区，不随仓库同步
+/paper_plan_imgo2.md

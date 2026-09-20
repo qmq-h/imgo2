@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-18。本文是整个工作区的维护入口，覆盖项目总览、训练部署流程、已知问题和变更记录。
+> 最后核对：2026-09-20（本轮为 P1/P2 架构设计，未新增仿真验证）。本文是整个工作区的维护入口，覆盖项目总览、训练部署流程、已知问题和变更记录。
 > 状态依据包括用户反馈、本地源码/离线检查，以及 2026-09-17 实际执行的 `build.sh -mj`、
 > MuJoCo 物理回放、一次针对三个策略的运行期排查（[记录](docs/sim2sim_policy_runtime_2026-09-17.md)）
 > 和 ROS 2/Gazebo 链路打通（[记录](docs/gazebo_ros2_bringup_2026-09-17.md)，无头验证到策略闭环）；
@@ -48,7 +48,7 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 | [imgo2_dataset/](imgo2_dataset/) | 参考动作数据；当前数据位于 `datasets/imgo2_motion/` |
 | [imgo2_deploy/](imgo2_deploy/) | C++ 推理、观察缓存、状态机、MuJoCo/Gazebo/真机入口及策略配置。**模型副本 `robot_description/` 已于 2026-09-17 删除**，MuJoCo 读 `imgo2_description/mjcf/`、Gazebo 读 `imgo2_description/urdf/imgo2.gazebo.urdf` |
 | [docs/](docs/) | 排查记录与离线结果：`amp_alignment_review.md`、`code_review_2026-09-15.md`、`amp_data_audit.json` |
-| [paper_plan_imgo2.md](paper_plan_imgo2.md) | 小论文与毕设选题、实验和写作建议 |
+| `paper_plan_imgo2.md`（本地，Git 忽略） | 用户研究草稿，不随仓库同步；实施所需的 P1/P2 文件职责与后续 AMP/PPO 底层接口见 [小车架构方案](docs/cart_p1_p2_architecture_2026-09-20.md)，尚未实现 |
 | [research_exploration_plan.md](research_exploration_plan.md) | 本体感知、执行器随机化、动作跟踪与真机准备的研究规划 |
 | [imgo2_rl/rlfromgym2lab.md](imgo2_rl/rlfromgym2lab.md) | IsaacGym AMP 迁移到 IsaacLab 时 env/wrapper 对接层的说明（背景资料，非当前结论） |
 
@@ -478,6 +478,7 @@ bash build.sh --cmake
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
 | DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
 | EXP-01 | P1 | 待补充 | 已记录 PPO 验证与 AMP 贴地现象的用户反馈，尚缺对应日志、命令和模型路径 | 按第 8 节补充真实实验与产物路径 |
+| CART-01 | P1 | 架构方案已记录，待实现与仿真验证 | 研究计划 P1/P2：四轮被动小车与单体滑行阻力标定，后续使用已有 AMP/PPO 冻结底层，职责及接口见 [小车架构方案](docs/cart_p1_p2_architecture_2026-09-20.md) | 实现资产/场景/阻力/实验入口，验证落地及 0.5、1.0 m/s 滑行，记录停止判据与曲线；工程参数待标定，P4 前记录具体 checkpoint 与接口配置 |
 
 问题表只放结论与状态，依据、根因和未修项的细节见 [代码复审记录](docs/code_review_2026-09-15.md) 与 [AMP 对齐与参考项目对照](docs/amp_alignment_review.md)。**代码改了不等于修好**：只有经过编译、运行或测试验证的项才改状态，仅改代码未验证的写成「已修，待验证」并保留条目（见 AGENTS.md 的同名约定）。
 
@@ -546,6 +547,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-20 | 形成 [P1/P2 小车文件架构](docs/cart_p1_p2_architecture_2026-09-20.md)，记录已有 AMP/PPO 冻结底层的切换方案；修正研究草稿的 Git 跟踪方式 | 同步 `271edd2`→`40cb298` 后核对现有资产、任务导入与实验入口。用户反馈 AMP 低速跟踪更好、PPO 运动更好看；后续按策略分别记录结果。`paper_plan_imgo2.md` 按用户要求仅从索引移除、本地保留，忽略规则限定根路径；引用已检查，历史记录保留文件名。**已修复**：仅添加 ignore 对已跟踪文件不生效的问题。**待实现/验证**：CART-01，未编写小车运行代码，未启动仿真或训练。 |
 | 2026-09-18 | **修控制台进度条分母**：`Learning iteration 3410/43410` 把轮数加了两遍（分母写成「当前轮 + 总轮数」）；连带修 ETA 与收尾 checkpoint 命名 | 用户实跑时看到 `3410/43410 = 3410 + 40000`。**根因**：AMP-08 的修复让 `learn()` 循环内每轮都执行 `self.current_learning_iteration = it`，而进度条分母仍是 `self.current_learning_iteration + locs['num_learning_iterations']` ⇒ 变成「当前轮 + 总轮数」；同一个错误串了三处：① 分母；② ETA 的剩余轮数 `num_learning_iterations − it`（resume 时少算起点那么多轮的时间，平均每轮耗时也没除掉起点）；③ 更隐蔽的一处：循环结束后 `self.current_learning_iteration += num_learning_iterations` 会**再加一次** ⇒ 收尾保存写成 `model_19999.pt` / `iter=19999`（10000 轮的运行；40000 轮就是 `model_<last+40000>`），而 `--resume` 默认取最新 checkpoint 正好会踩到它。**修法**（`amp_on_policy_runner.py` 与 `ppo_on_policy_runner.py`；HIM runner 一直是对的，未动）：分母改 `locs['tot_iter']`、引入 `start_iter` 并把 ETA 改成 `tot_time/(it−start_iter+1) × (tot_iter−it)`、收尾改成 `self.current_learning_iteration = tot_iter`。**验证**：新增 `test_runner_progress_line_and_final_save_use_absolute_totals`（三个 runner 一起断言分母/ETA/收尾的三条不变量，含用正则精确匹配旧的 ETA 写法以免误伤 HIM 的等价写法）⇒ 全仓 **82 项通过**。**未验证**：本机无法跑训练，控制台实际显示要等下一次启动才可见（正在跑的这次仍是旧代码，其收尾文件会虚高，循环内每 500 轮的 checkpoint 不受影响）。顺带确认：该 run 用的是 `AMPRunnerCfg` 的默认 `max_iterations=40000`（不是 10000），约 11 小时跑满 |
 | 2026-09-18 | 新增**训练曲线读取工具** `read_tfevents.py`（纯标准库），并记录 rlamp 首轮训练的中途观察 | **工具**：直接解析 TFRecord 帧 + `tensorflow.Event` protobuf 里的 `simple_value` 标量（CRC 只跳过不校验 ⇒ 训练进行中尾部半帧会被安全丢弃），CLI 支持 `--run/--steps/--tags/--match/--all`；默认在 `logs/amp_rsl_rl`、`imgo2_rl/logs/amp_rsl_rl`、`../logs/amp_rsl_rl` 三处取**最新**的 event 文件（训练日志会因 cwd 不同落在仓库根或 `imgo2_rl/` 下）。**验证**：新增 `test_read_tfevents.py` **5 项**（自造 event 文件的往返、同帧多 tag/跨帧作用域、截断尾帧丢弃、`value_at` 取值语义、`resolve_event_file` 取最新/CLI 输出）⇒ 全仓 **81 项通过**；并用它读出了两个真实 run（24500 与当前 rlamp）的历史值。**首轮 rlamp 观察（4391/10000 轮，`2026-09-18_20-18-37`）**：高度 0.304 m、贴地率 0.07%、基座触地终止 7.9%；**摆动时长从 0.045 s（500 轮）升到 0.169 s**、腾空比例 0.248 ⇒ 反推步周期 ≈0.68 s，与录制参考 0.600 s 同量级（24500 那版实测 0.193 s，快 3.1 倍）；代价是 `error_vel_xy` 1.385（同迭代点 24500 那轮 0.654，但两者**指令范围与任务权重都不同**，只能看趋势）；风格占比升到 83%（24500 是 28%）。**待验证**：步态级指标需一次 `eval_gait.py` 回放（命令见 [§16](docs/amp_gait_adjust_plan_2026-09-18.md)），本机沙箱无 CUDA，无法代跑 |
 | 2026-09-18 | **修冒烟训练崩溃**：`apply_rlamp_env_settings()` 对 `None` 事件取 `.params`（`AttributeError`），并把 `reference_state_initialization_prob` 对齐到参考的 0.85 | 用户实跑 `--task=Imgo2-basemove-flat-amp-rlamp` 时在**环境构造阶段**崩：`cfg.events.randomize_reset_base.params[...]` → `'NoneType' object has no attribute 'params'`。**根因**：`Imgo2AmpMoveEnvCfg.__post_init__`（`amp_env_cfg.py:155-156`）把 `randomize_reset_base`/`randomize_reset_joints` 设成 `None`（AMP 的 reset 交给参考状态初始化）⇒ 只能**新建 EventTerm**，不能就地改值。**离线测试没抓到，是因为我手写的鸭子类型 cfg 把这两项填成了对象**（前置条件与真实配置不一致），已改成照抄真实覆盖（`None`）。**修法**：① helper 改为新建 `EventTerm(func=mdp.reset_root_state_uniform/reset_joints_by_scale, mode='reset')`；② `reference_state_initialization_prob` 1.0 → 参考的 **0.85**（否则参考初始化会覆盖掉那 85%、新建的 reset 分布白写）；③ `apply_amp_play_overrides()` 把这两项重新置 `None`（回放要确定性初始状态；其它 AMP 变体本来就是 None，行为不变）。**顺序前提**：`EventManager` 按 `cfg.__dict__` 顺序跑 reset 项（`event_manager.py:337`，不排序），`reference_state_initialization` 是子类字段 ⇒ 最后跑；新建事件必须用 `EventCfg` 里已有的字段名，拼错的新键会被追加到最后而反转顺序（已写成测试守住）。**验证**：测试 73 → **76 项通过**，新增 3 条防回归（源码交叉检查「就地改 vs 基类置 None」、reset 项执行顺序不变量、标准库 dataclass 复现`_custom_post_init` 的顺序机制）。**未验证**：需用户重跑冒烟训练确认能构造环境并跑满 100 轮（本机无 GPU，无法实例化配置类）。详见 [§15.2.1](docs/amp_gait_adjust_plan_2026-09-18.md) |
