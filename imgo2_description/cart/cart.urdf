@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<!-- P1 engineering model, not measured caster parameters.
+     SI units; x forward, y left, z up. Total mass: 8.4 + 4*0.4 = 10 kg.
+     Solid box/cylinder inertias. The attachment is a massless frame.
+     Wheel damping is supplied by the experiment, never duplicated here. -->
+<robot name="passive_cart">
+  <material name="deck_blue"><color rgba="0.12 0.35 0.65 1"/></material>
+  <material name="wheel_dark"><color rgba="0.07 0.07 0.07 1"/></material>
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="8.4"/>
+      <inertia ixx="0.07868" ixy="0" ixz="0" iyy="0.182" iyz="0" izz="0.24668"/>
+    </inertial>
+    <visual><geometry><box size="0.5 0.32 0.1"/></geometry><material name="deck_blue"/></visual>
+    <collision><geometry><box size="0.5 0.32 0.1"/></geometry></collision>
+  </link>
+  <link name="wheel_fl">
+    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+  </link>
+  <link name="wheel_fr">
+    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+  </link>
+  <link name="wheel_rl">
+    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+  </link>
+  <link name="wheel_rr">
+    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+  </link>
+  <joint name="wheel_fl_joint" type="continuous">
+    <parent link="base_link"/><child link="wheel_fl"/><origin xyz="0.18 0.20 -0.07"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
+  </joint>
+  <joint name="wheel_fr_joint" type="continuous">
+    <parent link="base_link"/><child link="wheel_fr"/><origin xyz="0.18 -0.20 -0.07"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
+  </joint>
+  <joint name="wheel_rl_joint" type="continuous">
+    <parent link="base_link"/><child link="wheel_rl"/><origin xyz="-0.18 0.20 -0.07"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
+  </joint>
+  <joint name="wheel_rr_joint" type="continuous">
+    <parent link="base_link"/><child link="wheel_rr"/><origin xyz="-0.18 -0.20 -0.07"/><axis xyz="0 1 0"/>
+    <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
+  </joint>
+  <link name="rope_attachment"/>
+  <joint name="rope_attachment_joint" type="fixed">
+    <parent link="base_link"/><child link="rope_attachment"/><origin xyz="0.25 0 0"/>
+  </joint>
+</robot>

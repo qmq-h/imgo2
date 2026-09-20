@@ -22,11 +22,13 @@ import os
 from pathlib import Path
 import re
 import sys
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]  # imgo2_rl/
 ASSET_FILES = [
     ROOT / "source/imgo2_rl/imgo2_rl/assets/imgo2.py",
     ROOT / "source/imgo2_rl/imgo2_rl/assets/amp_motions.py",
+    ROOT / "source/imgo2_rl/imgo2_rl/assets/cart.py",
 ]
 MACHINE_PATH_RX = re.compile(r"/root/|/home/|[A-Za-z]:\\\\Users")
 
@@ -153,6 +155,24 @@ def main() -> int:
         print("  none")
     else:
         failures.append(f"{leftovers} machine-specific path(s)")
+
+    # Read the cart path from its actual asset configuration as well.
+    cart_asset = ASSET_FILES[2]
+    cart_text = cart_asset.read_text(encoding="utf-8")
+    cart_roots = {k: cart_asset.resolve().parents[d] for k, d in root_vars(cart_text).items()}
+    cart_declared = declared_path(cart_text, "_DEFAULT_URDF_PATH")
+    if cart_declared is None or cart_declared[0] not in cart_roots:
+        failures.append("Cart URDF path not derived from Path(__file__)")
+    else:
+        override = os.environ.get("IMGO2_CART_URDF_PATH")
+        cart_path = Path(override).expanduser() if override else cart_roots[cart_declared[0]].joinpath(*cart_declared[1])
+        print(f"\nCart URDF in effect: {cart_path}")
+        try:
+            from check_cart_model import check_cart
+            check_cart(cart_path)
+            print("  PASS  cart URDF exists and model structure validates")
+        except (ValueError, OSError, ET.ParseError, AttributeError, TypeError) as exc:
+            failures.append(f"Cart URDF: {exc}")
 
     print("\nSummary")
     if failures:

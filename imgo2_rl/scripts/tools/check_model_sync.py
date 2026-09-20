@@ -25,7 +25,8 @@ Fails when any of these breaks:
   4. the model mesh directory drifts from the recorded fingerprint, or a URDF
      references a mesh file that does not exist;
   5. any URDF stops reproducing `datasets/imgo2_motion` through forward kinematics;
-  6. a tracked URDF exists that is not registered below.
+  6. a tracked or non-ignored untracked URDF has no registered asset family;
+  7. the independent cart model fails its structural/physical checks.
 
 Stdlib only. Run from imgo2_rl:
     python scripts/tools/check_model_sync.py
@@ -40,6 +41,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import audit_amp_dataset as audit_mod  # noqa: E402
+from check_cart_model import DEFAULT_CART, check_cart  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]   # imgo2_rl/
 REPO = ROOT.parent
@@ -134,7 +136,9 @@ def link_physics(path: Path) -> dict:
 
 
 def mesh_fingerprint(d: Path):
-    files = sorted(p for p in d.glob("*") if p.is_file())
+    # Path ordering folds case on Windows, but not on Linux. Hash the same
+    # bytewise filename order on both hosts; do not change the reference hash.
+    files = sorted((p for p in d.glob("*") if p.is_file()), key=lambda p: p.name)
     entries = [(p.name, hashlib.sha256(p.read_bytes()).hexdigest()) for p in files]
     fp = hashlib.sha256("\n".join(f"{n}:{h}" for n, h in entries).encode()).hexdigest()[:12]
     return fp, len(entries)
@@ -297,11 +301,16 @@ def main() -> int:
     # The checks above only cover URDFS keys, so a NEW copy appearing elsewhere
     # would go unnoticed — that is precisely how the sign-inverted deploy copy
     # survived. Discover all tracked URDFs and require each to be known.
-    print("\n6) coverage: every tracked URDF is a registered one")
+    print("\n6) coverage: tracked and non-ignored untracked URDFs are registered")
     known = {p.resolve() for p in (spec["path"] for spec in URDFS.values())}
-    tracked = subprocess.run(["git", "ls-files", "*.urdf"], capture_output=True,
-                             text=True, cwd=REPO).stdout.split()
-    print(f"   tracked URDF files: {len(tracked)}")
+    # Separate asset family: the cart is not an Imgo2 physics/FK copy.
+    known.add(DEFAULT_CART.resolve())
+    inventory = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.urdf"],
+                               capture_output=True, text=True, cwd=REPO)
+    if inventory.returncode:
+        failures.append("Cannot enumerate URDF inventory")
+    tracked = [name for name in inventory.stdout.split("\0") if name]
+    print(f"   discovered URDF files: {len(tracked)}")
     unregistered = []
     for rel in tracked:
         if (REPO / rel).resolve() not in known:
@@ -310,12 +319,20 @@ def main() -> int:
         failures.append(f"{len(unregistered)} unregistered URDF file(s)")
         for rel in unregistered:
             print(f"   FAIL  not registered: {rel}")
-        print("         add it to URDFS (if it must agree) or delete it")
+        print("         register its asset family and validation; do not exempt unknown models")
     else:
-        print(f"   PASS  all {len(tracked)} URDF files are accounted for ({len(URDFS)} checked)")
+        print(f"   PASS  all {len(tracked)} URDF files accounted for ({len(URDFS)} Imgo2 models + cart)")
+
+    print("\n7) independent passive cart model")
+    try:
+        cart_model = check_cart(DEFAULT_CART)
+        print(f"   PASS  cart: {cart_model['total_mass_kg']:g} kg, four passive wheels, valid solid inertias")
+    except (ValueError, OSError, ET.ParseError, AttributeError, TypeError) as exc:
+        failures.append(f"cart model: {exc}")
+        print(f"   FAIL  cart: {exc}")
 
     # ---- informational ----
-    print("\n7) notes (reported, not failures)")
+    print("\n8) notes (reported, not failures)")
     print("   - imgo2_description/ is the single model source: xacro/core.xacro holds the")
     print("     physics; urdf/imgo2.urdf and urdf/imgo2.gazebo.urdf are generated, do not edit")
     print("     (regenerate with `xacro xacro/robot.xacro [transmission:=true gazebo:=true imu:=true]`)")

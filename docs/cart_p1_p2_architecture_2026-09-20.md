@@ -1,122 +1,100 @@
-# P1/P2 小车建模与滑行标定：文件架构方案
+# P1/P2 小车建模与拖曳任务架构
 
-日期：2026-09-20。状态：**设计方案，尚未实现或运行 P1/P2**。
+日期：2026-09-20。状态：**P1/P2 已实现并通过本机离线检查，Isaac Lab 物理验收待训练机执行。用户已明确本机不运行 Isaac Lab，代码仍面向 Isaac Lab。** 当前完成项、验证与限制统一见 [实现记录](cart_p1_p2_implementation_2026-09-20.md)。
 
-依据：用户更新的本地 `paper_plan_imgo2.md`（SHA256 `7961bae8e6da38f8368c8436cb007c140c29e3b9ffa1b09114527123428548c9`）以及同步至 `40cb298` 的源码。该草稿按用户要求保留在本地并从 Git 跟踪中移除；本记录独立保存实施所需的架构约定。本轮只安排文件职责与接口，保留用户计划原文。
+## 1. 已确定的安排
 
-## 1. 范围与组织方式
+小车直接维护 URDF，不增加 xacro 或程序化 USD 构造器，运行时由 Isaac Lab 导入生成 USD。拖曳任务集中在 `tasks/manager_based/towing/`，与 `locomotion/` 同级，不另建包根级 `imgo2_rl/towing/`。
 
-P1 建立车体、四个被动轮和挂点；P2 在没有机器人的平地场景中赋初速度并标定滑行阻力。采用 `SimulationContext + InteractiveScene` 的独立实验入口，暂不注册 Gym 任务，不需要 reward、policy、runner 或训练配置。
+已有 AMP/PPO 训练结果作为冻结底层。用户反馈 AMP 低速跟踪更好、PPO 运动更好看；后续支持切换并分别记录结果。本轮没有新增测量。P1/P2 独立验证小车，不需要 RL。
 
-代码分三层：`assets/` 管小车本身，包内 `towing/` 管可复用的场景与动力学，`scripts/towing/` 管实验流程。这样 P3/P4 可以直接复用资产、阻力和记录模块。现有 `tasks/manager_based/locomotion/velocity/` 继续负责底层 locomotion；到 P10 再新增独立上层任务目录。
+本记录替代此前 xacro 和程序化 USD 提案。本地研究草稿 `paper_plan_imgo2.md` 按用户要求由 Git 忽略，实施所需约定以本文为准。
 
-## 2. 拟新增文件
+## 2. 文件安排
 
-**下列路径均为拟新增，当前不存在，不是可直接运行的入口。** 常规包目录配空的 `__init__.py`，其中不启动仿真、不生成文件。
+下图 P1/P2 文件现已创建；P3/P4/P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。仿真入口尚未运行，不作为已验收功能。
 
 ```text
+imgo2_description/
+└── cart/
+    └── cart.urdf                         # 直接维护的小车模型源
+
 imgo2_rl/
 ├── source/imgo2_rl/imgo2_rl/
 │   ├── assets/
-│   │   ├── cart.py                   # 参数定义、ArticulationCfg 工厂
-│   │   └── cart_usd.py               # 根据参数创建 USD 刚体、碰撞与关节
-│   └── towing/
-│       ├── cart_scene_cfg.py         # 平地 + 小车的独立测试场景
-│       ├── resistance.py             # 轮轴阻力计算与施加
-│       └── recording.py              # CSV 与运行元数据写入
+│   │   └── cart.py                       # URDF 路径、导入与 ArticulationCfg
+│   └── tasks/manager_based/
+│       ├── locomotion/                   # 已有底层运动任务
+│       └── towing/
+│           ├── __init__.py               # 已建；后续任务注册
+│           ├── cart_scene_cfg.py         # P1/P2 平地与小车场景
+│           ├── towing_env_cfg.py         # P4+ 机器人与小车组合环境
+│           ├── mdp/
+│           │   ├── __init__.py           # 已建
+│           │   ├── resistance.py         # P2 轮轴阻力
+│           │   └── rope.py               # P3 绳索张力与力矩
+│           ├── agents/
+│           │   ├── __init__.py           # 已建
+│           │   └── rsl_rl_ppo_cfg.py     # P10+ 上层 PPO 训练配置
+│           └── utils/
+│               ├── __init__.py           # 已建
+│               ├── recording.py          # P2 起：轨迹、参数与状态
+│               ├── policy_cfg.py         # P4+ 底层 checkpoint 与接口契约
+│               └── low_level_policy.py   # P4+ AMP/PPO 冻结策略适配
 ├── scripts/
 │   ├── towing/
-│   │   └── cart_coast.py             # P1 drop / P2 coast 两种模式
+│   │   └── cart_coast.py                 # P1 drop / P2 coast 实验入口
 │   └── tools/
-│       └── summarize_cart_coast.py   # 标准库离线汇总、停止判定与 SVG 曲线
+│       └── summarize_cart_coast.py       # 标准库离线指标与 SVG 曲线
 └── tests/
-    └── test_cart_coast_metrics.py    # 停止/未停止/异常轨迹的指标测试
+    └── test_cart_coast_metrics.py        # 指标实现后添加行为测试
 ```
 
-| 文件 | 负责 | 边界 |
-|---|---|---|
-| `assets/cart.py` | 车体长宽高、轮半径/宽度、轮距/轴距、各刚体质量、挂点局部坐标、初始姿态；创建新的资产配置 | 几何与质量只有一份参数源；总质量明确为车体加四轮，不把总质量再次写到车体 |
-| `assets/cart_usd.py` | 方箱车体、圆柱轮、惯量、碰撞、四个 revolute joint、articulation root、挂点 frame | 无驱动目标；关节 stiffness/damping 初始为零；仿真启动后才导入/调用 USD API；可导出快照 |
-| `towing/cart_scene_cfg.py` | 地面接触材质、环境间距、小车配置与出生位置 | 与现有 locomotion 的地形、随机化配置分开；时间步由入口配置并记录 |
-| `towing/resistance.py` | 四轮角速度 → 每轮阻力矩；每个 physics step 写入 | 首版只做 `tau = -b * omega`；不同时启用 USD damping 和显式黏性阻力，避免重复计入 |
-| `towing/recording.py` | 固定字段 CSV、完整参数 JSON、代码版本与运行状态 | 不计算动力学；先使用标准库，不引入 TensorBoard/W&B；P5 增加机器人与绳索字段 |
-| `scripts/towing/cart_coast.py` | CLI、AppLauncher、场景创建、落地稳定、初速度设置、推进与清理 | 所有物理细节调用包模块；有限运行时长；先单环境验证 |
-| `scripts/tools/summarize_cart_coast.py` | 读 CSV/JSON，输出停止距离、停止时间、残余速度及曲线 | 仅标准库，不导入 `imgo2_rl` 或 Isaac Lab，可在普通 Python 离线运行 |
+`agents/` 将来训练上层策略，不重训底层 AMP/PPO。CLI 启动脚本仍放 `scripts/`，可复用任务定义在 `manager_based/towing/`；P10 根据实际 wrapper 选择现有训练入口或补专用入口，当前不复制算法 runner。
 
-现有 `imgo2_rl/__init__.py` 会导入任务注册，因此所有仿真入口应先启动 `AppLauncher`，再导入项目包。离线汇总直接作为脚本运行，避免意外触发 Isaac Lab 导入。
+现有 `tasks/__init__.py` 通过 `import_packages` 递归发现包，并排除 `.mdp` 和 `utils`。无需改 `locomotion/__init__.py`。新初始化文件仅声明职责，不导入不存在的实现、不注册虚假的 Gym ID。仿真入口先启动 `AppLauncher`，再导入项目包。
 
-## 3. 模型源码与生成物
+## 3. 模型约定
 
-第一版使用程序化 USD：`cart.py` 的参数与 `cart_usd.py` 的构造逻辑共同作为源码，在 Stage 中生成模型。简单箱体与圆柱不需要网格、URDF 转换器或 CAD 文件，也无需增加机器人模型副本。
+`imgo2_description/cart/cart.urdf` 是几何、名义质量、质心和惯量的唯一源。第一版用 box 车体、cylinder 车轮，不需要网格。尺寸尚无实测值，实施时使用明确标注的工程默认值。
 
-每次实验可导出该小车的 `cart.usda` 快照到运行目录，与解析后的参数一起留存；不要求先手工生成一个固定位置的 USD 才能启动。将来若需要 CAD 或跨仿真器模型，再决定外部资产的统一存放位置。
+- x 前、y 左、z 上；车体与四轮共五个有质量刚体，轮轴沿 y，用四个 `continuous` joint，运行时按名称解析索引与核对转向。
+- 底座浮动；禁用 cylinder→capsule 替换；关闭驱动或增益置零，URDF damping/friction 初始为零，P2 阻力由代码单独施加。
+- 挂点用空 link + fixed joint 表达坐标系，不加虚假质量。解析并保存相对车体的变换，施力到车体及对应力臂，不能依赖固定关节合并后仍存在独立挂点 body。
+- `assets/cart.py` 负责路径、导入与初始状态，不复制几何参数。路径由 `Path(__file__)` 推导，可用环境变量覆盖；实验质量覆盖需明确惯量处理并记录。
+- 地面材质在小车场景单独配置，不改已有 locomotion 公共场景。
 
-建议的 USD 结构：
+`check_model_sync.py` 已增加小车独立结构/物理检查，Imgo2 保留一致性/FK 检查，并继续拒绝未登记 URDF。小车不加入机器人参数对照组。MODEL-04 的跨平台排序问题已修，全模型检查通过，依据见实现记录。
 
-```text
-Cart                              # Articulation root 所在位置由运行验证确定
-├── base_link                     # 刚体：车体质量/惯量/碰撞
-│   └── rope_attachment           # 无质量 Xform，仅定义挂点
-├── wheel_fl                      # 刚体：圆柱轴沿 y
-├── wheel_fr
-├── wheel_rl
-├── wheel_rr
-└── joints
-    ├── wheel_fl_joint            # base_link ↔ wheel_fl，转轴沿 y
-    ├── wheel_fr_joint
-    ├── wheel_rl_joint
-    └── wheel_rr_joint
-```
+## 4. P1/P2 实验
 
-坐标统一为 x 前、y 左、z 上。四轮关节正方向一致，按名称解析运行时索引。挂点位置相对 `base_link` 定义，P3 由它求世界位置和力臂；它不是第六个带质量的刚体。
+`cart_scene_cfg.py` 配置平地与小车；`cart_coast.py` 使用 `SimulationContext + InteractiveScene` 有限时长推进，先单环境。文件放入 manager_based 目录不意味着单体标定必须使用 `ManagerBasedRLEnv`。
 
-第一版采用浮动底座、平整地面、沿 x 的初速度，记录横向偏移与 yaw。若确需严格一维约束，应作为独立实验配置记录，不能每步覆盖 y/姿态冒充自由滚动；P1 的落地检查必须保留垂向自由度。
+- **drop**：验证重力落地、轮地接触、四个自由轮和姿态稳定。
+- **coast**：静置稳定后设 0.5/1.0 m/s 初速度，同时按轮半径与轴向设置匹配轮速，减小起始滑移。赋速后定义 t=0、x0。
+- **阻力**：每轮 `tau=-b*omega`，b 单位 N·m·s/rad，保留 b=0 对照；不重复启用 URDF damping，不用接触摩擦代替轮轴阻力，显式记录车体额外阻尼。
+- **推进**：读轮速 → 算/设阻力矩 → `scene.write_data_to_sim()` → `sim.step()` → `scene.update(dt)` → 记录。P3 绳索也在物理步施力阶段接入。
+- **停止**：建议平移速率低于 0.02 m/s 持续 0.5 s，并报告残余轮速，阈值入元数据。纯黏性阻力渐近衰减，不要求数学上的严格零速。
+- **距离**：合格低速窗口起点相对 x0 的位移。超时写 `stopped=false`，只报告截断距离；翻倒、非有限状态和明显横向运动单列异常。
 
-## 4. P2 实验接口与验收
+1.0 m/s 下滑行 0.5–2 m 仅是工程目标，不是真实脚轮标准，不要求 0.5 m/s 满足相同范围。至少比较零/低/中/高阻力的耗散方向和距离趋势，必要时 dt 减半复核。不能通过逐步覆盖横向位置或姿态来冒充自由滚动。
 
-入口提供 `drop` 与 `coast` 模式。`drop` 检查重力落地、轮地接触和四个自由轮；`coast` 先静置稳定，再将小车平移速度设为 0.5 或 1.0 m/s，同时按转轴符号设置无滑动初始轮速 `omega = v0/r`，以减少“车已动、轮未转”的起始滑移。t=0 与 x0 在赋速后记录。
+## 5. 记录与后续接口
 
-物理推进顺序：读取轮速 → 计算/设置阻力矩 → `scene.write_data_to_sim()` → `sim.step()` → `scene.update(dt)` → 记录新状态。后续 rope 也接在每个物理步施力阶段，不挂到低频的 command 更新中。
+拟输出到 `imgo2_rl/logs/towing/cart_coast/<run_id>/`，首次运行时创建，已有忽略规则覆盖。记录 `config.json`、`trajectory.csv`、`summary.json`、`coast.svg`，可保存实际导入 USD 快照。
 
-首版每轮相同黏性系数 b，单位 N·m·s/rad，允许 b=0 作对照。驱动力矩为零，施加的只有耗散阻力。接触摩擦负责轮地牵引，不用它代替可控的轮轴阻力；车体额外线性/角阻尼应明确设定并记录，防止隐藏阻力污染标定。
+CSV 含时间、位置、线速度、姿态、四轮角速度与阻力矩；元数据含模型哈希、实际质量/惯量、轮尺寸、b、材质、dt、求解器、初速度、停止判据、软件及代码版本。离线汇总脚本只用标准库，不导入项目包。
 
-最小 CSV 字段：`time_s, cart_x_m, cart_y_m, cart_z_m, cart_vx_mps, cart_vy_mps, cart_vz_mps`、姿态、四轮 `omega_radps` 与 `resistance_nm`。运行元数据包含实际质量/惯量、轮尺寸、b、材质、时间步、求解器、初速度、停止判据、Isaac Lab/Sim 版本、代码提交号及工作区是否有修改。
+P4 起 `utils/low_level_policy.py` 接收速度指令并生成底层动作，`utils/policy_cfg.py` 保存各策略 checkpoint 路径/哈希、观测顺序/缩放、历史、动作映射/缩放、控制周期与 reset 契约。冻结两种底层，按相同负载工况分别记录 `policy_type` 与结果，不默认接口相同。具体 checkpoint 与机器人配置在接入前落实，P1/P2 不依赖这项信息。
 
-**纯黏性阻力渐近衰减，停止是测量判据。** 建议首版以平移速率低于 0.02 m/s 且持续 0.5 s 判为停止，同时报告最大残余轮速；这些阈值必须进元数据。停止距离为合格低速窗口起点相对 x0 的位移。超时仍未停止时写 `stopped=false`，距离是截断观测值，不能伪报为停止距离。异常翻倒、非有限状态或明显横向运动单列为无效工况。
+## 6. 已完成与待验证
 
-计划中的 0.5–2 m 仅用于 **v0=1.0 m/s** 的初版工程调试，不能直接要求 0.5 m/s 工况也满足同一区间，更不能写成真实脚轮参数。P2 应展示 b=0/低/中/高阻力的曲线，并检查耗散方向及更大 b 是否带来更短滑行距离；必要时将 dt 减半复查选定工况。
+本节以下保留目录骨架阶段的验证依据；**当前状态以 [实现与验证记录](cart_p1_p2_implementation_2026-09-20.md) 为准**。
 
-## 5. 产物与后续扩展
+**骨架阶段已完成**：直接 URDF 与目录安排确定，建立 `manager_based/towing/` 和 `mdp/agents/utils` 初始化文件，清理冲突提案。
 
-拟使用的输出目录（首次运行时创建）：
+**当前待验证（CART-01）**：训练机完成导入/落地/滑行实测。空 actuator 力矩直通层的替代后端测试已通过，真实 PhysX 尚待验证；目录/语法检查不能替代 P1/P2 验收。
 
-```text
-imgo2_rl/logs/towing/cart_coast/<run_id>/
-├── config.json
-├── cart.usda
-├── trajectory.csv
-├── summary.json
-└── coast.svg
-```
+验证使用 `C:/Users/qmq/AppData/Local/Python/pythoncore-3.14-64/python.exe`（Python 3.14）：四个新文件编译通过；调用本机 Isaac Lab 的实际 `import_packages` 辅助函数对隔离包做发现/导入，通过，并确认 agents 被导入、mdp/utils 按黑名单跳过。文档 UTF-8 与本地链接检查通过；`git diff --check` 通过，`git ls-files -i -c --exclude-standard` 为空。骨架聚合 SHA256 为 `38af375746e0e6ca53f3ae65c04de6889b145c2bb1ef7da37008b9932d82d743`（按排序的相对路径、NUL、文件内容依次拼接计算）。
 
-路径从脚本位置推导，允许 `--output-dir` 覆盖。根 `.gitignore` 已忽略 `logs/` 和 `*.usda`，无需为本方案新增忽略规则；经验证的简短结论和选定离线结果放 `docs/`。将来若跟踪二进制 USD，再同步 `.gitattributes`。
-
-- P3：在 `towing/` 增加 `rope.py`，复用挂点接口，成对施加张力及偏心力矩。
-- P4–P9：增加机器人与小车组合场景、冻结底层策略的适配器，以及相应实验入口；保留 `cart_coast.py` 作为独立标定工具。拟新增 `towing/low_level_policy.py` 与 `towing/policy_cfg.py`，统一接收速度指令、输出底层动作，支持选择已有 AMP/PPO checkpoint。各策略分别保留观测顺序/缩放、历史、动作缩放、控制周期与 reset 契约，不直接假设接口相同；环境物理模块不判断算法名称。
-- P10：再建立 `tasks/manager_based/towing/`，把上层 action/reward/observation 接到已有物理模块。避免提前复制 AMP/PPO runner 或把拖曳逻辑塞入公共 `velocity_env_cfg.py`。
-
-## 6. 已完成、待实现与验证限制
-
-**本轮已完成**：读取新版计划、核对现有包导入/任务注册/日志规则，形成文件职责方案，修正架构层面“被动轮等于无阻力”“零速必须严格等于零”的潜在歧义。无代码缺陷修复，无 P1/P2 验收结果。
-
-**待实现/确认**：
-
-1. 实现上述文件并在 Isaac Lab 中完成 drop；缺资产生成器、场景与运行证据。
-2. 实现阻力与 coast，验证 0.5/1.0 m/s 曲线；缺仿真结果，b 暂不能标为已标定。
-3. 车体尺寸、轮径、质量和挂点位置目前没有实测值；可先用显式标注的工程默认参数，实车参数到位再替换。
-4. 当前机器的 Isaac Lab articulation 源码对未配置 actuator 的关节发出 warning，但静态阅读不能证明空 `actuators` 在实际运行中可用；实现时验证无驱动、非零阻力矩确实写入。禁止为消警告而把轮变成速度伺服。
-5. 用户已确认使用现有 AMP/PPO 训练结果作为冻结底层：**AMP 低速速度跟踪更好，PPO 运动更好看**（用户反馈，非本轮新增测量）。P4 先支持两者切换，按相同负载工况分别记录 `policy_type`、checkpoint 路径/哈希、配置和指标，不把两种底层的结果混为同一组。P1/P2 无机器人依赖；P4 前仍需落实具体 checkpoint 与配套机器人配置，计划中的 Go2 称呼不作为自动切换机器人模型的依据。
-
-官方 [actuator 文档](https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.actuators.html) 区分驱动增益与关节摩擦参数，实际 API 以运行环境版本为准。本轮参考本地 `articulation.py` 与 `scripts/tutorials/02_scene/create_scene.py` 静态阅读，未启动 Isaac Sim、未训练、未改模型或算法。
-
-文档验证：使用本机 `C:/Users/qmq/AppData/Local/Python/pythoncore-3.14-64/python.exe` 检查本记录 UTF-8 编码及本地链接通过；`git diff --check` 通过。计划移出索引后，本地 SHA256 与上文一致，`git check-ignore` 命中，`git ls-files -i -c --exclude-standard` 为空。工作区另有用户删除的 `research_exploration_plan.md`，本次不将该删除纳入提交；README 中其旧入口需在处理该独立删除时一并清理。
+`check_asset_paths.py` 通过：现有机器人 URDF 存在、17 个网格引用无缺失、21 份动作数据、无残留机器绝对路径；这只证明已有资产路径有效，不是小车模型验证。未运行完整任务注册、Isaac Sim、训练、部署或硬件。用户删除的 `research_exploration_plan.md` 保持原状，本轮不处理该独立删除及其既有入口。
