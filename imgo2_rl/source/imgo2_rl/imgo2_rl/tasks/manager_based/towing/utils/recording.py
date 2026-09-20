@@ -53,6 +53,8 @@ class CartRecorder:
 TOW_FIELDS = (
     "time_s", "user_cmd_mps", "ref_cmd_mps", "robot_vx_mps", "load_vx_mps",
     "rope_tension_n", "rope_distance_m", "robot_x_m", "load_x_m",
+    # 高度单列出来：机器人被拽倒/塌下去时，只看 pitch 不够直观
+    "robot_z_m", "load_z_m",
     "body_pitch_rad", "body_pitch_rate_radps",
 )
 

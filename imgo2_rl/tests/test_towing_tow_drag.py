@@ -9,6 +9,7 @@
 import ast
 import csv
 import importlib.util
+import math
 import re
 from pathlib import Path
 import sys
@@ -69,29 +70,66 @@ class LayoutTests(unittest.TestCase):
         self.assertAlmostEqual(offset[1], 0.0)
         self.assertAlmostEqual(offset[2], 0.0)
 
-    def test_initial_gap_equals_rope_length_plus_slack(self):
-        robot_x, robot_offset = 0.0, self.constants["ROBOT_ATTACHMENT_OFFSET_M"]
+    def _gap(self, length, slack):
+        """按配置解出的布局，算两个挂点的**三维**距离。"""
+        offset = self.constants["ROBOT_ATTACHMENT_OFFSET_M"]
         cart_offset = self.cart_model["attachment_position_m"]
+        height = self.constants["ROBOT_SPAWN_HEIGHT_M"]
+        cart_height = self.cart_model["resting_height_m"]
+        cart_x = self._cart_x(length, slack)
+        robot_point = (0.0 + offset[0], 0.0 + offset[1], height + offset[2])
+        cart_point = (cart_x + cart_offset[0], 0.0 + cart_offset[1], cart_height + cart_offset[2])
+        return math.dist(robot_point, cart_point)
+
+    def test_initial_gap_equals_rope_length_minus_slack(self):
+        """`--slack` 是松弛量：初始间距必须 = L0 − slack（小于 L0）。"""
         for length, slack in ((1.0, 0.05), (1.5, 0.0), (0.8, 0.2)):
-            cart_x = tow_drag.initial_cart_x(length, slack)
-            robot_attach = robot_x + robot_offset[0]
-            cart_attach = cart_x + cart_offset[0]
-            self.assertAlmostEqual(robot_attach - cart_attach, length + slack, places=12,
+            self.assertAlmostEqual(self._gap(length, slack), length - slack, places=9,
                                    msg=f"L0={length} slack={slack}")
+
+    def test_initial_condition_leaves_the_rope_slack(self):
+        """回归：t=0 的张力必须是 0。
+
+        实测第一版把初始间距写成 L0 + slack，5 cm 就对应 200 N 预载；叠加「用刚体原点
+        当挂点」的错误后实测 1955 N，0.1 s 内把机器人拽到 pitch −0.74 rad 并拽倒。
+        """
+        rope = module_at("towing_rope_gap_test",
+                         RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rope.py")
+        for length, slack in ((1.0, 0.05), (1.0, 0.0), (1.2, 0.3)):
+            gap = self._gap(length, slack)
+            self.assertLessEqual(gap, length + 1e-9, "初始间距必须不大于绳长")
+            tension = rope.rope_tension(gap, 0.0, rest_length=length,
+                                        stiffness=4000.0, damping=100.0)
+            self.assertEqual(tension, 0.0, f"L0={length} slack={slack} 初始张力应为 0")
+
+    def test_rejects_geometry_that_cannot_hold_the_requested_slack(self):
+        """高差大于目标距离时必须报错，而不是悄悄给出错的布局。"""
+        offset = self.constants["ROBOT_ATTACHMENT_OFFSET_M"]
+        cart_offset = self.cart_model["attachment_position_m"]
+        with self.assertRaises(ValueError):
+            tow_drag.initial_cart_x(1.0, 0.99, spawn_height=0.35, cart_height=0.15,
+                                    robot_offset=offset, cart_offset=cart_offset)
 
     def test_cart_attachment_faces_the_robot(self):
         """小车的挂点在车体 +x；机器人在前、小车在后 ⇒ 该点朝向机器人，拖曳方向正确。"""
         self.assertGreater(self.cart_model["attachment_position_m"][0], 0.0)
-        self.assertLess(tow_drag.initial_cart_x(1.0, 0.0), 0.0)
+        self.assertLess(self._cart_x(1.0, 0.0), 0.0)
 
-    def test_sign_convention_matches_the_documented_layout(self):
-        """公式里的常数必须真的等于「机器人挂点 x - 小车挂点 x」的偏移量。"""
+    def _cart_x(self, length, slack):
+        return tow_drag.initial_cart_x(
+            length, slack, spawn_height=self.constants["ROBOT_SPAWN_HEIGHT_M"],
+            cart_height=self.cart_model["resting_height_m"],
+            robot_offset=self.constants["ROBOT_ATTACHMENT_OFFSET_M"],
+            cart_offset=self.cart_model["attachment_position_m"])
+
+    def test_sign_convention_is_robot_in_front_and_cart_behind(self):
         offset = self.constants["ROBOT_ATTACHMENT_OFFSET_M"][0]
         cart_offset = self.cart_model["attachment_position_m"][0]
-        self.assertAlmostEqual(offset - cart_offset, -0.41, places=12)
-        # 与文档里的常数一致：initial_cart_x 必须能反解出「间距 = L0 + slack」
-        cart_x = tow_drag.initial_cart_x(1.0, 0.05)
-        self.assertAlmostEqual((0.0 + offset) - (cart_x + cart_offset), 1.05, places=12)
+        cart_x = tow_drag.initial_cart_x(1.0, 0.05, spawn_height=0.35, cart_height=0.15,
+                                         robot_offset=self.constants["ROBOT_ATTACHMENT_OFFSET_M"],
+                                         cart_offset=self.cart_model["attachment_position_m"])
+        self.assertLess(cart_x, 0.0, "小车必须在机器人后方")
+        self.assertLessEqual(offset - cart_offset, 0.0)
 
 
 class ArgumentTests(unittest.TestCase):
@@ -120,6 +158,7 @@ class TowRecorderTests(unittest.TestCase):
         row = {"time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
                "robot_vx_mps": 0.5, "load_vx_mps": 0.5, "rope_tension_n": 10.0,
                "rope_distance_m": 1.1, "robot_x_m": 0.1, "load_x_m": -1.0,
+               "robot_z_m": 0.30, "load_z_m": 0.15,
                "body_pitch_rad": 0.01, "body_pitch_rate_radps": 0.0}
         row.update(changes)
         return row

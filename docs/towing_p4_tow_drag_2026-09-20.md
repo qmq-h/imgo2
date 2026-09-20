@@ -73,8 +73,10 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 | `steady_speed_gap_mps` | 两者之差 | 判据阈值 0.1 m/s |
 | `steady_tension_n` / `steady_tension_std_n` | 稳态窗张力均值/标准差 | 张力显著为正且波动小（阈值 25% 均值） |
 | `steady_distance_m` | 稳态窗绳长（挂点间距） | 略大于 `L0`（伸长 = T/k） |
-| `tension_slack_fraction` | 指令阶段中 T = 0 的步数占比 | 持续松弛说明绳太松或拖曳失败 |
-| `max_abs_pitch_rad` | 全程最大 |pitch| | 阈值 0.6 rad |
+| `max_abs_pitch_rad` | 全程最大 \|pitch\| | 阈值 0.6 rad |
+| `steady_tracking_ratio` | 稳态窗机器人 vx ÷ 用户指令 | 必须 ≥ 0.5；**只看「两体同速」不够**——两者都静止时它也成立（实测踩过） |
+| `tension_slack_fraction` | 指令阶段中 T = 0 的占比 | > 0.9 ⇒ `rope_never_taut_during_tow`（全程松弛＝没拖上） |
+| `steady_robot_z_m` / `min_robot_z_m` | 稳态窗/全程最低机身高度 | 明显偏低说明塌下去或被拽倒（配合 `max_abs_pitch_rad` 看） |
 
 `failures` 为空 ⇒ `valid = true`、退出码 0；有失败项 ⇒ 退出码 2。
 
@@ -84,7 +86,7 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 
 **操作前提：Isaac Sim 必须串行执行**（并发实例争锁会中断，见 P1/P2 检查记录 §3.5）。
 
-## 5. 离线验证
+## 5. 验证：离线测试与训练机实跑发现
 
 | 验证 | 结果 |
 |---|---|
@@ -159,7 +161,54 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 并存正是 §5.1 那次搞混的温床，故删除该方法；`joint_mapping` **字段**保留（它是部署契约的一部分，
 仍与 `amp/config.yaml` 交叉核对）。
 
-### 5.4 其它覆盖与测试抓到的缺陷
+### 5.4 第三次实跑：流程跑通，但**行为失败**——两处 bug（已修）
+
+第三次（`20260920T143803Z_a03574f3`）终于完整跑完（`state=completed`），管线全部打通：
+配置、冻结策略、绳力、记录、汇总、判定都工作。但行为是失败的，`summary.json`：
+
+```text
+steady_robot_vx_mps   = 0.00054     ← 指令是 0.5，机器人几乎没动
+steady_load_vx_mps    = -0.027
+steady_speed_gap_mps  = 0.028       ← 这条反而「通过」了（两者都≈静止）
+tension_peak_n        = 0.0
+tension_slack_fraction= 1.0         ← 整个指令阶段绳都是松的
+steady_distance_m     = 0.534       ← 远小于 L0=1.0
+max_abs_pitch_rad     = 0.802       ← 唯一被抓住的失败项
+```
+
+轨迹把原因指得很清楚：**初始挂点间距实测 1.4777 m（设计值 1.05 m），初始张力 1955 N**
+（机器人自重才 54 N）⇒ 0.1 s 内 pitch 冲到 −0.74 rad、t≈0.5 s 就被拽倒 ⇒ 之后 `v_R≈0`。
+两处 bug 叠在一起：
+
+1. **位置漏了挂点偏移**：算挂点**速度**时加了偏移，算挂点**位置**却直接用了刚体原点
+   ⇒ 绳长里混进机器人与小车的高差（0.35 vs 0.15 m），`d = √(1.46² + 0.2²) = 1.478`。
+2. **`--slack` 语义写反**：名字是「松弛量」，实现却是「初始间距 = L0 **+** slack」＝预张紧。
+   5 cm 就对应 200 N 预载；叠加第 1 条后变成 ≈1911 N（与实测 1955 N 吻合，差值来自阻尼项）。
+
+**修法**：
+
+- 挂点世界坐标 = **刚体原点 + 旋转后的挂点偏移**（与速度的口径一致）；
+- `initial_cart_x()` 改为按**三维**几何解算：目标距离 `L0 − slack`，横向间距取
+  `√(target² − dz²)`，并显式检查「目标距离小于两挂点高差」这种几何不可能的情形；
+- `--slack` 现在是真正的松弛：离线核算 `slack=0.05` ⇒ 初始间距 **0.9500 m**、
+  **初始张力 0 N**、机器人前进 **0.05 m** 后绳才张紧（正是计划想观察的 slack→taut）；
+- 日志增加 `robot_z_m`/`load_z_m`（这次「倒了」只能从 pitch 间接看出，太费劲），
+  `summary.json` 增加 `steady_robot_z_m`/`min_robot_z_m`。
+
+**同时加强判据**（这次 `steady_speed_gap_mps=0.028` 通过了，说明原判据有洞）：
+
+- `steady_tracking_ratio = 稳态机器人 vx ÷ 用户指令`，< 0.5 判 `robot_not_tracking_command`；
+- `tension_slack_fraction > 0.9` 判 `rope_never_taut_during_tow`。
+
+**回归测试**：布局断言改为三维；新增 `test_initial_condition_leaves_the_rope_slack`
+（用 `cart.urdf` 实读挂点与场景常量算出初始间距，断言 **t=0 张力必须为 0** —— 直接锁住
+那次 1955 N 的拽倒）与 `test_rejects_geometry_that_cannot_hold_the_requested_slack`。
+
+**仍未验证**：机器人能否在 `spawn_height=0.35` 稳定站立并跟住 0.5 m/s。上一次的数据在
+被拽倒前没有干净样本（t=0.005 s 时张力已有 1955 N）。下一次的**站定阶段**（t<1 s，指令为 0、
+绳松弛、张力为 0）会直接给出这个答案，也是判断「高/低站高分支」疑虑的第一手数据。
+
+### 5.5 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约
 （`positions=` 作用点、`write_data_to_sim()` 必须早于 `sim.step()` 且晚于施力、失败路径

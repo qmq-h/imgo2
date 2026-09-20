@@ -42,7 +42,7 @@ def parse_args(argv=None):
     parser.add_argument("--stiffness", type=float, default=4000.0, help="绳刚度 k，N/m")
     parser.add_argument("--damping", type=float, default=100.0, help="绳阻尼 c，N·s/m")
     parser.add_argument("--slack", type=float, default=0.05,
-                        help="初始松弛量，m（初始挂点间距 = L0 + slack）")
+                        help="初始松弛量，m（两个挂点的初始三维距离 = L0 - slack，t=0 张力为 0）")
     parser.add_argument("--wheel-damping", type=float, default=0.016,
                         help="每个车轮的轴承阻力 b，N·m·s/rad（P2 的候选值之一）")
     parser.add_argument("--spawn-height", type=float, default=None,
@@ -86,13 +86,27 @@ def git_info():
     return {"commit": run("rev-parse", "HEAD"), "working_tree": run("status", "--porcelain")}
 
 
-def initial_cart_x(rope_length: float, slack: float) -> float:
-    """让初始挂点间距 = L0 + slack。
+def initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
+                   cart_height: float, robot_offset, cart_offset) -> float:
+    """解出小车初始 x，使两个挂点的**三维**距离 = L0 − slack（绳在 t=0 是**松的**）。
 
-    机器人挂在 base 的 x = -0.16（`ROBOT_ATTACHMENT_OFFSET_M`），小车挂在车体 +0.25
-    （`cart.urdf`），机器人在原点 ⇒ 间距 = -cart_x - 0.41。
+    `--slack` 的语义是「初始松弛量」：间距必须**小于** L0，于是 t=0 张力为 0，机器人先
+    起步、绳自然由松到紧。第一版写成了 `L0 + slack`（预张紧）——名字说松、实现是紧，
+    5 cm 就对应 200 N 预载，实测直接把机器人拽倒。
+
+    两个挂点的高度不同（机器人 base 在 `spawn_height`，小车 base_link 在 `cart_height`），
+    所以横向距离要按 `sqrt(target² − dz²)` 解，不能直接拿目标距离当 x 间距
+    （第一版就是漏了这一点，又把刚体原点当成挂点，初始距离报成 1.478 m）。
     """
-    return -(rope_length + slack) - 0.41
+    target = rope_length - slack
+    dz = (spawn_height + robot_offset[2]) - (cart_height + cart_offset[2])
+    if target * target < dz * dz:
+        raise ValueError(
+            f"绳长 {rope_length} m 减去松弛 {slack} m 后只有 {target:.3f} m，"
+            f"小于两挂点的高差 {abs(dz):.3f} m，几何上不可能")
+    horizontal = math.sqrt(target * target - dz * dz)
+    # 机器人在前（x 大），小车的挂点在车体 +x ⇒ 机器人挂点 x − 小车挂点 x = horizontal
+    return robot_offset[0] - cart_offset[0] - horizontal
 
 
 def main(args):
@@ -134,10 +148,13 @@ def main(args):
         spawn_height = args.spawn_height if args.spawn_height is not None else ROBOT_SPAWN_HEIGHT_M
 
         cart_cfg, model = make_cart_cfg(output / "usd")
-        cart_cfg.init_state.pos = (initial_cart_x(args.rope_length, args.slack), 0.0,
-                                   model["resting_height_m"])
         cart_attachment = tuple(model["attachment_position_m"])
         robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
+        cart_cfg.init_state.pos = (
+            initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
+                           cart_height=model["resting_height_m"],
+                           robot_offset=robot_attachment, cart_offset=cart_attachment),
+            0.0, model["resting_height_m"])
 
         sim_cfg = sim_utils.SimulationCfg(
             dt=args.dt, device=args.device,
@@ -209,11 +226,16 @@ def main(args):
             return local.unsqueeze(1)
 
         def apply_rope_and_resistance(command):
-            """按当前状态算绳力与轮阻并写入缓冲（显式欧拉，同 P1/P2）。"""
-            robot_p = tuple(float(v) for v in robot.data.body_pos_w[0, base_id])
-            cart_p = tuple(float(v) for v in cart.data.body_pos_w[0, cart_base_id])
+            """按当前状态算绳力与轮阻并写入缓冲（显式欧拉，同 P1/P2）。
+
+            **挂点世界坐标 = 刚体原点 + 旋转后的挂点偏移**。第一版只加了偏移去算
+            挂点速度、位置却直接用了刚体原点，于是绳长里混进了机器人与小车的高度差
+            （0.35 vs 0.15 m），初始张力被抬到 ~1955 N 直接把机器人拽倒。
+            """
             robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_id], robot_attach.view(1, 3))
             cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_id], cart_attach.view(1, 3))
+            robot_p = tuple(float(v) for v in (robot.data.body_pos_w[0, base_id] + robot_offset_w[0]))
+            cart_p = tuple(float(v) for v in (cart.data.body_pos_w[0, cart_base_id] + cart_offset_w[0]))
             robot_v = point_velocity(tuple(float(v) for v in robot.data.body_lin_vel_w[0, base_id]),
                                      tuple(float(v) for v in robot.data.body_ang_vel_w[0, base_id]),
                                      tuple(float(v) for v in robot_offset_w[0]))
@@ -301,6 +323,8 @@ def main(args):
                 "rope_distance_m": float(state.distance),
                 "robot_x_m": float(robot.data.root_pos_w[0, 0]),
                 "load_x_m": float(cart.data.root_pos_w[0, 0]),
+                "robot_z_m": float(robot.data.root_pos_w[0, 2]),
+                "load_z_m": float(cart.data.root_pos_w[0, 2]),
                 "body_pitch_rad": pitch,
                 "body_pitch_rate_radps": float(robot.data.root_ang_vel_b[0, 1]),
             }
@@ -338,9 +362,14 @@ def main(args):
             "steady_tension_std_n": spread("rope_tension_n"),
             "steady_distance_m": mean("rope_distance_m"),
             "mean_pitch_rad": mean("body_pitch_rad"),
+            "steady_robot_z_m": mean("robot_z_m"),
+            "min_robot_z_m": min(float(r["robot_z_m"]) for r in rows),
             "max_abs_pitch_rad": max(abs(float(r["body_pitch_rad"])) for r in rows),
             "tension_peak_n": max(tension),
             "tension_slack_fraction": sum(1 for t in tension if t == 0.0) / len(tension),
+            # 跟速比：只看「两体速度接近」是不够的——两者都静止时它也成立（实测踩过：
+            # 机器人被拽倒后 v_R≈v_L≈0，speed_gap 只有 0.028，判据没抓住）
+            "steady_tracking_ratio": mean("robot_vx_mps") / args.velocity,
             "final_load_x_m": float(rows[-1]["load_x_m"]),
             "final_robot_x_m": float(rows[-1]["robot_x_m"]),
         })
@@ -348,6 +377,12 @@ def main(args):
         failures = []
         if abs(summary["steady_speed_gap_mps"]) > 0.1:
             failures.append("robot_and_load_speeds_differ")
+        # 机器人必须真的在按指令走：否则「两体同速」只是「两者都静止」
+        if summary["steady_tracking_ratio"] < 0.5:
+            failures.append("robot_not_tracking_command")
+        # 拖曳阶段绳必须真的在拉；全程松弛说明没拖上（可能是布局/参数问题）
+        if summary["tension_slack_fraction"] > 0.9:
+            failures.append("rope_never_taut_during_tow")
         if summary["steady_tension_std_n"] > 0.25 * max(summary["steady_tension_n"], 1e-6):
             failures.append("tension_not_steady")
         if summary["max_abs_pitch_rad"] > 0.6:
