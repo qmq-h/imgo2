@@ -197,7 +197,11 @@ def body_attitude_summary(quat_wxyz, lean_threshold_deg=2.0, dt=None):
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
     roll = np.degrees(np.arctan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)))
     pitch = np.degrees(np.arcsin(np.clip(2.0 * (w * y - z * x), -1.0, 1.0)))
-    yaw = np.degrees(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
+    # 偏航必须**先解缠（unwrap）再统计**：arctan2 给出的 yaw 落在 ±180°，机器人航向一旦跨过
+    # ±180° 边界，「峰峰 = max − min」和「漂移率 = (末 − 首)/时长」都会凭空多（或少）360°。
+    # 2026-09-20 实测到一次：`yaw 峰峰 359.95°` 而累积漂移率只有 −2.32 °/s（19 s 才 −44°）
+    # —— 那个 360° 纯粹是解缠假象（旧 24500 那次没跨界，所以 24° 是对的）。
+    yaw = np.degrees(np.unwrap(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)), axis=0))
 
     per_env_pitch = np.mean(pitch, axis=0)
     out = {
@@ -206,6 +210,7 @@ def body_attitude_summary(quat_wxyz, lean_threshold_deg=2.0, dt=None):
         "body_pitch_deg_mean": float(np.mean(pitch)),
         "body_pitch_deg_rms": float(np.std(pitch)),
         "body_pitch_deg_ptp": float(np.max(pitch) - np.min(pitch)),
+        # 解缠后的航向范围（跨 ±180° 不再产生 360° 假象）
         "body_yaw_drift_deg": float(np.max(yaw) - np.min(yaw)),
         "body_pitch_deg_mean_per_env": [float(v) for v in per_env_pitch],
         # 「恒定倾斜」：各环境的时间均值彼此接近且远离 0 —— 与「前后摆动」区分开

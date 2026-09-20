@@ -314,5 +314,42 @@ class BuildReportTests(unittest.TestCase):
         self.assertEqual(len(r["timeseries"]["contact"][0]), r["num_envs"])
 
 
+
+    def test_yaw_metrics_unwrap_across_180_degrees(self):
+        """航向跨 ±180° 时不能报出 ~360° 的"峰峰"，漂移率也必须是对的。
+
+        2026-09-20 实测到：策略回放摘要里 `yaw 峰峰 359.95°`，而累积漂移率只有 −2.32 °/s
+        （19 s 才 −44°）—— 359.95 纯属 arctan2 的 ±180° 解缠假象。旧 24500 那次没跨界，
+        所以 24° 是对的，问题只在跨界时暴露。
+        """
+        import numpy as np
+        from gait_metrics import body_attitude_summary
+
+        T, E, dt = 200, 2, 0.02
+        yaw_deg = np.linspace(170.0, 190.0, T)          # 跨过 ±180°
+        half = np.radians(yaw_deg) / 2.0
+        quat = np.zeros((T, E, 4))
+        quat[:, :, 0] = np.cos(half)[:, None]           # w
+        quat[:, :, 3] = np.sin(half)[:, None]           # z
+        out = body_attitude_summary(quat, dt=dt)
+        # 真值：航向总变化 20°，跨度 (200-1)*0.02 = 3.98 s ⇒ +5.03 °/s（修好前是 360° 假象）
+        self.assertAlmostEqual(out["body_yaw_drift_deg"], 20.0, delta=0.5)
+        self.assertAlmostEqual(out["body_yaw_drift_rate_deg_s"], 20.0 / 3.98, delta=0.05)
+
+    def test_yaw_metrics_without_wrap_stay_small(self):
+        """不跨界时与旧口径一致（防止"顺手改了别的东西"）。"""
+        import numpy as np
+        from gait_metrics import body_attitude_summary
+
+        T, E, dt = 200, 2, 0.02
+        yaw_deg = np.linspace(-10.0, 10.0, T)
+        half = np.radians(yaw_deg) / 2.0
+        quat = np.zeros((T, E, 4))
+        quat[:, :, 0] = np.cos(half)[:, None]
+        quat[:, :, 3] = np.sin(half)[:, None]
+        out = body_attitude_summary(quat, dt=dt)
+        self.assertAlmostEqual(out["body_yaw_drift_deg"], 20.0, delta=0.5)
+        self.assertAlmostEqual(out["body_yaw_drift_rate_deg_s"], 20.0 / 3.98, delta=0.05)
+
 if __name__ == "__main__":
     unittest.main()
