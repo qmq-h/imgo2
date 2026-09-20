@@ -1,6 +1,6 @@
 # P1/P2 小车建模与拖曳任务架构
 
-日期：2026-09-20。状态：**P1/P2 已实现并在训练机完成物理验收（见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)）；P3 绳索力已实现并通过离线验证（见 [P3 记录](towing_p3_rope_2026-09-20.md)），接入场景属 P4。** 当前完成项、验证与限制统一见 [实现记录](cart_p1_p2_implementation_2026-09-20.md)。
+日期：2026-09-20。状态：**P1/P2 已实现并在训练机完成物理验收（见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)）；P3 绳索力已实现、离线验证通过并在 P4 拖曳中被真实使用（见 [P3 记录](towing_p3_rope_2026-09-20.md)）；**P4 核心行为已在训练机验证（0.5 m/s 拖曳成立）**，剩余 `v_cmd=1.0 m/s`、`m_L` 包线扫描与 PPO 契约。** 当前完成项、验证与限制统一见 [实现记录](cart_p1_p2_implementation_2026-09-20.md)。
 
 ## 1. 已确定的安排
 
@@ -12,7 +12,7 @@
 
 ## 2. 文件安排
 
-下图 P1–P4 文件现已创建；P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。P1/P2 仿真入口已在训练机验收；P3 的 `mdp/rope.py` 与 P4 的拖曳入口都只有离线验证，物理验收待训练机。
+下图 P1–P4 文件现已创建；P10 文件仍为后续路径。另补充 `assets/cart_model.py` 与 `scripts/tools/cart_coast_metrics.py` 供标准库验证复用。P1/P2 仿真入口、P3 的 `mdp/rope.py`（经 P4 拖曳运行使用）与 P4 的拖曳入口都已在训练机验证；P4 剩余 `v_cmd = 1.0 m/s` 与 `m_L` 包线扫描。另补 `scripts/tools/summarize_tow.py` 供拖动判读离线复算。
 
 ```text
 imgo2_description/
@@ -101,7 +101,7 @@ P4 起 `utils/low_level_policy.py` 接收速度指令并生成底层动作，`ut
 
 **P3 已实现、仅离线验证**：`mdp/rope.py` 提供单侧弹簧阻尼张力、力对与力臂力矩，31 项标准库测试通过（含动量守恒、能量不增、松弛段不做功、numpy/torch 后端一致、`mdp` 包脱离仿真器可导入）。见 [P3 记录](towing_p3_rope_2026-09-20.md)。
 
-**P4 已实现、物理验收待训练机**：`utils/policy_cfg.py`（AMP 45 维契约，与部署 yaml 逐项交叉核对）、`utils/low_level_policy.py`（TorchScript 适配器）、`towing_env_cfg.py`（机器人+小车场景，只改 `prim_path`）、`scripts/towing/tow_drag.py`（拖曳入口），另有 36 项离线测试。**尚未做**：PPO 底层契约、按 `policy_type` 分别记录、质量扫描（§5 要求的两点）。见 [P4 上半](towing_p4_policy_contract_2026-09-20.md) 与 [P4 下半](towing_p4_tow_drag_2026-09-20.md)。
+**P4 已实现，核心行为已在训练机验证（0.5 m/s 拖曳成立）**：`utils/policy_cfg.py`（AMP 45 维契约，与部署 yaml 逐项交叉核对）、`utils/low_level_policy.py`（TorchScript 适配器）、`towing_env_cfg.py`（机器人+小车场景，只改 `prim_path`）、`scripts/towing/tow_drag.py`（拖曳入口），另有 57 项离线测试（P4 三个文件：契约 24 + 入口 23 + 判读 10）。**尚未做**：`v_cmd = 1.0 m/s`、质量扫描 `m_L = 5–25 kg`（§4/§5 的要求）、PPO 底层契约与按 `policy_type` 分别记录。见 [P4 上半](towing_p4_policy_contract_2026-09-20.md) 与 [P4 下半](towing_p4_tow_drag_2026-09-20.md)。
 
 **当前待验证（P4+）**：在训练机**串行**执行拖曳入口，按 `summary.json` 判「稳定拖曳」，并确认 `--spawn-height` 与绳参数 k/c/L0；之后才是质量扫描、PPO 契约与上层策略。
 

@@ -1,6 +1,6 @@
 # P1/P2 实现与离线验证记录
 
-日期：2026-09-20。状态：**P1/P2 实现已就绪，本机离线检查通过；Isaac Lab 物理验收待训练机执行。用户已明确：本机不运行 Isaac Lab，代码仍面向 Isaac Lab。**
+日期：2026-09-20。状态：**P1/P2 实现已就绪，离线检查通过，并已在训练机完成物理验收**（落地/滑行/阻力扫描/dt 复核全部通过，见 [检查与验收记录](cart_p1_p2_checks_2026-09-20.md)）。本文件的训练机命令一节保留为验收入口；后续 P3/P4 见 [P3 记录](towing_p3_rope_2026-09-20.md) 与 [P4 下半记录](towing_p4_tow_drag_2026-09-20.md)。
 
 ## 1. 本轮实现
 
@@ -14,7 +14,7 @@
 | `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/cart_scene_cfg.py` | 已编写独立平地、小车、轮接触传感器场景；未运行 |
 | 同目录 `mdp/resistance.py` | 显式黏性轮阻 `tau=-b*omega`，标量/数组接口，负值与非有限 b 拒绝 |
 | 同目录 `utils/recording.py` | CSV/JSON 写入、非有限数据和重复时间拒绝、不覆盖已存在目录 |
-| `imgo2_rl/scripts/towing/cart_coast.py` | drop/coast、静置检查、匹配初速度/轮速、有限时长扫描、运行状态记录；语法和 `--help` 通过，物理运行待训练机 |
+| `imgo2_rl/scripts/towing/cart_coast.py` | drop/coast、静置检查、匹配初速度/轮速、有限时长扫描、运行状态记录；**已在训练机实跑验收通过**（另有遗留 CART-02：初始化失败时退出码为 0） |
 | `imgo2_rl/scripts/tools/cart_coast_metrics.py` | 标准库停止时间/距离、接触比例、滚动残差、异常检测及 SVG 曲线 |
 | `imgo2_rl/scripts/tools/summarize_cart_coast.py` | 离线重算 CSV；失败/未知状态的残缺运行不能被重新标为有效 |
 | `imgo2_rl/scripts/tools/check_cart_model.py` | 小车独立模型检查，不导入 Isaac Lab |
