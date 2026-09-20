@@ -203,9 +203,18 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("decimation", self.source)
         self.assertIn("control_dt / dt", self.source)
 
-    def test_joint_order_is_checked_against_the_contract(self):
+    def test_joint_order_is_reconciled_by_permutation_not_compared_directly(self):
+        """PhysX 顺序 ≠ 策略顺序，所以只能比集合 + 建置换，不能直接比顺序。"""
         self.assertIn("robot.joint_names", self.source)
-        self.assertIn("policy_cfg.joint_names", self.source)
+        self.assertIn("asset_permutation", self.source)
+        self.assertIn("policy_to_asset", self.source)
+        self.assertIn("asset_to_policy", self.source)
+        # 关节量进观测前必须重排、动作下发前必须换回资产顺序
+        self.assertIn("joint_pos[:, policy_to_asset]", self.source)
+        self.assertIn("joint_vel[:, policy_to_asset]", self.source)
+        self.assertIn("joint_targets[:, asset_to_policy]", self.source)
+        # 不允许退回「直接比较关节名列表」的写法
+        self.assertNotIn("robot.joint_names) != list(policy_cfg.joint_names", self.source)
 
     def test_initial_pose_is_set_before_the_scene_is_built(self):
         """场景构造时就会按 init_state 摆资产，之后再改配置不会生效（--spawn-height 会失效）。"""

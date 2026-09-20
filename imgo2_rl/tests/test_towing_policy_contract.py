@@ -144,6 +144,66 @@ class AmpContractTests(unittest.TestCase):
                          ("j3", "j4", "j5", "j0", "j1", "j2", "j9", "j10", "j11", "j6", "j7", "j8"))
 
 
+# 2026-09-20 训练机实跑 `tow_drag.py` 时报告的 PhysX DOF 顺序：按运动学树广度优先，
+# 全部 hip → 全部 thigh → 全部 shank。**不是** URDF 的声明顺序（URDF 是逐腿）。
+ISAAC_LAB_ASSET_ORDER = (
+    "FL_hip_joint", "FR_hip_joint", "RL_hip_joint", "RR_hip_joint",
+    "FL_thigh_joint", "FR_thigh_joint", "RL_thigh_joint", "RR_thigh_joint",
+    "FL_shank_joint", "FR_shank_joint", "RL_shank_joint", "RR_shank_joint",
+)
+
+
+class JointOrderTests(unittest.TestCase):
+    """PhysX 的 DOF 顺序与策略顺序不同，必须显式置换（否则动作打到错误关节）。"""
+
+    def setUp(self):
+        self.cfg = policy_cfg.AMP_POLICY
+        self.perm = self.cfg.asset_permutation(ISAAC_LAB_ASSET_ORDER)
+
+    def test_permutation_is_a_valid_reordering(self):
+        self.assertEqual(sorted(self.perm), list(range(12)))
+        for position, name in enumerate(self.cfg.joint_names):
+            self.assertEqual(ISAAC_LAB_ASSET_ORDER[self.perm[position]], name)
+
+    def test_known_landmarks(self):
+        # 策略第 0/1/2 个是 FL 的 hip/thigh/shank ⇒ 资产里的下标是 0/4/8
+        self.assertEqual(self.perm[:3], (0, 4, 8))
+        # 策略第 3 个是 FR_hip ⇒ 资产下标 1
+        self.assertEqual(self.perm[3], 1)
+        # 恒等置换会错：资产的第 1 号是 FR_hip，而策略的第 1 号是 FL_thigh
+        self.assertNotEqual(list(self.perm), list(range(12)))
+        self.assertEqual(ISAAC_LAB_ASSET_ORDER[1], "FR_hip_joint")
+
+    def test_permutation_reproduces_the_contract_default_pose(self):
+        """资产默认角按置换重排后必须等于契约 default_dof_pos。
+
+        URDF 用正则把每类关节设成同一个值（hip 0 / thigh 0.87 / shank -1.82），
+        所以这条能把「置换对不对」和「契约对不对」一起验证。
+        """
+        by_type = {"hip": 0.0, "thigh": 0.87, "shank": -1.82}
+        asset_defaults = [by_type[name.split("_")[1]] for name in ISAAC_LAB_ASSET_ORDER]
+        reordered = [asset_defaults[index] for index in self.perm]
+        self.assertEqual(reordered, [float(v) for v in self.cfg.default_dof_pos])
+
+    def test_urdf_declaration_order_is_leg_by_leg(self):
+        """记录这条差异的来源：URDF 逐腿声明，Isaac Lab 广度优先重排。"""
+        import xml.etree.ElementTree as ET
+        root = ET.parse(REPO / "imgo2_description/urdf/imgo2.urdf").getroot()
+        declared = [j.get("name") for j in root.findall("joint") if j.get("type") == "revolute"]
+        self.assertEqual(declared, list(self.cfg.joint_names),
+                         "URDF 的可动关节顺序应与策略顺序一致（逐腿）")
+        self.assertNotEqual(declared, list(ISAAC_LAB_ASSET_ORDER),
+                            "Isaac Lab 会按广度优先重排，正是需要置换的原因")
+
+    def test_rejects_mismatched_joint_sets(self):
+        with self.assertRaises(ValueError):
+            self.cfg.asset_permutation(ISAAC_LAB_ASSET_ORDER[:-1])
+        with self.assertRaises(ValueError):
+            self.cfg.asset_permutation(ISAAC_LAB_ASSET_ORDER[:-1] + ("wheel_fl_joint",))
+        with self.assertRaises(ValueError):
+            self.cfg.asset_permutation(("same",) * 12)
+
+
 class ContractValidationTests(unittest.TestCase):
     """坏契约必须显式报错，不能静默降级。"""
 

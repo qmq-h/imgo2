@@ -88,11 +88,46 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 
 | 验证 | 结果 |
 |---|---|
-| `python3 -m unittest test_towing_tow_drag` | **16 项通过** |
-| 全量离线测试（11 个测试文件） | **178 项通过**（本轮之前 162 项） |
+| `python3 -m unittest test_towing_tow_drag` | **17 项通过** |
+| `python3 -m unittest test_towing_policy_contract` | **25 项通过**（含 5 项关节顺序回归） |
+| 全量离线测试（11 个测试文件） | **184 项通过**（本轮之前 179 项） |
 | `check_model_sync.py` / `check_asset_paths.py` / `check_cart_model.py` | 退出码均为 0 |
 | `tow_drag.py --help`（只用标准库） | 退出码 0，不需要 Isaac Lab |
 
+### 5.1 训练机第一次实跑暴露的问题：Isaac Lab 的 DOF 顺序 ≠ 策略顺序
+
+第一次实跑（2026-09-20）在启动时的契约核对就报错退出，报告的两份顺序是：
+
+```text
+模型（PhysX）: FL_hip, FR_hip, RL_hip, RR_hip, FL_thigh, FR_thigh, RL_thigh, RR_thigh,
+               FL_shank, FR_shank, RL_shank, RR_shank      ← 全部 hip → 全部 thigh → 全部 shank
+契约（策略）  : FL_hip, FL_thigh, FL_shank, FR_hip, ...     ← 逐腿
+```
+
+**根因**：Isaac Lab / PhysX 的 DOF 顺序按运动学树**广度优先**排列，而 `urdf/imgo2.urdf`
+是**逐腿**声明（FL hip/thigh/shank, FR …）。AMP 任务在 `amp_env_cfg.py` 里把策略的观测
+（`observations.policy.joint_pos/joint_vel`）与动作（`actions.joint_pos.joint_names`）都
+**显式**设成逐腿顺序，所以训练出来的策略按逐腿顺序收发关节量，而 Isaac Lab 的资产数组是
+广度优先顺序 —— **两者必须显式置换**。
+
+**这不是契约错、也不是模型错，是运行端漏了重排**。第一版把「模型关节顺序」与「策略关节
+顺序」直接比较并要求相等，于是启动即失败；若当时改成「把契约顺序改成广度优先」来消掉报错，
+就会让观测拼错、动作打到错误的关节上（**静默且致命**）。
+
+**修法**：`policy_cfg.asset_permutation(asset_joint_names)` 比对关节**集合**并给出
+「策略第 i 个 ↔ 资产第 perm[i] 号」的置换；入口用它把 `joint_pos`/`joint_vel` 重排进观测、
+把策略输出的关节目标换回资产顺序再下发。另外用**一条强校验**确认置换是对的：资产
+`default_joint_pos` 按置换重排后必须等于契约的 `default_dof_pos`
+（URDF 用正则把 hip/thigh/shank 统一设成 0/0.87/-1.82）。
+置换与会话两端顺序都写进运行配置的 `config.json`，便于事后核对。
+
+**回归覆盖**：`test_towing_policy_contract.py` 的 `JointOrderTests` 用**实跑报告的那份
+真实顺序**做固定样例，断言置换是合法重排、关键下标（策略 FL hip/thigh/shank → 资产 0/4/8）、
+恒等置换会错（资产第 1 号是 FR_hip）、重排后能复现契约默认姿态、以及 URDF 声明顺序确实
+与 Isaac Lab 顺序不同（记录差异来源）；`test_towing_tow_drag.py` 另加源码契约，禁止退回
+「直接比较关节名列表」的写法。
+
+### 5.2 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约
 （`positions=` 作用点、`write_data_to_sim()` 必须早于 `sim.step()` 且晚于施力、失败路径

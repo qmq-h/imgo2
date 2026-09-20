@@ -162,10 +162,22 @@ def main(args):
         # ---------------------------------------------------------------- 契约核对
         if robot.num_joints != policy_cfg.num_joints:
             raise RuntimeError(f"机器人有 {robot.num_joints} 个关节，契约要求 {policy_cfg.num_joints}")
-        if list(robot.joint_names) != list(policy_cfg.joint_names):
+        # 关节集合必须一致，但**顺序必然不同**：PhysX 的 DOF 顺序按运动学树广度优先
+        # （全部 hip → 全部 thigh → 全部 shank），而策略的观测/动作按逐腿顺序
+        # （AMP 任务显式指定）。所以这里比对集合、再建立置换，而不是直接比顺序。
+        asset_perm = policy_cfg.asset_permutation(robot.joint_names)
+        policy_to_asset = torch.tensor(asset_perm, dtype=torch.long, device=args.device)
+        asset_to_policy = torch.empty_like(policy_to_asset)
+        asset_to_policy[policy_to_asset] = torch.arange(policy_cfg.num_joints,
+                                                        dtype=torch.long, device=args.device)
+        # 用「默认姿态」验证这个置换真的对：资产默认角按置换重排后必须等于契约的默认角
+        # （URDF 用正则把 hip/thigh/shank 统一设成 0/0.87/-1.82，所以这是一次强校验）
+        reordered_default = [float(v) for v in robot.data.default_joint_pos[0, policy_to_asset]]
+        if any(abs(a - b) > 1e-6 for a, b in zip(reordered_default, policy_cfg.default_dof_pos)):
             raise RuntimeError(
-                "机器人关节顺序与策略契约不一致：\n"
-                f"  模型: {list(robot.joint_names)}\n  契约: {list(policy_cfg.joint_names)}")
+                "关节置换核对失败：按置换重排后的模型默认关节角与契约 default_dof_pos 不一致\n"
+                f"  重排后: {[round(v, 4) for v in reordered_default]}\n"
+                f"  契约  : {[round(v, 4) for v in policy_cfg.default_dof_pos]}")
         base_ids, base_names = robot.find_bodies(["base"])
         if len(base_ids) != 1:
             raise RuntimeError(f"机器人应当只有一个 'base' 刚体，实际 {base_names}")
@@ -231,10 +243,12 @@ def main(args):
                                                                 gravity_world.view(1, 3)),
                 velocity_command=torch.tensor([command, 0.0, 0.0], dtype=torch.float32,
                                               device=args.device),
-                joint_pos=robot.data.joint_pos,
-                joint_vel=robot.data.joint_vel)
+                # 关节量必须重排成策略顺序后再进观测（PhysX 顺序 ≠ 策略顺序）
+                joint_pos=robot.data.joint_pos[:, policy_to_asset],
+                joint_vel=robot.data.joint_vel[:, policy_to_asset])
             out = policy.step(parts)
-            robot.set_joint_position_target(out.joint_targets)
+            # 动作是策略顺序的关节目标，要换回资产顺序才能下发给 Isaac Lab
+            robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out
 
         config = {
@@ -248,6 +262,9 @@ def main(args):
             "cart_model_sha256": hashlib.sha256(resolve_cart_path().read_bytes()).hexdigest(),
             "cart_model": model, "robot_attachment_m": list(robot_attachment),
             "cart_attachment_m": list(cart_attachment), "spawn_height_m": spawn_height,
+            "isaac_lab_joint_order": list(robot.joint_names),
+            "policy_joint_order": list(policy_cfg.joint_names),
+            "policy_to_asset_permutation": list(asset_perm),
             "rope": {"rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
                      "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
             "wheel_damping_nms_per_rad": args.wheel_damping, "user_command_mps": args.velocity,

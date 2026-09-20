@@ -92,12 +92,35 @@ class LowLevelPolicyCfg:
     def apply_joint_mapping(self, values) -> tuple:
         """把「机器人自身顺序」的值重排成「策略顺序」。
 
-        部署侧的语义是「策略第 i 个关节 ↔ 该数组第 joint_mapping[i] 号」；AMP 的策略顺序
-        与 URDF 声明顺序一致（恒等），himloco 等则不是。
+        部署侧的语义是「策略第 i 个关节 ↔ 该数组第 joint_mapping[i] 号」；它服务的是
+        部署那份模型（MuJoCo 场景的关节声明顺序就是策略顺序，所以是恒等）。
+        **Isaac Lab 里不能用它**：那里的顺序不同，见 `asset_permutation()`。
         """
         if len(values) != self.num_joints:
             raise ValueError(f"Expected {self.num_joints} values, got {len(values)}")
         return tuple(values[index] for index in self.joint_mapping)
+
+    def asset_permutation(self, asset_joint_names) -> tuple[int, ...]:
+        """给出「策略第 i 个关节 ↔ **资产数组**第 perm[i] 号」的置换（供 Isaac Lab 用）。
+
+        为什么需要它：Isaac Lab / PhysX 的 DOF 顺序是按运动学树**广度优先**排的，本模型
+        实测为 `FL_hip, FR_hip, RL_hip, RR_hip, FL_thigh, ...`（全部 hip → 全部 thigh →
+        全部 shank），**不是** URDF 的声明顺序（URDF 里是逐腿 FL hip/thigh/shank, FR …）。
+        而 AMP 任务把策略的观测与动作 `joint_names` **显式**设成逐腿顺序
+        （`amp_env_cfg.py` 的 `self.actions.joint_pos.joint_names = self.joint_names` 以及
+        `observations.policy.joint_{pos,vel}` 两处），所以策略顺序 = 逐腿顺序。
+        两者不重排就会把观测拼错、把动作打到错误的关节上。
+        """
+        asset = list(asset_joint_names)
+        if len(set(asset)) != len(asset):
+            raise ValueError("资产关节名有重复，无法建立唯一映射")
+        index = {name: position for position, name in enumerate(asset)}
+        missing = [name for name in self.joint_names if name not in index]
+        unknown = [name for name in asset if name not in set(self.joint_names)]
+        if missing or unknown:
+            raise ValueError(
+                f"模型关节与策略契约的关节集合不一致：契约缺 {missing}，模型多 {unknown}")
+        return tuple(index[name] for name in self.joint_names)
 
     # ------------------------------------------------------------------ 校验
     def validate(self) -> None:
