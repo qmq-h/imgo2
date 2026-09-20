@@ -783,3 +783,101 @@ x∈[−1, 2.0]、y±0.3，旧轮是 x∈[−1, 1.5]、y±1.0）；② **任务�
 **顺带确认**：这个 run 用的是 `AMPRunnerCfg` 的默认 `max_iterations = 40000`（启动时没传
 `--max_iterations`），按实测 ~1.0 s/轮，跑满约 11 小时；中途任意 checkpoint（每 500 轮）都能直接
 拿来做 `eval_gait.py` 评估。
+
+## 17. 2026-09-20：给平地 rlamp 加回随机持续外力（用户决定）
+
+背景：§15.2 按「都对齐 rl_amp」把 `randomize_apply_external_force_torque` 关成了 `None`
+（参考 `a1_amp_config.py` 的 `domain_rand` 里根本没有这一项）。用户 2026-09-20 要求把这个力
+加回**平地 rlamp**，理由是 sim2real 鲁棒性——这是对参考的**主动偏离**，已写进代码注释与本节。
+
+| 项 | 取值 | 说明 |
+|---|---|---|
+| 触发 | `mode="reset"` | 每个 episode 重置时采样一次 |
+| 作用对象 | `base`（`SceneEntityCfg("robot", body_names=["base"])`） | 沿用仓库原来的 `EventCfg` 口径 |
+| 力 / 力矩 | `±10 N` / `±10 Nm` | 对 5.53 kg 机体 ≈1.8 m/s² ≈0.18 g |
+| 持续时长 | **整个 episode** | `apply_external_force_torque` 写进 `set_external_force_and_torque` 缓冲，每个物理步生效 |
+| 开关 | `apply_rlamp_env_settings(cfg, external_force=True/False)` | 平地版 `True`；粗糙版仍 `False`（忠于参考） |
+| 回放/评估 | `apply_amp_play_overrides()` 继续置 `None` | 评估保持确定性 |
+
+**两个必须记住的后果**：
+
+1. **这是一次新的训练条件**。2026-09-18 那轮跑满 **24420 轮**的 run
+   （`logs/amp_rsl_rl/base_move_amp_rlamp/2026-09-18_20-18-37`，最后 checkpoint `model_24000.pt`）
+   是**没有外力**的，它的 `params/env.yaml` 就是记录。**不要拿加力后的配置去 `--resume` 它**：
+   那会把"无外力 → 有外力"两种条件混在同一次训练里，结果无法解释。要么用加力配置**新开 run**，
+   要么先把它按原配置补到 30000（`--resume --load_run 2026-09-18_20-18-37 --checkpoint model_24000.pt --max_iterations 6000`）。
+2. **平地/粗糙这对模板不再只差地形**（粗糙版仍无外力）。要做干净的单变量对照，给粗糙版也加一行
+   `apply_rlamp_env_settings(self, custom_origins=True, external_force=True)`；反过来，如果想把
+   "有力/无力"做成一个独立的研究臂，更稳的做法是**另注册一个任务名**（例如
+   `Imgo2-basemove-flat-amp-rlamp-force`），让 `flat-amp-rlamp` 保持忠于参考。
+
+**验证**：`tests/test_amp_rlamp_recipe.py` 扩到 **20 项**（常量、helper 源码分支、平地/粗糙调用差异、
+行为测试里 `external_force=True` 会新建 `EventTerm(mode='reset', func=apply_external_force_torque)`、
+`asset_cfg=('robot', ['base'])`、`±10`，而默认 `False` 时为 `None`）⇒ 全仓 **83 项通过**。
+**未验证**：本机无 GPU，配置类无法实例化，未训练；力的大小是否合适（±10 N 对 5.5 kg 是不是偏大、
+要不要改成 interval 模式施加）需要按训练表现再定。
+
+## 18. rlamp 首次步态回放的结果判读（2026-09-20，用户终端跑 `eval_gait.py`）
+
+**对象**：`Imgo2-basemove-flat-amp-rlamp-play`，`--command_vx 1.0`，8 环境 × 950 步（丢前 50 步）。
+用户只贴了摘要、**没有 `--out`**，所以下面按"某个晚期 checkpoint（20k–24k，摆动时长与训练日志
+0.172 s@24000 对得上）"处理；同一份 `eval_gait.py` 也在 2026-09-18 测过 24500 那版，
+两者可直接比（同 play 配置、同指令、同窗口）。
+
+| 指标 | 参考（录制） | 24500（6 项配方） | 本次 rlamp |
+|---|---|---|---|
+| 步周期 | 0.600 s | 0.1926 s | **0.2956 s**（仍快 2.0×） |
+| 步频/足 | 1.67 Hz | 5.17–5.19 | 3.16–3.70 |
+| 占空比（四足之和） | — | 0.496–0.604（和 ≈2.19，无腾空） | **0.354–0.387（和 ≈1.48 ⇒ 有腾空相）** |
+| 步幅 x | 0.215 / 0.268 / 0.366 | 0.139–0.160 | 0.167–0.192 |
+| 抬脚 z | 0.083 / 0.112 / 0.121 | 0.067–0.085 | **0.139–0.163** |
+| 相位 FL-FR | ±180° | +174.2° | **+185.3°** |
+| 集中度 R | — | 0.857–0.909 | **0.31–0.76** |
+| 基座高度 | 0.297 m | 0.3117 m | **0.3710 m** |
+| pitch 均值 / RMS | −0.5° / 0.53° | +2.15° / 0.81°（恒定抬头） | −0.63° / 1.04° |
+| roll RMS | 0.33° | 0.88° | 1.50° |
+| 速度误差 @vx=1.0 | — | **0.1078 m/s** | **0.5664 m/s** |
+| shank 峰峰 | 0.635（0.477–1.063）；@1.2 是 0.990 | 0.516–0.618 | 0.987–1.088 |
+| thigh 峰峰 | 0.477；@1.2 是 1.161 | 0.407–0.470 | 0.599–0.667 |
+
+**结论：相对 24500 有进步也有退步，整体还不是"参考的走路"。**
+
+* 进步：周期 0.193→0.296 s（离参考 0.600 从 3.1× 缩到 2.0×）；相位仍是干净对角步（185°）；
+  没有恒定抬头（24500 是 +2.15° 恒定，现在均值 −0.63°）；步幅从 0.14–0.16 增到 0.17–0.19；
+  抬脚从偏低（0.067–0.085，低于参考下界）变成偏高（0.139–0.163）。
+* 退步：① **跟速** 0.108→0.566 m/s（同一条 vx=1.0 指令差 5 倍）；② **站高** 0.312→0.371 m
+  （比录制站高高 7.4 cm）；③ **落地规整度** R 0.86–0.91→0.31–0.76；④ **出现腾空相**：
+  四足占空比之和 1.48（trot 相位下意味着每个半周期约 13% 时间四足全离地）⇒ 是"跑"不是"走"；
+  ⑤ 关节幅度变大（shank 0.99–1.09 对参考步行中位 0.635、thigh 0.60–0.67 对 0.477）；
+  ⑥ roll RMS 0.88→1.50°。
+
+**一个重要假象（待确认）**：**同一个 checkpoint**，训练日志的 `AMP/mean_root_height_m` 是
+**0.313 m**，而这次 play 回放测到 **0.371 m**。差别最可能来自 reset 分布：训练里 85% 的情节从
+**录制帧**（站高 ≈0.297 m）开始，而 `*-play` 把参考状态初始化关掉了、从 `init_state`（z=0.35 m）
+出发 ⇒ 怀疑这个策略有**两个稳定站高分支**（从 0.297 出发≈0.31，从 0.35 出发≈0.37），
+于是本次回放的 height / lift / stride / 速度误差都是"高站姿分支"的数，比训练条件更悲观。
+**验证办法（单变量）**：回放时保留 `events.reference_state_initialization`（或把 `init_state.pos.z`
+设成 0.297、`num_envs` 放大到 64）再测同一 checkpoint，看高度是否回到 0.31；
+若确实分叉，则"r_lamp 配方没有高度项"这件事本身就带来了初始条件依赖，值得记进结论。
+
+**同时修掉一个度量缺陷（本轮代码改动）**：`gait_metrics.body_attitude_summary` 原先直接用
+`arctan2` 的 yaw（±180° 折叠）算「峰峰」和「漂移率」，航向一旦跨过 ±180° 就会凭空多/少 360°
+——用户这次摘要里的 `yaw 峰峰 359.95°` 与 `漂移率 −2.324 °/s`（19 s 才 −44°）自相矛盾，正是这个假象
+（24500 那版没跨界，24° 是对的）。已改成先 `np.unwrap` 再统计，并加 2 项测试（跨界/不跨界）。
+**因此这次摘要里的两个 yaw 数都不可用**，需要重跑一次（命令见下）。
+
+**下一步（都建议单变量）**：
+
+```bash
+# 1) 复测同一 checkpoint：修正 yaw 口径 + 落盘 JSON（也请把顶部 task/checkpoint 一并贴出）
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/tools/eval_gait.py \
+  --task=Imgo2-basemove-flat-amp-rlamp-play \
+  --checkpoint=<你这次用的那个 model_*.pt> \
+  --num_envs=8 --steps=1000 --command_vx=1.0 --out ../docs/gait_eval_rlamp_vx1.0.json --headless
+# 2) 换速度看"周期是否像参考那样与速度无关"
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/tools/eval_gait.py ... --command_vx=0.6 --out ../docs/gait_eval_rlamp_vx0.6.json
+```
+
+若要让步态朝"参考走路"靠，rlamp 配方缺的正是**步幅/站高/落地规整**这三个约束：
+`base_height_l2`（24500 那版每步 −5.0，把站高钉在 0.31）或 `feet_air_time`（go2 那条，把步频往慢里推）
+是最直接的候选，但都与"忠于 rl_amp"冲突，必须作为**另一个 run**（一次只加一项）。

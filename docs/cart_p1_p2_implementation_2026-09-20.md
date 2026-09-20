@@ -63,11 +63,12 @@
 
 - **P1/P2 验收**：用户明确面向训练机的 Isaac Lab，本机不启动或安装该运行环境。仍需训练机完成导入、落地、轮接触、无驱动滚动、阻力扫描及 dt 敏感性验证，仿真端标为“已写，待验证”。
 - P4 的具体 AMP/PPO checkpoint 和接口配置仍待接入前落实；本轮不训练底层、不运行硬件。
-- 本轮 `pull --ff-only` 拉取到远端 `13eeb4e`，本地 `aff4c61` 与远端分叉，无法快进，未合并/重置工作区。已检查远端增量：read_tfevents 工具/测试、README 和研究草稿，未改小车相关实现。按用户要求，本次将 P1/P2 实现、离线检查及维护文档作为本地提交保存；尚未合并远端或推送，训练机运行前需完成同步。合并时继续保留本地研究草稿的忽略决定，不能让远端重新跟踪它。用户另有 `research_exploration_plan.md` 的删除，保留在工作区，不纳入本次提交。
+- **Git 同步（2026-09-20）**：P1/P2 实现保存于 `9be905d`。用户随后要求 push，重新 fetch 到远端 `e50179f`，以 merge 保留双方历史；远端新增的训练曲线、AMP 外力配置、Linux 启动器与 yaw 指标修复均保留。README 冲突保留双方维护记录，顶部采用本轮实际离线核对状态；研究草稿的 modify/delete 冲突按用户原决定解决为不跟踪，恢复本地文件并核对 SHA256 `7961bae8e6da38f8368c8436cb007c140c29e3b9ffa1b09114527123428548c9`。`research_exploration_plan.md` 的无关删除仍留在工作区，不纳入提交。同步目标为 `https://github.com/qmq-h/imgo2.git` 的 `main`，采用普通 push，不改写历史。
+- **合并验证**：Windows Python 3.14 标准库环境重跑小车 22 项与训练曲线 6 项测试、全模型一致性与资源路径检查，均通过；仿真代码没有手工合并冲突，远端 Linux/CUDA 运行结论沿用其记录，本机未复跑。P1/P2 的训练机命令同步使用新启动器。
 
 ## 6. 训练机短时验收（待执行）
 
-以下从仓库根开始，在已经可运行现有 locomotion 的 Isaac Lab Python 环境中执行。入口/路径已静态确认存在，但命令没有在本机启动仿真；无需 checkpoint，也不会开始 RL 训练。
+以下从仓库根开始，在 Linux 训练机已经可运行现有 locomotion 的 Isaac Lab Python 环境中执行。入口/路径已静态确认存在，但命令没有在本机启动仿真；无需 checkpoint，也不会开始 RL 训练。启动器默认解释器为 `/opt/conda/envs/isaaclab/bin/python`（训练环境示例）；若实际路径不同，先用 `IMGO2_ISAACLAB_PYTHON` 指定现有环境的 Python。
 
 ```bash
 cd imgo2_rl
@@ -75,14 +76,14 @@ python scripts/tools/check_asset_paths.py
 python scripts/tools/check_model_sync.py
 
 # P1：单环境落地，3 秒，检查四轮接触、静止高度与姿态
-python scripts/towing/cart_coast.py --mode drop --duration 3 --headless
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode drop --duration 3 --headless
 
 # P2：先单工况跑通，再扫描
-python scripts/towing/cart_coast.py --mode coast --velocities 1.0 --damping 0.016 --duration 10 --headless
-python scripts/towing/cart_coast.py --mode coast --velocities 0.5 1.0 --damping 0 0.008 0.016 0.032 --duration 10 --headless
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode coast --velocities 1.0 --damping 0.016 --duration 10 --headless
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode coast --velocities 0.5 1.0 --damping 0 0.008 0.016 0.032 --duration 10 --headless
 
 # 对选定工况减半步长，复核接触/停止距离的敏感性
-python scripts/towing/cart_coast.py --mode coast --velocities 1.0 --damping 0.016 --duration 10 --dt 0.0025 --headless
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode coast --velocities 1.0 --damping 0.016 --duration 10 --dt 0.0025 --headless
 ```
 
 默认每次在 `imgo2_rl/logs/towing/cart_coast/` 下创建唯一目录，控制台打印实际路径；`--output-dir` 可指定一个尚不存在的输出目录。去掉 `--headless` 可在训练机观察模型。`IMGO2_CART_URDF_PATH` 只覆盖小车，保留现有 `IMGO2_URDF_PATH` 的机器人语义。

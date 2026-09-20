@@ -508,9 +508,18 @@ RLAMP_ROUGH_RESET_XY_RANGE = (-1.0, 1.0)
 # `_reset_dofs`/`_reset_root_states`**（就是上面那套 reset 分布）。我们原来是 1.0（全都用参考状态）
 # ⇒ 若不改这一项，上面重建的 reset 随机化在平地版上会被参考状态初始化**完全覆盖**而失效。
 RLAMP_REFERENCE_INIT_PROB = 0.85
+# 随机外力/力矩（**用户 2026-09-20 决定给平地 rlamp 加上**）：参考 `rl_amp` 的 `domain_rand`
+# 里没有这一项，所以它是我们对参考的**主动偏离**，只在 `external_force=True` 时启用。
+# 取值沿用仓库原来的 `EventCfg`（base 上 ±10 N / ±10 Nm）；语义是 Isaac Lab 的
+# `apply_external_force_torque`：reset 时采样一次、**整个 episode 内持续施加**
+# （写进 `set_external_force_and_torque` 缓冲，每个物理步都生效）。对 5.53 kg 机体，
+# 10 N ≈ 1.8 m/s² ≈ 0.18 g 的持续扰动。
+RLAMP_EXTERNAL_FORCE_RANGE = (-10.0, 10.0)
+RLAMP_EXTERNAL_TORQUE_RANGE = (-10.0, 10.0)
 
 
-def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
+def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
+                             external_force: bool = False) -> None:
     """指令范围、域随机化、reset 分布、观测噪声统一到 rl_amp（fan-ziqi）的 `a1_amp_config.py`。
 
     与 `apply_rlamp_task_rewards()`（奖励）/`apply_rlamp_obs_and_action_scales()`（观测缩放、
@@ -519,6 +528,11 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
 
     `custom_origins=True` 用于粗糙地形版：参考只在"地形由 heightfield/trimesh 提供"的
     分支里对初始 xy 加 ±1 m 扰动（`_get_env_origins` 的 `custom_origins`）。
+
+    `external_force=True` **给 base 加随机持续外力/力矩**（`±10 N / ±10 Nm`，reset 采样、
+    episode 内持续）——这是**对参考的主动偏离**（`rl_amp` 没有这一项）。用户 2026-09-20 决定
+    平地版启用它；粗糙版暂时保持"忠于参考"（两臂因此在这一个变量上不同，做平地/粗糙对照时
+    要记得这一点）。
 
     ⚠️ **reset 项是"重建"而不是"改值"**：`Imgo2AmpMoveEnvCfg.__post_init__` 把
     `randomize_reset_base` / `randomize_reset_joints` 设成了 `None`（AMP 的 reset 由参考状态
@@ -559,8 +573,21 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False) -> None:
     cfg.events.randomize_com_positions = None
 
     # ---------------------------------- 外力/力矩 ----------------------------------
-    # 参考没有这个随机化；原有的 ±10 N/Nm 是我们自己加的（非参考项）
-    cfg.events.randomize_apply_external_force_torque = None
+    # 参考 `rl_amp` 没有这一项（非参考项）。`external_force=False` 时显式关掉；
+    # `True` 时**新建** EventTerm（AMP 基类里它本来是存在的，但这里统一按"重新声明"处理，
+    # 免得依赖基类的旧取值）。回放/评估由 `apply_amp_play_overrides()` 再置 None。
+    if external_force:
+        cfg.events.randomize_apply_external_force_torque = EventTerm(
+            func=mdp.apply_external_force_torque,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=[cfg.base_link_name]),
+                "force_range": RLAMP_EXTERNAL_FORCE_RANGE,
+                "torque_range": RLAMP_EXTERNAL_TORQUE_RANGE,
+            },
+        )
+    else:
+        cfg.events.randomize_apply_external_force_torque = None
 
     # ---------------------------------- PD 增益 ----------------------------------
     gains = cfg.events.randomize_actuator_gains
@@ -620,15 +647,21 @@ class Imgo2AmpRLAmpEnvCfg(Imgo2AmpMoveEnvCfg):
     2026-09-18 用户决定「除关节 kp/kd 以外全部对齐参考」，于是本类在三个 helper 里依次改：
     `apply_rlamp_task_rewards`（奖励）、`apply_rlamp_obs_and_action_scales`（观测缩放 + 动作
     缩放/裁剪）、`apply_rlamp_env_settings`（指令范围 + 域随机化 + reset 分布 + 噪声）。
-    与参考仍**不一致**的只有：关节 kp/kd（用户排除）、actor 观测维数（我们 45 含
-    `base_ang_vel`，参考 42）、以及 AMP 判别的数据来源（我们录制的真机动作 vs 参考的 mocap）。
+    与参考仍**不一致**的有：关节 kp/kd（用户排除）、actor 观测维数（我们 45 含
+    `base_ang_vel`，参考 42）、AMP 判别的数据来源（我们录制的真机动作 vs 参考的 mocap），
+    以及 **2026-09-20 用户决定加回的随机持续外力/力矩**（base 上 ±10 N / ±10 Nm，reset 采样、
+    episode 内持续；`rl_amp` 没有这一项）——最后这一条是为 sim2real 鲁棒性主动加的，
+    代价是"平地 vs 粗糙"这对模板不再只差地形（粗糙版仍忠于参考、没有外力）。
+    **注意**：2026-09-18 那次跑满 24420 轮的 run 是**没有外力**的（其 `params/env.yaml` 是记录），
+    所以加力之后的 run 是**新的训练条件**，不要与它续训混在一起比较。
     """
 
     def __post_init__(self):
         super().__post_init__()
         apply_rlamp_task_rewards(self)
         apply_rlamp_obs_and_action_scales(self)
-        apply_rlamp_env_settings(self)
+        # `external_force=True`：用户 2026-09-20 决定给平地 rlamp 加随机持续外力（对参考的主动偏离）
+        apply_rlamp_env_settings(self, external_force=True)
 
 
 @configclass
