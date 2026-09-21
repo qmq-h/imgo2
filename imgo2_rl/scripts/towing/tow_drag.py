@@ -282,6 +282,18 @@ def format_env_origins(origins):
     return ", ".join(parts)
 
 
+def case_rope_models(rope_models, num_envs):
+    """**case 维度**上的绳索模型取值。
+
+    单环境时就是 `--rope-model` 的每个值（逐 case 换模型，与 P4 原有行为一致）；
+    多环境时模型是**逐 env 分配**的维度（见 `env_rope_models`），case 维度只留一个占位，
+    否则同一套多环境实验会按每个模型各跑一遍 —— 实测踩到：`--rope-model compliant
+    inextensible --num-envs 4` 产出 **8 个重复目录**（`case_00..03` 与 `case_04..07`
+    参数完全相同），GPU 时间翻倍。
+    """
+    return list(rope_models) if num_envs == 1 else ["mixed"]
+
+
 def env_rope_models(rope_models, num_envs):
     """把 `--rope-model` 的每个模型**尽量均分**到 `num_envs` 个环境上。
 
@@ -416,7 +428,8 @@ def main(args):
         cart_attachment = tuple(model["attachment_position_m"])
         robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
         # 逐 case 的笛卡尔积：--cart-mass × --wheel-damping，在同一进程内顺序执行
-        cases = sweep_cases(args.cart_mass, args.wheel_damping, args.rope_model)
+        cases = sweep_cases(args.cart_mass, args.wheel_damping,
+                            case_rope_models(args.rope_model, args.num_envs))
         # 计划期（plan-time）的标量都在这里一次算好，避免后面「先用后赋值」：
         # 之前 stop_steps 与 scale 各踩过一次（main() 只有跑仿真才执行，离线测试抓不到）。
         scales = [mass_scale_factor(case.cart_mass, model["total_mass_kg"])

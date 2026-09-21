@@ -774,6 +774,21 @@ class InterfaceContractTests(unittest.TestCase):
                          "env0=(0.00,0.00), env1=(6.00,6.00)")
         self.assertEqual(tow_drag.format_env_origins([[1.234, 5.678, 9.0]]), "env0=(1.23,5.68)")
 
+    def test_multi_env_does_not_repeat_the_case_per_model(self):
+        """回归：多环境时绳索模型是**逐 env** 维度，不能再当 case 维度。
+
+        实测踩到（2026-09-21）：`--rope-model compliant inextensible --num-envs 4` 产出
+        **8 个重复目录**（`case_00..03` 与 `case_04..07` 参数完全相同），GPU 时间翻倍。
+        """
+        self.assertEqual(tow_drag.case_rope_models(["compliant", "inextensible"], 1),
+                         ["compliant", "inextensible"])          # 单环境：逐 case 换模型
+        self.assertEqual(tow_drag.case_rope_models(["compliant", "inextensible"], 4),
+                         ["mixed"])                              # 多环境：只留一个 case
+        cases = tow_drag.sweep_cases([10.0], [0.032],
+                                     tow_drag.case_rope_models(["compliant", "inextensible"], 4))
+        self.assertEqual(len(cases), 1)                          # 4 env 一套、不是两套
+        self.assertEqual(len(tow_drag.env_rope_models(["compliant", "inextensible"], 4)), 4)
+
     def test_env_rope_models_splits_evenly_and_rejects_impossible_splits(self):
         """`--num-envs 4 --rope-model compliant inextensible` ⇒ [c, c, i, i]（1:1）。"""
         self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible"], 4),
