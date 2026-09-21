@@ -73,6 +73,11 @@ class CartRecorder:
 TOW_NUMERIC_FIELDS = (
     "time_s", "user_cmd_mps", "ref_cmd_mps", "robot_vx_mps", "load_vx_mps",
     "rope_tension_n", "rope_distance_m", "robot_x_m", "load_x_m",
+    # 绳索模型的**统一日志接口**（两套模型字段一致，换模型不影响判读/奖励/日志）：
+    # rope_extension_m 在 compliant 下是弹性伸长、在 inextensible 下只剩数值穿透（应 ≪ 前者）；
+    # rope_impulse_ns = ∫T dt（inextensible 的绷直冲量就在这里，比峰值张力稳健）；
+    # rope_taut = 1/0 表示该步是否处于张紧。
+    "rope_extension_m", "rope_length_rate_mps", "rope_taut", "rope_impulse_ns",
     # 高度单列出来：机器人被拽倒/塌下去时，只看 pitch 不够直观
     "robot_z_m", "load_z_m",
     # 四个轮速单列：v/r 与 ω 的比值能区分「滚动」与「滑动」，是诊断低速段

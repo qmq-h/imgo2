@@ -914,6 +914,124 @@ m=10 kg、b=0.032、f=0.8、`v_cmd=0.5`，只有 station+tow，没带 `--stop-at
 `robot_mass_kg=12.6996` 落盘；`min_clearance_m=0.1123`、`final_clearance_m` 真算出来了），
 所以「重跑取真实车头间隙」这条路已经验证可用；剩下的只是把质量/摩擦扫描也重跑一遍。
 
+### 5.20 两套绳索模型：compliant（弹簧）与 inextensible（单边约束）
+
+需求：在 Isaac Lab 里实现两套可切换的绳索模型，统一配置接口
+`rope_model = "compliant" | "inextensible"`，两者都满足「只能拉不能推、支持 Slack↔Taut、
+两侧力等大反向、统一的 tension/length/slack-taut 日志」；并**明确不要用大 k 近似**不可伸长绳。
+
+#### 统一接口（`mdp/rope_model.py`，纯算术、不导入 torch）
+
+`RopeModel.update(robot_point, cart_point, robot_velocity, cart_velocity, dt, robot, cart)`
+返回 `RopeSample`，两套模型**字段完全一致**：
+
+| 字段 | 含义 |
+|---|---|
+| `rope_length` | `d = ‖p_L − p_R‖` |
+| `rope_extension` | `max(0, d − L0)`：compliant 是弹性伸长、inextensible 只剩数值穿透 |
+| `rope_tension` | N。inextensible 是**步平均**约束力 `J/dt`（与 dt 相关） |
+| `rope_length_rate` | `ḋ = e·(v_L − v_R)`（挂点速度，含 `ω×r`） |
+| `is_taut` | 机器可读的 0/1（标量 bool 或张量）。inextensible 用「是否产生冲量」判 |
+| `rope_state` | `"slack"`/`"taut"`；批量（多环境）时为 `"mixed"` |
+| `rope_impulse` | `J = ∫T dt`（N·s）。**跨模型可比的不变量** |
+| `direction` / `force_on_robot` / `force_on_cart` | 绳方向与一对等大反向的力（作用在挂点） |
+
+力仍然走 P4 已有的施力管线（`set_external_force_and_torque(..., positions=挂点)`），
+所以力臂由 PhysX 算、绳力对机器人 pitch 的影响保留。
+
+#### 方案 A：CompliantRope
+
+`T = 0 (d ≤ L0)`；`T = max(0, k(d−L0) + c·ḋ) (d > L0)`。**行为与 P3/P4 完全一致**
+（有回归测试逐位对比 `rope.rope_state`，19 个旧 run 不受影响）。
+
+#### 方案 B：InextensibleRope（单边距离约束）
+
+约束是 `d ≤ L0, T ≥ 0, T(L0−d) = 0`。实现方式是**速度级约束 + 位置反馈，写成力**：
+
+```
+C  = d − L0
+ḋ_target = min(ḋ, max(−β·C/dt, −max_correction_rate))
+J  = max(0, (ḋ − ḋ_target) / k_eff)      k_eff = 1/m_R + 1/m_L + 转动项
+T  = J / dt                              作用在挂点上的力 = T·e
+```
+
+三处关键点：
+
+1. **单边性由 `J ≥ 0` 保证**：需要「推」（两挂点在靠近）时恒为 0；
+2. **`−β·C/dt` 在 `d<L0` 但本步会超长时也给出正的限额**，于是冲量**提前一步**施加
+   —— 这是接触求解里的预测式（speculative）做法，结果是 `d` 不会真的越过 L0、
+   `rope_extension` 恒为 0；代价是 `is_taut` 可能在 `d` 略小于 L0 时就为真（提前量 ≤ 一步）；
+3. **只夹「回拉」那一侧（负向）**。第一版把两侧一起夹到 `±max_correction_rate`，于是
+   **完全松弛时（d=0.4、L0=0.8）反而报出 350 N**：正向被夹到 +0.2 m/s 后
+   `ḋ_target = min(0.5, 0.2) = 0.2`，模型就去「限制分离速度」了。这个 bug 由 Test 1 抓住。
+
+`k_eff` 用两侧质量与**挂点离质心的力臂**（转动项 `(r×e)ᵀI⁻¹(r×e)`）；名义几何下力臂与
+绳方向平行、转动项为 0。质量口径：机器人取**整机 12.6996 kg**（受冲量时四足撑地、整车抵抗），
+小车取 `m + 4I/r²`（冲量要先把轮子带转）——与滑行段的 `m_eff` 同一口径。
+
+#### 逐环境分配（训练时 1:1）
+
+`SplitRopeModel(compliant=…, inextensible=…, inextensible_mask=<0/1 张量>)` 按掩码**逐 env**
+把两套结果拼起来（纯算术混合；绳长/伸长率/方向这些几何量两套一致，直接用）：
+
+```
+mask = torch.zeros(num_envs, 1); mask[num_envs // 2:] = 1.0
+rope = SplitRopeModel(compliant=CompliantRope(rest_length=0.8, stiffness=4000.0, damping=100.0),
+                      inextensible=InextensibleRope(rest_length=0.8),
+                      inextensible_mask=mask)
+```
+
+批量下 `rope_state` 统一为 `"mixed"`，逐 env 判定请用 `is_taut`。惯量以**世界系逆惯量**传入
+（`world_inverse_inertia(diagonal, rotation)`，元素可以是 `(N,)` 张量）⇒ 同一套 API 直接吃批量。
+
+#### 离线验证（四个最小验证，`tests/test_towing_rope_models.py` 20 项）
+
+用 1-D 两体积分器（机器人由速度控制器驱动、负载带滚动阻力）把两套模型走**同一条调用路径**：
+
+| 验证 | 结果 |
+|---|---|
+| Test 1 Slack（d=0.4） | 两套都 T = 0 且 `is_taut=False`（这一条抓出了上面那个 350 N 的 bug） |
+| Test 1b 靠近时不推 | 两套都 T = 0，力的方向恒为「拉」 |
+| Test 2 稳态拖曳 | T 与负载滚动阻力一致（<5%），两套差 <10%；`rope_length = L0 + extension` |
+| Test 3 Slack→Taut | **峰值伸长 13.1 mm（compliant） vs 0.24 mm（inextensible），差 55 倍**；compliant 的稳态伸长 = 稳态张力/k（确认是弹性伸长）；**总冲量 23.90 vs 23.93 N·s（差 0.1%）** |
+| Test 3b 约束成立 | inextensible 全程 `d ≤ L0 + 0.2 mm`、`ḋ ≤ 0.5 m/s`、T ≥ 0 |
+| Test 3c 冲量-动量平衡 | 绷直窗口内 `J_total = m_eff·Δv_L + Σ(F_阻·dt)`（15% 内） |
+| Test 4 Taut→Slack | 指令归零后 T 精确归零、`is_taut=False`、负载靠惯性靠近（位移 ≈ `v0·τ`，15% 内）、**全程无压缩力** |
+| 接口 | 两套字段一致；工厂报错；inextensible 缺刚体属性报错；compliant 与 `rope.py` 逐位一致 |
+| 批量/分配 | 批量 (N=2) 与逐 env 单跑逐位一致；`SplitRopeModel` 按掩码逐 env 取各自结果 |
+
+**「冲量是跨模型不变量」被数据确认**：compliant 用弹簧逐步储能（伸长 13 mm）、
+inextensible 用约束冲量抹掉速度差（伸长 0.24 mm），但两者抹掉的动量相同 ⇒ `∫T dt` 几乎相等。
+所以日志与判据以 `J` 为准，而**峰值张力只是步平均量**（`J/dt`，随 dt 与 β 变）——
+与需求里「peak tension 可能对 timestep / solver iterations 敏感」的提醒一致。
+
+另外：松弛时的冲量低于阈值会**精确归零**（否则会留下 1e-14 量级残差，而离线统计正是用
+`T == 0.0` 数松弛占比，残差会让那些统计悄悄失效）。
+
+#### 判读工具新增的离线统计（`summarize_tow.py`）
+
+`rope_impulse_total_ns` / `rope_impulse_tow_ns` / `rope_impulse_engagement_ns`（绷直后 0.2 s
+窗口）、`rope_peak_extension_mm` / `rope_steady_extension_mm`、`max_tension_rate_n_per_s`、
+`rope_taut_fraction`。旧 run 没有这些列 ⇒ 全部为 `None`（不是 0：不能把「没记录」当成「是 0」）。
+
+#### 现场验证（待跑）
+
+```bash
+# 同一条件跑两套模型（一次进程、逐 case），station+tow+coast 全段
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/tow_drag.py --headless \
+  --rope-model compliant inextensible --cart-mass 10 --wheel-damping 0.032 \
+  --ground-friction 0.8 --stop-at 5 \
+  --output-dir imgo2_rl/logs/towing/tow_drag/$(date -u +%Y%m%dT%H%M%SZ)_models
+```
+
+要求：① inextensible 的 `rope_extension_m` 比 compliant 小一个量级以上；
+② 两者 `rope_impulse_*` 同量级；③ 稳态张力与跟速比一致；
+④ inextensible 的 `rope_taut` 在拖曳段应为 1（不断续）。
+
+**训练侧 1:1 接入仍未做**：本仓库当前的拖曳入口是**单环境测量台**（`num_envs=1`，驱动冻结
+底层策略），训练用的上层环境还没建（计划 P6/P8）。`SplitRopeModel` 与批量 API 已就绪并能
+离线验证，接入时要做的只是把 per-env 掩码与批量刚体属性传进去。
+
 ## 6. 已知限制（本轮**未**验证的部分）
 
 - **P4 的核心行为已验证**（§5.5：`v_R ≈ v_L ≈ 0.512`、T ≈ 5.2 N 稳定、小车被拖 2.47 m），

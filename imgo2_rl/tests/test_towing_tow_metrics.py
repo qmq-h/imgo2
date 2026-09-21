@@ -54,6 +54,11 @@ def add_witness_columns(rows, *, joints=(0.0, 0.87, -1.82), robot_z=0.2735, deck
                     "load_quat_z": 0.0, "load_quat_w": 1.0,
                     "cart_deck_fx_n": deck_fx_station if row["phase"] == "station" else deck_fx,
                     "cart_wheel_fx_n": 0.0})
+        # 绳索模型的统一日志列（两套模型同一套字段）：伸长与冲量都由张力推得
+        tension = row["rope_tension_n"]
+        row.update({"rope_extension_m": tension / 4000.0, "rope_length_rate_mps": 0.0,
+                    "rope_taut": 1.0 if tension > 0 else 0.0,
+                    "rope_impulse_ns": tension * 0.005})
     return rows
 
 
@@ -301,6 +306,28 @@ class CoastPhaseTests(unittest.TestCase):
         self.assertAlmostEqual(summary["deck_contact_peak_station_n"], 9.0, places=6)
         self.assertIn("load_touching_at_settle", summary["failures"])
         self.assertFalse(summary["valid"])
+
+    def test_rope_impulse_and_extension_stats(self):
+        """规格要求的离线统计：J = ∫T dt、（峰值/稳态）伸长、张力变化率。"""
+        rows = add_witness_columns(_run(tow_s=1.0, takeup_s=0.01, tension=lambda t: 10.0))
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        # 稳态 10 N、1 s、dt=5 ms ⇒ ∫T dt ≈ 10 × 1.0 = 10 N·s（station/coast 段张力为 0）
+        self.assertAlmostEqual(summary["rope_impulse_tow_ns"], 10.0, delta=0.2)
+        self.assertAlmostEqual(summary["rope_impulse_total_ns"], 10.0, delta=0.2)
+        self.assertAlmostEqual(summary["rope_impulse_engagement_ns"], 2.0, delta=0.2)  # 0.2 s 窗口
+        # 稳态窗口取「tow 段最后 1 s」，本用例 tow 段正好 1 s ⇒ 含首个张力为 0 的样本
+        self.assertAlmostEqual(summary["rope_steady_extension_mm"], 10.0 / 4000.0 * 1000.0, delta=0.05)
+        self.assertAlmostEqual(summary["rope_peak_extension_mm"], 10.0 / 4000.0 * 1000.0, delta=0.05)
+        self.assertAlmostEqual(summary["rope_taut_fraction"], 0.5, delta=0.05)  # 1 s tow / 2 s 总长
+        # 张力变化率峰值 = 绷直那一步的跳变 10 N / 5 ms = 2000 N/s（这正是要看的变化率）
+        self.assertAlmostEqual(summary["max_tension_rate_n_per_s"], 2000.0, delta=50.0)
+
+    def test_rope_stats_are_absent_on_old_records(self):
+        """旧 run 没有绳索模型列 ⇒ 这些统计必须是 None，而不是被当成 0。"""
+        rows = _run(coast_s=0.5)
+        summary = summarize_tow(rows, user_command=0.5)
+        self.assertIsNone(summary["rope_impulse_total_ns"])
+        self.assertIsNone(summary["rope_peak_extension_mm"])
 
     def test_station_clearance_is_reported_separately(self):
         """station 段的车头间隙单独报（它是初始条件的安全余量），不计入 reached_robot。"""

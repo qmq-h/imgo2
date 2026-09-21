@@ -65,6 +65,55 @@ def _col(rows, key):
     return [float(r[key]) for r in rows]
 
 
+def _rope_stats(rows, tow_rows, taut_rows, steady_tension, engagement_window_s=0.2):
+    """绳索模型的通用离线统计（两套模型同一套字段，见 mdp/rope_model.py）。
+
+    规格明确要求这些量，而它们**都能从记录复算**（不需要重跑）：
+
+    * `rope_impulse_total_ns` = ∫T dt（全程、拖曳段、绷直窗口分别给），
+      跨模型可比的不变量：compliant 靠弹簧逐步储能、inextensible 靠约束冲量一步抹掉速度差，
+      但**抹掉的动量相同**，所以 ∫T dt 基本一致（实测 23.90 vs 23.93 N·s）；
+    * `rope_peak_extension_mm` / `rope_steady_extension_mm`：compliant 是弹性伸长（≈T/k），
+      inextensible 只剩数值穿透（mm 级）；
+    * `max_tension_rate_n_per_s`：张力变化率峰值（纹波/冲击的强度指标）。
+    """
+    result = {"rope_impulse_total_ns": None, "rope_impulse_tow_ns": None,
+              "rope_impulse_engagement_ns": None, "rope_peak_extension_mm": None,
+              "rope_steady_extension_mm": None, "max_tension_rate_n_per_s": None,
+              "rope_taut_fraction": None, "rope_dt_s": None}
+    if not rows or "rope_impulse_ns" not in rows[0]:
+        return result
+    times = [float(r["time_s"]) for r in rows]
+    steps = [b - a for a, b in zip(times, times[1:]) if b > a]
+    dt = sum(steps) / len(steps) if steps else None
+    result["rope_dt_s"] = dt
+    impulses = [float(r["rope_impulse_ns"]) for r in rows]
+    result["rope_impulse_total_ns"] = sum(impulses)
+    result["rope_impulse_tow_ns"] = sum(float(r["rope_impulse_ns"]) for r in tow_rows)
+    result["rope_peak_extension_mm"] = max(float(r["rope_extension_m"]) for r in rows) * 1000.0
+    result["rope_taut_fraction"] = (sum(1 for r in rows if float(r.get("rope_taut", 0.0)) > 0.5)
+                                   / len(rows))
+    if taut_rows:
+        # 绷直窗口：从首次张紧开始的一段固定时长（两套模型用同一口径才可比）
+        start = float(taut_rows[0]["time_s"])
+        window = [r for r in rows if start <= float(r["time_s"]) <= start + engagement_window_s]
+        result["rope_impulse_engagement_ns"] = sum(float(r["rope_impulse_ns"]) for r in window)
+    rates = []
+    for a, b in zip(tow_rows, tow_rows[1:]):
+        span = float(b["time_s"]) - float(a["time_s"])
+        if span > 0:
+            rates.append(abs(float(b["rope_tension_n"]) - float(a["rope_tension_n"])) / span)
+    result["max_tension_rate_n_per_s"] = max(rates) if rates else None
+    if steady_tension is not None and dt is not None:
+        # 稳态伸长 = 稳态窗口内的平均伸长（compliant 下应 ≈ T_steady/k）
+        window = [r for r in tow_rows
+                  if float(r["time_s"]) >= float(tow_rows[-1]["time_s"]) - 1.0]
+        if window:
+            result["rope_steady_extension_mm"] = (
+                sum(float(r["rope_extension_m"]) for r in window) / len(window) * 1000.0)
+    return result
+
+
 def _elasticity(tow_rows, taut_rows, steady_tension, config):
     """绳的弹性诊断：伸长、绷直过冲、固有频率/阻尼比，以及显式积分的步长上限。
 
@@ -340,6 +389,7 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
     summary["tension_ripple_ratio"] = (summary["steady_tension_std_n"] / steady_tension
                                       if steady_tension > 0 else None)
     summary.update(_elasticity(tow_rows, taut_rows, steady_tension, config))
+    summary.update(_rope_stats(rows, tow_rows, taut_rows, steady_tension))
 
     # 收松弛的耗时与机器人走过多远才发力：设计上应当 ≈ `--slack`（可直接核对）
     if taut_rows:

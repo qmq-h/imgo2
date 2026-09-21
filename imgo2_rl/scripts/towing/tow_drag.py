@@ -44,8 +44,20 @@ def parse_args(argv=None):
                              "留 0.28 m 余量不会追到机器人（L0=1.0 时间距更大但看不出追尾趋势）。"
                              "注意 L0 必须与速度和轮阻一起定：v=1.0 m/s、b=0.016 时滑行 1.06 m，"
                              "L0=1.0 就已经会撞（启动时会打印预测）")
-    parser.add_argument("--stiffness", type=float, default=4000.0, help="绳刚度 k，N/m")
-    parser.add_argument("--damping", type=float, default=100.0, help="绳阻尼 c，N·s/m")
+    parser.add_argument("--rope-model", nargs="+", choices=("compliant", "inextensible"),
+                        default=["compliant"],
+                        help="绳索模型：compliant = 单边弹簧-阻尼（P3/P4 已有，靠伸长储能）；"
+                             "inextensible = 单边距离约束（不可伸长，绷直靠约束冲量，"
+                             "**不是**把 k 调大）。默认 compliant，现有实验不受影响。")
+    parser.add_argument("--stiffness", type=float, default=4000.0,
+                        help="绳刚度 k，N/m（仅 compliant 用）")
+    parser.add_argument("--damping", type=float, default=100.0,
+                        help="绳阻尼 c，N·s/m（仅 compliant 用）")
+    parser.add_argument("--position-gain", type=float, default=0.2,
+                        help="仅 inextensible：约束违反量的回拉增益 β（0~1，0.2 常见）")
+    parser.add_argument("--max-correction-rate", type=float, default=0.2,
+                        help="仅 inextensible：回拉相对速度上限，m/s（夹住深穿透时的猛拉；"
+                             "每步力 ≈ J/dt，所以这个上限直接决定最大回拉力）")
     parser.add_argument("--slack", type=float, default=0.40,
                         help="初始松弛量，m：两挂点初始三维距离 = L0 - slack，机器人要**先走约 slack**"
                              "绳才张紧发力。同时 slack 越大两者初始越近。"
@@ -200,20 +212,27 @@ def make_schedule(*, settle_steps: int, duration: float, stop_at: float | None,
                          coast_steps=coast_steps, dt=dt)
 
 
-def sweep_cases(cart_masses, wheel_dampings):
-    """把 `--cart-mass` 与 `--wheel-damping` 做笛卡尔积，得到顺序固定的 case 列表。
+def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
+    """把 `--cart-mass` × `--wheel-damping` × `--rope-model` 做笛卡尔积，得到顺序固定的 case 列表。
 
     一个进程内顺序跑完所有 case（省掉每个组合重启一次 Isaac Sim）；`None` 表示用 URDF 名义质量。
+    绳索模型也是一维：`--rope-model compliant inextensible` 就能在**同一条件**下把两套模型
+    各跑一遍（同样的初始条件、同样的随机性），便于逐项对比（延长量/冲量/稳态张力/扰动）。
     """
-    if not cart_masses or not wheel_dampings:
-        raise ValueError("--cart-mass 与 --wheel-damping 都不能为空")
-    return [(mass, damping) for mass in cart_masses for damping in wheel_dampings]
+    if not cart_masses or not wheel_dampings or not rope_models:
+        raise ValueError("--cart-mass、--wheel-damping、--rope-model 都不能为空")
+    return [(mass, damping, name) for name in rope_models for mass in cart_masses
+            for damping in wheel_dampings]
 
 
-def case_label(case_index: int, mass_target, damping: float, nominal_total_kg: float) -> str:
-    """case 目录名：质量用 kg 整数（None 表示名义值），阻尼保留有效位。"""
+def case_label(case_index: int, mass_target, damping: float, nominal_total_kg: float,
+               rope_model: str = "compliant") -> str:
+    """case 目录名：绳索模型 + 质量（kg，None 表示名义值）+ 阻尼。
+
+    模型名放进目录名是必要的：两套模型可以跑同一个 case 编号序列，不写进名字会互相覆盖。
+    """
     mass = nominal_total_kg if mass_target is None else mass_target
-    return f"case_{case_index:02d}_m{mass:g}_b{damping:g}"
+    return f"case_{case_index:02d}_{rope_model}_m{mass:g}_b{damping:g}"
 
 
 def mass_scale_factor(target_total_kg: float | None, nominal_total_kg: float) -> float:
@@ -291,7 +310,9 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.towing_env_cfg import (
             ROBOT_ATTACHMENT_OFFSET_M, ROBOT_SPAWN_HEIGHT_M, TowSceneCfg)
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
-        from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity, rope_state
+        from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
+        from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
+            BodyProperties, make_rope_model, world_inverse_inertia)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
@@ -305,10 +326,10 @@ def main(args):
         cart_attachment = tuple(model["attachment_position_m"])
         robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
         # 逐 case 的笛卡尔积：--cart-mass × --wheel-damping，在同一进程内顺序执行
-        cases = sweep_cases(args.cart_mass, args.wheel_damping)
+        cases = sweep_cases(args.cart_mass, args.wheel_damping, args.rope_model)
         # 计划期（plan-time）的标量都在这里一次算好，避免后面「先用后赋值」：
         # 之前 stop_steps 与 scale 各踩过一次（main() 只有跑仿真才执行，离线测试抓不到）。
-        scales = [mass_scale_factor(mass, model["total_mass_kg"]) for mass, _ in cases]
+        scales = [mass_scale_factor(mass, model["total_mass_kg"]) for mass, _, _ in cases]
         cart_cfg.init_state.pos = (
             initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
                            cart_height=model["resting_height_m"],
@@ -319,14 +340,14 @@ def main(args):
         # 参数组合（L0 / 速度 / 轮阻 / 质量）必须一起看：v=1.0、b=0.016 时滑行 1.06 m，
         # L0=1.0 就已经会撞；质量越大滑得越远（m_eff 同比例）。只警告不拦——P6 本就想观察追尾。
         predictions = []
-        for (mass_target, damping), case_scale in zip(cases, scales):
+        for (mass_target, damping, rope_name), case_scale in zip(cases, scales):
             coast = predicted_coast_distance(
                 args.velocity, damping,
                 cart_mass_kg=model["total_mass_kg"] * case_scale,
                 wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1] * case_scale,
                 wheel_radius_m=model["wheel_radius_m"])
             predictions.append((coast, args.rope_length - coast))
-            print(f"[PLAN] m={mass_target or model['total_mass_kg']:.0f} kg b={damping:g} "
+            print(f"[PLAN] {rope_name} m={mass_target or model['total_mass_kg']:.0f} kg b={damping:g} "
                   f"L0={args.rope_length:g} v={args.velocity:g} ⇒ 预测滑行 {coast:.3f} m，"
                   f"最小间距 {args.rope_length - coast:+.3f} m"
                   + ("   ⚠ 会追到机器人" if args.rope_length - coast <= 0.05 else ""), flush=True)
@@ -388,6 +409,7 @@ def main(args):
             raise RuntimeError(f"小车应当只有一个 'base_link' 刚体，实际 {cart_base_names}")
         cart_base_id = cart_base_ids[0]
         cart_joint_ids, cart_joint_names = cart.find_joints(list(model["joint_names"]), preserve_order=True)
+        cart_wheel_ids, cart_wheel_names = cart.find_bodies(list(model["wheel_names"]), preserve_order=True)
         contact_ids, contact_names = contacts.find_bodies(list(model["wheel_names"]), preserve_order=True)
         deck_ids, deck_names = deck_contacts.find_bodies(["base_link"], preserve_order=True)
         if len(cart_joint_ids) != 4 or cart.num_joints != 4 or len(contact_ids) != 4:
@@ -399,6 +421,13 @@ def main(args):
         if not math.isclose(decimation * dt, policy_cfg.control_dt, rel_tol=1e-6):
             raise RuntimeError("policy_cfg.control_dt 必须是物理 dt 的整数倍")
         policy = FrozenLowLevelPolicy(policy_cfg, device=args.device)
+
+        def build_rope_model(name):
+            """按名字建模型；`--rope-model` 可以给多个，于是同一进程里逐 case 换模型。"""
+            return make_rope_model(name, rest_length=args.rope_length,
+                                   stiffness=args.stiffness, damping=args.damping,
+                                   position_gain=args.position_gain,
+                                   max_correction_rate=args.max_correction_rate)
         settle_steps = policy.reset()          # reset 契约：last_action 归零 + 站定步数
         settle_steps = max(settle_steps, int(round(args.settle_time / dt)))
         # 阶段划分必须先于 config 字典算好：上一版把 stop_steps 的赋值放在 config 之后，
@@ -419,12 +448,49 @@ def main(args):
             local = math_utils.quat_apply_inverse(asset.data.body_quat_w[:, body_id], force_world)
             return local.unsqueeze(1)
 
+        def _quat_to_matrix(quat):                 # Isaac Lab 四元数是 (w, x, y, z)
+            w, x, y, z = quat
+            return ((1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)),
+                    (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
+                    (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)))
+
+        def inverse_inertia_world(asset, body_id):
+            """某刚体在**世界系**的逆惯量（3×3，元素为标量）。
+
+            PhysX 给的是机体主轴系下的对角惯量（展平 9 个数，对角在 0/4/8），
+            按刚体姿态旋转：`I_w⁻¹ = R diag(1/I) Rᵀ`（`world_inverse_inertia` 做这件事）。
+            inextensible 模型只用它算挂点的转动项 `(r×e)ᵀ I⁻¹ (r×e)`；名义几何下力臂与
+            绳方向平行、该项为零。逐 env 分配时同一套 API 直接吃 `(N,)` 张量即可。
+            """
+            flat = [float(v) for v in asset.root_physx_view.get_inertias()[0, body_id]]
+            rotation = _quat_to_matrix([float(v) for v in asset.data.body_quat_w[0, body_id]])
+            return world_inverse_inertia((flat[0], flat[4], flat[8]), rotation)
+
+        # 机器人受绳冲量时四足撑地、整车一起抵抗 ⇒ 等效质量取**全部 link 之和**
+        # （实测 12.6996 kg）。这是近似：严格的整机等效质量还取决于腿的接触状态，
+        # 与真实值的偏差由「约束执行误差」在现场实测（见文档）。
+        robot_mass_kg = float(robot.root_physx_view.get_masses().sum())
+
+        def cart_mass_effective_kg():
+            """小车纵向等效质量 = 整车质量 + 四轮滚动惯量折算 `4I/r²`。
+
+            冲量要先把轮子带转，所以等效质量比总质量大（10 kg 车 → 10.8 kg），
+            与滑行段解析式用的 `m_eff` 是同一口径。轮子绕 y 轴（index 4）转动。
+            """
+            masses = cart.root_physx_view.get_masses()
+            inertias = cart.root_physx_view.get_inertias()
+            spun = sum(float(inertias[0, body_id][4]) for body_id in cart_wheel_ids)
+            return float(masses.sum()) + 4.0 * spun / model["wheel_radius_m"] ** 2
+
         def apply_rope_and_resistance(command, wheel_damping):
             """按当前状态算绳力与轮阻并写入缓冲（显式欧拉，同 P1/P2）。
 
             **挂点世界坐标 = 刚体原点 + 旋转后的挂点偏移**。第一版只加了偏移去算
             挂点速度、位置却直接用了刚体原点，于是绳长里混进了机器人与小车的高度差
             （0.35 vs 0.15 m），初始张力被抬到 ~1955 N 直接把机器人拽倒。
+
+            绳模型可切换（`--rope-model`）：两套模型都是「读状态 → 给出挂点力」，
+            所以这里只负责把状态凑齐、把力写进缓冲，物理差异全在模型内部。
             """
             robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_id], robot_attach.view(1, 3))
             cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_id], cart_attach.view(1, 3))
@@ -436,9 +502,20 @@ def main(args):
             cart_v = point_velocity(tuple(float(v) for v in cart.data.body_lin_vel_w[0, cart_base_id]),
                                     tuple(float(v) for v in cart.data.body_ang_vel_w[0, cart_base_id]),
                                     tuple(float(v) for v in cart_offset_w[0]))
-            state = rope_state(robot_p, cart_p, robot_v, cart_v,
-                               rest_length=args.rope_length, stiffness=args.stiffness,
-                               damping=args.damping)
+            # `inextensible` 需要两侧刚体属性来算等效逆质量（转动项 = 挂点离质心的力臂效应）。
+            # 质量取**整机**：机器人受冲量时四足撑地、整车一起抵抗，所以是全部 link 之和
+            # （12.6996 kg），不是 base 单链的 5.5339 kg；小车再加上四轮滚动惯量折算项
+            # `4I/r²`（冲量要先把轮子带转），与滑行段用的 m_eff 同一口径。
+            robot_props = BodyProperties(
+                mass=robot_mass_kg, inverse_inertia_world=inverse_inertia_world(robot, base_id),
+                offset=tuple(float(v) for v in robot_offset_w[0]))
+            cart_props = BodyProperties(
+                mass=cart_mass_effective_kg(),
+                inverse_inertia_world=inverse_inertia_world(cart, cart_base_id),
+                offset=tuple(float(v) for v in cart_offset_w[0]))
+            state = rope_model.update(robot_point=robot_p, cart_point=cart_p,
+                                      robot_velocity=robot_v, cart_velocity=cart_v, dt=dt,
+                                      robot=robot_props, cart=cart_props)
             force_robot = torch.tensor(state.force_on_robot, dtype=torch.float32, device=args.device).view(1, 3)
             force_cart = torch.tensor(state.force_on_cart, dtype=torch.float32, device=args.device).view(1, 3)
             robot.set_external_force_and_torque(link_frame_force(robot, base_id, force_robot),
@@ -468,7 +545,7 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out
 
-        def case_config(mass_target, damping, case_scale, coast, gap):
+        def case_config(mass_target, damping, rope_name, case_scale, coast, gap):
             return {
                 "policy": args.policy,
                 "model_sha256": hashlib.sha256(policy_cfg.model_path.read_bytes()).hexdigest(),
@@ -484,8 +561,16 @@ def main(args):
                 "isaac_lab_joint_order": list(robot.joint_names),
                 "policy_joint_order": list(policy_cfg.joint_names),
                 "policy_to_asset_permutation": list(asset_perm),
-                "rope": {"rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
-                         "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
+                "rope": {"model": rope_name,
+                         "rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
+                         "damping_ns_per_m": args.damping, "initial_slack_m": args.slack,
+                         # 仅 inextensible 用；写进产物便于复算与对比
+                         "position_gain": args.position_gain,
+                         "max_correction_rate_mps": args.max_correction_rate,
+                         "model_note": "compliant = unilateral spring-damper (stores elastic energy); "
+                                       "inextensible = unilateral distance constraint d<=L0, T>=0, "
+                                       "T(L0-d)=0, engagement handled by constraint impulse "
+                                       "(NOT a large k)"},
                 "wheel_damping_nms_per_rad": damping, "user_command_mps": args.velocity,
                 "cart_mass_target_kg": mass_target, "cart_mass_scale": case_scale,
                 "cart_mass_actual_kg": model["total_mass_kg"] * case_scale,
@@ -540,17 +625,26 @@ def main(args):
 
         results = []
         case_dirs = []
-        for case_index, ((mass_target, damping), case_scale, (coast, gap)) in enumerate(
+        for case_index, ((mass_target, damping, rope_name), case_scale, (coast, gap)) in enumerate(
                 zip(cases, scales, predictions)):
-            case_dir = output / case_label(case_index, mass_target, damping, model["total_mass_kg"])
+            case_dir = output / case_label(case_index, mass_target, damping,
+                                           model["total_mass_kg"], rope_name)
             label = case_dir.name.split("_", 2)[2]
             case_dir.mkdir(parents=True, exist_ok=False)
             case_dirs.append(case_dir.name)
+            rope_model = build_rope_model(rope_name)
+            print(f"[CASE {case_index}] 绳索模型 = {rope_name}"
+                  + ("" if rope_name == "compliant"
+                     else f"（position_gain={args.position_gain:g}、"
+                          f"max_correction_rate={args.max_correction_rate:g} m/s）"),
+                  flush=True)
             reset_case(mass_target, case_scale)
             actual_mass = float(cart.root_physx_view.get_masses().sum())
             print(f"[CASE {case_index}] {label}: 小车 {actual_mass:.3f} kg b={damping:g} ⇒ {case_dir.name}",
                   flush=True)
-            recorder = TowRecorder(case_dir, case_config(mass_target, damping, case_scale, coast, gap))
+            recorder = TowRecorder(case_dir,
+                                   case_config(mass_target, damping, rope_name,
+                                               case_scale, coast, gap))
             for step in range(schedule.total_steps):
                 phase = schedule.phase_of(step)
                 command = args.velocity if phase == "tow" else 0.0
@@ -595,7 +689,12 @@ def main(args):
                     "ref_cmd_mps": command,          # P4 还没有 command shaping
                     "robot_vx_mps": float(robot.data.root_lin_vel_w[0, 0]),
                     "load_vx_mps": float(cart.data.root_lin_vel_w[0, 0]),
-                    "rope_tension_n": float(state.tension),
+                    "rope_tension_n": float(state.rope_tension),
+                    # 统一日志接口：两套模型字段一致（见 mdp/rope_model.py 的 RopeSample）
+                    "rope_extension_m": float(state.rope_extension),
+                    "rope_length_rate_mps": float(state.rope_length_rate),
+                    "rope_taut": float(state.is_taut),
+                    "rope_impulse_ns": float(state.rope_impulse),
                     "rope_distance_m": float(state.distance),
                     "robot_x_m": float(robot.data.root_pos_w[0, 0]),
                     "load_x_m": float(cart.data.root_pos_w[0, 0]),
@@ -637,6 +736,7 @@ def main(args):
                  "arguments": {"velocity": args.velocity, "rope_length": args.rope_length,
                                "slack": args.slack, "ground_friction": args.ground_friction,
                                "cart_masses": args.cart_mass, "wheel_dampings": args.wheel_damping,
+                               "rope_models": args.rope_model,
                                "stop_at": args.stop_at, "duration": args.duration}}
         json_file(output / "sweep.json", sweep)
         manifest.update(state="completed", valid=all_valid, cases=case_dirs)

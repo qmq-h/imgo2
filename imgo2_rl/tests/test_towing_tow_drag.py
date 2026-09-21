@@ -198,15 +198,21 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(default.wheel_damping, [0.016])
 
     def test_case_list_is_a_cartesian_product_in_stable_order(self):
+        """三维修扫：绳索模型 × 质量 × 轮阻，顺序固定（同一进程内逐 case 跑）。"""
         self.assertEqual(tow_drag.sweep_cases([5.0, 10.0], [0.016]),
-                         [(5.0, 0.016), (10.0, 0.016)])
-        for bad in (([], [0.016]), ([5.0], [])):
+                         [(5.0, 0.016, "compliant"), (10.0, 0.016, "compliant")])
+        self.assertEqual(tow_drag.sweep_cases([5.0], [0.016], ["compliant", "inextensible"]),
+                         [(5.0, 0.016, "compliant"), (5.0, 0.016, "inextensible")])
+        for bad in (([], [0.016]), ([5.0], []), ([5.0], [0.016], [])):
             with self.assertRaises(ValueError):
                 tow_drag.sweep_cases(*bad)
 
-    def test_case_label_names_mass_and_damping(self):
-        self.assertEqual(tow_drag.case_label(0, 5.0, 0.016, 10.0), "case_00_m5_b0.016")
-        self.assertEqual(tow_drag.case_label(3, None, 0.032, 10.0), "case_03_m10_b0.032")
+    def test_case_label_names_the_rope_model_mass_and_damping(self):
+        """模型名必须进目录名：两套模型共用同一串 case 编号，否则会互相覆盖。"""
+        self.assertEqual(tow_drag.case_label(0, 5.0, 0.016, 10.0),
+                         "case_00_compliant_m5_b0.016")
+        self.assertEqual(tow_drag.case_label(3, None, 0.032, 10.0, "inextensible"),
+                         "case_03_inextensible_m10_b0.032")
 
 
 class PlanTimeOrderingTests(unittest.TestCase):
@@ -564,6 +570,13 @@ class InterfaceContractTests(unittest.TestCase):
             return [eval(text, {name: value}) for value in values]   # noqa: S307 - 只喂源码里的 f-string
         raise AssertionError(f"不支持的字段来源：{type(node).__name__}")
 
+    def test_both_rope_models_are_wired_in(self):
+        """规格要求两套模型都实现、可切换；入口必须同时支持并按 case 记录用的是哪一套。"""
+        self.assertIn("make_rope_model(", self.source)
+        self.assertIn('choices=("compliant", "inextensible")', self.source)
+        self.assertIn('"model": rope_name', self.source)
+        self.assertIn("world_inverse_inertia", self.source)
+
     def test_policy_is_loaded_through_the_contract_adapter(self):
         self.assertIn("FrozenLowLevelPolicy", self.source)
         self.assertIn("get_policy(", self.source)
@@ -611,7 +624,9 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("write_root_velocity_to_sim", self.source)
         self.assertIn("write_joint_state_to_sim", self.source)
         self.assertIn("root[:, 7:] = 0.0", self.source)          # 速度清零
-        self.assertIn("for case_index, ((mass_target, damping)", self.source)
+        self.assertIn("for case_index, ((mass_target, damping, rope_name)", self.source)
+        # 每个 case 按名字重建模型：同一次扫描里可以混用两套绳索模型
+        self.assertIn("rope_model = build_rope_model(rope_name)", self.source)
         self.assertIn('"sweep"', self.source)
         # 逐 case 的产物目录与汇总
         self.assertIn("case_dir.mkdir(parents=True, exist_ok=False)", self.source)
@@ -654,7 +669,8 @@ class InterfaceContractTests(unittest.TestCase):
         第一版两边都建目录，实跑报 FileExistsError（自己撞自己）。这条把职责固定住。
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
-        self.assertIn("recorder = TowRecorder(case_dir, case_config(", self.source)
+        self.assertIn("recorder = TowRecorder(case_dir,", self.source)
+        self.assertIn("case_config(mass_target, damping, rope_name,", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")
         calls = []
