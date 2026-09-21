@@ -664,11 +664,15 @@ def main(args):
             state = rope_model.update(robot_point=robot_p, cart_point=cart_p,
                                       robot_velocity=robot_v, cart_velocity=cart_v, dt=dt,
                                       robot=robot_props, cart=cart_props)
-            # 力从「3 个 (N,) 分量」拼成 (N, 1, 3) —— `set_external_force_and_torque` 要的形状
+            # 力拼成 **(N, 3)**，**不要**在这里再加 body 维：`link_frame_force()` 自己会
+            # `unsqueeze(1)` 变成 (N,1,3)。两处都加就会得到 (N,1,1,3)，Isaac Lab 内部
+            # `flatten(0, 1)` 之后是 (N,1,3)，写进 (N,3) 的索引结果时报
+            # `shape mismatch: value tensor of shape [4, 1, 3] cannot be broadcast to
+            #  indexing result of shape [4, 3]`（2026-09-21 多环境实测踩到）。
             force_robot = torch.stack([torch.as_tensor(component) for component in state.force_on_robot],
-                                      dim=-1).reshape(robot.num_instances, 1, 3)
+                                      dim=-1)
             force_cart = torch.stack([torch.as_tensor(component) for component in state.force_on_cart],
-                                     dim=-1).reshape(cart.num_instances, 1, 3)
+                                     dim=-1)
             robot.set_external_force_and_torque(link_frame_force(robot, base_id, force_robot),
                                                 robot_zero_torque[:, :1],
                                                 positions=robot_attach.expand(args.num_envs, 1, 3),

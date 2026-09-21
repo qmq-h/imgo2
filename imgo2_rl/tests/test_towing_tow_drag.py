@@ -733,6 +733,22 @@ class InterfaceContractTests(unittest.TestCase):
                                   f"quat_apply* 的向量参数用了单例形状（会广播出错误 shape）：{text}")
         self.assertGreaterEqual(calls, 3, "没扫到 quat_apply* 调用，契约失效")
 
+    def test_link_frame_force_adds_the_body_dimension_exactly_once(self):
+        """`link_frame_force()` 自己 `unsqueeze(1)`；调用方给的力必须是 (N, 3)。
+
+        若调用方先 reshape 成 (N,1,3)，`unsqueeze(1)` 会得到 (N,1,1,3)；Isaac Lab 内部
+        `self._external_force_b.flatten(0, 1)[indices] = forces.flatten(0, 1)` 于是拿到 (N,1,3)，
+        写进 (N,3) 的索引结果时报
+        `RuntimeError: shape mismatch: value tensor of shape [4, 1, 3] cannot be broadcast to
+        indexing result of shape [4, 3]`（2026-09-21 多环境实测踩到）。
+        """
+        self.assertIn("local.unsqueeze(1)", self.source)          # 定义处自己加 body 维
+        for forbidden in (".reshape(robot.num_instances, 1, 3)",
+                          ".reshape(cart.num_instances, 1, 3)",
+                          ".view(robot.num_instances, 1, 3)"):
+            self.assertNotIn(forbidden, self.source,
+                             f"力不该在调用方加 body 维（{forbidden}）——会让 link_frame_force 加两次")
+
     def test_multi_env_visualisation_is_wired_in(self):
         """多环境可视化：`--num-envs` + 逐 env 分配绳索模型 + 逐 env 一份记录。
 

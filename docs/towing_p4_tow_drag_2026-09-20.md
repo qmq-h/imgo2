@@ -1216,6 +1216,13 @@ got Tensor`。这其实**不是「只在仿真里才炸」**——只要有一�
 说明「支持标量/numpy/torch」这条声明此前只被标量路径测过。修法：`_components` 元素是实数才校验、
 是数组就原样传下去；并补一条**用真实 `point_velocity()` 返回值**的批量回归测试。
 
+**第八次（多环境外力形状）：body 维加了两遍。** `link_frame_force()` 自己 `unsqueeze(1)`，
+调用方又 `reshape(N,1,3)` ⇒ (N,1,1,3)。Isaac Lab 是
+`self._external_force_b.flatten(0,1)[indices] = forces.flatten(0,1)`：索引结果按
+`len(env_ids)×len(body_ids)` = (4,3)，值 flatten 后 (4,1,3) ⇒
+`shape mismatch: value tensor of shape [4, 1, 3] cannot be broadcast to indexing result of shape [4, 3]`。
+修法：力只在调用方拼成 (N,3)，body 维由 `link_frame_force()` 加一次；契约禁止调用方再 reshape。
+
 **过程规则（吃够教训后定下）**：源码契约测试（AST/字符串）只能查「有没有写」，**查不出运行期
 形状/数值错误**。所以 `main()` 里新增的逻辑要么搬进纯函数并被测试**实际调用**，要么在交付时
 明说「这段没被任何测试执行过」。两次失败（`state.distance`、`env_origins` 解包）都出在
