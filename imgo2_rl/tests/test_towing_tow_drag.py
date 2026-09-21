@@ -369,6 +369,8 @@ class CoastPredictionTests(unittest.TestCase):
 class TowRecorderTests(unittest.TestCase):
     def _row(self, time_s=0.005, **changes):
         row = {"phase": "tow", "time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
+               "wheel_fl_omega_radps": 6.0, "wheel_fr_omega_radps": 6.0,
+               "wheel_rl_omega_radps": 6.0, "wheel_rr_omega_radps": 6.0,
                "robot_vx_mps": 0.5, "load_vx_mps": 0.5, "rope_tension_n": 10.0,
                "rope_distance_m": 1.1, "robot_x_m": 0.1, "load_x_m": -1.0,
                "robot_z_m": 0.30, "load_z_m": 0.15,

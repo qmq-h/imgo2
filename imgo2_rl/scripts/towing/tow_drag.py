@@ -549,7 +549,12 @@ def main(args):
                 quat = robot.data.root_quat_w[0]
                 qw, qx, qy, qz = (float(v) for v in quat)     # 与 P2 相同的 roll/pitch 公式
                 pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
+                wheel_omega = {
+                    f"wheel_{leg}_omega_radps": float(cart.data.joint_vel[0, jid])
+                    for leg, jid in zip(("fl", "fr", "rl", "rr"), cart_joint_ids)
+                }
                 recorder.append({
+                    **wheel_omega,
                     "phase": phase,
                     "time_s": (step + 1) * dt,
                     "user_cmd_mps": command,

@@ -57,6 +57,9 @@ TOW_NUMERIC_FIELDS = (
     "rope_tension_n", "rope_distance_m", "robot_x_m", "load_x_m",
     # 高度单列出来：机器人被拽倒/塌下去时，只看 pitch 不够直观
     "robot_z_m", "load_z_m",
+    # 四个轮速单列：v/r 与 ω 的比值能区分「滚动」与「滑动」，是诊断低速段
+    # 与解析预测不符（实测提前硬停）的关键量
+    *(f"wheel_{leg}_omega_radps" for leg in LEGS),
     "body_pitch_rad", "body_pitch_rate_radps",
 )
 TOW_FIELDS = ("phase", *TOW_NUMERIC_FIELDS)
