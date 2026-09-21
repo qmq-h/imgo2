@@ -6,6 +6,24 @@ import math
 from pathlib import Path
 
 LEGS = ("fl", "fr", "rl", "rr")
+
+# 机器人 12 个关节角的列名。列名生成只放这一处：入口填列、离线工具 FK、以及
+# 「入口字段集 == 记录列集」这条离线契约测试都引用它，避免三处各写一遍 f-string 漂移。
+ROBOT_JOINT_POSITION_FIELDS = tuple(f"robot_jp_{index:02d}" for index in range(12))
+
+
+def joint_position_fields(values):
+    """把策略顺序的 12 个关节角转成记录用的字典。
+
+    键的生成放在这里（而不是入口里写推导式），于是离线测试可以直接调用**生产函数**
+    核对入口写出的列，不必去解析源码里的 f-string。
+    """
+    values = list(values)
+    if len(values) != len(ROBOT_JOINT_POSITION_FIELDS):
+        raise ValueError(f"契约要求 {len(ROBOT_JOINT_POSITION_FIELDS)} 个关节角，收到 {len(values)}")
+    return {name: float(value) for name, value in zip(ROBOT_JOINT_POSITION_FIELDS, values)}
+
+
 FIELDS = (
     "time_s", "x_m", "y_m", "z_m", "vx_mps", "vy_mps", "vz_mps",
     "roll_rad", "pitch_rad", "yaw_rad", "wx_radps", "wy_radps", "wz_radps",
@@ -61,6 +79,22 @@ TOW_NUMERIC_FIELDS = (
     # 与解析预测不符（实测提前硬停）的关键量
     *(f"wheel_{leg}_omega_radps" for leg in LEGS),
     "body_pitch_rad", "body_pitch_rate_radps",
+    # ---------------------------------------------------------------- 停车距离度量
+    # 「小车是否追到机器人」「最终停车距离机器人的位置」不能用挂点间距判：
+    # 挂点间距只是两个**挂点**的距离，而真实接触取决于车头与机器人后腿的几何。
+    # 二者相差一个随姿态变化的量（实测 d_contact = 0.12~0.44 m，见
+    # docs/towing_p4_tow_drag_2026-09-20.md §5.17），所以必须记录算出真实间隙所需的
+    # 全部状态量：12 个关节角（决定机器人后腿伸到哪里）+ 双方完整姿态。
+    # 关节角按**策略/契约顺序**存（policy_cfg.joint_names，逐腿 FL/FR/RL/RR），
+    # 顺序随 config.json 的 `policy_joint_names` 一起落盘，不靠约定记忆。
+    *ROBOT_JOINT_POSITION_FIELDS,
+    "robot_quat_x", "robot_quat_y", "robot_quat_z", "robot_quat_w",
+    "load_quat_x", "load_quat_y", "load_quat_z", "load_quat_w",
+    # 撞击的独立见证（不依赖任何 FK/几何建模）：
+    # `cart_deck_fx_n` 是车斗 base_link 受到的接触合力在 x 的分量 —— 车斗永远不碰地面，
+    # 所以它非零**只可能**是机器人压上来了；`cart_wheel_fx_n` 是四个轮子的同类分量之和，
+    # 正常滚动时只有 ~1.7 N（用来克服轮阻），撞击时会跳到几十 N。
+    "cart_deck_fx_n", "cart_wheel_fx_n",
 )
 TOW_FIELDS = ("phase", *TOW_NUMERIC_FIELDS)
 

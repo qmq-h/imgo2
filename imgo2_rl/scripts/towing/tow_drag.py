@@ -295,7 +295,8 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
-        from imgo2_rl.tasks.manager_based.towing.utils.recording import TowRecorder
+        from imgo2_rl.tasks.manager_based.towing.utils.recording import (
+                TowRecorder, joint_position_fields)
 
         policy_cfg = get_policy(args.policy)
         spawn_height = args.spawn_height if args.spawn_height is not None else ROBOT_SPAWN_HEIGHT_M
@@ -350,6 +351,7 @@ def main(args):
         scene = InteractiveScene(scene_cfg)
         sim.reset()
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
+        deck_contacts = scene["deck_contacts"]
         cart_env_idx = torch.arange(cart.num_instances, dtype=torch.int, device="cpu")
         # 名义质量/惯量作为缩放基准（每 case 都从它算，保证可重复；不能读回上一次的结果）
         nominal_masses = cart.root_physx_view.get_masses().clone()
@@ -387,8 +389,11 @@ def main(args):
         cart_base_id = cart_base_ids[0]
         cart_joint_ids, cart_joint_names = cart.find_joints(list(model["joint_names"]), preserve_order=True)
         contact_ids, contact_names = contacts.find_bodies(list(model["wheel_names"]), preserve_order=True)
+        deck_ids, deck_names = deck_contacts.find_bodies(["base_link"], preserve_order=True)
         if len(cart_joint_ids) != 4 or cart.num_joints != 4 or len(contact_ids) != 4:
             raise RuntimeError("导入的小车必须有四个关节与四个同名轮接触")
+        if len(deck_ids) != 1:
+            raise RuntimeError(f"车斗接触传感器应当只覆盖车斗一个刚体，实际 {deck_names}")
 
         decimation = max(1, int(round(policy_cfg.control_dt / dt)))
         if not math.isclose(decimation * dt, policy_cfg.control_dt, rel_tol=1e-6):
@@ -494,6 +499,11 @@ def main(args):
                 "phase_steps": {"station": schedule.station_steps, "tow": schedule.tow_steps,
                                 "coast": schedule.coast_steps},
                 "dt_s": dt, "decimation": decimation, "device": args.device,
+                # 记录里 `robot_jp_00..11` 的关节顺序（策略/契约顺序，逐腿 FL/FR/RL/RR）：
+                # 离线算间隙的 FK 需要它，写进产物免得靠"约定"记忆。
+                "policy_joint_names": list(policy_cfg.joint_names),
+                "contact_witness": "cart_deck_fx_n 为车斗 base_link 接触合力 x 分量（车斗不着地，"
+                                   "非零即机器人压上来）；cart_wheel_fx_n 为四轮同类分量之和",
                 "torque_convention": "rope force and wheel torque are computed from the state at the start of each step",
                 "sweep": {"cases": [{"index": i, "cart_mass_kg": m, "wheel_damping": b}
                                     for i, (m, b) in enumerate(cases)]},
@@ -553,8 +563,28 @@ def main(args):
                     f"wheel_{leg}_omega_radps": float(cart.data.joint_vel[0, jid])
                     for leg, jid in zip(("fl", "fr", "rl", "rr"), cart_joint_ids)
                 }
+                # 关节角按策略顺序存（policy_to_asset 是「策略下标 → 资产下标」）：
+                # 离线工具用同一份 policy_joint_names 做 FK，才能算出机器人后腿伸到哪里，
+                # 进而得到车头与机器人之间的真实间隙（挂点间距不是间隙）。
+                joint_pos_policy = robot.data.joint_pos[0, policy_to_asset]
+                quat_robot = robot.data.root_quat_w[0]
+                quat_load = cart.data.root_quat_w[0]
                 recorder.append({
                     **wheel_omega,
+                    # Isaac Lab 四元数是 (w, x, y, z)，落盘按 x/y/z/w 命名，避免歧义
+                    **joint_position_fields(joint_pos_policy),
+                    "robot_quat_x": float(quat_robot[1]),
+                    "robot_quat_y": float(quat_robot[2]),
+                    "robot_quat_z": float(quat_robot[3]),
+                    "robot_quat_w": float(quat_robot[0]),
+                    "load_quat_x": float(quat_load[1]),
+                    "load_quat_y": float(quat_load[2]),
+                    "load_quat_z": float(quat_load[3]),
+                    "load_quat_w": float(quat_load[0]),
+                    # 接触合力的 x 分量（世界系）：车斗永不着地 ⇒ 非零即机器人压上来；
+                    # 轮子那一列正常滚动时只有克服轮阻所需的 ~1.7 N，撞击时跳到几十 N。
+                    "cart_deck_fx_n": float(deck_contacts.data.net_forces_w[0, 0, 0]),
+                    "cart_wheel_fx_n": float(contacts.data.net_forces_w[0, :, 0].sum()),
                     "phase": phase,
                     "time_s": (step + 1) * dt,
                     "user_cmd_mps": command,
@@ -579,16 +609,21 @@ def main(args):
             from summarize_tow import summarize_tow
             with (case_dir / "tow.csv").open(encoding="utf-8", newline="") as stream:
                 rows = list(csv.DictReader(stream))
-            summary = summarize_tow(rows, user_command=args.velocity)
+            summary = summarize_tow(rows, user_command=args.velocity,
+                                    joint_names=policy_cfg.joint_names)
             summary["case"] = case_dir.name
             summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
             summary["wheel_damping"] = damping
             json_file(case_dir / "summary.json", summary)
+            clearance = ("n/a" if summary["final_clearance_m"] is None
+                         else f"{summary['final_clearance_m']:.3f} m")
             print(f"[SUMMARY {case_index}] {label} 跟速={summary['steady_tracking_ratio']:.3f} "
                   f"T={summary['steady_tension_n']:.3f} N "
                   f"最小间距={summary['min_gap_after_tow_start_m']:.3f} m "
                   f"最终间距={summary['final_gap_m']:.3f} m "
-                  f"追尾={'是' if summary['caught_up'] else '否'} "
+                  f"最终车头间隙={clearance} "
+                  f"追到机器人={'是' if summary['reached_robot'] else '否'}"
+                  f"({summary['reached_robot_source']}) "
                   f"valid={summary['valid']} failures={summary['failures']}", flush=True)
             results.append(summary)
 

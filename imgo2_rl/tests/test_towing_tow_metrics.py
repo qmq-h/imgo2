@@ -11,6 +11,7 @@
 - **滑行段（阶跃停止）**要能报出小车滑行距离、最小间距（追尾风险）与张力归零耗时。
 """
 
+import importlib.util
 import math
 from pathlib import Path
 import sys
@@ -19,6 +20,36 @@ import unittest
 RL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RL / "scripts/tools"))
 from summarize_tow import summarize_tow  # noqa: E402
+
+
+def _module_at(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+recording = _module_at("towing_recording_metrics_test",
+                       RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py")
+
+JOINT_NAMES = ["FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
+               "FR_hip_joint", "FR_thigh_joint", "FR_shank_joint",
+               "RL_hip_joint", "RL_thigh_joint", "RL_shank_joint",
+               "RR_hip_joint", "RR_thigh_joint", "RR_shank_joint"]
+
+
+def add_witness_columns(rows, *, joints=(0.0, 0.87, -1.82), robot_z=0.2735, deck_fx=0.0,
+                        load_z=0.15):
+    """给合成轨迹补上「接触力 + 姿态 + 关节角」三组见证列（模拟新记录的字段）。"""
+    for row in rows:
+        row.update(recording.joint_position_fields(list(joints) * 4))
+        row["robot_z_m"] = robot_z
+        row["load_z_m"] = load_z
+        row.update({"robot_quat_x": 0.0, "robot_quat_y": 0.0, "robot_quat_z": 0.0,
+                    "robot_quat_w": 1.0, "load_quat_x": 0.0, "load_quat_y": 0.0,
+                    "load_quat_z": 0.0, "load_quat_w": 1.0,
+                    "cart_deck_fx_n": deck_fx, "cart_wheel_fx_n": 0.0})
+    return rows
 
 
 def _row(t, phase, cmd, vR, vL, tension, *, dist=1.001, pitch=0.05, z=0.284,
@@ -214,11 +245,70 @@ class CoastPhaseTests(unittest.TestCase):
         self.assertIn("robot_did_not_stop", summary["failures"])
         self.assertFalse(summary["valid"])
 
-    def test_load_reaching_robot_fails(self):
-        summary = self._coast(coast_gap=lambda t: max(0.0, 1.0 - 0.3 * t))
+    def test_load_reaching_robot_is_reported_and_not_a_failure(self):
+        """撞上是这套设置允许出现的正常结果（用户 2026-09-21），所以只报告、不判失败。
+
+        判据也不能用挂点间距：这里让撞击真的发生（滑行段负载单步速度跃变），
+        再看它是否被正确识别成 `reached_robot`，并且 `valid` 仍然为真。
+        """
+        def load_vx(t):
+            return 0.5 if t < 1.0 else 0.5 * math.exp(-(t - 1.0) / 0.1)
+        summary = self._coast(coast_gap=lambda t: max(0.0, 1.0 - 0.3 * t),
+                              coast_load_vx=load_vx)
         self.assertEqual(summary["coast_min_gap_m"], 0.0)
-        self.assertIn("load_reached_robot", summary["failures"])
-        self.assertFalse(summary["valid"])
+        self.assertTrue(summary["reached_robot"])
+        self.assertIn("load_velocity_jump", summary["reached_robot_source"])
+        self.assertGreater(summary["max_load_dv_mps"], 0.015)
+        self.assertNotIn("load_reached_robot", summary["failures"])
+        self.assertTrue(summary["valid"], summary["failures"])
+
+    def test_old_record_without_witness_channels_is_marked_unreliable(self):
+        """旧记录既无接触力也无关节角 ⇒ 只能退回挂点间距，来源名必须点明这一点。"""
+        summary = self._coast(coast_gap=lambda t: max(0.0, 1.0 - 0.3 * t))
+        self.assertIsNone(summary["min_clearance_m"])
+        self.assertIsNone(summary["deck_contact_peak_n"])
+        self.assertTrue(summary["reached_robot"])                      # 挂点口径兜底
+        self.assertEqual(summary["reached_robot_source"], "attachment_gap_fallback")
+        self.assertTrue(summary["valid"], summary["failures"])
+
+    def test_no_witness_and_no_catch_up_says_clear(self):
+        summary = self._coast()
+        self.assertFalse(summary["reached_robot"])
+        self.assertEqual(summary["reached_robot_source"], "attachment_gap_fallback_clear")
+
+    def test_deck_contact_force_is_a_witness(self):
+        """车斗永远不碰地面，所以它的接触力非零只可能是机器人压上来。"""
+        rows = add_witness_columns(_run(coast_s=1.0), deck_fx=12.0)
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertAlmostEqual(summary["deck_contact_peak_n"], 12.0, places=6)
+        self.assertIn("deck_contact_force", summary["reached_robot_source"])
+        self.assertTrue(summary["reached_robot"])
+        self.assertTrue(summary["valid"], summary["failures"])
+
+    def test_geometric_clearance_witness_fires_when_the_pose_reaches(self):
+        """几何间隙 ≤ 0 ⇒ 接触。判据用的是 FK 算出的真实间隙，不是挂点间距。
+
+        默认站姿、直立姿态下 间隙 = (x_R − x_L) − 0.3984 − 0.25，所以把两体摆到
+        x_R − x_L = 0.6084（即间隙 −0.04 m）应当判为已经接触。
+        """
+        rows = add_witness_columns(_run(coast_s=1.0))
+        for row in rows:                     # 间隙由**位置**算出，与 rope_distance_m 无关
+            row["load_x_m"], row["robot_x_m"] = 0.0, 0.6084
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertLess(summary["min_clearance_m"], 0.0)
+        self.assertIn("geometric_clearance", summary["reached_robot_source"])
+        self.assertTrue(summary["reached_robot"])
+        self.assertTrue(summary["valid"], summary["failures"])
+
+    def test_geometric_clearance_says_clear_when_it_does_not_reach(self):
+        """x_R − x_L = 1.0084 ⇒ 间隙 +0.36 m，未接触；来源必须是 witnesses_clear。"""
+        rows = add_witness_columns(_run(coast_s=1.0))
+        for row in rows:
+            row["load_x_m"], row["robot_x_m"] = 0.0, 1.0084
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertGreater(summary["min_clearance_m"], 0.3)
+        self.assertFalse(summary["reached_robot"])
+        self.assertEqual(summary["reached_robot_source"], "witnesses_clear")
 
     def test_retension_after_slack_is_reported_not_failed(self):
         """追尾后绳重新绷紧是计划要观察的现象，报告而不判失败。"""

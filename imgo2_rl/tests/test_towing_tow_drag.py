@@ -368,13 +368,16 @@ class CoastPredictionTests(unittest.TestCase):
 
 class TowRecorderTests(unittest.TestCase):
     def _row(self, time_s=0.005, **changes):
-        row = {"phase": "tow", "time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
-               "wheel_fl_omega_radps": 6.0, "wheel_fr_omega_radps": 6.0,
-               "wheel_rl_omega_radps": 6.0, "wheel_rr_omega_radps": 6.0,
-               "robot_vx_mps": 0.5, "load_vx_mps": 0.5, "rope_tension_n": 10.0,
-               "rope_distance_m": 1.1, "robot_x_m": 0.1, "load_x_m": -1.0,
-               "robot_z_m": 0.30, "load_z_m": 0.15,
-               "body_pitch_rad": 0.01, "body_pitch_rate_radps": 0.0}
+        # 字段集从 TOW_FIELDS 派生，不手工罗列：手工列表在加列时会变成假失败，
+        # 而这条测试要验的是「字段集必须严格一致」这个契约本身。
+        row = {"phase": "tow", "time_s": time_s}
+        row.update({name: 0.0 for name in recording.TOW_NUMERIC_FIELDS if name != "time_s"})
+        row.update({"user_cmd_mps": 0.5, "ref_cmd_mps": 0.5, "robot_vx_mps": 0.5,
+                    "load_vx_mps": 0.5, "rope_tension_n": 10.0, "rope_distance_m": 1.1,
+                    "robot_x_m": 0.1, "load_x_m": -1.0, "robot_z_m": 0.30, "load_z_m": 0.15,
+                    "body_pitch_rad": 0.01, "robot_quat_w": 1.0, "load_quat_w": 1.0})
+        for leg in recording.LEGS:
+            row[f"wheel_{leg}_omega_radps"] = 6.0
         row.update(changes)
         return row
 
@@ -498,6 +501,68 @@ class InterfaceContractTests(unittest.TestCase):
         for imported in ("velocity_env_cfg", "amp_env_cfg"):
             self.assertNotIn(imported, self.source,
                              f"拖曳入口不应导入/修改 {imported}")
+
+    def test_entry_fills_exactly_the_recorded_columns(self):
+        """入口每步给出的字段集必须与 `TowRecorder` 的列集完全一致。
+
+        这条契约以前只在实跑时才暴露（`TowRecorder.append` 会拒绝字段集不符），也就是要烧掉
+        一次 GPU 运行才知道。这里用 AST 把入口那个字典的**键**离线算出来核对，
+        新增列却忘了填的情况就能在提交前拦住。
+        """
+        tree = ast.parse(self.source)
+        target = None
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "append" and node.args
+                    and isinstance(node.args[0], ast.Dict)):
+                target = node.args[0]
+        self.assertIsNotNone(target, "没找到 recorder.append({...}) 的字典")
+        assigned = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.DictComp):
+                for name in node.targets:
+                    if isinstance(name, ast.Name):
+                        assigned[name.id] = node.value
+        self.assertEqual(sorted(self._dict_keys(target, assigned)),
+                         sorted(recording.TOW_FIELDS),
+                         "入口写的字段与 TowRecorder 的列不一致（多写/漏写都会让实跑抛异常）")
+
+    @staticmethod
+    def _dict_keys(node, assigned):
+        """求出一个 dict 节点的字符串键集合，支持本入口用到的三种形态：
+
+        * 字面量键；`**some_dict`（引用局部变量）；
+        * `{f"robot_jp_{i:02d}": ... for i in range(12)}`；
+        * `{f"wheel_{leg}_omega_radps": ... for leg, jid in zip(("fl","fr","rl","rr"), ...)}`。
+        """
+        if isinstance(node, ast.Name):
+            return InterfaceContractTests._dict_keys(assigned[node.id], assigned)
+        if isinstance(node, ast.Dict):
+            keys = []
+            for key, value in zip(node.keys, node.values):
+                if key is not None:
+                    keys.append(key.value)
+                elif (isinstance(value, ast.Call) and getattr(value.func, "id", "") == "joint_position_fields"):
+                    # 直接调用**生产函数**取键（关节列名只有 recording 一处来源）
+                    keys.extend(recording.joint_position_fields(
+                        [0.0] * len(recording.ROBOT_JOINT_POSITION_FIELDS)))
+                else:
+                    keys.extend(InterfaceContractTests._dict_keys(value, assigned))
+            return keys
+        if isinstance(node, ast.DictComp):
+            loop = node.generators[0]
+            source = loop.iter
+            if isinstance(source, ast.Call) and getattr(source.func, "id", "") == "range":
+                values = list(range(source.args[0].value))
+            elif isinstance(source, ast.Call) and getattr(source.func, "id", "") == "zip":
+                values = [element.value for element in source.args[0].elts]
+            else:
+                raise AssertionError(f"不支持的推导式来源：{ast.dump(loop.iter)[:80]}")
+            text = ast.unparse(node.key)
+            # `for leg, jid in zip(...)` 这种元组目标是允许的：f-string 只用到第一个（腿名）
+            name = loop.target.elts[0].id if isinstance(loop.target, ast.Tuple) else loop.target.id
+            return [eval(text, {name: value}) for value in values]   # noqa: S307 - 只喂源码里的 f-string
+        raise AssertionError(f"不支持的字段来源：{type(node).__name__}")
 
     def test_policy_is_loaded_through_the_contract_adapter(self):
         self.assertIn("FrozenLowLevelPolicy", self.source)

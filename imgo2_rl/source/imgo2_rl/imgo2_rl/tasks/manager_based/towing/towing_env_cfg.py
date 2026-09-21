@@ -56,3 +56,9 @@ class TowSceneCfg(InteractiveSceneCfg):
     cart: ArticulationCfg | None = None
     wheel_contacts = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Cart/wheel_.*", update_period=0.0, history_length=1)
+    # 车斗接触：`base_link` 的碰撞箱 z 区间是 0.10~0.20 m，**永远不会碰地**
+    # （小车静止高度 0.15 m、轮半径 0.08 m），所以它的接触力非零只可能是机器人压上来。
+    # 这是「小车是否追到机器人」的独立见证：不依赖 FK、不依赖挂点间距，直接测力。
+    # 允许撞击发生是有意的设置（用户 2026-09-21 明确），这里只把它测出来、不阻止。
+    deck_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/base_link", update_period=0.0, history_length=1)

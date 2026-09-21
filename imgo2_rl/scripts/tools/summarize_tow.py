@@ -28,6 +28,7 @@
 import csv
 import json
 import math
+import sys
 from pathlib import Path
 
 TAKEUP_FRACTION = 0.2          # tow 阶段前 20% 视为「收初始松弛 + 起步」过渡
@@ -40,7 +41,14 @@ SETTLE_TENSION_LIMIT_N = 1.0   # station 阶段张力超过此值 ⇒ 初始松�
 STOP_ROBOT_VX_FRACTION = 0.2   # coast 段末机器人 vx 应降到指令的 20% 以下
 SETTLE_ROBOT_TRAVEL_LIMIT_M = 0.15   # station 段机器人位移超过此值 ⇒ 启动窜动过大
 SETTLE_LOAD_DRIFT_LIMIT_M = 0.02     # station 段小车位移超过此值 ⇒ 拖曳前它没静止
-CAUGHT_UP_LIMIT_M = 0.0             # 拖曳开始后最小间距 ≤ 此值 ⇒ 小车追到了机器人
+# ---- 「小车是否追到机器人」的三路见证（阈值由实跑数据定标，见 §5.17 与 §5.18）----
+# 为什么不能只看挂点间距：碰撞时的挂点间距在 0.12~0.44 m 之间浮动（由机器人腿的位形决定），
+# 实测四个真实撞上的 run 分别是 0.3631/0.3744/0.3649/0.3457 m —— 全都看不出碰撞。
+CONTACT_DECK_LIMIT_N = 1.0           # 车斗接触力（车斗永不着地 ⇒ 非零即机器人压上来）
+CONTACT_LOAD_DV_LIMIT_MPS = 0.015    # 负载单步速度跃变：无碰撞实测上限 0.0087（滑行起始
+                                     # 张力卸载，a=T/m_eff 解析吻合），最小真实撞击 0.0233
+CLEARANCE_CONTACT_M = 0.0            # 几何间隙 ≤ 此值 ⇒ 接触（采样误差上界 1.5 mm）
+CAUGHT_UP_LIMIT_M = 0.0             # 旧记录（无关节角列）的回退判据：挂点间距 ≤ 此值
 PREDICTION_TOLERANCE_M = 0.10       # 实测最小间距与启动预判的允许偏差
 
 
@@ -55,6 +63,27 @@ def _pstdev(values):
 
 def _col(rows, key):
     return [float(r[key]) for r in rows]
+
+
+def _clearance_series(rows, joint_names, stride=5):
+    """由记录关节角 FK 算出每步「小车车头 ↔ 机器人后表面」的纵向间隙。
+
+    几何与 FK 实现在 `tow_clearance.py`（同样只用标准库），这里只做抽样与调用，
+    免得判读工具里再长出一套 FK。`stride` 抽稀：间隙是连续量，5 步（25 ms）足够定位最小值。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import tow_clearance
+    robot, cart = tow_clearance.build_bodies(tow_clearance.repo_root())
+    series = []
+    for index, row in enumerate(rows):
+        if index % stride and index != len(rows) - 1:
+            continue
+        angles, robot_pose, cart_pose = tow_clearance.row_state(row, joint_names)
+        gap, _ = tow_clearance.clearance(
+            robot.points(angles, *robot_pose),
+            cart.points(tow_clearance.WHEEL_JOINT_ANGLES, *cart_pose))
+        series.append((row["phase"], gap))
+    return series
 
 
 def _phases(rows):
@@ -73,7 +102,7 @@ def _phases(rows):
             "coast": rows[commanded[-1] + 1:]}
 
 
-def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
+def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_names=None):
     """由逐物理步记录算出汇总与判据；`rows` 为 `tow.csv` 的字典列表。"""
     if not rows:
         raise ValueError("拖动记录为空")
@@ -128,12 +157,78 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
     # ---- 「会不会追到机器人」与「最终停在离机器人多远」 ------------------------------
     # 注意：station 段的间距（= L0 - slack）本来就很近，不能算作追尾，
     # 所以最小间距从**拖曳段开始**起算。
+    #
+    # 这里必须把「挂点间距」和「车头到机器人的间隙」区分开：`rope_distance_m` 是两个**挂点**
+    # 的距离，碰撞时它在 0.12~0.44 m 之间浮动（取决于机器人腿伸到多后），所以它既不能判
+    # 「有没有追上」，也不能当「停车距离」。判定用三路见证，并把每个见证量都报出来：
+    #   ① 接触力（车斗永不着地 ⇒ 非零即机器人压上来；车轮那路正常滚动时只有几十 N 量级的
+    #      克服轮阻的力，所以只作为辅助读数）；
+    #   ② 负载单步速度跃变（黏性滑行的单步变化只有 1e-3 量级，撞击是 1e-2~1e-1）；
+    #   ③ 由记录关节角 FK 算出的真实几何间隙 `min_clearance_m`（有该列时最可靠）。
     after_tow = tow_rows + coast_rows
     gaps = _col(after_tow, "rope_distance_m")
     summary["initial_gap_m"] = float(rows[0]["rope_distance_m"])
     summary["min_gap_after_tow_start_m"] = min(gaps)
     summary["final_gap_m"] = float(rows[-1]["rope_distance_m"])
     summary["gap_closed_m"] = summary["initial_gap_m"] - summary["final_gap_m"]
+
+    witnesses = []
+    coast_pairs = list(zip(coast_rows, coast_rows[1:])) if len(coast_rows) > 1 else []
+    if coast_rows:
+        summary["max_load_dv_mps"] = max(
+            (abs(float(b["load_vx_mps"]) - float(a["load_vx_mps"])) for a, b in coast_pairs),
+            default=0.0)
+        # 机器人被撞的冲量特征：单步速度跃变。无碰撞时它是步态引起的 0.02~0.03，
+        # 所以**不**用它判接触，只报告（撞击实测 0.037~0.092）
+        summary["max_robot_dv_mps"] = max(
+            (abs(float(b["robot_vx_mps"]) - float(a["robot_vx_mps"])) for a, b in coast_pairs),
+            default=0.0)
+    else:
+        summary["max_load_dv_mps"] = None
+        summary["max_robot_dv_mps"] = None
+    if summary["max_load_dv_mps"] is not None and summary["max_load_dv_mps"] > CONTACT_LOAD_DV_LIMIT_MPS:
+        witnesses.append("load_velocity_jump")
+
+    if "cart_deck_fx_n" in (after_tow[0] if after_tow else {}):
+        summary["deck_contact_peak_n"] = max(abs(float(r["cart_deck_fx_n"])) for r in after_tow)
+        summary["wheel_fx_peak_n"] = max(abs(float(r["cart_wheel_fx_n"])) for r in after_tow)
+        if summary["deck_contact_peak_n"] > CONTACT_DECK_LIMIT_N:
+            witnesses.append("deck_contact_force")
+    else:
+        summary["deck_contact_peak_n"] = None
+        summary["wheel_fx_peak_n"] = None
+
+    if joint_names and rows and "robot_jp_00" in rows[0]:
+        clearance = _clearance_series(rows, joint_names)
+        after_tow_clearance = [g for phase, g in clearance if phase != "station"]
+        coast_clearance = [g for phase, g in clearance if phase == "coast"]
+        summary["min_clearance_m"] = min(after_tow_clearance)
+        summary["min_clearance_coast_m"] = min(coast_clearance) if coast_clearance else None
+        summary["final_clearance_m"] = clearance[-1][1]
+        summary["clearance_samples"] = len(clearance)
+        if summary["min_clearance_m"] <= CLEARANCE_CONTACT_M:
+            witnesses.append("geometric_clearance")
+    else:
+        summary["min_clearance_m"] = None
+        summary["min_clearance_coast_m"] = None
+        summary["final_clearance_m"] = None
+
+    # 三路见证的可用性与结论。**注意别把「没有见证通道」当成「没追上」**：
+    # 旧记录既没有接触力列也没有关节角列，只能退回挂点间距口径，并把这个不可靠性写进来源名。
+    gap_fallback_reached = summary["min_gap_after_tow_start_m"] <= CAUGHT_UP_LIMIT_M
+    have_witness_channel = (summary["min_clearance_m"] is not None
+                            or summary["deck_contact_peak_n"] is not None)
+    if witnesses:
+        summary["reached_robot"] = True
+        summary["reached_robot_source"] = "+".join(witnesses)
+    elif have_witness_channel:
+        summary["reached_robot"] = False
+        summary["reached_robot_source"] = "witnesses_clear"
+    else:
+        summary["reached_robot"] = gap_fallback_reached
+        summary["reached_robot_source"] = ("attachment_gap_fallback" if gap_fallback_reached
+                                           else "attachment_gap_fallback_clear")
+    # `caught_up` 保留为旧名（挂点间距口径），新代码请用 `reached_robot`
     summary["caught_up"] = summary["min_gap_after_tow_start_m"] <= CAUGHT_UP_LIMIT_M
 
     summary["steady_speed_gap_mps"] = summary["steady_robot_vx_mps"] - summary["steady_load_vx_mps"]
@@ -202,9 +297,10 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
     # ---- coast：机器人要真的停下；小车不得到顶到机器人（追尾）
     if coast_rows and summary["coast_final_robot_vx_mps"] > STOP_ROBOT_VX_FRACTION * user_command:
         failures.append("robot_did_not_stop")
-    # 拖曳开始后任意时刻撞上机器人（含滑行段追尾）都算失败
-    if summary["caught_up"]:
-        failures.append("load_reached_robot")
+    # **不再是失败判据**：撞击是这套设置本来就允许、也希望出现的结果（用户 2026-09-21 明确），
+    # 所以它只作为结果量 `reached_robot` 报告，不参与 `valid`。撞击把机器人弄坏仍然会被拦住：
+    # `robot_did_not_stop`（被推着走）、`body_pitch_excessive`（被顶翻）、
+    # `robot_not_tracking_command`（被拖停）三条判据都在。
     summary["failures"] = failures
     summary["valid"] = not failures
     return summary
@@ -216,7 +312,8 @@ def summarize_run(directory):
     config = json.loads((directory / "config.json").read_text(encoding="utf-8"))
     with (directory / "tow.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    summary = summarize_tow(rows, user_command=float(config["user_command_mps"]))
+    summary = summarize_tow(rows, user_command=float(config["user_command_mps"]),
+                            joint_names=config.get("policy_joint_names"))
     # 与启动时的解析预判对照（预判只考虑滑行段的黏性衰减；实测还会受机器人减速影响）
     predicted = config.get("predicted_min_gap_m")
     if predicted is not None:
