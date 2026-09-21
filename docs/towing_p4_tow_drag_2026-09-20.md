@@ -117,7 +117,23 @@ done
 **v=1.0 m/s + b=0.016 时即使 L0=1.0 也会追到机器人**（−0.06 m）——那一步要改用
 `--wheel-damping 0.032`（滑行 0.53 m）或加长 L0。
 
-**可视化（去掉 `--headless` 即可）**：`SimulationContext.step()` 默认 `render=True`，所以
+**多环境可视化：4 个 env、两套绳索模型各一半（推荐命令）**
+
+```bash
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py \
+  --rope-model compliant inextensible --num-envs 4 --env-spacing 6 \
+  --velocity 0.5 --duration 10 --stop-at 5
+```
+
+* **不加 `--headless` 就会渲染**（`SimulationContext.step()` 默认 `render=True`），不需要额外代码；
+* `--num-envs 4` + 两个模型 ⇒ **逐 env 1:1 分配**：env0/1 用 compliant、env2/3 用 inextensible
+  （分配逻辑是纯函数 `env_rope_models()`，与训练侧 1:1 是同一套）；
+* 每个 env 写**自己的目录/config/summary**（`case_00_compliant_…` … `case_03_inextensible_…`），
+  所以离线判读工具不用改就能逐 env 对读；
+* 相机自动拉到能看全 2×2 网格的位置，并在启动时打印各 env 原点（想手动调相机时照着填）；
+* `--env-spacing`（默认 6 m）要大于「速度 × 时长」，否则相邻 env 会跑进对方场地。
+
+**单环境可视化（去掉 `--headless` 即可）**：`SimulationContext.step()` 默认 `render=True`，所以
 非 headless 会正常刷新视口，不需要额外代码。相机由脚本用 `sim.set_camera_view()` 设死
 （拖曳场景为眼位 `(2.5, 2.5, 1.8)`、注视 `(-0.7, 0, 0.2)`），而机器人/小车会沿 +x 走 2–3 m，
 **长跑会出画**，需要时在窗口里手动移相机。

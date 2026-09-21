@@ -668,8 +668,8 @@ class InterfaceContractTests(unittest.TestCase):
     def test_entry_passes_config_to_the_summary_tool(self):
         """入口必须把 case 的 config 传给 summarize_tow，否则 summary.json 里的
         弹性诊断字段（μ/ω/ζ/步长上限/伸长）会全是 None，而 CLI 复算却有值。"""
-        self.assertIn("config=case_manifest", self.source)
-        self.assertIn("case_manifest = case_config(", self.source)
+        self.assertIn("config=manifests[env_index]", self.source)
+        self.assertIn("manifest = case_config(", self.source)
 
     def test_no_undefined_names_in_the_entry_or_tools(self):
         """用标准库 `symtable` 做「未定义名字」检查（本机没有 pyflakes/ruff/flake8）。
@@ -709,6 +709,33 @@ class InterfaceContractTests(unittest.TestCase):
             walk(symtable.symtable(source, str(path), "exec"))
         self.assertEqual(sorted(set(problems)), [],
                          "有未定义的名字（只会在跑仿真/跑工具时才炸）")
+
+    def test_multi_env_visualisation_is_wired_in(self):
+        """多环境可视化：`--num-envs` + 逐 env 分配绳索模型 + 逐 env 一份记录。
+
+        要求（用户 2026-09-21）：「4 个 env、一半弹性绳一半刚性、0.5 速度、不开 headless」。
+        渲染不需要额外代码（`SimulationContext.step()` 默认 `render=True`），所以这里只要
+        锁住「4 个 env 真的会各跑一套、并且能被离线判读」这条链。
+        """
+        for snippet in ("--num-envs", "--env-spacing", "env_rope_models(args.rope_model, args.num_envs)",
+                        "build_rope_model_for_envs(env_names)", "SplitRopeModel(",
+                        "inextensible_mask=mask", "num_envs=args.num_envs",
+                        "for env_index, recorder in enumerate(recorders)",
+                        "for env_index, env_dir in enumerate(env_dirs)"):
+            self.assertIn(snippet, self.source, snippet)
+
+    def test_env_rope_models_splits_evenly_and_rejects_impossible_splits(self):
+        """`--num-envs 4 --rope-model compliant inextensible` ⇒ [c, c, i, i]（1:1）。"""
+        self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible"], 4),
+                         ["compliant", "compliant", "inextensible", "inextensible"])
+        self.assertEqual(tow_drag.env_rope_models(["compliant"], 4),
+                         ["compliant"] * 4)
+        # 除不尽时前面的模型多分一个，但每个模型至少一个 env
+        self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible"], 5),
+                         ["compliant", "compliant", "compliant", "inextensible", "inextensible"])
+        for bad in ((["compliant", "inextensible"], 1), (["compliant"], 0), ([], 4)):
+            with self.assertRaises(ValueError):
+                tow_drag.env_rope_models(*bad)
 
     def test_local_struct_attribute_accesses_exist(self):
         """源码里对本地结构/对象的属性访问必须真的存在。
@@ -757,7 +784,7 @@ class InterfaceContractTests(unittest.TestCase):
         """规格要求两套模型都实现、可切换；入口必须同时支持并按 case 记录用的是哪一套。"""
         self.assertIn("make_rope_model(", self.source)
         self.assertIn('choices=("compliant", "inextensible")', self.source)
-        self.assertIn('"model": case.rope_model', self.source)
+        self.assertIn('"model": rope_name or case.rope_model', self.source)
         self.assertIn("world_inverse_inertia", self.source)
 
     def test_policy_is_loaded_through_the_contract_adapter(self):
@@ -808,12 +835,12 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("write_joint_state_to_sim", self.source)
         self.assertIn("root[:, 7:] = 0.0", self.source)          # 速度清零
         self.assertIn("for case_index, (case, case_scale, prediction)", self.source)
-        # 每个 case 按名字重建模型：同一次扫描里可以混用两套绳索模型
-        self.assertIn("rope_model = build_rope_model(case.rope_model)", self.source)
+        # 每个 case 按逐 env 的分配重建模型：同一次扫描里可以混用两套绳索模型
+        self.assertIn("rope_model = build_rope_model_for_envs(env_names)", self.source)
         self.assertIn('"sweep"', self.source)
-        # 逐 case 的产物目录与汇总
+        # 逐 env 的产物目录与汇总（每个 env 一份，离线判读工具不用改就能逐 env 用）
         self.assertIn("case_dir.mkdir(parents=True, exist_ok=False)", self.source)
-        self.assertIn('json_file(case_dir / "summary.json", summary)', self.source)
+        self.assertIn('json_file(output / env_dir / "summary.json", summary)', self.source)
         self.assertIn('json_file(output / "sweep.json", sweep)', self.source)
 
     def test_no_teleport_inside_the_step_loop(self):
@@ -852,7 +879,7 @@ class InterfaceContractTests(unittest.TestCase):
         第一版两边都建目录，实跑报 FileExistsError（自己撞自己）。这条把职责固定住。
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
-        self.assertIn("recorder = TowRecorder(case_dir,", self.source)
+        self.assertIn("recorders.append(TowRecorder(case_dir, manifest))", self.source)
         self.assertIn("case_config(case, case_scale,", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")

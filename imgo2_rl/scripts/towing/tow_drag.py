@@ -83,6 +83,14 @@ def parse_args(argv=None):
                         help="地面静/动摩擦系数（两者取同值），默认 0.8 与 P1/P2 一致。"
                              "注意：**轮子滚动时摩擦不耗散能量**，停车距离由轮轴阻力 b 决定，"
                              "所以改摩擦主要影响起步/打滑等瞬态，而不是滑行距离")
+    parser.add_argument("--num-envs", type=int, default=1,
+                        help="并行环境数。>1 时按 `--rope-model` **逐 env 分配**（1:1），"
+                             "每个 env 写一份自己的记录与 summary ⇒ 可视化时能把两套绳索模型"
+                             "并排看，同时产物还能逐 env 离线判读。默认 1（单环境，行为不变）。")
+    parser.add_argument("--env-spacing", type=float, default=6.0,
+                        help="多环境时相邻 env 原点的间距，m（Isaac Lab 按网格摆放）。"
+                             "4 个 env 是 2×2 网格；机器人+小车会沿 +x 走几米，"
+                             "间距要大于「速度 × 时长」才不互相穿场")
     parser.add_argument("--cart-drop", type=float, default=0.03,
                         help="小车生成时离地高度，m（P1/P2 用 0.03 落定；精确贴地会产生接触自漂）")
     parser.add_argument("--dt", type=float, default=0.005)
@@ -132,6 +140,12 @@ def parse_args(argv=None):
             parser.error("--cart-mass values must be in [2, 50] kg")
     if not math.isfinite(args.ground_friction) or not 0.0 < args.ground_friction <= 2.0:
         parser.error("--ground-friction must be in (0, 2]")
+    try:
+        env_rope_models(args.rope_model, args.num_envs)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if not math.isfinite(args.env_spacing) or args.env_spacing <= 0.0:
+        parser.error("--env-spacing must be finite and positive")
     return args
 
 
@@ -254,6 +268,27 @@ def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
             for damping in wheel_dampings]
 
 
+def env_rope_models(rope_models, num_envs):
+    """把 `--rope-model` 的每个模型**尽量均分**到 `num_envs` 个环境上。
+
+    这是「训练时 1:1 分配」在测量台里的同一套逻辑：`--num-envs 4 --rope-model compliant
+    inextensible` ⇒ `[compliant, compliant, inextensible, inextensible]`。纯函数，可离线测。
+
+    多出来的环境给**前面的**模型（4 env / 3 模型 ⇒ [2,1,1]），保证每个模型至少有一个 env。
+    """
+    if not rope_models:
+        raise ValueError("--rope-model 不能为空")
+    if num_envs < 1:
+        raise ValueError("--num-envs 必须 ≥ 1")
+    if num_envs < len(rope_models):
+        raise ValueError(f"--num-envs {num_envs} 少于模型数 {len(rope_models)}，"
+                         "无法保证每个模型都分到环境")
+    counts = [num_envs // len(rope_models)] * len(rope_models)
+    for index in range(num_envs % len(rope_models)):
+        counts[index] += 1
+    return [name for name, count in zip(rope_models, counts) for _ in range(count)]
+
+
 def sweep_records(cases):
     """`config.json` 里 `sweep.cases` 的记录（纯函数，可离线测）。
 
@@ -352,7 +387,8 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
         from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
-            BodyProperties, make_rope_model, world_inverse_inertia)
+            ROPE_MODELS, BodyProperties, SplitRopeModel, make_rope_model,
+            world_inverse_inertia)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
@@ -400,8 +436,18 @@ def main(args):
                 static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
                 restitution=0.0, friction_combine_mode="average", restitution_combine_mode="min"))
         sim = sim_utils.SimulationContext(sim_cfg)
-        sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
-        scene_cfg = TowSceneCfg(num_envs=1, env_spacing=6.0, cart=cart_cfg)
+        # 相机：单环境沿用原来的取景；多环境把眼位拉到能看全整个 env 网格
+        # （Isaac Lab 按 ceil(sqrt(num_envs)) 的网格摆放 env 原点，间距 = env_spacing）。
+        grid = max(1, math.ceil(math.sqrt(args.num_envs)))
+        span = args.env_spacing * max(1, grid - 1)
+        if args.num_envs > 1:
+            centre = 0.5 * span
+            sim.set_camera_view((centre + 1.6 * span, centre - 1.6 * span, 1.1 * span),
+                                (centre, centre, 0.2))
+        else:
+            sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
+        scene_cfg = TowSceneCfg(num_envs=args.num_envs, env_spacing=args.env_spacing,
+                                cart=cart_cfg)
         # 地面材质也要在构造场景之前改（与 init_state 同理：构造时才会读配置建 prim）
         ground = scene_cfg.ground.spawn.physics_material
         ground.static_friction = args.ground_friction
@@ -412,6 +458,11 @@ def main(args):
         scene_cfg.robot.init_state.joint_pos = dict(zip(policy_cfg.joint_names,
                                                         policy_cfg.default_dof_pos))
         scene = InteractiveScene(scene_cfg)
+        if args.num_envs > 1:
+            # 把各 env 原点打出来，方便在窗口里手动调相机（网格按 env_spacing 摆放）
+            origins = ", ".join(f"env{i}=({x:.2f},{y:.2f})" for i, (x, y, _) in
+                                enumerate(tuple(float(v) for v in origin[:2]) for origin in scene.env_origins))
+            print(f"[INFO] {args.num_envs} 个 env（间距 {args.env_spacing:g} m）：{origins}", flush=True)
         sim.reset()
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
         deck_contacts = scene["deck_contacts"]
@@ -465,11 +516,28 @@ def main(args):
         policy = FrozenLowLevelPolicy(policy_cfg, device=args.device)
 
         def build_rope_model(name):
-            """按名字建模型；`--rope-model` 可以给多个，于是同一进程里逐 case 换模型。"""
+            """按名字建单个模型。"""
             return make_rope_model(name, rest_length=args.rope_length,
                                    stiffness=args.stiffness, damping=args.damping,
                                    position_gain=args.position_gain,
                                    max_correction_rate=args.max_correction_rate)
+
+        def build_rope_model_for_envs(model_names):
+            """按**逐 env** 的模型名建模型：全同就单模型，混合就用 `SplitRopeModel`。
+
+            混合时用 0/1 掩码逐 env 混合（不是近似）——这正是训练侧 1:1 分配要走的那条路径，
+            在这里先用起来也就顺带验证了它。
+            """
+            unique = list(dict.fromkeys(model_names))
+            if len(unique) == 1:
+                return build_rope_model(unique[0])
+            if len(unique) > 2 or set(unique) != set(ROPE_MODELS):
+                raise RuntimeError(f"逐 env 混合只支持 {ROPE_MODELS} 这两个模型，收到 {unique}")
+            mask = torch.tensor([1.0 if name == "inextensible" else 0.0 for name in model_names],
+                                dtype=torch.float32, device=args.device)
+            return SplitRopeModel(compliant=build_rope_model("compliant"),
+                                  inextensible=build_rope_model("inextensible"),
+                                  inextensible_mask=mask)
         settle_steps = policy.reset()          # reset 契约：last_action 归零 + 站定步数
         settle_steps = max(settle_steps, int(round(args.settle_time / dt)))
         # 阶段划分必须先于 config 字典算好：上一版把 stop_steps 的赋值放在 config 之后，
@@ -490,39 +558,38 @@ def main(args):
             local = math_utils.quat_apply_inverse(asset.data.body_quat_w[:, body_id], force_world)
             return local.unsqueeze(1)
 
-        def _quat_to_matrix(quat):                 # Isaac Lab 四元数是 (w, x, y, z)
-            w, x, y, z = quat
+        def _quat_to_matrix(quat):                 # Isaac Lab 四元数是 (w, x, y, z)，形状 (N,4)
+            w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
             return ((1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)),
                     (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
                     (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)))
 
         def inverse_inertia_world(asset, body_id):
-            """某刚体在**世界系**的逆惯量（3×3，元素为标量）。
+            """某刚体在世界系的逆惯量（3×3，元素为 `(N,)` 张量，逐 env）。
 
-            PhysX 给的是机体主轴系下的对角惯量（展平 9 个数，对角在 0/4/8），
-            按刚体姿态旋转：`I_w⁻¹ = R diag(1/I) Rᵀ`（`world_inverse_inertia` 做这件事）。
-            inextensible 模型只用它算挂点的转动项 `(r×e)ᵀ I⁻¹ (r×e)`；名义几何下力臂与
-            绳方向平行、该项为零。逐 env 分配时同一套 API 直接吃 `(N,)` 张量即可。
+            PhysX 给的是机体主轴系下的对角惯量（展平 9 个数，对角在 0/4/8），按刚体姿态旋转：
+            `I_w⁻¹ = R diag(1/I) Rᵀ`。inextensible 模型只用它算挂点的转动项 `(r×e)ᵀI⁻¹(r×e)`；
+            名义几何下力臂与绳方向平行、该项为零。**逐 env** 传入，与批量约束求解同一套 API。
             """
-            flat = [float(v) for v in asset.root_physx_view.get_inertias()[0, body_id]]
-            rotation = _quat_to_matrix([float(v) for v in asset.data.body_quat_w[0, body_id]])
-            return world_inverse_inertia((flat[0], flat[4], flat[8]), rotation)
+            flat = asset.root_physx_view.get_inertias()[:, body_id]        # (N, 9)
+            rotation = _quat_to_matrix(asset.data.body_quat_w[:, body_id])
+            return world_inverse_inertia((flat[:, 0], flat[:, 4], flat[:, 8]), rotation)
 
         # 机器人受绳冲量时四足撑地、整车一起抵抗 ⇒ 等效质量取**全部 link 之和**
-        # （实测 12.6996 kg）。这是近似：严格的整机等效质量还取决于腿的接触状态，
-        # 与真实值的偏差由「约束执行误差」在现场实测（见文档）。
-        robot_mass_kg = float(robot.root_physx_view.get_masses().sum())
+        # （逐 env 一个值；实测整机 12.6996 kg）。这是近似：严格值还取决于腿的接触状态，
+        # 偏差由「约束执行误差」在现场实测（见文档）。
+        robot_mass_kg = robot.root_physx_view.get_masses().sum(dim=1)      # (N,)
 
         def cart_mass_effective_kg():
-            """小车纵向等效质量 = 整车质量 + 四轮滚动惯量折算 `4I/r²`。
+            """小车纵向等效质量 = 整车质量 + 四轮滚动惯量折算 `4I/r²`（逐 env）。
 
-            冲量要先把轮子带转，所以等效质量比总质量大（10 kg 车 → 10.8 kg），
-            与滑行段解析式用的 `m_eff` 是同一口径。轮子绕 y 轴（index 4）转动。
+            冲量要先把轮子带转，所以等效质量比总质量大（10 kg 车 → 10.8 kg），与滑行段
+            解析式用的 `m_eff` 同一口径。轮子绕 y 轴（展平惯性张量的 index 4）。
             """
-            masses = cart.root_physx_view.get_masses()
-            inertias = cart.root_physx_view.get_inertias()
-            spun = sum(float(inertias[0, body_id][4]) for body_id in cart_wheel_ids)
-            return float(masses.sum()) + 4.0 * spun / model["wheel_radius_m"] ** 2
+            masses = cart.root_physx_view.get_masses()                     # (N, nb)
+            inertias = cart.root_physx_view.get_inertias()                 # (N, nb, 9)
+            spun = sum(inertias[:, body_id, 4] for body_id in cart_wheel_ids)
+            return masses.sum(dim=1) + 4.0 * spun / model["wheel_radius_m"] ** 2
 
         def apply_rope_and_resistance(command, wheel_damping):
             """按当前状态算绳力与轮阻并写入缓冲（显式欧拉，同 P1/P2）。
@@ -534,32 +601,37 @@ def main(args):
             绳模型可切换（`--rope-model`）：两套模型都是「读状态 → 给出挂点力」，
             所以这里只负责把状态凑齐、把力写进缓冲，物理差异全在模型内部。
             """
-            robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_id], robot_attach.view(1, 3))
-            cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_id], cart_attach.view(1, 3))
-            robot_p = tuple(float(v) for v in (robot.data.body_pos_w[0, base_id] + robot_offset_w[0]))
-            cart_p = tuple(float(v) for v in (cart.data.body_pos_w[0, cart_base_id] + cart_offset_w[0]))
-            robot_v = point_velocity(tuple(float(v) for v in robot.data.body_lin_vel_w[0, base_id]),
-                                     tuple(float(v) for v in robot.data.body_ang_vel_w[0, base_id]),
-                                     tuple(float(v) for v in robot_offset_w[0]))
-            cart_v = point_velocity(tuple(float(v) for v in cart.data.body_lin_vel_w[0, cart_base_id]),
-                                    tuple(float(v) for v in cart.data.body_ang_vel_w[0, cart_base_id]),
-                                    tuple(float(v) for v in cart_offset_w[0]))
+            # 全部按 (N, 3) 张量走：N=1 与 N>1 是同一条代码路径（少一个分支就少一处只在
+            # 多环境下才炸的隐患）。挂点世界坐标 = 刚体原点 + 旋转后的挂点偏移。
+            robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_id],
+                                                   robot_attach.view(1, 3).expand(args.num_envs, 3))
+            cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_id],
+                                                  cart_attach.view(1, 3).expand(args.num_envs, 3))
+            robot_p = robot.data.body_pos_w[:, base_id] + robot_offset_w
+            cart_p = cart.data.body_pos_w[:, cart_base_id] + cart_offset_w
+            robot_v = point_velocity(robot.data.body_lin_vel_w[:, base_id],
+                                     robot.data.body_ang_vel_w[:, base_id], robot_offset_w)
+            cart_v = point_velocity(cart.data.body_lin_vel_w[:, cart_base_id],
+                                    cart.data.body_ang_vel_w[:, cart_base_id], cart_offset_w)
             # `inextensible` 需要两侧刚体属性来算等效逆质量（转动项 = 挂点离质心的力臂效应）。
             # 质量取**整机**：机器人受冲量时四足撑地、整车一起抵抗，所以是全部 link 之和
             # （12.6996 kg），不是 base 单链的 5.5339 kg；小车再加上四轮滚动惯量折算项
             # `4I/r²`（冲量要先把轮子带转），与滑行段用的 m_eff 同一口径。
             robot_props = BodyProperties(
                 mass=robot_mass_kg, inverse_inertia_world=inverse_inertia_world(robot, base_id),
-                offset=tuple(float(v) for v in robot_offset_w[0]))
+                offset=(robot_offset_w[:, 0], robot_offset_w[:, 1], robot_offset_w[:, 2]))
             cart_props = BodyProperties(
                 mass=cart_mass_effective_kg(),
                 inverse_inertia_world=inverse_inertia_world(cart, cart_base_id),
-                offset=tuple(float(v) for v in cart_offset_w[0]))
+                offset=(cart_offset_w[:, 0], cart_offset_w[:, 1], cart_offset_w[:, 2]))
             state = rope_model.update(robot_point=robot_p, cart_point=cart_p,
                                       robot_velocity=robot_v, cart_velocity=cart_v, dt=dt,
                                       robot=robot_props, cart=cart_props)
-            force_robot = torch.tensor(state.force_on_robot, dtype=torch.float32, device=args.device).view(1, 3)
-            force_cart = torch.tensor(state.force_on_cart, dtype=torch.float32, device=args.device).view(1, 3)
+            # 力从「3 个 (N,) 分量」拼成 (N, 1, 3) —— `set_external_force_and_torque` 要的形状
+            force_robot = torch.stack([torch.as_tensor(component) for component in state.force_on_robot],
+                                      dim=-1).reshape(robot.num_instances, 1, 3)
+            force_cart = torch.stack([torch.as_tensor(component) for component in state.force_on_cart],
+                                     dim=-1).reshape(cart.num_instances, 1, 3)
             robot.set_external_force_and_torque(link_frame_force(robot, base_id, force_robot),
                                                 robot_zero_torque[:, :1], positions=robot_attach,
                                                 body_ids=base_ids)
@@ -587,7 +659,7 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out
 
-        def case_config(case, mass_scale, coast, gap):
+        def case_config(case, mass_scale, coast, gap, rope_name=None, env_index=0):
             return {
                 "policy": args.policy,
                 "model_sha256": hashlib.sha256(policy_cfg.model_path.read_bytes()).hexdigest(),
@@ -603,7 +675,9 @@ def main(args):
                 "isaac_lab_joint_order": list(robot.joint_names),
                 "policy_joint_order": list(policy_cfg.joint_names),
                 "policy_to_asset_permutation": list(asset_perm),
-                "rope": {"model": case.rope_model,
+                "num_envs": args.num_envs, "env_index": env_index,
+                "env_spacing_m": args.env_spacing,
+                "rope": {"model": rope_name or case.rope_model,
                          "rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
                          "damping_ns_per_m": args.damping, "initial_slack_m": args.slack,
                          # 仅 inextensible 用；写进产物便于复算与对比
@@ -668,25 +742,32 @@ def main(args):
         case_dirs = []
         for case_index, (case, case_scale, prediction) in enumerate(
                 zip(cases, scales, predictions)):
-            case_dir = output / case_label(case_index, case.cart_mass, case.wheel_damping,
-                                           model["total_mass_kg"], case.rope_model)
-            label = case_dir.name.split("_", 2)[2]
-            case_dir.mkdir(parents=True, exist_ok=False)
-            case_dirs.append(case_dir.name)
-            rope_model = build_rope_model(case.rope_model)
-            print(f"[CASE {case_index}] 绳索模型 = {case.rope_model}"
-                  + ("" if case.rope_model == "compliant"
-                     else f"（position_gain={args.position_gain:g}、"
+            # 逐 env 的绳索模型：`--rope-model` 给两个就是 1:1 分配（训练时同一套逻辑）。
+            # 每个 env 写**自己的**目录/config/summary ⇒ 离线判读工具不用改就能逐 env 用。
+            env_names = env_rope_models(args.rope_model, args.num_envs)
+            rope_model = build_rope_model_for_envs(env_names)
+            print(f"[CASE {case_index}] 绳索模型逐 env = {env_names}"
+                  + ("" if set(env_names) == {"compliant"}
+                     else f"（inextensible: position_gain={args.position_gain:g}、"
                           f"max_correction_rate={args.max_correction_rate:g} m/s）"),
                   flush=True)
             reset_case(case.cart_mass, case_scale)
             actual_mass = float(cart.root_physx_view.get_masses().sum())
-            print(f"[CASE {case_index}] {label}: 小车 {actual_mass:.3f} kg "
-                  f"b={case.wheel_damping:g} ⇒ {case_dir.name}",
-                  flush=True)
-            case_manifest = case_config(case, case_scale, prediction.coast_m,
-                                        prediction.min_gap_m)
-            recorder = TowRecorder(case_dir, case_manifest)
+            env_dirs, recorders, manifests, labels = [], [], [], []
+            for env_index, env_name in enumerate(env_names):
+                case_dir = output / case_label(case_index * args.num_envs + env_index,
+                                               case.cart_mass, case.wheel_damping,
+                                               model["total_mass_kg"], env_name)
+                case_dir.mkdir(parents=True, exist_ok=False)
+                manifest = case_config(case, case_scale, prediction.coast_m,
+                                       prediction.min_gap_m, env_name, env_index)
+                env_dirs.append(case_dir.name)
+                labels.append(f"env{env_index}:{env_name}")
+                manifests.append(manifest)
+                recorders.append(TowRecorder(case_dir, manifest))
+            case_dirs.extend(env_dirs)
+            print(f"[CASE {case_index}] 小车 {actual_mass:.3f} kg b={case.wheel_damping:g} ⇒ "
+                  f"{', '.join(env_dirs)}", flush=True)
             for step in range(schedule.total_steps):
                 phase = schedule.phase_of(step)
                 command = args.velocity if phase == "tow" else 0.0
@@ -696,84 +777,88 @@ def main(args):
                 scene.write_data_to_sim()
                 sim.step()
                 scene.update(dt)
-                quat = robot.data.root_quat_w[0]
-                qw, qx, qy, qz = (float(v) for v in quat)     # 与 P2 相同的 roll/pitch 公式
-                pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
-                wheel_omega = {
-                    f"wheel_{leg}_omega_radps": float(cart.data.joint_vel[0, jid])
-                    for leg, jid in zip(("fl", "fr", "rl", "rr"), cart_joint_ids)
-                }
-                # 关节角按策略顺序存（policy_to_asset 是「策略下标 → 资产下标」）：
-                # 离线工具用同一份 policy_joint_names 做 FK，才能算出机器人后腿伸到哪里，
-                # 进而得到车头与机器人之间的真实间隙（挂点间距不是间隙）。
-                joint_pos_policy = robot.data.joint_pos[0, policy_to_asset]
-                quat_robot = robot.data.root_quat_w[0]
-                quat_load = cart.data.root_quat_w[0]
-                recorder.append({
-                    **wheel_omega,
-                    # Isaac Lab 四元数是 (w, x, y, z)，落盘按 x/y/z/w 命名，避免歧义
-                    **joint_position_fields(joint_pos_policy),
-                    "robot_quat_x": float(quat_robot[1]),
-                    "robot_quat_y": float(quat_robot[2]),
-                    "robot_quat_z": float(quat_robot[3]),
-                    "robot_quat_w": float(quat_robot[0]),
-                    "load_quat_x": float(quat_load[1]),
-                    "load_quat_y": float(quat_load[2]),
-                    "load_quat_z": float(quat_load[3]),
-                    "load_quat_w": float(quat_load[0]),
-                    # 接触合力的 x 分量（世界系）：车斗永不着地 ⇒ 非零即机器人压上来；
-                    # 轮子那一列正常滚动时只有克服轮阻所需的 ~1.7 N，撞击时跳到几十 N。
-                    "cart_deck_fx_n": float(deck_contacts.data.net_forces_w[0, 0, 0]),
-                    "cart_wheel_fx_n": float(contacts.data.net_forces_w[0, :, 0].sum()),
-                    "phase": phase,
-                    "time_s": (step + 1) * dt,
-                    "user_cmd_mps": command,
-                    "ref_cmd_mps": command,          # P4 还没有 command shaping
-                    "robot_vx_mps": float(robot.data.root_lin_vel_w[0, 0]),
-                    "load_vx_mps": float(cart.data.root_lin_vel_w[0, 0]),
-                    "rope_tension_n": float(state.rope_tension),
-                    # 统一日志接口：两套模型字段一致（见 mdp/rope_model.py 的 RopeSample）
-                    "rope_extension_m": float(state.rope_extension),
-                    "rope_length_rate_mps": float(state.rope_length_rate),
-                    "rope_taut": float(state.is_taut),
-                    "rope_impulse_ns": float(state.rope_impulse),
-                    "rope_distance_m": float(state.rope_length),
-                    "robot_x_m": float(robot.data.root_pos_w[0, 0]),
-                    "load_x_m": float(cart.data.root_pos_w[0, 0]),
-                    "robot_z_m": float(robot.data.root_pos_w[0, 2]),
-                    "load_z_m": float(cart.data.root_pos_w[0, 2]),
-                    "body_pitch_rad": pitch,
-                    "body_pitch_rate_radps": float(robot.data.root_ang_vel_b[0, 1]),
-                })
-            recorder.close()
-            recorder = None
+                # 逐 env 记录：每个 env 一份自己的 CSV（config 也各记一份，含它用的绳索模型）。
+                # 这样 N=1 与 N>1 走同一套路径，离线判读工具不用改。
+                for env_index, recorder in enumerate(recorders):
+                    quat = robot.data.root_quat_w[env_index]
+                    qw, qx, qy, qz = (float(v) for v in quat)   # 与 P2 相同的 roll/pitch 公式
+                    pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
+                    wheel_omega = {
+                        f"wheel_{leg}_omega_radps": float(cart.data.joint_vel[env_index, jid])
+                        for leg, jid in zip(("fl", "fr", "rl", "rr"), cart_joint_ids)
+                    }
+                    # 关节角按策略顺序存（policy_to_asset 是「策略下标 → 资产下标」）：
+                    # 离线工具用同一份 policy_joint_names 做 FK，才能算出机器人后腿伸到哪里，
+                    # 进而得到车头与机器人之间的真实间隙（挂点间距不是间隙）。
+                    recorder.append({
+                        **wheel_omega,
+                        **joint_position_fields(robot.data.joint_pos[env_index, policy_to_asset]),
+                        "robot_quat_x": float(quat[1]),
+                        "robot_quat_y": float(quat[2]),
+                        "robot_quat_z": float(quat[3]),
+                        "robot_quat_w": float(quat[0]),
+                        "load_quat_x": float(cart.data.root_quat_w[env_index, 1]),
+                        "load_quat_y": float(cart.data.root_quat_w[env_index, 2]),
+                        "load_quat_z": float(cart.data.root_quat_w[env_index, 3]),
+                        "load_quat_w": float(cart.data.root_quat_w[env_index, 0]),
+                        # 接触合力的 x 分量（世界系）：车斗永不着地 ⇒ 非零即机器人压上来；
+                        # 轮子那一路前后轮的 x 分力在**和**里互相抵消（实测稳态 1.3e-5 N），
+                        # 所以任何明显的非零和值都是异常（撞击只打一个轮子，不会成对抵消）。
+                        "cart_deck_fx_n": float(deck_contacts.data.net_forces_w[env_index, 0, 0]),
+                        "cart_wheel_fx_n": float(contacts.data.net_forces_w[env_index, :, 0].sum()),
+                        "phase": phase,
+                        "time_s": (step + 1) * dt,
+                        "user_cmd_mps": command,
+                        "ref_cmd_mps": command,          # P4 还没有 command shaping
+                        "robot_vx_mps": float(robot.data.root_lin_vel_w[env_index, 0]),
+                        "load_vx_mps": float(cart.data.root_lin_vel_w[env_index, 0]),
+                        "rope_tension_n": float(state.rope_tension[env_index]),
+                        # 统一日志接口：两套模型字段一致（见 mdp/rope_model.py 的 RopeSample）
+                        "rope_extension_m": float(state.rope_extension[env_index]),
+                        "rope_length_rate_mps": float(state.rope_length_rate[env_index]),
+                        "rope_taut": float(state.is_taut[env_index]),
+                        "rope_impulse_ns": float(state.rope_impulse[env_index]),
+                        "rope_distance_m": float(state.rope_length[env_index]),
+                        "robot_x_m": float(robot.data.root_pos_w[env_index, 0]),
+                        "load_x_m": float(cart.data.root_pos_w[env_index, 0]),
+                        "robot_z_m": float(robot.data.root_pos_w[env_index, 2]),
+                        "load_z_m": float(cart.data.root_pos_w[env_index, 2]),
+                        "body_pitch_rad": pitch,
+                        "body_pitch_rate_radps": float(robot.data.root_ang_vel_b[env_index, 1]),
+                    })
+            for recorder in recorders:
+                recorder.close()
+            recorders = []
 
             # 判读逻辑在标准库工具里（与 P1/P2 的 summarize_cart_coast.py 同一模式），
-            # 于是判据可以用真实轨迹离线复算：scripts/tools/summarize_tow.py <case 目录>
+            # 于是判据可以用真实轨迹离线复算：scripts/tools/summarize_tow.py <env 目录>
             sys.path.insert(0, str(RL_ROOT / "scripts/tools"))
             from summarize_tow import summarize_tow
-            with (case_dir / "tow.csv").open(encoding="utf-8", newline="") as stream:
-                rows = list(csv.DictReader(stream))
-            # 必须把 config 传进去：弹性诊断（μ/ω/ζ/步长上限/伸长）要用 rope 与 cart_model，
-            # 不传的话入口写出的 summary.json 里那些字段全是 None，而 CLI 复算却有值。
-            summary = summarize_tow(rows, user_command=args.velocity,
-                                    joint_names=policy_cfg.joint_names,
-                                    config=case_manifest)
-            summary["case"] = case_dir.name
-            summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
-            summary["wheel_damping"] = case.wheel_damping
-            json_file(case_dir / "summary.json", summary)
-            clearance = ("n/a" if summary["final_clearance_m"] is None
-                         else f"{summary['final_clearance_m']:.3f} m")
-            print(f"[SUMMARY {case_index}] {label} 跟速={summary['steady_tracking_ratio']:.3f} "
-                  f"T={summary['steady_tension_n']:.3f} N "
-                  f"最小间距={summary['min_gap_after_tow_start_m']:.3f} m "
-                  f"最终间距={summary['final_gap_m']:.3f} m "
-                  f"最终车头间隙={clearance} "
-                  f"追到机器人={'是' if summary['reached_robot'] else '否'}"
-                  f"({summary['reached_robot_source']}) "
-                  f"valid={summary['valid']} failures={summary['failures']}", flush=True)
-            results.append(summary)
+            for env_index, env_dir in enumerate(env_dirs):
+                with (open(output / env_dir / "tow.csv", encoding="utf-8", newline="")) as stream:
+                    rows = list(csv.DictReader(stream))
+                # 必须把 config 传进去：弹性诊断（μ/ω/ζ/步长上限/伸长）要用 rope 与 cart_model，
+                # 不传的话入口写出的 summary.json 里那些字段全是 None，而 CLI 复算却有值。
+                summary = summarize_tow(rows, user_command=args.velocity,
+                                        joint_names=policy_cfg.joint_names,
+                                        config=manifests[env_index])
+                summary["case"] = env_dir
+                summary["env_index"] = env_index
+                summary["rope_model"] = env_names[env_index]
+                summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
+                summary["wheel_damping"] = case.wheel_damping
+                json_file(output / env_dir / "summary.json", summary)
+                clearance = ("n/a" if summary["final_clearance_m"] is None
+                             else f"{summary['final_clearance_m']:.3f} m")
+                print(f"[SUMMARY {case_index}.{env_index}] {labels[env_index]} "
+                      f"跟速={summary['steady_tracking_ratio']:.3f} "
+                      f"T={summary['steady_tension_n']:.3f} N "
+                      f"最终车头间隙={clearance} "
+                      f"伸长峰值={summary['rope_peak_extension_mm']:.3f} mm "
+                      f"追到机器人={'是' if summary['reached_robot'] else '否'}"
+                      f"({summary['reached_robot_source']}) "
+                      f"valid={summary['valid']} failures={summary['failures']}", flush=True)
+                results.append(summary)
 
         # 扫描汇总
         all_valid = all(r["valid"] for r in results)
