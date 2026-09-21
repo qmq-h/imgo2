@@ -178,8 +178,35 @@ class ArgumentTests(unittest.TestCase):
 
     def test_accepts_zero_wheel_damping_and_zero_slack(self):
         args = tow_drag.parse_args(["--wheel-damping", "0", "--slack", "0"])
-        self.assertEqual(args.wheel_damping, 0.0)
+        self.assertEqual(args.wheel_damping, [0.0])
         self.assertEqual(args.slack, 0.0)
+
+    def test_sweep_parameters_accept_multiple_values(self):
+        """`--cart-mass` / `--wheel-damping` 可给多个，做笛卡尔积在**同一进程**内跑。"""
+        args = tow_drag.parse_args(["--cart-mass", "5", "10", "20",
+                                    "--wheel-damping", "0.016", "0.032"])
+        self.assertEqual(args.cart_mass, [5.0, 10.0, 20.0])
+        self.assertEqual(args.wheel_damping, [0.016, 0.032])
+        self.assertEqual(len(tow_drag.sweep_cases(args.cart_mass, args.wheel_damping)), 6)
+        # 单词形式仍然可用（旧命令不变）
+        single = tow_drag.parse_args(["--cart-mass", "15", "--wheel-damping", "0.032"])
+        self.assertEqual(single.cart_mass, [15.0])
+        self.assertEqual(single.wheel_damping, [0.032])
+        # 缺省：名义质量 × 0.016
+        default = tow_drag.parse_args([])
+        self.assertEqual(default.cart_mass, [None])
+        self.assertEqual(default.wheel_damping, [0.016])
+
+    def test_case_list_is_a_cartesian_product_in_stable_order(self):
+        self.assertEqual(tow_drag.sweep_cases([5.0, 10.0], [0.016]),
+                         [(5.0, 0.016), (10.0, 0.016)])
+        for bad in (([], [0.016]), ([5.0], [])):
+            with self.assertRaises(ValueError):
+                tow_drag.sweep_cases(*bad)
+
+    def test_case_label_names_mass_and_damping(self):
+        self.assertEqual(tow_drag.case_label(0, 5.0, 0.016, 10.0), "case_00_m5_b0.016")
+        self.assertEqual(tow_drag.case_label(3, None, 0.032, 10.0), "case_03_m10_b0.032")
 
 
 class PlanTimeOrderingTests(unittest.TestCase):
@@ -191,8 +218,8 @@ class PlanTimeOrderingTests(unittest.TestCase):
     对每个被监视的局部量，第一次 **Store** 必须不晚于第一次 **Load**。
     """
 
-    WATCHED = ("scale", "schedule", "predicted_coast", "predicted_gap", "decimation",
-               "settle_steps", "command_steps")
+    WATCHED = ("scales", "cases", "predictions", "schedule", "decimation",
+               "settle_steps", "command_steps", "nominal_masses", "nominal_inertias")
 
     def test_no_local_is_used_before_assignment_in_main(self):
         tree = ast.parse(TOW_DRAG.read_text(encoding="utf-8"))
@@ -280,7 +307,7 @@ class CoastPredictionTests(unittest.TestCase):
         self.assertEqual(args.rope_length, 0.8)
         self.assertEqual(args.slack, 0.40)
         self.assertEqual(args.velocity, 0.5)
-        gap_at_stop = args.rope_length - self._predict(args.velocity, args.wheel_damping)
+        gap_at_stop = args.rope_length - self._predict(args.velocity, args.wheel_damping[0])
         self.assertGreater(gap_at_stop, 0.2, f"停车后最小间距只有 {gap_at_stop:.3f} m")
 
     def test_rope_length_must_be_chosen_with_speed_and_damping(self):
@@ -424,7 +451,7 @@ class InterfaceContractTests(unittest.TestCase):
         update = self.source.rindex("scene.update(dt)")
         self.assertLess(write, step, "必须先 write_data_to_sim() 再 sim.step()")
         self.assertLess(step, update, "必须 sim.step() 之后再 scene.update(dt)")
-        self.assertLess(self.source.rindex("apply_rope_and_resistance(command)"), write,
+        self.assertLess(self.source.rindex("apply_rope_and_resistance(command, damping)"), write,
                         "必须先把力写进缓冲再 write_data_to_sim()")
 
     def test_failure_path_exits_with_a_code_and_skips_app_close(self):
@@ -483,8 +510,8 @@ class InterfaceContractTests(unittest.TestCase):
         上一版正是这样：`stop_steps` 在 config 里被提前引用、赋值在其后，实跑直接崩。
         """
         built = self.source.index("schedule = make_schedule(")
-        config = self.source.index("config = {")
-        self.assertLess(built, config, "schedule 必须在 config 字典之前建好")
+        config = self.source.index("def case_config(")
+        self.assertLess(built, config, "schedule 必须在 case_config（消费它的 config 字典）之前建好")
         self.assertIn("schedule.tow_phase_s", self.source)
         # 不允许再出现内联的局部阶段划分（phase_of 只应作为 PhaseSchedule 的方法存在一次）
         self.assertEqual(self.source.count("def phase_of"), 1)
@@ -492,17 +519,42 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertNotIn("total_steps = settle_steps", self.source)
         self.assertIn("schedule.phase_of(step)", self.source)
 
-    def test_no_cart_teleport_after_spawn(self):
-        """初始条件由设计保证 + 事后判据检查，**不得**在运行中途重摆小车。
+    def test_sweep_runs_cases_in_one_process(self):
+        """多 case 必须同进程顺序跑（省掉每个组合重启 Isaac Sim），且每 case 前显式复位。
 
-        曾用 reset_cart_for_tow() 在拖曳段开始前重摆小车，实跑证明有害：它按机器人当前
-        位置摆，机器人窜 0.097 m 就把小车往前挪 0.081 m 并注入 −0.039 m/s 速度，
-        把本来已正确的初始条件弄坏。
+        `Articulation.reset()` 只清执行器与外力缓冲、**不写位姿**（isaaclab articulation.py:172），
+        所以复位必须自己写 root pose/velocity 与关节状态。
         """
-        for gone in ("reset_cart_for_tow", "tow_started", "write_root_pose_to_sim",
-                     "write_root_velocity_to_sim", "write_joint_state_to_sim"):
-            self.assertNotIn(gone, self.source, f"不应再出现中途重摆小车：{gone}")
-        self.assertIn('phase = schedule.phase_of(step)', self.source)
+        self.assertIn("cases = sweep_cases(", self.source)
+        self.assertIn("def reset_case(", self.source)
+        self.assertIn("write_root_pose_to_sim", self.source)
+        self.assertIn("write_root_velocity_to_sim", self.source)
+        self.assertIn("write_joint_state_to_sim", self.source)
+        self.assertIn("root[:, 7:] = 0.0", self.source)          # 速度清零
+        self.assertIn("for case_index, ((mass_target, damping)", self.source)
+        self.assertIn('"sweep"', self.source)
+        # 逐 case 的产物目录与汇总
+        self.assertIn("case_dir.mkdir(parents=True, exist_ok=False)", self.source)
+        self.assertIn('json_file(case_dir / "summary.json", summary)', self.source)
+        self.assertIn('json_file(output / "sweep.json", sweep)', self.source)
+
+    def test_no_teleport_inside_the_step_loop(self):
+        """位姿重写只允许出现在 `reset_case()`（逐 case 的 episode reset），不能在步进循环里。
+
+        曾用 reset_cart_for_tow() 在**拖曳段开始时**重摆小车，实跑证明有害：它按机器人当前
+        位置摆，机器人窜 0.097 m 就把小车往前挪 0.081 m 并注入 −0.039 m/s。逐 case 的复位
+        不一样——那是每个 case 的初始条件（`Articulation.reset()` 本身不写位姿，见
+        isaaclab articulation.py:172），与 P1/P2 每个 case 前重写状态同一约定。
+        """
+        reset = self.source.index("def reset_case(")
+        loop = self.source.index("for step in range(schedule.total_steps):")
+        self.assertLess(reset, loop, "reset_case 必须定义在步进循环之前")
+        body = self.source[reset:loop]
+        loop_body = self.source[loop:self.source.index("recorder.close()", loop)]
+        for call in ("write_root_pose_to_sim", "write_root_velocity_to_sim", "write_joint_state_to_sim"):
+            self.assertIn(call, body, f"{call} 应出现在 reset_case 里")
+            self.assertNotIn(call, loop_body, f"{call} 不应出现在步进循环里")
+        self.assertNotIn("reset_cart_for_tow", self.source)
 
     def test_verdict_logic_lives_in_the_stdlib_tool(self):
         """判读必须放在 scripts/tools 的标准库工具里，否则新判据无法用真实轨迹离线复算。"""
@@ -522,7 +574,7 @@ class InterfaceContractTests(unittest.TestCase):
         第一版两边都建目录，实跑报 FileExistsError（自己撞自己）。这条把职责固定住。
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
-        self.assertIn("recorder = TowRecorder(output, config)", self.source)
+        self.assertIn("recorder = TowRecorder(case_dir, case_config(", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")
         calls = []
