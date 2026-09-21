@@ -441,6 +441,65 @@ class BatchedAndSplitTests(unittest.TestCase):
         self.assertEqual(merged.rope_state, models.MIXED)
         self.assertTrue(bool(merged.is_taut[1]))
 
+    def test_four_env_split_mirrors_what_the_entry_builds(self):
+        """照**入口的形状**构造 4 个 env（2 compliant + 2 inextensible）跑一遍。
+
+        这条模拟多环境可视化那条路：挂点/速度是 `(4,3)`、`point_velocity()` 给的是分量元组、
+        逐 env 刚体属性是 `(4,)`/3×3 of `(4,)`、`SplitRopeModel` 用 `(4,)` 的 0/1 掩码。
+        断言：① 每个 env 的输出与「单独跑那一个模型」逐位一致（掩码混合没错位）；
+        ② 前两个 env 用 compliant、后两个用 inextensible（伸长量差一个量级以上）。
+        这些都不需要 GPU，numpy 就能覆盖——上一次 `robot_velocity[0] must be a real number`
+        就是这一层形态没被测过。
+        """
+        count = 4
+        names = ["compliant", "compliant", "inextensible", "inextensible"]
+        distance = np.full(count, REST_LENGTH + 0.01)          # 全部张紧，两模型差别明显
+        robot_velocity = np.zeros((count, 3)); robot_velocity[:, 0] = 0.5
+        points_robot = np.stack([distance, np.zeros(count), np.zeros(count)], axis=-1)
+        zeros = np.zeros(count)
+        robot = models.BodyProperties(
+            mass=np.full(count, ROBOT_MASS),
+            inverse_inertia_world=models.world_inverse_inertia(
+                tuple(np.full(count, value) for value in ROBOT_INERTIA),
+                tuple(tuple(np.full(count, entry) for entry in row) for row in IDENTITY)),
+            offset=(-0.16 * np.ones(count), zeros, zeros))
+        cart = models.BodyProperties(
+            mass=np.full(count, cart_effective_mass()),
+            inverse_inertia_world=models.world_inverse_inertia(
+                tuple(np.full(count, value) for value in CART_INERTIA),
+                tuple(tuple(np.full(count, entry) for entry in row) for row in IDENTITY)),
+            offset=(0.25 * np.ones(count), zeros, zeros))
+        # 速度走 `point_velocity()`（分量元组）——入口就是这么传的
+        velocities = rope.point_velocity(robot_velocity, np.zeros((count, 3)),
+                                         np.stack([-0.16 * np.ones(count), zeros, zeros], axis=-1))
+
+        split = models.SplitRopeModel(
+            compliant=make_model("compliant"), inextensible=make_model("inextensible"),
+            inextensible_mask=np.array([1.0 if name == "inextensible" else 0.0 for name in names]))
+        merged = split.update(robot_point=points_robot, cart_point=np.zeros((count, 3)),
+                              robot_velocity=velocities,
+                              cart_velocity=(zeros, zeros, zeros), dt=DT,
+                              robot=robot, cart=cart)
+
+        for index, name in enumerate(names):
+            single = make_model(name).update(
+                robot_point=(float(distance[index]), 0.0, 0.0), cart_point=(0.0, 0.0, 0.0),
+                robot_velocity=(float(velocities[0][index]), 0.0, 0.0),
+                cart_velocity=(0.0, 0.0, 0.0), dt=DT,
+                robot=body_properties(ROBOT_MASS, ROBOT_INERTIA, -0.16),
+                cart=body_properties(cart_effective_mass(), CART_INERTIA, 0.25))
+            self.assertAlmostEqual(float(merged.rope_tension[index]), float(single.rope_tension),
+                                   places=9, msg=f"env{index} ({name})")
+            self.assertAlmostEqual(float(merged.rope_extension[index]),
+                                   float(single.rope_extension), places=9, msg=f"env{index}")
+        # 单步快照下两者的**伸长量本来就相等**（`max(0, d−L0)` 是共享几何，见 SplitRopeModel 的注释）；
+        # 机制差别在张力：compliant 是 k·δ + c·ḋ = 4000×0.01 + 100×0.5 = 90 N，
+        # inextensible 要一步抹掉 0.5 m/s 的相对速度 ⇒ T = J/dt = (0.5/k_eff)/dt ≈ 584 N。
+        self.assertAlmostEqual(float(merged.rope_extension[0]), float(merged.rope_extension[2]), places=12)
+        self.assertAlmostEqual(float(merged.rope_tension[0]), 90.0, delta=0.5)
+        self.assertGreater(float(merged.rope_tension[2]), 3.0 * float(merged.rope_tension[0]),
+                           "约束模型一步抹掉相对速度 ⇒ 步平均张力应明显高于弹簧")
+
     def test_split_model_requires_matching_rest_length(self):
         with self.assertRaises(ValueError):
             models.SplitRopeModel(compliant=make_model("compliant"),
