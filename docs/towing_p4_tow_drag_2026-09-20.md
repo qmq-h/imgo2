@@ -1210,6 +1210,12 @@ Isaac Lab 的 `quat_apply*` 内部是 `xyz.cross(vec, dim=-1)` 再 `.view(vec.sh
 修法是 `host_buffer()` 助手把参与运算的缓冲搬到仿真设备；`set_masses`/`set_inertias` 那侧保持 CPU
 （PhysX 要 host 缓冲）。
 
+**第七次（批量输入形态）：`point_velocity()` 的元组。** 它返回分量元组，批量时元素是 `(N,)` 张量；
+`_components` 对元组元素一律按标量 `_validate` ⇒ `TypeError: robot_velocity[0] must be a real number,
+got Tensor`。这其实**不是「只在仿真里才炸」**——只要有一条用 numpy 数组调模型的离线测试就能抓到，
+说明「支持标量/numpy/torch」这条声明此前只被标量路径测过。修法：`_components` 元素是实数才校验、
+是数组就原样传下去；并补一条**用真实 `point_velocity()` 返回值**的批量回归测试。
+
 **过程规则（吃够教训后定下）**：源码契约测试（AST/字符串）只能查「有没有写」，**查不出运行期
 形状/数值错误**。所以 `main()` 里新增的逻辑要么搬进纯函数并被测试**实际调用**，要么在交付时
 明说「这段没被任何测试执行过」。两次失败（`state.distance`、`env_origins` 解包）都出在

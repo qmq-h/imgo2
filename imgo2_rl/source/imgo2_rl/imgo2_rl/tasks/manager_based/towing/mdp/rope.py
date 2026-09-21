@@ -63,11 +63,24 @@ def _is_number(value):
 
 
 def _components(vector, name):
-    """把 3 维向量拆成 (x, y, z) 分量；同时支持序列与 (…, 3) 数组/张量。"""
+    """把 3 维向量拆成 (x, y, z) 分量；支持三种形态：
+
+    * **标量**三元组 `(x, y, z)`：逐个按实数校验（错字/NaN 在这里就被拦住）；
+    * **逐分量数组/张量**的三元组，例如 `point_velocity()` 的返回值
+      `(vx, vy, vz)`（每个是 `(N,)` 张量）——批量时元组里装的是张量，不能按标量校验；
+    * `(…, 3)` 的数组/张量，按最后一维切。
+
+    第二与第三种在批量下都必须能用，否则「几何量可以是张量」这条约定只成立一半：
+    实测（2026-09-21 多环境）把 `point_velocity()` 的元组直接喂进来时报
+    `TypeError: robot_velocity[0] must be a real number, got Tensor`。
+    """
     if isinstance(vector, (tuple, list)):
         if len(vector) != 3:
             raise ValueError(f"{name} must have exactly 3 components, got {len(vector)}")
-        return tuple(_validate(f"{name}[{i}]", c) for i, c in enumerate(vector))
+        # 元素是实数就校验，是数组/张量就原样传下去（非有限值由调用方在写进仿真前检查，
+        # 与本模块开头声明的约定一致）
+        return tuple(_validate(f"{name}[{i}]", c) if _is_number(c) else c
+                     for i, c in enumerate(vector))
     try:
         return vector[..., 0], vector[..., 1], vector[..., 2]
     except (TypeError, IndexError) as exc:  # pragma: no cover - defensive

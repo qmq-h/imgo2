@@ -379,6 +379,29 @@ class BatchedAndSplitTests(unittest.TestCase):
                                                  for row in IDENTITY)),
                                        offset=(np.full(count, 0.25), zeros, zeros)))
 
+    def test_point_velocity_tuple_of_arrays_is_accepted(self):
+        """`point_velocity()` 返回**分量元组**；批量时元组里装的是 `(N,)` 数组。
+
+        回归（2026-09-21 多环境）：把这种元组直接喂进模型时报
+        `TypeError: robot_velocity[0] must be a real number, got Tensor` ——
+        `_components` 对元组元素一律按标量校验。现在「元素是数组就原样传下去」。
+        """
+        vel = np.array([[0.5, 0.0, 0.0], [0.4, 0.0, 0.0]])
+        omega = np.zeros((2, 3))
+        offset = np.array([[-0.16, 0.0, 0.0], [-0.16, 0.0, 0.0]])
+        components = rope.point_velocity(vel, omega, offset)          # 元组，元素是 (2,) 数组
+        self.assertIsInstance(components, tuple)
+        self.assertEqual(components[0].shape, (2,))
+        sample = make_model("compliant").update(
+            robot_point=np.array([[0.9, 0.0, 0.0], [0.9, 0.0, 0.0]]),
+            cart_point=np.zeros((2, 3)), robot_velocity=components,
+            cart_velocity=(np.zeros(2), np.zeros(2), np.zeros(2)), dt=DT)
+        self.assertEqual(sample.rope_tension.shape, (2,))
+        # 两个 env 的 ḋ 不同（0.5 / 0.4）⇒ 张力按 T = k·(d−L0) + c·ḋ 各自算出：
+        # 4000×(0.9−0.8) + 100×ḋ = 450 / 440（逐个 env 都对，说明批量算术没错位）
+        self.assertAlmostEqual(float(sample.rope_tension[0]), 450.0, places=6)
+        self.assertAlmostEqual(float(sample.rope_tension[1]), 440.0, places=6)
+
     def test_models_run_batched_and_are_per_env_consistent(self):
         """批量跑一遍（env 0 松弛、env 1 已超长），结果必须与逐 env 单跑一致。"""
         inputs = self._batched_inputs([0.4, 0.81])
