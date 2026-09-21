@@ -724,6 +724,17 @@ class InterfaceContractTests(unittest.TestCase):
                         "for env_index, env_dir in enumerate(env_dirs)"):
             self.assertIn(snippet, self.source, snippet)
 
+    def test_format_env_origins_accepts_a_grid_of_3d_origins(self):
+        """回归：`scene.env_origins` 每行是 3 个分量。
+
+        第一版先切 `origin[:2]` 再按 3 个解包 ⇒ 实跑 `ValueError: not enough values to unpack
+        (expected 3, got 2)`；而它内联在 `main()` 里，离线测试执行不到。抽成纯函数后这条测试
+        会**真的调用**它（元组、list、numpy/torch 的行都能吃）。
+        """
+        self.assertEqual(tow_drag.format_env_origins([(0.0, 0.0, 0.0), (6.0, 6.0, 0.0)]),
+                         "env0=(0.00,0.00), env1=(6.00,6.00)")
+        self.assertEqual(tow_drag.format_env_origins([[1.234, 5.678, 9.0]]), "env0=(1.23,5.68)")
+
     def test_env_rope_models_splits_evenly_and_rejects_impossible_splits(self):
         """`--num-envs 4 --rope-model compliant inextensible` ⇒ [c, c, i, i]（1:1）。"""
         self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible"], 4),

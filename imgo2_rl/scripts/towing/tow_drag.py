@@ -268,6 +268,20 @@ def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
             for damping in wheel_dampings]
 
 
+def format_env_origins(origins):
+    """把各 env 原点排版成一行日志（纯函数，可离线调用）。
+
+    抽出来是因为第一版把它内联在 `main()` 里、还写错了：`scene.env_origins` 每行是 **3** 个分量，
+    我先切了 `origin[:2]`（2 个）再用 `(x, y, _)` 解包 3 个 ⇒ 实跑第一例就
+    `ValueError: not enough values to unpack (expected 3, got 2)`。内联在 `main()` 里的代码
+    离线测试执行不到，所以这种错只能等跑仿真才暴露——抽成纯函数 + 测试才真的算被覆盖。
+    """
+    parts = []
+    for index, origin in enumerate(origins):
+        parts.append(f"env{index}=({float(origin[0]):.2f},{float(origin[1]):.2f})")
+    return ", ".join(parts)
+
+
 def env_rope_models(rope_models, num_envs):
     """把 `--rope-model` 的每个模型**尽量均分**到 `num_envs` 个环境上。
 
@@ -460,9 +474,8 @@ def main(args):
         scene = InteractiveScene(scene_cfg)
         if args.num_envs > 1:
             # 把各 env 原点打出来，方便在窗口里手动调相机（网格按 env_spacing 摆放）
-            origins = ", ".join(f"env{i}=({x:.2f},{y:.2f})" for i, (x, y, _) in
-                                enumerate(tuple(float(v) for v in origin[:2]) for origin in scene.env_origins))
-            print(f"[INFO] {args.num_envs} 个 env（间距 {args.env_spacing:g} m）：{origins}", flush=True)
+            print(f"[INFO] {args.num_envs} 个 env（间距 {args.env_spacing:g} m）："
+                  f"{format_env_origins(scene.env_origins)}", flush=True)
         sim.reset()
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
         deck_contacts = scene["deck_contacts"]
