@@ -23,11 +23,12 @@ from imgo2_rl.assets.imgo2 import IMGO2_CFG
 # 这个常量可以直接当作用点传进去，力臂由仿真自己算，不必手写 offset×F。
 ROBOT_ATTACHMENT_OFFSET_M = (-0.16, 0.0, 0.0)
 
-# 机器人初始高度。训练侧的 `IMGO2_CFG.init_state.pos` 是 0.35 m，但 README（2026-09-20
-# 的 rlamp 回放条目）记录过「训练多数从录制帧 ≈0.297 m 起、play 从 0.35 m 起」可能对应
-# 高/低两个稳定站高分支。P4 因此把它做成显式参数（`--spawn-height`），默认沿用 0.35 m，
-# 由训练机确认哪一个给出可复现的稳定拖曳。
-ROBOT_SPAWN_HEIGHT_M = 0.35
+# 机器人初始高度。训练侧的 `IMGO2_CFG.init_state.pos` 是 0.35 m，但**实测该策略的站高是
+# 0.284 m**（2026-09-20 拖曳运行的 `steady_robot_z_m`），从 0.35 m 出生会先落下 6.6 cm，
+# 落地时向前窜动 0.65 m/s —— 那一窜会把绳拉直（实测 73–86 N）并把小车甩出去，
+# 看上去就像「小车自己有初速度」。故默认改为 0.30 m（贴近实测站高，留 1.6 cm 余量），
+# 仍可用 `--spawn-height` 覆盖；README 里「高/低站高分支」的疑虑按 0.35 那一档未复现。
+ROBOT_SPAWN_HEIGHT_M = 0.30
 
 
 @configclass

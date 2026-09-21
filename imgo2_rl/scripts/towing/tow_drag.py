@@ -41,8 +41,14 @@ def parse_args(argv=None):
     parser.add_argument("--rope-length", type=float, default=1.0, help="绳长 L0，m")
     parser.add_argument("--stiffness", type=float, default=4000.0, help="绳刚度 k，N/m")
     parser.add_argument("--damping", type=float, default=100.0, help="绳阻尼 c，N·s/m")
-    parser.add_argument("--slack", type=float, default=0.05,
-                        help="初始松弛量，m（两个挂点的初始三维距离 = L0 - slack，t=0 张力为 0）")
+    parser.add_argument("--slack", type=float, default=0.20,
+                        help="初始松弛量，m（初始三维距离 = L0 - slack，t=0 张力为 0）。"
+                             "默认 0.20：机器人按 0.35 m 出生时会向前窜动、把绳多拉长约 0.06 m，"
+                             "松弛不足会让绳在**站定阶段**就被拉直（实测 0.05 时出现 73-86 N 猛拽，"
+                             "把小车甩出 0.24 m 自由滑行）")
+    parser.add_argument("--stop-at", type=float, default=None,
+                        help="阶跃停止：指令阶段走到第 T 秒时把指令归零并保持（计划 P6）。"
+                             "缺省则整段保持指令")
     parser.add_argument("--wheel-damping", type=float, default=0.016,
                         help="每个车轮的轴承阻力 b，N·m·s/rad（P2 的候选值之一）")
     parser.add_argument("--spawn-height", type=float, default=None,
@@ -75,6 +81,12 @@ def parse_args(argv=None):
         parser.error("--wheel-damping must be in [0, 0.1] N m s/rad")
     if args.dt > 0.01:
         parser.error("--dt must be <= 0.01 s")
+    if args.stop_at is not None:
+        if not math.isfinite(args.stop_at) or args.stop_at <= 0:
+            parser.error("--stop-at must be finite and positive")
+        if args.stop_at >= args.duration:
+            parser.error("--stop-at must be smaller than --duration "
+                         "(剩余时间作为指令归零后的滑行段)")
     if args.spawn_height is not None and (not math.isfinite(args.spawn_height) or args.spawn_height <= 0):
         parser.error("--spawn-height must be finite and positive")
     if not math.isfinite(args.cart_drop) or not 0.0 <= args.cart_drop <= 0.1:
@@ -90,27 +102,35 @@ def git_info():
     return {"commit": run("rev-parse", "HEAD"), "working_tree": run("status", "--porcelain")}
 
 
-def initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
-                   cart_height: float, robot_offset, cart_offset) -> float:
-    """解出小车初始 x，使两个挂点的**三维**距离 = L0 − slack（绳在 t=0 是**松的**）。
+def cart_x_for_attachment_gap(rope_length: float, slack: float, *, robot_x: float, robot_z: float,
+                              cart_height: float, robot_offset, cart_offset) -> float:
+    """解出小车 x，使两个挂点的**三维**距离 = L0 − slack（即绳是**松的**）。
 
-    `--slack` 的语义是「初始松弛量」：间距必须**小于** L0，于是 t=0 张力为 0，机器人先
-    起步、绳自然由松到紧。第一版写成了 `L0 + slack`（预张紧）——名字说松、实现是紧，
+    `--slack` 的语义是「初始松弛量」：间距必须**小于** L0，于是张力为 0，机器人先起步、
+    绳自然由松到紧。第一版写成了 `L0 + slack`（预张紧）——名字说松、实现是紧，
     5 cm 就对应 200 N 预载，实测直接把机器人拽倒。
 
-    两个挂点的高度不同（机器人 base 在 `spawn_height`，小车 base_link 在 `cart_height`），
+    两个挂点的高度不同（机器人 base 在 `robot_z`，小车 base_link 在 `cart_height`），
     所以横向距离要按 `sqrt(target² − dz²)` 解，不能直接拿目标距离当 x 间距
-    （第一版就是漏了这一点，又把刚体原点当成挂点，初始距离报成 1.478 m）。
+    （第一版漏了这一点，又把刚体原点当成挂点，初始距离报成 1.478 m）。
     """
     target = rope_length - slack
-    dz = (spawn_height + robot_offset[2]) - (cart_height + cart_offset[2])
+    dz = (robot_z + robot_offset[2]) - (cart_height + cart_offset[2])
     if target * target < dz * dz:
         raise ValueError(
             f"绳长 {rope_length} m 减去松弛 {slack} m 后只有 {target:.3f} m，"
             f"小于两挂点的高差 {abs(dz):.3f} m，几何上不可能")
     horizontal = math.sqrt(target * target - dz * dz)
     # 机器人在前（x 大），小车的挂点在车体 +x ⇒ 机器人挂点 x − 小车挂点 x = horizontal
-    return robot_offset[0] - cart_offset[0] - horizontal
+    return robot_x + robot_offset[0] - cart_offset[0] - horizontal
+
+
+def initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
+                   cart_height: float, robot_offset, cart_offset) -> float:
+    """机器人在原点出生时的小车初始 x（`cart_x_for_attachment_gap` 的特例）。"""
+    return cart_x_for_attachment_gap(rope_length, slack, robot_x=0.0, robot_z=spawn_height,
+                                     cart_height=cart_height, robot_offset=robot_offset,
+                                     cart_offset=cart_offset)
 
 
 def main(args):
@@ -296,18 +316,61 @@ def main(args):
                      "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
             "wheel_damping_nms_per_rad": args.wheel_damping, "user_command_mps": args.velocity,
             "settle_time_s": settle_steps * dt, "duration_s": command_steps * dt,
+            "stop_at_s": args.stop_at, "tow_phase_s": stop_steps * dt,
+            "coast_phase_s": (command_steps - stop_steps) * dt,
+            "cart_reset_at_tow_start": True,
+            "cart_reset_note": "拖曳段开始时把小车摆到「挂点间距 = L0 - slack」并清零速度，"
+                               "使初始条件由设计决定，而不是取决于机器人的出生窜动",
             "dt_s": dt, "decimation": decimation, "device": args.device,
             "torque_convention": "rope force and wheel torque are computed from the state at the start of each step",
             "git": manifest["git"],
         }
 
         recorder = TowRecorder(output, config)
-        summary = {"state": "running", "settle_samples": 0, "command_samples": 0,
-                   "steady_window_s": None}
-        started = False
-        for step in range(settle_steps + command_steps):
-            in_command = step >= settle_steps
-            command = args.velocity if in_command else 0.0
+        # 阶段划分：station（站定，指令 0）→ tow（指令 = v_user）→ coast（阶跃归零后滑行）
+        stop_steps = (int(round(args.stop_at / dt)) if args.stop_at is not None else command_steps)
+        total_steps = settle_steps + command_steps
+
+        def phase_of(step):
+            if step < settle_steps:
+                return "station"
+            return "tow" if step - settle_steps < stop_steps else "coast"
+
+        def reset_cart_for_tow():
+            """把小车摆到设计的初始位姿并清零速度，作为拖曳段的初始条件。
+
+            为什么必须显式做：机器人按出生高度落下时会向前窜动（实测 0.65 m/s），把绳拉直
+            并给小车一个 73–86 N 的冲量，小车随后自由滑行 0.24 m —— 看上去就是「小车自己
+            有初速度」，而拖曳实验的初始条件本该是「小车静止 + 绳松弛」。与其指望出生条件
+            刚好，不如在拖曳段开始前把状态写死：与 P1/P2 在静置检查后重写小车状态的约定一致。
+            """
+            origin = scene.env_origins[0]
+            cart_x = cart_x_for_attachment_gap(
+                args.rope_length, args.slack,
+                robot_x=float(robot.data.root_pos_w[0, 0]),
+                robot_z=float(robot.data.root_pos_w[0, 2]),
+                cart_height=model["resting_height_m"], robot_offset=robot_attachment,
+                cart_offset=cart_attachment)
+            root = cart.data.default_root_state.clone()
+            root[:, :3] += scene.env_origins
+            root[:, 0] = origin[0] + cart_x
+            root[:, 1] = origin[1]
+            root[:, 2] = origin[2] + model["resting_height_m"]
+            root[:, 7:] = 0.0                       # 线速度/角速度全部清零
+            cart.write_root_pose_to_sim(root[:, :7])
+            cart.write_root_velocity_to_sim(root[:, 7:])
+            cart.write_joint_state_to_sim(cart.data.default_joint_pos.clone(),
+                                          torch.zeros_like(cart.data.default_joint_vel))
+            scene.update(dt)                        # 让 data 立刻反映新位姿
+            return cart_x
+
+        tow_started = False
+        for step in range(total_steps):
+            phase = phase_of(step)
+            command = args.velocity if phase == "tow" else 0.0
+            if phase == "tow" and not tow_started:
+                reset_cart_for_tow()
+                tow_started = True
             if step % decimation == 0:
                 policy_step(command)
             state = apply_rope_and_resistance(command)
@@ -319,6 +382,7 @@ def main(args):
             qw, qx, qy, qz = (float(v) for v in quat)
             pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
             row = {
+                "phase": phase,
                 "time_s": (step + 1) * dt,
                 "user_cmd_mps": command,
                 "ref_cmd_mps": command,          # P4 还没有 command shaping
@@ -334,16 +398,9 @@ def main(args):
                 "body_pitch_rate_radps": float(robot.data.root_ang_vel_b[0, 1]),
             }
             recorder.append(row)
-            if in_command:
-                summary["command_samples"] += 1
-                started = True
-            else:
-                summary["settle_samples"] += 1
 
         recorder.close()
         recorder = None
-        if not started:
-            raise RuntimeError("指令阶段一个样本都没有")
 
         # ------------------------------------------------------------ 汇总与判定
         # 判读逻辑放在标准库工具里（与 P1/P2 的 summarize_cart_coast.py 同一模式），

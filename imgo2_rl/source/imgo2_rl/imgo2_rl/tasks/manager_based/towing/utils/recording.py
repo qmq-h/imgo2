@@ -50,13 +50,16 @@ class CartRecorder:
 
 # 拖曳记录（计划 P5 的字段表，P4 先只填其中不需要步态指标的部分）。
 # `ref_cmd_mps` 在 P4 恒等于用户指令（还没有 command shaping），留列是为了 P6/P8。
-TOW_FIELDS = (
+# `phase` 标出阶段（station/站定、tow/拖曳、coast/指令归零后的滑行）：计划 P6 的
+# 「t≥5 s 后 T 多快归零、机器人有无瞬态」都要按阶段取窗口，写进数据比事后猜边界可靠。
+TOW_NUMERIC_FIELDS = (
     "time_s", "user_cmd_mps", "ref_cmd_mps", "robot_vx_mps", "load_vx_mps",
     "rope_tension_n", "rope_distance_m", "robot_x_m", "load_x_m",
     # 高度单列出来：机器人被拽倒/塌下去时，只看 pitch 不够直观
     "robot_z_m", "load_z_m",
     "body_pitch_rad", "body_pitch_rate_radps",
 )
+TOW_FIELDS = ("phase", *TOW_NUMERIC_FIELDS)
 
 
 class TowRecorder:
@@ -88,8 +91,12 @@ class TowRecorder:
         self._last_time = -1.0
 
     def append(self, row: dict):
-        if set(row) != set(TOW_FIELDS) or not all(math.isfinite(float(row[k])) for k in TOW_FIELDS):
+        if set(row) != set(TOW_FIELDS):
+            raise ValueError("Invalid tow sample fields")
+        if not all(math.isfinite(float(row[k])) for k in TOW_NUMERIC_FIELDS):
             raise ValueError("Invalid/non-finite tow sample")
+        if row["phase"] not in ("station", "tow", "coast"):
+            raise ValueError(f"Unknown phase: {row['phase']!r}")
         if row["time_s"] <= self._last_time:
             raise ValueError("Tow sample times must strictly increase")
         self._writer.writerow(row)

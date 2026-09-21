@@ -102,6 +102,25 @@ class LayoutTests(unittest.TestCase):
                                         stiffness=4000.0, damping=100.0)
             self.assertEqual(tension, 0.0, f"L0={length} slack={slack} 初始张力应为 0")
 
+    def test_gap_solver_is_relative_to_the_robot_position(self):
+        """拖曳段开始时按机器人**当前位置**重摆小车，间距仍须等于 L0 − slack。
+
+        站定阶段机器人会向前窜动；重摆必须相对它当时的实际位置解算，否则间距会带着
+        窜动量一起偏。"""
+        offset = self.constants["ROBOT_ATTACHMENT_OFFSET_M"]
+        cart_offset = self.cart_model["attachment_position_m"]
+        for robot_x in (0.0, 0.08, -0.05):
+            cart_x = tow_drag.cart_x_for_attachment_gap(
+                1.0, 0.2, robot_x=robot_x, robot_z=0.30,
+                cart_height=self.cart_model["resting_height_m"],
+                robot_offset=offset, cart_offset=cart_offset)
+            robot_point = (robot_x + offset[0], offset[1], 0.30 + offset[2])
+            cart_point = (cart_x + cart_offset[0], cart_offset[1],
+                          self.cart_model["resting_height_m"] + cart_offset[2])
+            self.assertAlmostEqual(math.dist(robot_point, cart_point), 1.0 - 0.2, places=9,
+                                   msg=f"robot_x={robot_x}")
+            self.assertLess(cart_x, robot_x, "小车必须在机器人后方")
+
     def test_rejects_geometry_that_cannot_hold_the_requested_slack(self):
         """高差大于目标距离时必须报错，而不是悄悄给出错的布局。"""
         offset = self.constants["ROBOT_ATTACHMENT_OFFSET_M"]
@@ -147,6 +166,16 @@ class ArgumentTests(unittest.TestCase):
             with self.assertRaises(SystemExit, msg=str(argv)):
                 tow_drag.parse_args(argv)
 
+    def test_stop_at_must_be_inside_the_command_window(self):
+        args = tow_drag.parse_args(["--duration", "10", "--stop-at", "5"])
+        self.assertEqual(args.stop_at, 5.0)
+        self.assertIsNone(tow_drag.parse_args([]).stop_at)
+        for argv in (["--duration", "5", "--stop-at", "5"],
+                     ["--duration", "5", "--stop-at", "6"],
+                     ["--stop-at", "0"], ["--stop-at", "-1"]):
+            with self.assertRaises(SystemExit, msg=str(argv)):
+                tow_drag.parse_args(argv)
+
     def test_accepts_zero_wheel_damping_and_zero_slack(self):
         args = tow_drag.parse_args(["--wheel-damping", "0", "--slack", "0"])
         self.assertEqual(args.wheel_damping, 0.0)
@@ -155,7 +184,7 @@ class ArgumentTests(unittest.TestCase):
 
 class TowRecorderTests(unittest.TestCase):
     def _row(self, time_s=0.005, **changes):
-        row = {"time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
+        row = {"phase": "tow", "time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
                "robot_vx_mps": 0.5, "load_vx_mps": 0.5, "rope_tension_n": 10.0,
                "rope_distance_m": 1.1, "robot_x_m": 0.1, "load_x_m": -1.0,
                "robot_z_m": 0.30, "load_z_m": 0.15,
@@ -290,6 +319,20 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("joint_targets[:, asset_to_policy]", self.source)
         # 不允许退回「直接比较关节名列表」的写法
         self.assertNotIn("robot.joint_names) != list(policy_cfg.joint_names", self.source)
+
+    def test_three_phases_and_cart_reset_at_tow_start(self):
+        """阶段划分为 station→tow→coast；拖曳段开始前必须显式重摆小车并清零速度。"""
+        self.assertIn('"station"', self.source)
+        self.assertIn('"tow"', self.source)
+        self.assertIn('"coast"', self.source)
+        self.assertIn("def reset_cart_for_tow()", self.source)
+        # 重摆必须发生在 tow 段的第一步之前，且写完位姿要刷新 data
+        reset = self.source.index("reset_cart_for_tow()\n                tow_started = True")
+        policy = self.source.index("if step % decimation == 0:", reset)
+        self.assertLess(reset, policy, "重摆要在施力/推理之前")
+        self.assertIn("cart.write_root_pose_to_sim", self.source)
+        self.assertIn("cart.write_root_velocity_to_sim", self.source)
+        self.assertIn("scene.update(dt)                        # 让 data 立刻反映新位姿", self.source)
 
     def test_verdict_logic_lives_in_the_stdlib_tool(self):
         """判读必须放在 scripts/tools 的标准库工具里，否则新判据无法用真实轨迹离线复算。"""

@@ -58,8 +58,28 @@
 
 ```bash
 cd imgo2_rl
+# 稳定拖曳（计划 P4）
 bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duration 5 --headless
+
+# 阶跃停止（计划 P6）：拖 5 s 后指令归零，机器人停下、小车继续滑行
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duration 10 --stop-at 5 --headless
 ```
+
+**可视化（去掉 `--headless` 即可）**：`SimulationContext.step()` 默认 `render=True`，所以
+非 headless 会正常刷新视口，不需要额外代码。相机由脚本用 `sim.set_camera_view()` 设死
+（拖曳场景为眼位 `(2.5, 2.5, 1.8)`、注视 `(-0.7, 0, 0.2)`），而机器人/小车会沿 +x 走 2–3 m，
+**长跑会出画**，需要时在窗口里手动移相机。
+
+```bash
+# 看「机器人停下、小车滑行」这一幕（计划 P6）
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duration 10 --stop-at 5
+# 看小车落地与滑行（P1/P2）
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode drop --duration 3
+bash scripts/run_isaaclab.sh scripts/towing/cart_coast.py --mode coast --velocities 1.0 --damping 0.016 --duration 10
+```
+
+播放速度取决于渲染帧率与物理 `dt` 的比值，可能快于实时；想慢一点用 `--dt 0.0025`
+（P2 的 dt 复核显示停止距离只变 0.23%）。暂停会阻塞 `sim.step()`，画面保留、可慢慢看。
 
 产物在 `imgo2_rl/logs/towing/tow_drag/<run_id>/`：`config.json`（含策略/模型哈希、绳参数、
 抽帧、挂点）、`tow.csv`（逐物理步）、`summary.json`、`experiment.json`。
@@ -79,7 +99,12 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 | `tension_ripple_ratio` | 稳态窗变异系数 | **只报告不判失败**：步态纹波是正常现象（实测主频 7.5 Hz、主要由阻尼项 `c·ḋ` 贡献，弹簧项只波动 1.06 N） |
 | `max_abs_pitch_rad` | 全程最大 \|pitch\| | ≤ 0.6 rad，否则 `body_pitch_excessive` |
 | `steady_robot_z_m` / `min_robot_z_m` | 稳态/最低机身高度 | 只报告：明显偏低说明塌下去或被拽倒 |
-| `settle_load_drift_m` / `settle_max_abs_load_vx_mps` | **站定阶段**（指令 0、绳松弛）小车的自漂 | 只报告：实测精确贴地生成会产生 0.24 m 自漂（见 §5.5） |
+| `settle_max_tension_n` | **站定阶段**（指令 0）张力峰值 | **≤ 1 N**，否则 `rope_taut_during_settle`：实测机器人出生窜动把绳拉直过（85.7 N），会把小车甩出 0.24 m（见 §5.6） |
+| `settle_max_abs_robot_vx_mps` / `settle_load_drift_m` / `settle_max_abs_load_vx_mps` | 站定阶段机器人窜动与小车位移 | 只报告 |
+| `coast_load_travel_m` / `coast_robot_travel_m` | **滑行段**（`--stop-at` 后指令为 0）两体位移 | 只报告 |
+| `coast_min_gap_m` / `coast_gap_at_stop_m` | 滑行段最小/起始间距 | `<= 0` ⇒ `load_reached_robot`（追尾） |
+| `coast_time_to_slack_s` / `coast_retension_peak_n` | 停车后张力归零耗时、若重新绷紧的峰值 | 只报告（计划 P6 的核心观测量） |
+| `coast_final_robot_vx_mps` | 滑行段末机器人 vx | ≤ 20% 指令，否则 `robot_did_not_stop` |
 
 判读逻辑在 `imgo2_rl/scripts/tools/summarize_tow.py`（**纯标准库**，与 P1/P2 的
 `summarize_cart_coast.py` 同一模式），所以新判据可以用真实轨迹离线复算：
@@ -249,14 +274,55 @@ max_abs_pitch_rad     = 0.802       ← 唯一被抓住的失败项
    `c·ḋ` —— 那是机器人步态的正常纹波，不是失稳。计划要的是「T(t) 进入**相对稳定区间**」，
    看的是水平是否稳定，故改为**前后半均值漂移 ≤ 25%**，纹波只报告。用真实轨迹复算：
    `tension_drift_ratio = 1.1%` ✅。
-2. **小车在站定阶段自漂 0.24 m（新暴露，已初步处理）**：那时指令为 0、绳松弛（T=0），
-   小车却漂了 0.239 m、峰值速度 0.372 m/s。原因推断是**按 resting height 精确贴地生成**
-   （P1/P2 是留 3 cm 落差落的），接触解算产生自漂。故新增 `--cart-drop`（默认 0.03，
-   与 P1/P2 一致）并把 `settle_load_drift_m` 记进 `summary.json`。
-   这个自漂也是 `time_to_taut_s = 1.755 s` 偏长的原因：小车朝机器人漂近 0.24 m，
-   机器人起步后要先收掉这些额外松弛。**待下一次实跑确认自漂是否消失。**
+2. **小车在站定阶段自漂 0.24 m**：那时指令为 0，小车却漂了 0.239 m、峰值速度 0.372 m/s。
+   当时推断是「按 resting height 精确贴地生成导致的接触自漂」，于是加了 `--cart-drop`
+   （默认 0.03）。**该诊断是错的，见 §5.6 的更正**：真因是机器人出生窜动把绳拉直。
 
-### 5.6 其它覆盖与测试抓到的缺陷
+### 5.6 更正 §5.5 的错误根因：小车初速度来自机器人出生窜动把绳拉直
+
+用户查看可视化后指出「小车有初速度是不对的」。用已有轨迹逐帧核对（运行 `3746654e`，
+commit `0e19d07`，已含 `--cart-drop 0.03`）：
+
+```text
+   t      v_R      v_L     T(N)      d(m)     z_R     z_L
+0.005   0.6492   0.0000   0.0000   0.94876  0.3628  0.1785
+0.055   0.5794   0.0000   0.0000   0.99036  0.3638  0.1577
+0.080   0.4241   0.1032  72.9634   1.00694  0.3568  0.1500   ← 绳被拉直
+0.105   0.3260   0.2545  62.1838   1.01284  0.3469  0.1500
+0.155   0.1943   0.3671   0.0000   1.00593  0.3254  0.1500
+```
+
+- **`--cart-drop` 没能解决**：加了落差后站定自漂仍是 0.2375 m（改前 0.2390）⇒ 与小车生成方式无关。
+- **真因**：机器人按 `spawn_height = 0.35 m` 出生，而该策略的**实测站高只有 0.284 m**
+  ⇒ 先落下 6.6 cm，**落地时向前窜动（实测峰值 0.849 m/s）**，把绳从 0.95 m 拉过 `L0 = 1.0 m`
+  ⇒ 站定阶段绳被拉直，**张力峰值 85.7 N、17 个样本 T > 0**，把小车甩到 0.369 m/s
+  后自由滑行 0.238 m。看上去就是「小车自己有初速度」。
+- 我此前只抽查了几个时间点就断言「站定阶段绳是松的」，这是错误结论的由来。
+
+**本轮修法（三层）**：
+
+1. **出生高度默认 0.35 → 0.30 m**（`ROBOT_SPAWN_HEIGHT_M`）：贴近实测站高 0.284 m，
+   把 6.6 cm 的落下压到 1.6 cm，从源头减小窜动。
+2. **`--slack` 默认 0.05 → 0.20 m**：实测窜动把绳多拉长约 0.063 m，松弛不足就会在站定阶段
+   被拉直；0.20 m 留足余量。
+3. **拖曳段开始前显式重摆小车并清零速度**（`reset_cart_for_tow()`）：把小车摆到
+   「挂点间距 = `L0 − slack`」（相对机器人**当时**的实际位置解算）并清零线/角速度与轮速，
+   再 `scene.update(dt)` 刷新状态。**初始条件由设计决定，而不是取决于出生条件**——
+   与 P1/P2 在静置检查后重写小车状态的约定一致。
+
+**判据同步收紧**：新增 `rope_taut_during_settle`（`station` 阶段张力 > 1 N 即失败）与
+`settle_max_tension_n` / `settle_max_abs_robot_vx_mps` 两个报告量。**用真实轨迹复算，两条
+既有运行都被正确判为失败**（85.7 N / 75.1 N），即判据能抓住用户看到的这个现象。
+
+**同时新增阶跃停止（计划 P6 的画面）**：`--stop-at T` 把指令在拖曳段第 T 秒归零并保持，
+于是轨迹分为 `station` / `tow` / `coast` 三段（`phase` 列），`coast` 段报告小车滑行距离、
+**最小间距（追尾风险）**、张力归零耗时与是否重新绷紧——正是计划要求看的
+「机器人停下后 `T → 0` 有多快、小车会不会追尾」。判据新增 `robot_did_not_stop`
+与 `load_reached_robot`。
+
+**待下一次实跑确认**：站定阶段张力是否归零、`--stop-at` 的滑行画面与指标。
+
+### 5.7 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约
 （`positions=` 作用点、`write_data_to_sim()` 必须早于 `sim.step()` 且晚于施力、失败路径
