@@ -603,9 +603,15 @@ def main(args):
         manifest.update(state="completed", valid=all_valid, cases=case_dirs)
         json_file(output / "experiment.json", manifest)
         print(f"[SWEEP] {len(results)} 个 case，all_valid={all_valid} ⇒ {output}", flush=True)
-        if application is not None:
-            application.close()
-        return 0 if all_valid else 2
+        # 结束方式与失败路径一致：**不依赖 `application.close()` 让进程退出**。
+        # 实测（2026-09-21，friction 扫描）跑完后 summary.json 与 sweep.json 都已写好、
+        # state=completed，但进程不返回 —— shell 的 for 循环因此进不到下一个值。
+        # 产物都已落盘（CSV 逐行 flush、JSON 写完即关），所以直接显式带码退出；
+        # 与 CART-02 同一类问题：Kit 的关停路径不可靠，退出码必须自己给。
+        print(f"[DONE] all_valid={all_valid} ⇒ 退出码 {0 if all_valid else 2}", flush=True)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0 if all_valid else 2)
     except (Exception, KeyboardInterrupt) as exc:
         manifest.update(state="failed", error=f"{type(exc).__name__}: {exc}")
         json_file(output / "experiment.json", manifest)

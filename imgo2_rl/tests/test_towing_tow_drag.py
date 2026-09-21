@@ -456,6 +456,19 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertLess(self.source.rindex("apply_rope_and_resistance(command, damping)"), write,
                         "必须先把力写进缓冲再 write_data_to_sim()")
 
+    def test_success_path_also_exits_explicitly(self):
+        """成功路径也必须显式退出。
+
+        实测（2026-09-21 friction 扫描）：跑完后 summary.json/sweep.json 都写好了、进程却不返回，
+        shell 的 for 循环进不到下一个值。所以成功路径也要 os._exit，不能依赖 application.close()。
+        """
+        tail = self.source[self.source.index('print(f"[SWEEP]'):]
+        self.assertIn("os._exit(0 if all_valid else 2)", tail)
+        # 只禁止**真的调用**（注释里提到它不算）——朴素的字符串匹配已被这类假阳性咬过三次
+        self.assertIsNone(re.search(r"^\s*application\.close\(\)", tail.split("except ")[0],
+                                    re.MULTILINE),
+                          "成功路径不得依赖 application.close() 退出")
+
     def test_failure_path_exits_with_a_code_and_skips_app_close(self):
         """CART-02 的教训：Kit 关停会吞掉异常与退出码，失败路径必须显式 os._exit。"""
         failure = self.source.index("except (Exception, KeyboardInterrupt) as exc:")
