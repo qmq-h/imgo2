@@ -322,6 +322,34 @@ class CoastPhaseTests(unittest.TestCase):
         # 张力变化率峰值 = 绷直那一步的跳变 10 N / 5 ms = 2000 N/s（这正是要看的变化率）
         self.assertAlmostEqual(summary["max_tension_rate_n_per_s"], 2000.0, delta=50.0)
 
+    def test_stop_transient_metrics_measure_the_reaction_window(self):
+        """停止瞬态：`clearance_at_stop_m` / `time_to_contact_after_stop_s` / `load_vx_at_contact_mps`。
+
+        这三个量是训练目标（收到停止指令后机器人往前几步防追尾）需要的：**时间窗**就是
+        「往前几步」必须在多久之内把间隙重新拉开；`load_vx_at_contact_mps` 是撞击速度的实测值。
+        """
+        rows = add_witness_columns(_run(coast_s=1.0))
+        # 让负载在 coast 段持续靠近：位置从 x_R−x_L=1.0084（间隙 +0.36）线性收到 0.6084（间隙 −0.04）
+        for index, row in enumerate(rows):
+            if row["phase"] != "coast":
+                continue
+            fraction = index / max(1, len(rows) - 1)
+            row["load_x_m"], row["robot_x_m"] = 0.0, 1.0084 - 0.40 * fraction
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertGreater(summary["clearance_at_stop_m"], 0.0)         # 指令归零时还没接触
+        self.assertIsNotNone(summary["time_to_contact_after_stop_s"])
+        self.assertGreater(summary["time_to_contact_after_stop_s"], 0.0)
+        self.assertIsNotNone(summary["load_vx_at_contact_mps"])
+
+    def test_stop_transient_is_none_when_it_never_touches(self):
+        rows = add_witness_columns(_run(coast_s=0.5))
+        for row in rows:                     # 保持大间距：不会接触
+            row["load_x_m"], row["robot_x_m"] = 0.0, 1.5
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertIsNone(summary["time_to_contact_after_stop_s"])
+        self.assertIsNone(summary["load_vx_at_contact_mps"])
+        self.assertIsNotNone(summary["clearance_at_stop_m"])            # 但起始间隙仍要报
+
     def test_rope_stats_are_absent_on_old_records(self):
         """旧 run 没有绳索模型列 ⇒ 这些统计必须是 None，而不是被当成 0。"""
         rows = _run(coast_s=0.5)

@@ -221,7 +221,8 @@ def _clearance_series(rows, joint_names, stride=5):
         gap, _ = tow_clearance.clearance(
             robot.points(angles, *robot_pose),
             cart.points(tow_clearance.WHEEL_JOINT_ANGLES, *cart_pose))
-        series.append((row["phase"], gap))
+        # 带时刻：判读要用它算「停止指令后多久接触」（训练目标要抢的时间窗）
+        series.append((row["phase"], float(row["time_s"]), gap))
     return series
 
 
@@ -348,13 +349,33 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
 
     if joint_names and rows and "robot_jp_00" in rows[0]:
         clearance = _clearance_series(rows, joint_names)
-        after_tow_clearance = [g for phase, g in clearance if phase != "station"]
-        coast_clearance = [g for phase, g in clearance if phase == "coast"]
-        station_clearance = [g for phase, g in clearance if phase == "station"]
+        after_tow_clearance = [gap for phase, _, gap in clearance if phase != "station"]
+        coast_samples = [(time_s, gap) for phase, time_s, gap in clearance if phase == "coast"]
+        station_clearance = [gap for phase, _, gap in clearance if phase == "station"]
         summary["min_clearance_m"] = min(after_tow_clearance)
-        summary["min_clearance_coast_m"] = min(coast_clearance) if coast_clearance else None
+        summary["min_clearance_coast_m"] = min(gap for _, gap in coast_samples) if coast_samples else None
         summary["min_clearance_station_m"] = min(station_clearance) if station_clearance else None
-        summary["final_clearance_m"] = clearance[-1][1]
+        summary["final_clearance_m"] = clearance[-1][2]
+        # ---- 停止瞬态：训练目标（收到停止指令后机器人往前几步防追尾）要抢的时间窗 ----
+        # `clearance_at_stop_m` = 指令归零那一刻的车头间隙；
+        # `time_to_contact_after_stop_s` = 从那一刻到首次接触（间隙 ≤ 0）的时间 ⇒ 机器人
+        #     「往前几步」必须在这么长时间内把间隙重新拉开；
+        # `load_vx_at_contact_mps` = 接触瞬间负载的速度（撞击速度的实测值）。
+        if coast_samples:
+            stop_time, stop_gap = coast_samples[0]
+            summary["clearance_at_stop_m"] = stop_gap
+            contact = next(((time_s, gap) for time_s, gap in coast_samples
+                            if gap <= CLEARANCE_CONTACT_M), None)
+            summary["time_to_contact_after_stop_s"] = (contact[0] - stop_time) if contact else None
+            if contact is not None:
+                nearest = min(coast_rows, key=lambda r: abs(float(r["time_s"]) - contact[0]))
+                summary["load_vx_at_contact_mps"] = float(nearest["load_vx_mps"])
+            else:
+                summary["load_vx_at_contact_mps"] = None
+        else:
+            summary["clearance_at_stop_m"] = None
+            summary["time_to_contact_after_stop_s"] = None
+            summary["load_vx_at_contact_mps"] = None
         summary["clearance_samples"] = len(clearance)
         if summary["min_clearance_m"] <= CLEARANCE_CONTACT_M:
             witnesses.append("geometric_clearance")
@@ -363,6 +384,9 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
         summary["min_clearance_coast_m"] = None
         summary["min_clearance_station_m"] = None
         summary["final_clearance_m"] = None
+        summary["clearance_at_stop_m"] = None
+        summary["time_to_contact_after_stop_s"] = None
+        summary["load_vx_at_contact_mps"] = None
 
     # 三路见证的可用性与结论。**注意别把「没有见证通道」当成「没追上」**：
     # 旧记录既没有接触力列也没有关节角列，只能退回挂点间距口径，并把这个不可靠性写进来源名。
