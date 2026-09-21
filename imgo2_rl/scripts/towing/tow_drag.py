@@ -116,8 +116,13 @@ def parse_args(argv=None):
         if not math.isfinite(args.stop_at) or args.stop_at <= 0:
             parser.error("--stop-at must be finite and positive")
         if args.stop_at >= args.duration:
-            parser.error("--stop-at must be smaller than --duration "
-                         "(剩余时间作为指令归零后的滑行段)")
+            # 这条报错必须直接给出改法：交付命令里漏掉 --duration 时（默认 5），
+            # 用户只会看到「必须小于」，不知道要补 --duration（2026-09-21 实际踩到）。
+            parser.error(
+                f"--stop-at {args.stop_at:g} 必须小于 --duration {args.duration:g}"
+                f"（滑行段 = duration − stop_at，现在算出来是 ≤ 0）。"
+                f"要 {args.stop_at:g} s 拖曳 + 5 s 滑行就写 --duration {args.stop_at + 5:g} "
+                f"--stop-at {args.stop_at:g}；不做滑行段的话去掉 --stop-at")
     if args.spawn_height is not None and (not math.isfinite(args.spawn_height) or args.spawn_height <= 0):
         parser.error("--spawn-height must be finite and positive")
     if not math.isfinite(args.cart_drop) or not 0.0 <= args.cart_drop <= 0.1:

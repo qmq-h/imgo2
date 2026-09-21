@@ -7,7 +7,9 @@
 """
 
 import ast
+import contextlib
 import csv
+import io
 import importlib.util
 import math
 import re
@@ -213,6 +215,31 @@ class ArgumentTests(unittest.TestCase):
                          "case_00_compliant_m5_b0.016")
         self.assertEqual(tow_drag.case_label(3, None, 0.032, 10.0, "inextensible"),
                          "case_03_inextensible_m10_b0.032")
+
+
+class StopAtArgumentTests(unittest.TestCase):
+    """`--stop-at` 必须配够 `--duration`；报错要直接给出改法。
+
+    2026-09-21 交付命令里只写了 `--stop-at 5`（没写 `--duration`，默认也是 5），
+    实跑被参数校验拦下——报错只说「必须小于」，用户不知道要补 `--duration`。
+    """
+
+    def test_stop_at_requires_a_longer_duration(self):
+        # `parser.error` 把消息写 stderr 再以码 2 退出，所以断言要抓 stderr 而不是异常文本
+        buffer = io.StringIO()
+        with contextlib.redirect_stderr(buffer), self.assertRaises(SystemExit) as caught:
+            tow_drag.parse_args(["--stop-at", "5"])
+        self.assertEqual(caught.exception.code, 2)
+        message = buffer.getvalue()
+        self.assertIn("--duration", message)          # 必须点出缺哪个参数
+        self.assertIn("--duration 10", message)       # 并且给出可直接照抄的改法
+
+    def test_stop_at_with_duration_plans_the_coast_phase(self):
+        args = tow_drag.parse_args(["--duration", "10", "--stop-at", "5"])
+        schedule = tow_drag.make_schedule(settle_steps=200, duration=args.duration,
+                                         stop_at=args.stop_at, dt=0.005)
+        self.assertEqual(schedule.tow_steps, 1000)     # 5 s 拖曳
+        self.assertEqual(schedule.coast_steps, 1000)   # 5 s 滑行
 
 
 class PlanTimeOrderingTests(unittest.TestCase):

@@ -72,6 +72,32 @@ bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duratio
 bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --velocity 0.5 --duration 10 --stop-at 5 --headless
 ```
 
+> **`--stop-at` 必须配 `--duration`**：滑行段 = `duration − stop_at`，所以 `--stop-at 5`
+> 单独用会被参数校验拦下（默认 `--duration` 就是 5）。要 5 s 滑行段就写
+> **`--duration 10 --stop-at 5`**。**不做滑行段就没有 coast 数据**，`min_clearance_*` /
+> `reached_robot` 的 coast 见证、`final_gap_m` 的停车含义全都用不上——验收测量一定要带这两个参数。
+
+**验收重跑（取真实车头间隙与「是否追到机器人」）**：
+
+```bash
+# ① 重量扫描（一次进程跑完 5 个质量；--duration 10 --stop-at 5 才有滑行段）
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --headless \
+  --cart-mass 5 10 15 20 25 --wheel-damping 0.032 --ground-friction 0.8 \
+  --duration 10 --stop-at 5 \
+  --output-dir logs/towing/tow_drag/$(date -u +%Y%m%dT%H%M%SZ)_mass
+
+# ② 摩擦扫描（--ground-friction 是标量，每个值一条；b=0.008 那组是实测会撞上机器人的那组）
+for F in 0.4 0.8 1.2; do
+  bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --headless \
+    --cart-mass 10 --wheel-damping 0.008 --ground-friction $F \
+    --duration 10 --stop-at 5 \
+    --output-dir logs/towing/tow_drag/$(date -u +%Y%m%dT%H%M%SZ)_b008_f$F
+done
+```
+
+跑完用 `python3 scripts/tools/tow_clearance.py <run 目录>` 看车头间隙表、用
+`python3 scripts/tools/summarize_tow.py <case 目录>` 看判读（`final_clearance_m` 不应为 `None`）。
+
 **启动时会打印追尾预判**（不拦，只警告——计划 P6 本来就想观察「追尾」）：
 
 ```text
@@ -1020,7 +1046,7 @@ inextensible 用约束冲量抹掉速度差（伸长 0.24 mm），但两者抹�
 # 同一条件跑两套模型（一次进程、逐 case），station+tow+coast 全段
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/tow_drag.py --headless \
   --rope-model compliant inextensible --cart-mass 10 --wheel-damping 0.032 \
-  --ground-friction 0.8 --stop-at 5 \
+  --ground-friction 0.8 --duration 10 --stop-at 5 \
   --output-dir imgo2_rl/logs/towing/tow_drag/$(date -u +%Y%m%dT%H%M%SZ)_models
 ```
 
