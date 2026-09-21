@@ -1098,6 +1098,31 @@ recorder = TowRecorder(case_dir, case_config(...))     # case_config 在 recorde
 
 验证：全量离线测试 281 → **284 项通过**。
 
+#### 5.21.1 同一个坑第二次：`state.distance`（把这类错误变成离线可测）
+
+紧接着又报了 `AttributeError: 'RopeSample' object has no attribute 'distance'`。根因：换成绳索模型后
+`RopeSample` 的字段叫 `rope_length`，而入口的日志行还写着旧 `RopeState` 的 `state.distance`
+（上一轮我只改了同一块里的 `tension` 那一行，漏了它）。
+
+这两次都是「只在跑仿真时才炸」，所以这次不只补一处，而是把这一类错误变成**离线可测**：
+
+1. `test_local_struct_attribute_accesses_exist`：把入口里 `state`（RopeSample）/`case`/`prediction`/
+   `schedule`/`policy_cfg` 允许的属性**从定义处自动取**（NamedTuple `_fields` / dataclass
+   `__dataclass_fields__` ∪ `dir()`——注意 dataclass 里**没有默认值的字段不在 `dir()` 里**，
+   我第一版就因此误报 `policy_cfg.num_joints`），再扫源码里所有 `名字.属性`。
+   这条**先复现了本次 bug**（精确只报 `state.distance`）后才改代码。
+2. `test_summary_keys_read_by_the_entry_exist_in_the_tool`：入口读的 `summary["X"]` 必须是判读工具
+   真的会产出的键（期望集从工具源码静态收集，是超集所以不假阳性）。拼错键只会在**整个 case
+   跑完、写 summary 时**才炸——又一次「跑了一段后」。
+3. **顺带修一个真缺口**：入口只把 config 给了 recorder、**没给 `summarize_tow`**，于是入口写出的
+   `summary.json` 里弹性诊断字段（μ/ω/ζ/步长上限/伸长）全是 `None`，而用 CLI 复算却有值。
+   现在 `case_manifest` 只构造一次、同时喂给 recorder 与判读工具。
+4. `module_at` 现在先把模块注册进 `sys.modules`：带 `from __future__ import annotations` 的模块里
+   `@dataclass` 要按 `cls.__module__` 反查注解，没注册就报 `'NoneType' object has no attribute '__dict__'`。
+
+验证：全量离线测试 284 → **286 项通过**；三个校验脚本退出码 0；交付前离线走通入口每个 case 的完整路径
+（`SweepCase → mass_scale_factor → CoastPrediction → case_label → case_manifest`）。
+
 ## 6. 已知限制（本轮**未**验证的部分）
 
 - **P4 的核心行为已验证**（§5.5：`v_R ≈ v_L ≈ 0.512`、T ≈ 5.2 N 稳定、小车被拖 2.47 m），

@@ -22,14 +22,20 @@ RL = Path(__file__).resolve().parents[1]
 REPO = RL.parent
 TOW_DRAG = RL / "scripts/towing/tow_drag.py"
 SCENE_CFG = RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/towing_env_cfg.py"
+MDP_DIR = RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
 
 sys.path.insert(0, str(RL / "scripts/tools"))
 sys.path.insert(0, str(RL / "source/imgo2_rl/imgo2_rl/assets"))
+sys.path.insert(0, str(MDP_DIR))          # rope_model 按文件加载时的顶层回退导入需要它
 
 
 def module_at(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
+    # 必须先注册进 sys.modules：带 `from __future__ import annotations` 的模块里
+    # `@dataclass` 会去 sys.modules[cls.__module__] 解析字符串注解，没注册就报
+    # `'NoneType' object has no attribute '__dict__'`（policy_cfg.py 就是这种）。
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -628,24 +634,83 @@ class InterfaceContractTests(unittest.TestCase):
             return [eval(text, {name: value}) for value in values]   # noqa: S307 - 只喂源码里的 f-string
         raise AssertionError(f"不支持的字段来源：{type(node).__name__}")
 
-    def test_case_and_prediction_attribute_accesses_match_their_structs(self):
-        """具名结构的属性访问必须真的存在（`case.X` / `prediction.X`）。
+    def test_summary_keys_read_by_the_entry_exist_in_the_tool(self):
+        """入口读的 `summary["X"]` 必须是 `summarize_tow` 真的会产出的键。
 
-        改成具名结构是为了消除「加维度时按位置解包的消费者被悄悄弄坏」，但属性名写错
-        同样是只在跑仿真时才炸——所以在这里离线扫一遍源码里的属性访问。
+        键名拼错只会在**整个 case 跑完、写 summary 时**才炸——又一次「跑了一段后才失败」。
+        期望键集从判读工具的源码静态收集（是超集，因此不会假阳性；能抓住拼错与漏传）。
         """
-        tree = ast.parse(self.source)
-        allowed = {"case": set(tow_drag.SweepCase.__dataclass_fields__),
-                   "prediction": set(tow_drag.CoastPrediction.__dataclass_fields__)}
+        tool = (RL / "scripts/tools/summarize_tow.py").read_text(encoding="utf-8")
+        produced = set()
+        for node in ast.walk(ast.parse(tool)):
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                    and node.value.id == "summary"
+                    and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)):
+                produced.add(node.slice.value)
+            if isinstance(node, ast.Dict):          # summary = {...} / summary.update({...})
+                for key in node.keys:
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        produced.add(key.value)
+        self.assertIn("steady_tension_n", produced)          # 自检：真的收集到了
+
+        assigned, read = set(), set()
+        for node in ast.walk(ast.parse(self.source)):
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                    and node.value.id == "summary"
+                    and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)):
+                (assigned if isinstance(node.ctx, ast.Store) else read).add(node.slice.value)
+        self.assertTrue(read, "源码里没有读 summary 的键，契约失效")
+        self.assertEqual(read - assigned - produced, set(),
+                         "入口读了 summarize_tow 不会产出的键（拼错或漏传 config）")
+
+    def test_entry_passes_config_to_the_summary_tool(self):
+        """入口必须把 case 的 config 传给 summarize_tow，否则 summary.json 里的
+        弹性诊断字段（μ/ω/ζ/步长上限/伸长）会全是 None，而 CLI 复算却有值。"""
+        self.assertIn("config=case_manifest", self.source)
+        self.assertIn("case_manifest = case_config(", self.source)
+
+    def test_local_struct_attribute_accesses_exist(self):
+        """源码里对本地结构/对象的属性访问必须真的存在。
+
+        这一类错误已经踩过三次，且**每次都只在跑仿真时才炸**（离线测试全过）：
+        ① case 从二元组变三元组，元组解包崩；② 属性/字段名写错就不会被上面的解包检查覆盖。
+        所以这里把入口里几类本地对象允许的属性列出来（尽可能从定义处自动取，避免两处漂移），
+        再离线扫一遍源码里的 `名字.属性`：
+        `state`（绳索模型返回的 RopeSample）、`case`/`prediction`（本模块的 dataclass）、
+        `schedule`（PhaseSchedule）、`policy_cfg`（冻结底层契约）。这一条直接抓出了
+        `state.distance`（旧 RopeState 的字段名，RopeSample 里叫 `rope_length`）。
+        """
+        def allowed_attributes(cls):
+            """类实例上允许的属性名。
+
+            注意 `dir(cls)` **不够**：dataclass 里没有默认值的字段不是类属性（只在 `__init__`
+            里赋值），所以必须并上 `__dataclass_fields__` / NamedTuple 的 `_fields`。
+            """
+            fields = set(getattr(cls, "_fields", ())) | set(getattr(cls, "__dataclass_fields__", {}))
+            return fields | set(dir(cls))
+
+        # 按文件加载：走包导入会把 Isaac Lab 的 omni.* 一起拉进来（本机没有）
+        allowed = {
+            "state": allowed_attributes(module_at(
+                "towing_rope_model_contract_test", MDP_DIR / "rope_model.py").RopeSample),
+            "case": allowed_attributes(tow_drag.SweepCase),
+            "prediction": allowed_attributes(tow_drag.CoastPrediction),
+            "schedule": allowed_attributes(tow_drag.PhaseSchedule),
+            "policy_cfg": allowed_attributes(module_at(
+                "towing_policy_cfg_contract_test",
+                RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/policy_cfg.py"
+            ).LowLevelPolicyCfg),
+        }
         seen = {name: set() for name in allowed}
-        for node in ast.walk(tree):
+        for node in ast.walk(ast.parse(self.source)):
             if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
                     and node.value.id in allowed):
                 seen[node.value.id].add(node.attr)
                 self.assertIn(node.attr, allowed[node.value.id],
-                              f"{node.value.id}.{node.attr} 不是该结构的字段")
+                              f"{node.value.id}.{node.attr} 不存在（允许的是 "
+                              f"{sorted(allowed[node.value.id])}）")
         for name, attributes in seen.items():
-            self.assertTrue(attributes, f"源码里没有用到 {name} 的字段，契约失效")
+            self.assertTrue(attributes, f"源码里没有用到 {name} 的属性，契约失效")
 
     def test_both_rope_models_are_wired_in(self):
         """规格要求两套模型都实现、可切换；入口必须同时支持并按 case 记录用的是哪一套。"""

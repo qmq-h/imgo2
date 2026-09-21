@@ -684,9 +684,9 @@ def main(args):
             print(f"[CASE {case_index}] {label}: 小车 {actual_mass:.3f} kg "
                   f"b={case.wheel_damping:g} ⇒ {case_dir.name}",
                   flush=True)
-            recorder = TowRecorder(case_dir,
-                                   case_config(case, case_scale,
-                                               prediction.coast_m, prediction.min_gap_m))
+            case_manifest = case_config(case, case_scale, prediction.coast_m,
+                                        prediction.min_gap_m)
+            recorder = TowRecorder(case_dir, case_manifest)
             for step in range(schedule.total_steps):
                 phase = schedule.phase_of(step)
                 command = args.velocity if phase == "tow" else 0.0
@@ -737,7 +737,7 @@ def main(args):
                     "rope_length_rate_mps": float(state.rope_length_rate),
                     "rope_taut": float(state.is_taut),
                     "rope_impulse_ns": float(state.rope_impulse),
-                    "rope_distance_m": float(state.distance),
+                    "rope_distance_m": float(state.rope_length),
                     "robot_x_m": float(robot.data.root_pos_w[0, 0]),
                     "load_x_m": float(cart.data.root_pos_w[0, 0]),
                     "robot_z_m": float(robot.data.root_pos_w[0, 2]),
@@ -754,8 +754,11 @@ def main(args):
             from summarize_tow import summarize_tow
             with (case_dir / "tow.csv").open(encoding="utf-8", newline="") as stream:
                 rows = list(csv.DictReader(stream))
+            # 必须把 config 传进去：弹性诊断（μ/ω/ζ/步长上限/伸长）要用 rope 与 cart_model，
+            # 不传的话入口写出的 summary.json 里那些字段全是 None，而 CLI 复算却有值。
             summary = summarize_tow(rows, user_command=args.velocity,
-                                    joint_names=policy_cfg.joint_names)
+                                    joint_names=policy_cfg.joint_names,
+                                    config=case_manifest)
             summary["case"] = case_dir.name
             summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
             summary["wheel_damping"] = damping
