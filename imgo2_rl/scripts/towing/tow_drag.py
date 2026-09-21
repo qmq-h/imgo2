@@ -588,6 +588,19 @@ def main(args):
                     (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
                     (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)))
 
+        def host_buffer(tensor):
+            """把 PhysX **视图缓冲**搬到仿真设备上；参与模型运算前必须过这一步。
+
+            `get_masses()` / `get_inertias()` 这类缓冲建在 **CPU** 上：
+            `omni.physics.tensors` 的 `create_tensor(shape, dtype, -1)` 里
+            `-1` 就是「device ordinal = -1 = CPU」（`omni/physics/tensors/impl/api.py`
+            的 `device_ordinal` 说明）。而仿真数据（`root_pos_w`/`root_quat_w`/力）在
+            `args.device` 上 ⇒ 两者一混合就报
+            `Expected all tensors to be on the same device, but found at least two devices`。
+            （`set_masses`/`set_inertias` 那边**保持 CPU** 不动：PhysX 要的是 host 缓冲。）
+            """
+            return tensor.to(args.device)
+
         def inverse_inertia_world(asset, body_id):
             """某刚体在世界系的逆惯量（3×3，元素为 `(N,)` 张量，逐 env）。
 
@@ -595,14 +608,14 @@ def main(args):
             `I_w⁻¹ = R diag(1/I) Rᵀ`。inextensible 模型只用它算挂点的转动项 `(r×e)ᵀI⁻¹(r×e)`；
             名义几何下力臂与绳方向平行、该项为零。**逐 env** 传入，与批量约束求解同一套 API。
             """
-            flat = asset.root_physx_view.get_inertias()[:, body_id]        # (N, 9)
+            flat = host_buffer(asset.root_physx_view.get_inertias())[:, body_id]   # (N, 9)，CPU→设备
             rotation = _quat_to_matrix(asset.data.body_quat_w[:, body_id])
             return world_inverse_inertia((flat[:, 0], flat[:, 4], flat[:, 8]), rotation)
 
         # 机器人受绳冲量时四足撑地、整车一起抵抗 ⇒ 等效质量取**全部 link 之和**
         # （逐 env 一个值；实测整机 12.6996 kg）。这是近似：严格值还取决于腿的接触状态，
         # 偏差由「约束执行误差」在现场实测（见文档）。
-        robot_mass_kg = robot.root_physx_view.get_masses().sum(dim=1)      # (N,)
+        robot_mass_kg = host_buffer(robot.root_physx_view.get_masses()).sum(dim=1)   # (N,)
 
         def cart_mass_effective_kg():
             """小车纵向等效质量 = 整车质量 + 四轮滚动惯量折算 `4I/r²`（逐 env）。
@@ -610,8 +623,8 @@ def main(args):
             冲量要先把轮子带转，所以等效质量比总质量大（10 kg 车 → 10.8 kg），与滑行段
             解析式用的 `m_eff` 同一口径。轮子绕 y 轴（展平惯性张量的 index 4）。
             """
-            masses = cart.root_physx_view.get_masses()                     # (N, nb)
-            inertias = cart.root_physx_view.get_inertias()                 # (N, nb, 9)
+            masses = host_buffer(cart.root_physx_view.get_masses())        # (N, nb)
+            inertias = host_buffer(cart.root_physx_view.get_inertias())    # (N, nb, 9)
             spun = sum(inertias[:, body_id, 4] for body_id in cart_wheel_ids)
             return masses.sum(dim=1) + 4.0 * spun / model["wheel_radius_m"] ** 2
 

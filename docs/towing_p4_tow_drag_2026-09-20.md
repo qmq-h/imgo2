@@ -1204,6 +1204,12 @@ Isaac Lab 的 `quat_apply*` 内部是 `xyz.cross(vec, dim=-1)` 再 `.view(vec.sh
 `per_env(常量)` 助手把 (1,3) 显式铺成 (N,3)；并加 AST 契约禁止「把常量以单例形状直接喂给 `quat_apply*`」
 （契约第一版把普通局部变量也查，对调用方已 reshape 的 `force_world` 假阳性，已收窄）。
 
+**第六次（多环境设备）：PhysX 缓冲在 CPU。** `get_masses()`/`get_inertias()` 建在 CPU 上
+（`omni.physics.tensors` 的 `create_tensor(shape, dtype, -1)`，`-1` = device ordinal −1 = CPU），
+而仿真数据在 cuda ⇒ 混进绳模型运算就报 `Expected all tensors to be on the same device`。
+修法是 `host_buffer()` 助手把参与运算的缓冲搬到仿真设备；`set_masses`/`set_inertias` 那侧保持 CPU
+（PhysX 要 host 缓冲）。
+
 **过程规则（吃够教训后定下）**：源码契约测试（AST/字符串）只能查「有没有写」，**查不出运行期
 形状/数值错误**。所以 `main()` 里新增的逻辑要么搬进纯函数并被测试**实际调用**，要么在交付时
 明说「这段没被任何测试执行过」。两次失败（`state.distance`、`env_origins` 解包）都出在
