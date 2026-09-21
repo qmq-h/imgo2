@@ -169,6 +169,16 @@ class StationPhaseTests(unittest.TestCase):
         summary = summarize_tow(_run(settle_robot_vx=0.044), user_command=0.5)
         self.assertAlmostEqual(summary["settle_robot_travel_m"], 0.044, delta=0.005)
 
+    def test_load_moving_during_settle_fails(self):
+        """拖曳开始前小车必须静止在设计位置——不再用代码摆正，改为检查。"""
+        ok = summarize_tow(_run(settle_load_vx=0.0), user_command=0.5)
+        self.assertNotIn("load_moved_during_settle", ok["failures"])
+        # 复现实测：重置把小车挪了 0.081 m 并注入速度
+        bad = summarize_tow(_run(settle_load_vx=0.08), user_command=0.5)
+        self.assertGreater(abs(bad["settle_load_drift_m"]), 0.02)
+        self.assertIn("load_moved_during_settle", bad["failures"])
+        self.assertFalse(bad["valid"])
+
     def test_small_settle_tension_below_threshold_is_tolerated(self):
         summary = summarize_tow(_run(settle_peak_tension=0.5), user_command=0.5)
         self.assertNotIn("rope_taut_during_settle", summary["failures"])

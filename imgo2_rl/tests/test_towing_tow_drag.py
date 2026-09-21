@@ -375,19 +375,17 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertNotIn("total_steps = settle_steps", self.source)
         self.assertIn("schedule.phase_of(step)", self.source)
 
-    def test_three_phases_and_cart_reset_at_tow_start(self):
-        """阶段划分为 station→tow→coast；拖曳段开始前必须显式重摆小车并清零速度。"""
-        self.assertIn('"station"', self.source)
-        self.assertIn('"tow"', self.source)
-        self.assertIn('"coast"', self.source)
-        self.assertIn("def reset_cart_for_tow()", self.source)
-        # 重摆必须发生在 tow 段的第一步之前，且写完位姿要刷新 data
-        reset = self.source.index("reset_cart_for_tow()\n                tow_started = True")
-        policy = self.source.index("if step % decimation == 0:", reset)
-        self.assertLess(reset, policy, "重摆要在施力/推理之前")
-        self.assertIn("cart.write_root_pose_to_sim", self.source)
-        self.assertIn("cart.write_root_velocity_to_sim", self.source)
-        self.assertIn("scene.update(dt)                        # 让 data 立刻反映新位姿", self.source)
+    def test_no_cart_teleport_after_spawn(self):
+        """初始条件由设计保证 + 事后判据检查，**不得**在运行中途重摆小车。
+
+        曾用 reset_cart_for_tow() 在拖曳段开始前重摆小车，实跑证明有害：它按机器人当前
+        位置摆，机器人窜 0.097 m 就把小车往前挪 0.081 m 并注入 −0.039 m/s 速度，
+        把本来已正确的初始条件弄坏。
+        """
+        for gone in ("reset_cart_for_tow", "tow_started", "write_root_pose_to_sim",
+                     "write_root_velocity_to_sim", "write_joint_state_to_sim"):
+            self.assertNotIn(gone, self.source, f"不应再出现中途重摆小车：{gone}")
+        self.assertIn('phase = schedule.phase_of(step)', self.source)
 
     def test_verdict_logic_lives_in_the_stdlib_tool(self):
         """判读必须放在 scripts/tools 的标准库工具里，否则新判据无法用真实轨迹离线复算。"""

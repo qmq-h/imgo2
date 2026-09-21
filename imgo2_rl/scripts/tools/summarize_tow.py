@@ -39,6 +39,7 @@ PITCH_LIMIT_RAD = 0.6
 SETTLE_TENSION_LIMIT_N = 1.0   # station 阶段张力超过此值 ⇒ 初始松弛量不够
 STOP_ROBOT_VX_FRACTION = 0.2   # coast 段末机器人 vx 应降到指令的 20% 以下
 SETTLE_ROBOT_TRAVEL_LIMIT_M = 0.15   # station 段机器人位移超过此值 ⇒ 启动窜动过大
+SETTLE_LOAD_DRIFT_LIMIT_M = 0.02     # station 段小车位移超过此值 ⇒ 拖曳前它没静止
 
 
 def _mean(values):
@@ -166,6 +167,10 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
     if summary["settle_robot_travel_m"] is not None and \
             abs(summary["settle_robot_travel_m"]) > SETTLE_ROBOT_TRAVEL_LIMIT_M:
         failures.append("robot_lurches_during_settle")
+    # 拖曳开始时小车必须已经静止在设计位置（不再用代码把它「摆正」，改为事后检查）
+    if summary["settle_load_drift_m"] is not None and \
+            abs(summary["settle_load_drift_m"]) > SETTLE_LOAD_DRIFT_LIMIT_M:
+        failures.append("load_moved_during_settle")
     # ---- tow
     if abs(summary["steady_speed_gap_mps"]) > SPEED_GAP_LIMIT_MPS:
         failures.append("robot_and_load_speeds_differ")

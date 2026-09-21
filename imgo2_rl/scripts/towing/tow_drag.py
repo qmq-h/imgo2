@@ -377,9 +377,6 @@ def main(args):
             "coast_phase_s": schedule.coast_phase_s,
             "phase_steps": {"station": schedule.station_steps, "tow": schedule.tow_steps,
                             "coast": schedule.coast_steps},
-            "cart_reset_at_tow_start": True,
-            "cart_reset_note": "拖曳段开始时把小车摆到「挂点间距 = L0 - slack」并清零速度，"
-                               "使初始条件由设计决定，而不是取决于机器人的出生窜动",
             "dt_s": dt, "decimation": decimation, "device": args.device,
             "torque_convention": "rope force and wheel torque are computed from the state at the start of each step",
             "git": manifest["git"],
@@ -387,41 +384,17 @@ def main(args):
 
         recorder = TowRecorder(output, config)
         # 阶段：station（站定，指令 0）→ tow（指令 = v_user）→ coast（阶跃归零后滑行）
-        def reset_cart_for_tow():
-            """把小车摆到设计的初始位姿并清零速度，作为拖曳段的初始条件。
-
-            为什么必须显式做：机器人按出生高度落下时会向前窜动（实测 0.65 m/s），把绳拉直
-            并给小车一个 73–86 N 的冲量，小车随后自由滑行 0.24 m —— 看上去就是「小车自己
-            有初速度」，而拖曳实验的初始条件本该是「小车静止 + 绳松弛」。与其指望出生条件
-            刚好，不如在拖曳段开始前把状态写死：与 P1/P2 在静置检查后重写小车状态的约定一致。
-            """
-            origin = scene.env_origins[0]
-            cart_x = cart_x_for_attachment_gap(
-                args.rope_length, args.slack,
-                robot_x=float(robot.data.root_pos_w[0, 0]),
-                robot_z=float(robot.data.root_pos_w[0, 2]),
-                cart_height=model["resting_height_m"], robot_offset=robot_attachment,
-                cart_offset=cart_attachment)
-            root = cart.data.default_root_state.clone()
-            root[:, :3] += scene.env_origins
-            root[:, 0] = origin[0] + cart_x
-            root[:, 1] = origin[1]
-            root[:, 2] = origin[2] + model["resting_height_m"]
-            root[:, 7:] = 0.0                       # 线速度/角速度全部清零
-            cart.write_root_pose_to_sim(root[:, :7])
-            cart.write_root_velocity_to_sim(root[:, 7:])
-            cart.write_joint_state_to_sim(cart.data.default_joint_pos.clone(),
-                                          torch.zeros_like(cart.data.default_joint_vel))
-            scene.update(dt)                        # 让 data 立刻反映新位姿
-            return cart_x
-
-        tow_started = False
+        # 初始条件不在这里「摆正」，而是由设计保证 + 事后判据检查：
+        # 出生高度 0.35 m 时站定段机器人只窜 ~0.1 m，而 slack 0.40 m 让它拉不直绳，
+        # 于是小车全程静止在设计位置（实测位移 1e-5 m、vx 1e-5 m/s、张力峰值 0 N）。
+        # 曾在这里显式重摆小车并清零速度，实跑证明**有害**：它是按机器人当前位置摆的，
+        # 机器人窜了 0.097 m 就把小车往前挪 0.081 m，还附带注入 −0.039 m/s 的速度——
+        # 把本来已经正确的初始条件弄坏，并掩盖真正的问题。改为由
+        # `rope_taut_during_settle` / `robot_lurches_during_settle` / `settle_load_drift_m`
+        # 三条判据守住这条性质。
         for step in range(schedule.total_steps):
             phase = schedule.phase_of(step)
             command = args.velocity if phase == "tow" else 0.0
-            if phase == "tow" and not tow_started:
-                reset_cart_for_tow()
-                tow_started = True
             if step % decimation == 0:
                 policy_step(command)
             state = apply_rope_and_resistance(command)
