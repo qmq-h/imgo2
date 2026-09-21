@@ -21,11 +21,12 @@ sys.path.insert(0, str(RL / "scripts/tools"))
 from summarize_tow import summarize_tow  # noqa: E402
 
 
-def _row(t, phase, cmd, vR, vL, tension, *, dist=1.001, pitch=0.05, z=0.284):
+def _row(t, phase, cmd, vR, vL, tension, *, dist=1.001, pitch=0.05, z=0.284,
+         robot_x=0.0, load_x=0.0):
     return {"phase": phase, "time_s": t, "user_cmd_mps": cmd, "ref_cmd_mps": cmd,
             "robot_vx_mps": vR, "load_vx_mps": vL,
             "rope_tension_n": tension, "rope_distance_m": dist,
-            "robot_x_m": 0.0, "load_x_m": -1.0 + 0.5 * t,
+            "robot_x_m": robot_x, "load_x_m": load_x,
             "robot_z_m": z, "load_z_m": 0.15,
             "body_pitch_rad": pitch, "body_pitch_rate_radps": 0.0}
 
@@ -37,12 +38,16 @@ def _run(*, command=0.5, dt=0.005, settle_s=1.0, tow_s=5.0, coast_s=0.0, takeup_
          coast_tension=lambda t: 0.0, coast_gap=lambda t: 0.5):
     """合成一条拖动轨迹：station（站定）→ tow（拖曳）→ 可选 coast（指令归零滑行）。"""
     rows, step, t = [], 0, 0.0
+    position = {"robot": 0.0, "load": -1.0}
 
     def add(phase, cmd, vr, vl, ten, elapsed, **kw):
         nonlocal step, t
         step += 1
         t = step * dt
-        row = _row(t, phase, cmd, vr, vl, ten, **kw)
+        position["robot"] += vr * dt        # 位置由速度积分，便于核对位移类指标
+        position["load"] += vl * dt
+        row = _row(t, phase, cmd, vr, vl, ten, robot_x=position["robot"],
+                   load_x=position["load"], **kw)
         if not with_phase:
             row.pop("phase")            # 模拟没有 phase 列的旧记录
         rows.append(row)
@@ -107,6 +112,17 @@ class VerdictTests(unittest.TestCase):
         self.assertAlmostEqual(summary["time_to_taut_s"], 1.5, places=6)
         self.assertEqual(summary["tension_slack_fraction_after_takeup"], 0.0)
         self.assertEqual(summary["failures"], [])
+
+    def test_takeup_distance_and_time_are_reported(self):
+        """「走了多远才发力」要报出来，便于核对设计值（≈ --slack）。"""
+        summary = summarize_tow(_run(takeup_s=1.0, robot_vx=lambda t: 0.5), user_command=0.5)
+        self.assertAlmostEqual(summary["takeup_time_s"], 1.0, delta=0.01)
+        self.assertAlmostEqual(summary["takeup_robot_travel_m"], 0.5, delta=0.01)
+
+    def test_takeup_is_none_when_rope_never_taut(self):
+        summary = summarize_tow(_run(tension=lambda t: 0.0), user_command=0.5)
+        self.assertIsNone(summary["takeup_time_s"])
+        self.assertIsNone(summary["takeup_robot_travel_m"])
 
     def test_load_speed_mismatch_fails(self):
         summary = summarize_tow(_run(load_vx=lambda t: 0.2), user_command=0.5)

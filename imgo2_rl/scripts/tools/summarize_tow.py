@@ -124,6 +124,15 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
     summary["tension_ripple_ratio"] = (summary["steady_tension_std_n"] / steady_tension
                                       if steady_tension > 0 else None)
 
+    # 收松弛的耗时与机器人走过多远才发力：设计上应当 ≈ `--slack`（可直接核对）
+    if taut_rows:
+        summary["takeup_time_s"] = float(taut_rows[0]["time_s"]) - float(tow_rows[0]["time_s"])
+        summary["takeup_robot_travel_m"] = (float(taut_rows[0]["robot_x_m"])
+                                            - float(tow_rows[0]["robot_x_m"]))
+    else:
+        summary["takeup_time_s"] = None
+        summary["takeup_robot_travel_m"] = None
+
     if coast_rows:
         coast_tension = _col(coast_rows, "rope_tension_n")
         gaps = _col(coast_rows, "rope_distance_m")

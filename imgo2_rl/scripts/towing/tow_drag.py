@@ -41,11 +41,12 @@ def parse_args(argv=None):
     parser.add_argument("--rope-length", type=float, default=1.0, help="绳长 L0，m")
     parser.add_argument("--stiffness", type=float, default=4000.0, help="绳刚度 k，N/m")
     parser.add_argument("--damping", type=float, default=100.0, help="绳阻尼 c，N·s/m")
-    parser.add_argument("--slack", type=float, default=0.20,
-                        help="初始松弛量，m（初始三维距离 = L0 - slack，t=0 张力为 0）。"
-                             "默认 0.20：机器人按 0.35 m 出生时会向前窜动、把绳多拉长约 0.06 m，"
-                             "松弛不足会让绳在**站定阶段**就被拉直（实测 0.05 时出现 73-86 N 猛拽，"
-                             "把小车甩出 0.24 m 自由滑行）")
+    parser.add_argument("--slack", type=float, default=0.40,
+                        help="初始松弛量，m：两挂点初始三维距离 = L0 - slack，机器人要**先走约 slack**"
+                             "绳才张紧发力。同时 slack 越大两者初始越近。"
+                             "默认 0.40（间距 0.59 m，0.5 m/s 下走 0.8 s 才发力）。"
+                             "下限由出生窜动决定：机器人出生时会向前窜一点，松弛不足会让绳在"
+                             "**站定阶段**就被拉直（实测 0.05 时出现 73-86 N 猛拽，把小车甩出 0.24 m）")
     parser.add_argument("--stop-at", type=float, default=None,
                         help="阶跃停止：指令阶段走到第 T 秒时把指令归零并保持（计划 P6）。"
                              "缺省则整段保持指令")
@@ -416,7 +417,8 @@ def main(args):
         print(f"[SUMMARY] v_user={args.velocity:g} robot_vx={summary['steady_robot_vx_mps']:.4f} "
               f"load_vx={summary['steady_load_vx_mps']:.4f} T={summary['steady_tension_n']:.3f}±"
               f"{summary['steady_tension_std_n']:.3f} N (漂移 {summary['tension_drift_ratio']:.1%}) "
-              f"d={summary['steady_distance_m']:.4f} m 张紧@{summary['time_to_taut_s']} s "
+              f"d={summary['steady_distance_m']:.4f} m "
+              f"发力@+{summary['takeup_time_s']:.2f}s/走了{summary['takeup_robot_travel_m']:.3f}m "
               f"站定小车漂移={summary['settle_load_drift_m']:+.3f} m "
               f"valid={summary['valid']} failures={summary['failures']}", flush=True)
         if application is not None:
