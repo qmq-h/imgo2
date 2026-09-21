@@ -1123,6 +1123,45 @@ recorder = TowRecorder(case_dir, case_config(...))     # case_config 在 recorde
 验证：全量离线测试 284 → **286 项通过**；三个校验脚本退出码 0；交付前离线走通入口每个 case 的完整路径
 （`SweepCase → mass_scale_factor → CoastPrediction → case_label → case_manifest`）。
 
+### 5.22 第四次「只在跑仿真时才炸」：`NameError: name 'damping' is not defined`
+
+`summary["wheel_damping"] = damping` —— 具名结构重构时漏改，`damping` 已不是 `main()` 里的变量。
+这是连续第四次同类失败（元组元数 → 结构属性名 → summary 键名 → 未定义名字），而且**每次都只在
+`main()` 里执行**，离线测试全过。本机没有 pyflakes/ruff/flake8（AGENTS.md 已记），所以每次都是
+「用户跑一遍才发现」。
+
+**这次补上最后一块：标准库 `symtable` 做 undefined-name 检查。**
+
+```python
+top = symtable.symtable(source, path, "exec")
+module_names = {s.get_name() for s in top.get_symbols()
+                if s.is_assigned() or s.is_imported() or s.is_namespace()}
+known = set(vars(module)) | set(dir(builtins)) | module_names
+# 递归所有子作用域：被引用 + 判为全局 + 不在 known ⇒ 未定义
+```
+
+两个必须踩对的细节（我第一版两条都踩了）：
+
+1. **模块级名字要用 `symtable` 顶层表取**，不能手写 AST 收集。`summarize_tow.py` 的
+   `import argparse` 写在 `if __name__ == "__main__":` 里，`module_at` 加载时那段不执行、
+   `vars(module)` 里没有它 —— 手写收集会假阳性地报 `summarize_tow:top.argparse`。
+2. **绝不能把函数局部绑定混进 `known`**。`sweep_cases` 里有 `for damping in wheel_dampings`，
+   如果按 `ast.walk` 收集所有 Store 名字，`damping` 就会被当成已知，**真正未定义的全局名被掩盖**。
+
+检查覆盖入口 + 两个离线工具；**先复现本次 bug**（精确只报 `tow_drag:main.damping`）后才改代码。
+
+**至此四次运行时错误各有契约兜住：**
+
+| 错误 | 契约 |
+|---|---|
+| 加维度后元组解包崩 | case 改具名 dataclass（按位置解包不可用）+ `sweep_records` 纯函数 |
+| 结构属性名写错（`state.distance`） | 从结构定义处自动取属性名（`_fields`/`__dataclass_fields__` ∪ `dir()`）再扫源码 |
+| `summary["X"]` 键名拼错 | 期望键集从判读工具源码静态收集 |
+| 未定义名字（`damping`） | 标准库 `symtable` 的 undefined-name 检查 |
+
+验证：全量离线测试 286 → **287 项通过**；三个校验脚本退出码 0；三个文件（入口 + 两个工具）
+扫描结果均为「无未定义名字」；交付前离线走通入口每个 case 的完整路径。
+
 ## 6. 已知限制（本轮**未**验证的部分）
 
 - **P4 的核心行为已验证**（§5.5：`v_R ≈ v_L ≈ 0.512`、T ≈ 5.2 N 稳定、小车被拖 2.47 m），

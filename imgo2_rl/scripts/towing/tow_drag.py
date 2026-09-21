@@ -761,7 +761,7 @@ def main(args):
                                     config=case_manifest)
             summary["case"] = case_dir.name
             summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
-            summary["wheel_damping"] = damping
+            summary["wheel_damping"] = case.wheel_damping
             json_file(case_dir / "summary.json", summary)
             clearance = ("n/a" if summary["final_clearance_m"] is None
                          else f"{summary['final_clearance_m']:.3f} m")

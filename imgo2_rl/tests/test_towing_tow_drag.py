@@ -7,12 +7,14 @@
 """
 
 import ast
+import builtins
 import contextlib
 import csv
 import io
 import importlib.util
 import math
 import re
+import symtable
 from pathlib import Path
 import sys
 import tempfile
@@ -668,6 +670,45 @@ class InterfaceContractTests(unittest.TestCase):
         弹性诊断字段（μ/ω/ζ/步长上限/伸长）会全是 None，而 CLI 复算却有值。"""
         self.assertIn("config=case_manifest", self.source)
         self.assertIn("case_manifest = case_config(", self.source)
+
+    def test_no_undefined_names_in_the_entry_or_tools(self):
+        """用标准库 `symtable` 做「未定义名字」检查（本机没有 pyflakes/ruff/flake8）。
+
+        这一类错误已经踩了四次，而且**每次都只在跑仿真时才炸、离线测试全过**：
+        元组解包元数、结构属性名、summary 键名、以及这次的 `damping`（具名结构重构时漏改的
+        `summary["wheel_damping"] = damping`）。`symtable` 能把「引用了但任何作用域都没绑定、
+        也不是模块全局/内建的」名字列出来——正是 pyflakes 的 undefined-name 检查。
+        """
+        targets = (("tow_drag", TOW_DRAG, tow_drag),
+                   ("summarize_tow", RL / "scripts/tools/summarize_tow.py",
+                    module_at("towing_summarize_undefined_test",
+                              RL / "scripts/tools/summarize_tow.py")),
+                   ("tow_clearance", RL / "scripts/tools/tow_clearance.py",
+                    module_at("towing_clearance_undefined_test",
+                              RL / "scripts/tools/tow_clearance.py")))
+        problems = []
+        for label, path, module in targets:
+            source = path.read_text(encoding="utf-8")
+            top = symtable.symtable(source, str(path), "exec")
+            # 模块级名字直接用**顶层符号表**取（含 `if __name__ == "__main__": import argparse`
+            # 这种加载时不执行、但确实绑定在模块作用域里的名字）；函数局部名不会混进来，
+            # 否则 `for damping in ...` 这种局部绑定会把真正未定义的全局名掩盖掉。
+            module_names = {symbol.get_name() for symbol in top.get_symbols()
+                            if symbol.is_assigned() or symbol.is_imported()
+                            or symbol.is_namespace()}
+            known = set(vars(module)) | set(dir(builtins)) | module_names
+
+            def walk(table, label=label, known=known):
+                for symbol in table.get_symbols():
+                    if (symbol.is_referenced() and symbol.is_global()
+                            and symbol.get_name() not in known):
+                        problems.append(f"{label}:{table.get_name()}.{symbol.get_name()}")
+                for child in table.get_children():
+                    walk(child)
+
+            walk(symtable.symtable(source, str(path), "exec"))
+        self.assertEqual(sorted(set(problems)), [],
+                         "有未定义的名字（只会在跑仿真/跑工具时才炸）")
 
     def test_local_struct_attribute_accesses_exist(self):
         """源码里对本地结构/对象的属性访问必须真的存在。
