@@ -710,6 +710,29 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertEqual(sorted(set(problems)), [],
                          "有未定义的名字（只会在跑仿真/跑工具时才炸）")
 
+    def test_batched_math_calls_do_not_pass_singleton_view_expressions(self):
+        """`quat_apply*` 的广播陷阱：quat 是 (N,4)、vec 还是 (1,3) 时，函数内部先广播算出
+        (N,3)，再 `.view(vec.shape)` ⇒ `RuntimeError: shape '[1, 3]' is invalid for input of
+        size 12`（N=4 实测踩到，就是 `gravity_world.view(1, 3)` 那一处）。
+
+        这里只禁「把常量以单例形状直接喂进去」这一种写法（`X.view(1, 3)` / `X.view(1,1,3)`），
+        常量要先过 `per_env()` 铺成 (N,3)。**不**检查普通局部变量——像 `force_world` 这种
+        由调用方 reshape 成 (N,1,3) 的实参静态看不出形状，硬查会假阳性（第一版就这么错了）。
+        """
+        tree = ast.parse(self.source)
+        calls = 0
+        singleton = re.compile(r"\.view\(\s*1\s*,\s*1?\s*3\s*\)")
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("quat_apply", "quat_apply_inverse")):
+                continue
+            calls += 1
+            for argument in node.args[1:]:
+                text = ast.unparse(argument)
+                self.assertIsNone(singleton.search(text),
+                                  f"quat_apply* 的向量参数用了单例形状（会广播出错误 shape）：{text}")
+        self.assertGreaterEqual(calls, 3, "没扫到 quat_apply* 调用，契约失效")
+
     def test_multi_env_visualisation_is_wired_in(self):
         """多环境可视化：`--num-envs` + 逐 env 分配绳索模型 + 逐 env 一份记录。
 

@@ -1198,6 +1198,12 @@ known = set(vars(module)) | set(dir(builtins)) | module_names
 | 未定义名字（`damping`） | 标准库 `symtable` 的 undefined-name 检查 |
 | 运行期形状错误（`env_origins` 切 2 个却解包 3 个） | **把纯逻辑搬出 `main()` 并让测试真的调用它**（`format_env_origins`） |
 
+**第五次（多环境形状）：`quat_apply` 的广播陷阱。** `gravity_world.view(1, 3)` 配 `root_quat_w (N,4)`：
+Isaac Lab 的 `quat_apply*` 内部是 `xyz.cross(vec, dim=-1)` 再 `.view(vec.shape)`，广播先算出 (N,3)，
+最后 `.view((1,3))` 对 4N 个元素抛 `shape '[1, 3]' is invalid for input of size 12`。修法是
+`per_env(常量)` 助手把 (1,3) 显式铺成 (N,3)；并加 AST 契约禁止「把常量以单例形状直接喂给 `quat_apply*`」
+（契约第一版把普通局部变量也查，对调用方已 reshape 的 `force_world` 假阳性，已收窄）。
+
 **过程规则（吃够教训后定下）**：源码契约测试（AST/字符串）只能查「有没有写」，**查不出运行期
 形状/数值错误**。所以 `main()` 里新增的逻辑要么搬进纯函数并被测试**实际调用**，要么在交付时
 明说「这段没被任何测试执行过」。两次失败（`state.distance`、`env_origins` 解包）都出在

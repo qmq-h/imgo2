@@ -560,6 +560,17 @@ def main(args):
         command_steps = schedule.tow_steps + schedule.coast_steps
 
         gravity_world = torch.tensor([0.0, 0.0, -1.0], dtype=torch.float32, device=args.device)
+
+        def per_env(vector_1x3):
+            """把 (1, 3) 常量铺成 (N, 3)。
+
+            **为什么必须显式铺**：Isaac Lab 的 `quat_apply*` 内部是
+            `xyz.cross(vec, dim=-1)` 再 `.view(vec.shape)`。若 quat 是 (N,4) 而 vec 还是 (1,3)，
+            广播会算出 (N,3) 个结果，最后 `.view((1,3))` 直接抛
+            `RuntimeError: shape '[1, 3]' is invalid for input of size 12`（N=4 时实测踩到）。
+            所以凡是喂给批量数学调用的常量都先过这个函数。
+            """
+            return vector_1x3.view(1, 3).expand(args.num_envs, 3)
         robot_attach = torch.tensor(robot_attachment, dtype=torch.float32, device=args.device).view(1, 1, 3)
         cart_attach = torch.tensor(cart_attachment, dtype=torch.float32, device=args.device).view(1, 1, 3)
         robot_zero_torque = torch.zeros(robot.num_instances, robot.num_bodies, 3,
@@ -617,9 +628,9 @@ def main(args):
             # 全部按 (N, 3) 张量走：N=1 与 N>1 是同一条代码路径（少一个分支就少一处只在
             # 多环境下才炸的隐患）。挂点世界坐标 = 刚体原点 + 旋转后的挂点偏移。
             robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_id],
-                                                   robot_attach.view(1, 3).expand(args.num_envs, 3))
+                                                   per_env(robot_attach))
             cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_id],
-                                                  cart_attach.view(1, 3).expand(args.num_envs, 3))
+                                                  per_env(cart_attach))
             robot_p = robot.data.body_pos_w[:, base_id] + robot_offset_w
             cart_p = cart.data.body_pos_w[:, cart_base_id] + cart_offset_w
             robot_v = point_velocity(robot.data.body_lin_vel_w[:, base_id],
@@ -646,10 +657,12 @@ def main(args):
             force_cart = torch.stack([torch.as_tensor(component) for component in state.force_on_cart],
                                      dim=-1).reshape(cart.num_instances, 1, 3)
             robot.set_external_force_and_torque(link_frame_force(robot, base_id, force_robot),
-                                                robot_zero_torque[:, :1], positions=robot_attach,
+                                                robot_zero_torque[:, :1],
+                                                positions=robot_attach.expand(args.num_envs, 1, 3),
                                                 body_ids=base_ids)
             cart.set_external_force_and_torque(link_frame_force(cart, cart_base_id, force_cart),
-                                               cart_zero_torque[:, :1], positions=cart_attach,
+                                               cart_zero_torque[:, :1],
+                                               positions=cart_attach.expand(args.num_envs, 1, 3),
                                                body_ids=cart_base_ids)
             effort = torch.zeros_like(cart.data.joint_pos)
             effort[:, cart_joint_ids] = viscous_resistance(
@@ -661,7 +674,7 @@ def main(args):
             parts = parts_from_robot_state(
                 base_ang_vel=robot.data.root_ang_vel_b,
                 projected_gravity=math_utils.quat_apply_inverse(robot.data.root_quat_w,
-                                                                gravity_world.view(1, 3)),
+                                                                per_env(gravity_world)),
                 velocity_command=torch.tensor([command, 0.0, 0.0], dtype=torch.float32,
                                               device=args.device),
                 # 关节量必须重排成策略顺序后再进观测（PhysX 顺序 ≠ 策略顺序）
