@@ -5,8 +5,15 @@
 
 #include "rl_sim.hpp"
 
+#if defined(USE_ROS2)
+#include <rmw/rmw.h>
+#endif
+
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
 #include <set>
+#include <thread>
 
 RL_Sim::RL_Sim(int argc, char **argv)
 {
@@ -16,47 +23,105 @@ RL_Sim::RL_Sim(int argc, char **argv)
     nh.param<std::string>("ros_namespace", this->ros_namespace, "");
     nh.param<std::string>("robot_name", this->robot_name, "");
 #elif defined(USE_ROS2)
+    // 这两行是为了把「卡在 DDS 参与者初始化」和「卡在等 param_node」区分开：前者连下面那条
+    // Waiting for /param_node 都不会打印。历史上出现过一个只有 Registered type 一行、什么都没
+    // 有的卡死报告，就是前者（共享内存端口初始化 / 同名节点残留）。
+    std::cout << LOGGER::INFO << "Creating ROS 2 node (rl_sim_node) ..." << std::endl;
     ros2_node = std::make_shared<rclcpp::Node>("rl_sim_node");
+    std::cout << LOGGER::INFO << "ROS 2 node created; rmw=" << rmw_get_implementation_identifier() << std::endl;
     this->ang_vel_axis = "body";
     this->ros_namespace = ros2_node->get_namespace();
     // get params from param_node
+    // param_node 由 gazebo.launch.py 起（demo_nodes_cpp 的 parameter_blackboard），是整条 ROS 链路里
+    // 第一个跨进程依赖：等不到它只有两种可能——Gazebo 没在跑，或者两个终端的 DDS 发现不一致
+    // （ROS_DOMAIN_ID / RMW_IMPLEMENTATION / ROS_LOCALHOST_ONLY / 共享内存残留）。这里把这两类线索
+    // 一次打印出来，并在 kParamNodeTimeoutS 秒后给出可读报错，避免"看起来卡死、什么都看不到"。
+    // 注意：base.yaml 要到下面的 ReadYaml 才读，所以这里的超时只能是常量。
     param_client = ros2_node->create_client<rcl_interfaces::srv::GetParameters>("/param_node/get_parameters");
+    constexpr double kParamNodeTimeoutS = 60.0;
+    bool param_warned = false;
+    const auto param_deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(kParamNodeTimeoutS);
     while (!param_client->wait_for_service(std::chrono::seconds(1)))
     {
         if (!rclcpp::ok()) {
-            std::cout << LOGGER::ERROR << "Interrupted while waiting for param_node service. Exiting." << std::endl;
-            return;
+            throw std::runtime_error("Interrupted while waiting for /param_node");
         }
-        std::cout << LOGGER::WARNING << "Waiting for param_node service to be available..." << std::endl;
+        if (!param_warned)
+        {
+            param_warned = true;
+            const char* domain_id = std::getenv("ROS_DOMAIN_ID");
+            const char* rmw = std::getenv("RMW_IMPLEMENTATION");
+            const char* localhost_only = std::getenv("ROS_LOCALHOST_ONLY");
+            std::cout << LOGGER::WARNING << "Waiting for /param_node (max " << kParamNodeTimeoutS
+                      << " s). It is started by gazebo.launch.py; is that launch still running? Current DDS:"
+                      << " ROS_DOMAIN_ID=" << (domain_id ? domain_id : "<unset>")
+                      << " RMW_IMPLEMENTATION=" << (rmw ? rmw : "<unset>")
+                      << " ROS_LOCALHOST_ONLY=" << (localhost_only ? localhost_only : "<unset>")
+                      << std::endl;
+        }
+        if (std::chrono::steady_clock::now() >= param_deadline)
+        {
+            std::cout << LOGGER::ERROR << "/param_node did not show up within " << kParamNodeTimeoutS
+                      << " s; giving up. Start Gazebo first (ros2 launch imgo2_deploy gazebo.launch.py),"
+                      << " and check both terminals share ROS_DOMAIN_ID/RMW_IMPLEMENTATION and can see"
+                      << " each other (ros2 node list)." << std::endl;
+            throw std::runtime_error("param_node is not available");
+        }
     }
     auto request = std::make_shared<rcl_interfaces::srv::GetParameters::Request>();
     request->names = {"robot_name", "gazebo_model_name"};
-    // Use a timeout for the future
-    auto future = param_client->async_send_request(request);
-    auto status = rclcpp::spin_until_future_complete(ros2_node->get_node_base_interface(), future, std::chrono::seconds(5));
-    if (status == rclcpp::FutureReturnCode::SUCCESS)
+    // 服务"能被发现"不等于"调用能成功"：同机 DDS 的发现（多播）与数据（单播/SHM）是两条路径，
+    // 共享内存端口异常时会出现"服务在、请求回不来"。实测这种时候旧代码只打印一行错误就往下走，
+    // 于是 robot_name 为空 → 去读 policy//base.yaml → 报文件不存在 → FSM 未注册 → 空关节名单，
+    // 真正的原因被一串次生错误埋掉。这里改成重试若干次，仍失败就带着 DDS 线索明确退出。
+    constexpr int kParamRetries = 3;
+    bool got_params = false;
+    for (int attempt = 1; attempt <= kParamRetries && !got_params; ++attempt)
     {
+        if (!rclcpp::ok())
+        {
+            throw std::runtime_error("Interrupted while waiting for /param_node");
+        }
+        auto future = param_client->async_send_request(request);
+        auto status = rclcpp::spin_until_future_complete(ros2_node->get_node_base_interface(), future, std::chrono::seconds(5));
+        if (status != rclcpp::FutureReturnCode::SUCCESS)
+        {
+            std::cout << LOGGER::WARNING << "/param_node service call timed out (attempt " << attempt << "/"
+                      << kParamRetries << ")" << std::endl;
+            continue;
+        }
         auto result = future.get();
         if (result->values.size() < 2)
         {
             std::cout << LOGGER::ERROR << "Failed to get all parameters from param_node" << std::endl;
+            continue;
         }
-        else
-        {
-            this->robot_name = result->values[0].string_value;
-            this->gazebo_model_name = result->values[1].string_value;
-            std::cout << LOGGER::INFO << "Get param robot_name: " << this->robot_name << std::endl;
-            std::cout << LOGGER::INFO << "Get param gazebo_model_name: " << this->gazebo_model_name << std::endl;
-        }
+        this->robot_name = result->values[0].string_value;
+        this->gazebo_model_name = result->values[1].string_value;
+        std::cout << LOGGER::INFO << "Get param robot_name: " << this->robot_name << std::endl;
+        std::cout << LOGGER::INFO << "Get param gazebo_model_name: " << this->gazebo_model_name << std::endl;
+        got_params = true;
     }
-    else
+    if (!got_params)
     {
-        std::cout << LOGGER::ERROR << "Failed to call param_node service" << std::endl;
+        std::cout << LOGGER::ERROR << "Could not read robot_name/gazebo_model_name from /param_node: the service"
+                  << " was discovered but the call did not return. Same-host DDS discovery (multicast) and data"
+                  << " (unicast/shared memory) are separate paths - check ROS_LOCALHOST_ONLY on both terminals,"
+                  << " stale /dev/shm/fastrtps_* leftovers, and leftover ROS/Gazebo processes." << std::endl;
+        throw std::runtime_error("param_node call failed");
     }
 #endif
 
     // read params from yaml
     this->ReadYaml(this->robot_name, "base.yaml");
+    // ReadYaml 只打印一行错误就返回，后面会以空参数一路走下去（FSM 未注册、关节名单为空），
+    // 把一个"文件没读到"放大成看起来完全无关的失败。这里直接判定。
+    if (!this->params.Has("num_of_dofs"))
+    {
+        std::cout << LOGGER::ERROR << "base.yaml for robot '" << this->robot_name << "' was not loaded; expected "
+                  << std::string(POLICY_DIR) + "/" + this->robot_name + "/base.yaml" << std::endl;
+        throw std::runtime_error("base.yaml not loaded");
+    }
 
     // auto load FSM by robot_name
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
@@ -271,6 +336,47 @@ void RL_Sim::StartJointController(const std::string& ros_namespace, const std::v
     const char* ros_distro = std::getenv("ROS_DISTRO");
     std::string spawner = (ros_distro && std::string(ros_distro) == "foxy") ? "spawner.py" : "spawner";
 
+    // controller_manager 不是 gzserver 一起步就有的：它是 gazebo_ros2_control 插件在机器人实体
+    // spawn 成功之后才创建的节点。Gazebo 还在加载网格/还没 spawn 完就 spawn 控制器时，spawner 会
+    // 重试 3 次×10 s 后非 0 退出，rl_sim 只能抛 "Failed to start joint controller"（用户实测，
+    // 现象是打印完 Joint order 就停住然后 abort）。这里先显式等它出现并把等待过程打印出来，
+    // 既避免误判"卡死"，也让失败信息能指向 Gazebo 侧。超时可用 base.yaml 的
+    // controller_manager_timeout 覆盖（秒）。
+    const double cm_timeout_s = this->params.Get<double>("controller_manager_timeout", 60.0);
+    auto cm_client = ros2_node->create_client<rcl_interfaces::srv::GetParameters>("/controller_manager/get_parameters");
+    bool cm_ready = false;
+    bool cm_warned = false;
+    const auto cm_deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(cm_timeout_s);
+    while (!cm_ready)
+    {
+        if (!rclcpp::ok())
+        {
+            throw std::runtime_error("Interrupted while waiting for /controller_manager");
+        }
+        try
+        {
+            cm_ready = cm_client->wait_for_service(std::chrono::seconds(1));
+        }
+        catch (const std::exception& e)
+        {
+            throw std::runtime_error(std::string("Interrupted while waiting for /controller_manager: ") + e.what());
+        }
+        if (!cm_ready && !cm_warned)
+        {
+            cm_warned = true;
+            std::cout << LOGGER::WARNING << "Waiting for /controller_manager (max " << cm_timeout_s
+                      << " s); is Gazebo running? ros2 launch imgo2_deploy gazebo.launch.py" << std::endl;
+        }
+        if (!cm_ready && std::chrono::steady_clock::now() >= cm_deadline)
+        {
+            std::cout << LOGGER::ERROR << "/controller_manager did not show up within " << cm_timeout_s
+                      << " s; giving up. Check the Gazebo terminal for 'Loaded gazebo_ros2_control' and"
+                      << " 'Successfully spawned entity [<robot>_gazebo]'." << std::endl;
+            throw std::runtime_error("controller_manager is not available");
+        }
+    }
+    std::cout << LOGGER::INFO << "controller_manager is up; spawning robot_joint_controller" << std::endl;
+
     std::filesystem::path tmp_path = std::filesystem::temp_directory_path() / "robot_joint_controller_params.yaml";
     {
         std::ofstream tmp_file(tmp_path);
@@ -291,19 +397,73 @@ void RL_Sim::StartJointController(const std::string& ros_namespace, const std::v
     pid_t pid = fork();
     if (pid == 0)
     {
+        // 自成进程组：spawner 实际是 sh → python3 ros2 → python3 spawner 三层，父进程只 kill 直接
+        // 子进程会把它下面两层留成孤儿（实测）。自成一组后父进程可以按组整棵收掉，也不会被终端的
+        // Ctrl+C 抢先去打断（那样父进程就不知道子进程死没死）。
+        setpgid(0, 0);
         std::string cmd = "ros2 run controller_manager " + spawner + " robot_joint_controller ";
         cmd += "-p " + tmp_path.string() + " ";
+        // spawner 默认 --controller-manager-timeout 0 = 无限等 controller_manager：rl_sim 一旦被强杀，
+        // 这个 fork 出来的子进程就成了"永远重试"的遗留进程（2026-09-18 用户机器上那个从 14:58 挂到
+        // 16:5x 的 spawner 就是这么来的，它又反过来占着 DDS/SHM 端口）。给个上限让它自己也会退出。
+        cmd += "--controller-manager-timeout 30 ";
         // cmd += " > /dev/null 2>&1";  // Comment this line to see the output
         execlp("sh", "sh", "-c", cmd.c_str(), nullptr);
         exit(1);
     }
     else if (pid > 0)
     {
-        int status;
-        waitpid(pid, &status, 0);
+        // 与子进程竞争着设进程组，谁先设上都行，失败（子进程已 exec）可忽略。
+        setpgid(pid, pid);
+
+        int status = 0;
+        // 不要用阻塞式 waitpid：Ctrl+C 时 rclcpp 先让 context 失效，而阻塞等待在信号竞态下可能一直
+        // 等下去（实测：SIGINT 后 rl_sim 仍活着、等到 spawner 自己超时为止，那 30 s 里既没退出也没
+        // 清掉子进程）。改成 WNOHANG 轮询，就能立刻响应 Ctrl+C 并按进程组收掉整棵 spawner 进程树。
+        bool interrupted = false;
+        pid_t waited = 0;
+        const auto spawner_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        while (true)
+        {
+            waited = waitpid(pid, &status, WNOHANG);
+            if (waited != 0)
+            {
+                break;  // >0：子进程已退出；-1：出错
+            }
+            if (!rclcpp::ok() || std::chrono::steady_clock::now() >= spawner_deadline)
+            {
+                interrupted = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        if (interrupted)
+        {
+            // 按进程组收掉整棵 spawner 进程树（sh → python3 ros2 → python3 spawner），否则它会在
+            // 后台无限重试。2026-09-18 用户机器上那个从 14:58 挂到 16:5x 的 spawner 就是这么来的。
+            if (kill(-pid, SIGTERM) == 0)
+            {
+                std::cout << LOGGER::WARNING << "Terminated the joint controller spawner process group (pgid "
+                          << pid << ")" << std::endl;
+            }
+            waitpid(pid, &status, 0);
+            std::cout << LOGGER::WARNING << "Interrupted while waiting for the joint controller spawner;"
+                      << " generated parameters kept at " << tmp_path.string() << std::endl;
+            throw std::runtime_error("Interrupted while starting joint controller");
+        }
+
+        if (waited == -1)
+        {
+            std::cout << LOGGER::ERROR << "waitpid failed while waiting for the spawner; generated parameters kept at "
+                      << tmp_path.string() << std::endl;
+            throw std::runtime_error("Failed to start joint controller");
+        }
 
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
         {
+            std::cout << LOGGER::ERROR << "spawner exited with code " << WEXITSTATUS(status)
+                      << "; generated parameters kept at " << tmp_path.string() << std::endl;
             throw std::runtime_error("Failed to start joint controller");
         }
 
@@ -374,12 +534,26 @@ void RL_Sim::SetCommand(const RobotCommand<float> *command)
         this->joint_publishers[this->params.Get<std::vector<std::string>>("joint_controller_names")[i]].publish(this->joint_publishers_commands[i]);
     }
 #elif defined(USE_ROS2)
+    // Ctrl+C 时 rclcpp 的信号处理会先把 context 置为失效，而 loop_control 线程还会再跑几拍；
+    // 那时 publish / 发服务请求会抛 RCLError，线程里没人接就 std::terminate（用户实测
+    // "could not create publisher: rcl node's context is invalid" → Aborted）。直接跳过即可。
+    if (!rclcpp::ok())
+    {
+        return;
+    }
     this->robot_command_publisher->publish(this->robot_command_publisher_msg);
 #endif
 }
 
 void RL_Sim::RobotControl()
 {
+#if defined(USE_ROS2)
+    // 同 SetCommand：context 失效后这一拍什么都不做，避免 shutdown 期间抛 RCLError 变 Aborted。
+    if (!rclcpp::ok())
+    {
+        return;
+    }
+#endif
     this->GetState(&this->robot_state);
 
     this->StateController(&this->robot_state, &this->robot_command);
@@ -643,8 +817,19 @@ int main(int argc, char **argv)
     ros::spin();
 #elif defined(USE_ROS2)
     rclcpp::init(argc, argv);
-    auto imgo2_deploy = std::make_shared<RL_Sim>(argc, argv);
-    rclcpp::spin(imgo2_deploy->ros2_node);
+    try
+    {
+        auto imgo2_deploy = std::make_shared<RL_Sim>(argc, argv);
+        rclcpp::spin(imgo2_deploy->ros2_node);
+    }
+    catch (const std::exception& e)
+    {
+        // 启动期失败（等不到 /controller_manager、spawner 起不来、Ctrl+C 打断）都走这里，
+        // 打印一行可读原因后正常退出，而不是 uncaught exception → "terminate called" → Aborted。
+        std::cout << LOGGER::ERROR << e.what() << std::endl;
+        rclcpp::shutdown();
+        return 1;
+    }
     rclcpp::shutdown();
 #endif
     return 0;

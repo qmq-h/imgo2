@@ -4,6 +4,10 @@
 imgo2:
   dt: 0.005
   decimation: 4
+  # ROS2 路径：启动时最多等 /controller_manager（Gazebo 侧 gazebo_ros2_control 插件在实体 spawn
+  # 成功后才创建它）多少秒再 spawn 关节控制器。等不到会打印可操作的报错，而不是笼统的
+  # "Failed to start joint controller"。ROS1/MuJoCo 路径不读该键。
+  controller_manager_timeout: 60.0
   # kp/kd taken from the working reference deployment (~/RL/sim2sim/Imgo2_deploy).
   fixed_kp: [60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,

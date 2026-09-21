@@ -318,6 +318,9 @@ class RLAmpRecipeTests(unittest.TestCase):
         src = ast.unparse(next(n for n in self.tree.body
                                if isinstance(n, ast.FunctionDef)
                                and n.name == "apply_rlamp_env_settings"))
+        # Python 3.10 的 `ast.unparse` 会给 for 的元组目标补括号（`for (name, value) in ...`），
+        # 3.11+ 不补 ⇒ 先归一化这一种写法，否则同一份源码在不同解释器上结论不同。
+        src = src.replace("for (name, value) in", "for name, value in")
         for needle in (
             "for name, value in RLAMP_COMMAND_RANGES.items()",
             "setattr(cfg.commands.base_velocity.ranges, name, value)",

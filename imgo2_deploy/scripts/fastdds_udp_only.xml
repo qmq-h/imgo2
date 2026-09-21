@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Fast DDS 兜底配置：只走 UDPv4，禁用共享内存（SHM）传输。
+
+  用途：同机 DDS 出现「服务能被发现、调用却超时」时（/dev/shm 里的 fastrtps_port* 残留被锁、
+  或者两个终端看到的 /dev/shm 不是同一份，例如一个在沙箱/容器里、一个在宿主上），
+  让两端都用这份配置即可绕开共享内存通路：
+
+      export FASTRTPS_DEFAULT_PROFILES_FILE=<仓库>/imgo2_deploy/scripts/fastdds_udp_only.xml
+
+  两端都要设，然后重启进程。先确认 underlying 的其它可能（见
+  docs/gazebo_rl_sim_startup_2026-09-18.md 与 scripts/check_ros2_dds.py）再上这个兜底。
+  注意：本文件只影响 rmw_fastrtps_cpp（Humble 的默认 RMW）。
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_only</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="udp_only_participant" is_default_profile="true">
+    <rtps>
+      <useBuiltinTransports>false</useBuiltinTransports>
+      <userTransports>
+        <transport_id>udp_only</transport_id>
+      </userTransports>
+    </rtps>
+  </participant>
+</profiles>
