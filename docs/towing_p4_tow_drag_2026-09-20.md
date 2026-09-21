@@ -1058,6 +1058,46 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/tow_drag.py --head
 底层策略），训练用的上层环境还没建（计划 P6/P8）。`SplitRopeModel` 与批量 API 已就绪并能
 离线验证，接入时要做的只是把 per-env 掩码与批量刚体属性传进去。
 
+### 5.21 修 `ValueError: too many values to unpack (expected 2)`：case 改成具名结构
+
+**现象**：用户跑两套绳索模型对照时报 `[FAILED] ValueError: too many values to unpack (expected 2)`，
+而且**「跑了一段后」才出现**。
+
+**定位**：失败的 run 目录里有一个**空的** `case_00_compliant_m10_b0.008/`（既没有 `config.json`
+也没有 `tow.csv`）⇒ 死点在
+
+```python
+recorder = TowRecorder(case_dir, case_config(...))     # case_config 在 recorder 写文件之前求值
+```
+
+这一行的 `case_config`；而 Isaac Sim 启动约 15 s，所以看起来像「跑了一段」。
+
+**根因**：`sweep_cases` 从二元组 `(mass, damping)` 变成三元组 `(mass, damping, rope_model)` 时，
+**漏改了 `case_config` 里的 `for i, (m, b) in enumerate(cases)`**。这正是「改元组元数、
+按位置解包的消费者被悄悄弄坏」这一类错误；它只在 `main()` 里执行，离线测试抓不到
+（与 §5.8 的 `UnboundLocalError` 同一类）。
+
+**修法（从结构上消除，不是补一处）**：
+
+* case 改成具名 dataclass `SweepCase(cart_mass, wheel_damping, rope_model)`、
+  预判改成 `CoastPrediction(coast_m, min_gap_m)`；入口所有消费点改成属性访问
+  （`case.rope_model` / `case.wheel_damping` …），**按位置解包直接不可用**
+  （解包 dataclass 会抛 `TypeError`）；
+* `config.json` 里 `sweep.cases` 的记录抽成纯函数 `sweep_records(cases)` —— 上一版内联在
+  `main()` 里，离线测不到；
+* 入口每 case 的路径现在可以离线走一遍（`SweepCase → mass_scale_factor → CoastPrediction →
+  case_label → case_config`），交付前已验证 8 个 case 全部能构出三元组。
+
+**新增测试 4 项**：
+
+1. `sweep_records` 必须带上每个字段并逐条对齐（这条直接复现了本次 bug）；
+2. case 必须是具名结构、不能按位置拆成两个（解包抛 `TypeError`）；
+3. **扫源码里 `case.X` / `prediction.X` 的属性访问必须都属于该结构的字段**——属性名写错
+   同样只在跑仿真时才炸，所以也离线扫一遍；
+4. `--stop-at` 超界时报错必须点出 `--duration` 并给出可照抄的改法（见 §4）。
+
+验证：全量离线测试 281 → **284 项通过**。
+
 ## 6. 已知限制（本轮**未**验证的部分）
 
 - **P4 的核心行为已验证**（§5.5：`v_R ≈ v_L ≈ 0.512`、T ≈ 5.2 N 稳定、小车被拖 2.47 m），

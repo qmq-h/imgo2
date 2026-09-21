@@ -217,6 +217,30 @@ def make_schedule(*, settle_steps: int, duration: float, stop_at: float | None,
                          coast_steps=coast_steps, dt=dt)
 
 
+@dataclass(frozen=True)
+class SweepCase:
+    """一个 case 的标识：绳索模型 + 质量 + 轮阻。
+
+    用**具名结构**而不是裸元组：上一版是 `(mass, damping)`，加绳索模型这一维时漏改了
+    `case_config` 里的 `for i, (m, b) in enumerate(cases)`，实跑第一例就
+    `ValueError: too many values to unpack (expected 2)`。字段有名字之后，
+    加字段不会再悄悄弄坏按位置解包的消费者。
+    （NamedTuple 也是 tuple，所以与裸元组的相等比较仍然成立。）
+    """
+
+    cart_mass: float | None
+    wheel_damping: float
+    rope_model: str = "compliant"
+
+
+@dataclass(frozen=True)
+class CoastPrediction:
+    """启动预判：滑行距离与最小挂点间距（都由 P2 验收过的解析式给出）。"""
+
+    coast_m: float
+    min_gap_m: float
+
+
 def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
     """把 `--cart-mass` × `--wheel-damping` × `--rope-model` 做笛卡尔积，得到顺序固定的 case 列表。
 
@@ -226,8 +250,19 @@ def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
     """
     if not cart_masses or not wheel_dampings or not rope_models:
         raise ValueError("--cart-mass、--wheel-damping、--rope-model 都不能为空")
-    return [(mass, damping, name) for name in rope_models for mass in cart_masses
+    return [SweepCase(mass, damping, name) for name in rope_models for mass in cart_masses
             for damping in wheel_dampings]
+
+
+def sweep_records(cases):
+    """`config.json` 里 `sweep.cases` 的记录（纯函数，可离线测）。
+
+    抽出来是因为上一版把它内联在 `main()` 里、按位置解包 `cases`，加了一维就崩——
+    而 `main()` 只有跑仿真才会执行，离线测试抓不到（与 §5.8 的 `UnboundLocalError` 同一类）。
+    """
+    return [{"index": index, "cart_mass_kg": case.cart_mass,
+             "wheel_damping": case.wheel_damping, "rope_model": case.rope_model}
+            for index, case in enumerate(cases)]
 
 
 def case_label(case_index: int, mass_target, damping: float, nominal_total_kg: float,
@@ -334,7 +369,8 @@ def main(args):
         cases = sweep_cases(args.cart_mass, args.wheel_damping, args.rope_model)
         # 计划期（plan-time）的标量都在这里一次算好，避免后面「先用后赋值」：
         # 之前 stop_steps 与 scale 各踩过一次（main() 只有跑仿真才执行，离线测试抓不到）。
-        scales = [mass_scale_factor(mass, model["total_mass_kg"]) for mass, _, _ in cases]
+        scales = [mass_scale_factor(case.cart_mass, model["total_mass_kg"])
+                  for case in cases]
         cart_cfg.init_state.pos = (
             initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
                            cart_height=model["resting_height_m"],
@@ -345,14 +381,15 @@ def main(args):
         # 参数组合（L0 / 速度 / 轮阻 / 质量）必须一起看：v=1.0、b=0.016 时滑行 1.06 m，
         # L0=1.0 就已经会撞；质量越大滑得越远（m_eff 同比例）。只警告不拦——P6 本就想观察追尾。
         predictions = []
-        for (mass_target, damping, rope_name), case_scale in zip(cases, scales):
+        for case, case_scale in zip(cases, scales):
             coast = predicted_coast_distance(
-                args.velocity, damping,
+                args.velocity, case.wheel_damping,
                 cart_mass_kg=model["total_mass_kg"] * case_scale,
                 wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1] * case_scale,
                 wheel_radius_m=model["wheel_radius_m"])
-            predictions.append((coast, args.rope_length - coast))
-            print(f"[PLAN] {rope_name} m={mass_target or model['total_mass_kg']:.0f} kg b={damping:g} "
+            predictions.append(CoastPrediction(coast, args.rope_length - coast))
+            print(f"[PLAN] {case.rope_model} "
+                  f"m={case.cart_mass or model['total_mass_kg']:.0f} kg b={case.wheel_damping:g} "
                   f"L0={args.rope_length:g} v={args.velocity:g} ⇒ 预测滑行 {coast:.3f} m，"
                   f"最小间距 {args.rope_length - coast:+.3f} m"
                   + ("   ⚠ 会追到机器人" if args.rope_length - coast <= 0.05 else ""), flush=True)
@@ -550,7 +587,7 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out
 
-        def case_config(mass_target, damping, rope_name, case_scale, coast, gap):
+        def case_config(case, mass_scale, coast, gap):
             return {
                 "policy": args.policy,
                 "model_sha256": hashlib.sha256(policy_cfg.model_path.read_bytes()).hexdigest(),
@@ -566,7 +603,7 @@ def main(args):
                 "isaac_lab_joint_order": list(robot.joint_names),
                 "policy_joint_order": list(policy_cfg.joint_names),
                 "policy_to_asset_permutation": list(asset_perm),
-                "rope": {"model": rope_name,
+                "rope": {"model": case.rope_model,
                          "rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
                          "damping_ns_per_m": args.damping, "initial_slack_m": args.slack,
                          # 仅 inextensible 用；写进产物便于复算与对比
@@ -576,9 +613,9 @@ def main(args):
                                        "inextensible = unilateral distance constraint d<=L0, T>=0, "
                                        "T(L0-d)=0, engagement handled by constraint impulse "
                                        "(NOT a large k)"},
-                "wheel_damping_nms_per_rad": damping, "user_command_mps": args.velocity,
-                "cart_mass_target_kg": mass_target, "cart_mass_scale": case_scale,
-                "cart_mass_actual_kg": model["total_mass_kg"] * case_scale,
+                "wheel_damping_nms_per_rad": case.wheel_damping, "user_command_mps": args.velocity,
+                "cart_mass_target_kg": case.cart_mass, "cart_mass_scale": mass_scale,
+                "cart_mass_actual_kg": model["total_mass_kg"] * mass_scale,
                 "ground_friction": args.ground_friction,
                 "predicted_coast_distance_m": coast, "predicted_min_gap_m": gap,
                 "prediction_note": "由 P2 验收过的黏性衰减解析式 D = v0*tau*(1-v_stop/v0)，"
@@ -599,8 +636,7 @@ def main(args):
                 "contact_witness": "cart_deck_fx_n 为车斗 base_link 接触合力 x 分量（车斗不着地，"
                                    "非零即机器人压上来）；cart_wheel_fx_n 为四轮同类分量之和",
                 "torque_convention": "rope force and wheel torque are computed from the state at the start of each step",
-                "sweep": {"cases": [{"index": i, "cart_mass_kg": m, "wheel_damping": b}
-                                    for i, (m, b) in enumerate(cases)]},
+                "sweep": {"cases": sweep_records(cases)},
                 "git": manifest["git"],
             }
 
@@ -630,32 +666,33 @@ def main(args):
 
         results = []
         case_dirs = []
-        for case_index, ((mass_target, damping, rope_name), case_scale, (coast, gap)) in enumerate(
+        for case_index, (case, case_scale, prediction) in enumerate(
                 zip(cases, scales, predictions)):
-            case_dir = output / case_label(case_index, mass_target, damping,
-                                           model["total_mass_kg"], rope_name)
+            case_dir = output / case_label(case_index, case.cart_mass, case.wheel_damping,
+                                           model["total_mass_kg"], case.rope_model)
             label = case_dir.name.split("_", 2)[2]
             case_dir.mkdir(parents=True, exist_ok=False)
             case_dirs.append(case_dir.name)
-            rope_model = build_rope_model(rope_name)
-            print(f"[CASE {case_index}] 绳索模型 = {rope_name}"
-                  + ("" if rope_name == "compliant"
+            rope_model = build_rope_model(case.rope_model)
+            print(f"[CASE {case_index}] 绳索模型 = {case.rope_model}"
+                  + ("" if case.rope_model == "compliant"
                      else f"（position_gain={args.position_gain:g}、"
                           f"max_correction_rate={args.max_correction_rate:g} m/s）"),
                   flush=True)
-            reset_case(mass_target, case_scale)
+            reset_case(case.cart_mass, case_scale)
             actual_mass = float(cart.root_physx_view.get_masses().sum())
-            print(f"[CASE {case_index}] {label}: 小车 {actual_mass:.3f} kg b={damping:g} ⇒ {case_dir.name}",
+            print(f"[CASE {case_index}] {label}: 小车 {actual_mass:.3f} kg "
+                  f"b={case.wheel_damping:g} ⇒ {case_dir.name}",
                   flush=True)
             recorder = TowRecorder(case_dir,
-                                   case_config(mass_target, damping, rope_name,
-                                               case_scale, coast, gap))
+                                   case_config(case, case_scale,
+                                               prediction.coast_m, prediction.min_gap_m))
             for step in range(schedule.total_steps):
                 phase = schedule.phase_of(step)
                 command = args.velocity if phase == "tow" else 0.0
                 if step % decimation == 0:
                     policy_step(command)
-                state = apply_rope_and_resistance(command, damping)
+                state = apply_rope_and_resistance(command, case.wheel_damping)
                 scene.write_data_to_sim()
                 sim.step()
                 scene.update(dt)

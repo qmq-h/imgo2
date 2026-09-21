@@ -201,13 +201,43 @@ class ArgumentTests(unittest.TestCase):
 
     def test_case_list_is_a_cartesian_product_in_stable_order(self):
         """三维修扫：绳索模型 × 质量 × 轮阻，顺序固定（同一进程内逐 case 跑）。"""
+        Case = tow_drag.SweepCase
         self.assertEqual(tow_drag.sweep_cases([5.0, 10.0], [0.016]),
-                         [(5.0, 0.016, "compliant"), (10.0, 0.016, "compliant")])
+                         [Case(5.0, 0.016, "compliant"), Case(10.0, 0.016, "compliant")])
         self.assertEqual(tow_drag.sweep_cases([5.0], [0.016], ["compliant", "inextensible"]),
-                         [(5.0, 0.016, "compliant"), (5.0, 0.016, "inextensible")])
+                         [Case(5.0, 0.016, "compliant"), Case(5.0, 0.016, "inextensible")])
         for bad in (([], [0.016]), ([5.0], []), ([5.0], [0.016], [])):
             with self.assertRaises(ValueError):
                 tow_drag.sweep_cases(*bad)
+
+    def test_sweep_records_carry_every_field_of_a_case(self):
+        """回归：给 case 加一维（绳索模型）时，`sweep.cases` 的记录必须跟着带上。
+
+        上一版 `cases` 是裸元组 `(mass, damping)`，加绳索模型后漏改了
+        `for i, (m, b) in enumerate(cases)` ⇒ 实跑第一例就
+        `ValueError: too many values to unpack (expected 2)`。
+        现在 case 是具名结构、记录由纯函数 `sweep_records` 产生，两边都离线可测。
+        """
+        cases = tow_drag.sweep_cases([5.0, 10.0], [0.016, 0.032], ["compliant", "inextensible"])
+        records = tow_drag.sweep_records(cases)
+        self.assertEqual(len(records), 8)
+        self.assertEqual(records[0], {"index": 0, "cart_mass_kg": 5.0,
+                                      "wheel_damping": 0.016, "rope_model": "compliant"})
+        self.assertEqual(records[-1], {"index": 7, "cart_mass_kg": 10.0,
+                                       "wheel_damping": 0.032, "rope_model": "inextensible"})
+        for index, record in enumerate(records):
+            self.assertEqual(record["index"], index)
+            self.assertEqual(record["rope_model"], cases[index].rope_model)
+            self.assertEqual(record["cart_mass_kg"], cases[index].cart_mass)
+            self.assertEqual(record["wheel_damping"], cases[index].wheel_damping)
+
+    def test_sweep_case_is_named_not_positional(self):
+        """case 必须是具名结构：裸元组会在加维度时被按位置解包的消费者悄悄弄坏。"""
+        case = tow_drag.sweep_cases([10.0], [0.032], ["inextensible"])[0]
+        self.assertEqual((case.cart_mass, case.wheel_damping, case.rope_model),
+                         (10.0, 0.032, "inextensible"))
+        with self.assertRaises(TypeError):          # 不能再按位置拆成两个
+            _mass, _damping = case
 
     def test_case_label_names_the_rope_model_mass_and_damping(self):
         """模型名必须进目录名：两套模型共用同一串 case 编号，否则会互相覆盖。"""
@@ -489,7 +519,8 @@ class InterfaceContractTests(unittest.TestCase):
         update = self.source.rindex("scene.update(dt)")
         self.assertLess(write, step, "必须先 write_data_to_sim() 再 sim.step()")
         self.assertLess(step, update, "必须 sim.step() 之后再 scene.update(dt)")
-        self.assertLess(self.source.rindex("apply_rope_and_resistance(command, damping)"), write,
+        self.assertLess(self.source.rindex("apply_rope_and_resistance(command, case.wheel_damping)"),
+                        write,
                         "必须先把力写进缓冲再 write_data_to_sim()")
 
     def test_success_path_also_exits_explicitly(self):
@@ -597,11 +628,30 @@ class InterfaceContractTests(unittest.TestCase):
             return [eval(text, {name: value}) for value in values]   # noqa: S307 - 只喂源码里的 f-string
         raise AssertionError(f"不支持的字段来源：{type(node).__name__}")
 
+    def test_case_and_prediction_attribute_accesses_match_their_structs(self):
+        """具名结构的属性访问必须真的存在（`case.X` / `prediction.X`）。
+
+        改成具名结构是为了消除「加维度时按位置解包的消费者被悄悄弄坏」，但属性名写错
+        同样是只在跑仿真时才炸——所以在这里离线扫一遍源码里的属性访问。
+        """
+        tree = ast.parse(self.source)
+        allowed = {"case": set(tow_drag.SweepCase.__dataclass_fields__),
+                   "prediction": set(tow_drag.CoastPrediction.__dataclass_fields__)}
+        seen = {name: set() for name in allowed}
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id in allowed):
+                seen[node.value.id].add(node.attr)
+                self.assertIn(node.attr, allowed[node.value.id],
+                              f"{node.value.id}.{node.attr} 不是该结构的字段")
+        for name, attributes in seen.items():
+            self.assertTrue(attributes, f"源码里没有用到 {name} 的字段，契约失效")
+
     def test_both_rope_models_are_wired_in(self):
         """规格要求两套模型都实现、可切换；入口必须同时支持并按 case 记录用的是哪一套。"""
         self.assertIn("make_rope_model(", self.source)
         self.assertIn('choices=("compliant", "inextensible")', self.source)
-        self.assertIn('"model": rope_name', self.source)
+        self.assertIn('"model": case.rope_model', self.source)
         self.assertIn("world_inverse_inertia", self.source)
 
     def test_policy_is_loaded_through_the_contract_adapter(self):
@@ -651,9 +701,9 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("write_root_velocity_to_sim", self.source)
         self.assertIn("write_joint_state_to_sim", self.source)
         self.assertIn("root[:, 7:] = 0.0", self.source)          # 速度清零
-        self.assertIn("for case_index, ((mass_target, damping, rope_name)", self.source)
+        self.assertIn("for case_index, (case, case_scale, prediction)", self.source)
         # 每个 case 按名字重建模型：同一次扫描里可以混用两套绳索模型
-        self.assertIn("rope_model = build_rope_model(rope_name)", self.source)
+        self.assertIn("rope_model = build_rope_model(case.rope_model)", self.source)
         self.assertIn('"sweep"', self.source)
         # 逐 case 的产物目录与汇总
         self.assertIn("case_dir.mkdir(parents=True, exist_ok=False)", self.source)
@@ -697,7 +747,7 @@ class InterfaceContractTests(unittest.TestCase):
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
         self.assertIn("recorder = TowRecorder(case_dir,", self.source)
-        self.assertIn("case_config(mass_target, damping, rope_name,", self.source)
+        self.assertIn("case_config(case, case_scale,", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")
         calls = []
