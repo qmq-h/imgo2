@@ -117,6 +117,41 @@ done
 **v=1.0 m/s + b=0.016 时即使 L0=1.0 也会追到机器人**（−0.06 m）——那一步要改用
 `--wheel-damping 0.032`（滑行 0.53 m）或加长 L0。
 
+**`v_cmd = 1.0 m/s`（计划 P4 第二步）的启动预判与推荐档**
+
+滑行距离 `D = v0·τ`、`τ = m_eff·r²/(4b)`：**τ 与速度无关，所以 v 翻倍 ⇒ D 翻倍**。
+`L0 = 0.8` 时（v0 按实测跟速比 0.94 折算，余量 = `L0 − D`）：
+
+| b | 5 kg | 10 kg | 15 kg | 20 kg | 25 kg |
+|---|---|---|---|---|---|
+| 0.032 | +0.533 | **+0.303** | +0.073 | −0.157 | −0.387 |
+| 0.016 | +0.266 | **−0.194** | −0.654 | −1.114 | −1.574 |
+| 0.008 | −0.267 | −1.187 | −2.107 | −3.027 | −3.947 |
+
+⇒ **0.5 m/s 下安全的 `b=0.016` 在 1.0 m/s 会追尾**（§5.11 只给了 0.5 的余量，这里是 1.0 的完整表）；
+1.0 m/s 想用 `b=0.016` 且 10 kg 安全，需要 **L0 ≥ 1.09 m**（20 kg + b=0.032 则需 L0 ≥ 1.06 m）。
+
+```bash
+# ① 主档：1.0 m/s 稳定拖曳（预判余量 +0.303 m，安全）
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --headless \
+  --velocity 1.0 --wheel-damping 0.032 --duration 10 --stop-at 5
+
+# ② 对照档：验证「1.0 m/s + b=0.016 会追尾」的预判（预期 3 路见证命中撞击）
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py --headless \
+  --velocity 1.0 --wheel-damping 0.016 --duration 10 --stop-at 5
+
+# ③ 两套绳索模型在 1.0 m/s 的对照（TOW-05 延伸到高速；4 env 走 5 m ⇒ 间距给 8 m）
+bash scripts/run_isaaclab.sh scripts/towing/tow_drag.py \
+  --rope-model compliant inextensible --num-envs 4 --env-spacing 8 \
+  --velocity 1.0 --wheel-damping 0.032 --duration 10 --stop-at 5
+```
+
+**跑之前可以核对的两个解析值**（与 0.5 m/s 对比）：
+
+* 稳态张力 `4bω/r`（`ω = v/r`）：b=0.032 ⇒ **20 N**（0.5 m/s 时是 10 N）、b=0.016 ⇒ 10 N；
+* 绷直峰值 ≈ `max(c·v, v√(kμ))`：v=1.0 时 ≈ **153 N**（0.5 m/s 时 76 N，见 §5.18/§5.19）；
+* 绷直时刻：`--slack 0.40` 下机器人走 0.4 m ⇒ **0.4 s**（0.5 m/s 时 0.8 s）。
+
 **多环境可视化：4 个 env、两套绳索模型各一半（推荐命令）**
 
 ```bash
