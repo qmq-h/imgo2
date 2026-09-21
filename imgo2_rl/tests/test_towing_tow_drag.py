@@ -182,6 +182,46 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(args.slack, 0.0)
 
 
+class ScheduleTests(unittest.TestCase):
+    """阶段划分是纯算术，必须离线可测。
+
+    这段算术原本内联在 `main()` 里，于是 `stop_steps` 在 config 字典里被提前引用、
+    赋值却在后面，实跑直接 `UnboundLocalError`——只有跑仿真才会暴露。抽成纯函数后
+    这类顺序错误能在离线测试里挡住。
+    """
+
+    def test_three_phases(self):
+        sched = tow_drag.make_schedule(settle_steps=200, duration=10.0, stop_at=5.0, dt=0.005)
+        self.assertEqual((sched.station_steps, sched.tow_steps, sched.coast_steps), (200, 1000, 1000))
+        self.assertEqual(sched.total_steps, 2200)
+        self.assertAlmostEqual(sched.tow_phase_s, 5.0, places=9)
+        self.assertAlmostEqual(sched.coast_phase_s, 5.0, places=9)
+
+    def test_without_stop_at_there_is_no_coast(self):
+        sched = tow_drag.make_schedule(settle_steps=200, duration=5.0, stop_at=None, dt=0.005)
+        self.assertEqual((sched.tow_steps, sched.coast_steps), (1000, 0))
+        self.assertEqual(sched.total_steps, 1200)
+
+    def test_phase_boundaries(self):
+        sched = tow_drag.make_schedule(settle_steps=200, duration=10.0, stop_at=5.0, dt=0.005)
+        self.assertEqual(sched.phase_of(0), "station")
+        self.assertEqual(sched.phase_of(199), "station")
+        self.assertEqual(sched.phase_of(200), "tow")          # station→tow 边界
+        self.assertEqual(sched.phase_of(1199), "tow")
+        self.assertEqual(sched.phase_of(1200), "coast")       # tow→coast 边界（阶跃点）
+        self.assertEqual(sched.phase_of(sched.total_steps - 1), "coast")
+        self.assertEqual(sum(1 for i in range(sched.total_steps) if sched.phase_of(i) == "coast"),
+                         sched.coast_steps)
+
+    def test_rejects_degenerate_schedules(self):
+        with self.assertRaises(ValueError):
+            tow_drag.make_schedule(settle_steps=0, duration=0.0, stop_at=None, dt=0.005)
+        with self.assertRaises(ValueError):
+            tow_drag.make_schedule(settle_steps=0, duration=5.0, stop_at=0.0001, dt=0.005)
+        with self.assertRaises(ValueError):
+            tow_drag.make_schedule(settle_steps=-1, duration=5.0, stop_at=None, dt=0.005)
+
+
 class TowRecorderTests(unittest.TestCase):
     def _row(self, time_s=0.005, **changes):
         row = {"phase": "tow", "time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
@@ -319,6 +359,21 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("joint_targets[:, asset_to_policy]", self.source)
         # 不允许退回「直接比较关节名列表」的写法
         self.assertNotIn("robot.joint_names) != list(policy_cfg.joint_names", self.source)
+
+    def test_schedule_is_built_before_the_config_dict(self):
+        """回归：config 字典引用了 schedule，若赋值在后面就会 UnboundLocalError。
+
+        上一版正是这样：`stop_steps` 在 config 里被提前引用、赋值在其后，实跑直接崩。
+        """
+        built = self.source.index("schedule = make_schedule(")
+        config = self.source.index("config = {")
+        self.assertLess(built, config, "schedule 必须在 config 字典之前建好")
+        self.assertIn("schedule.tow_phase_s", self.source)
+        # 不允许再出现内联的局部阶段划分（phase_of 只应作为 PhaseSchedule 的方法存在一次）
+        self.assertEqual(self.source.count("def phase_of"), 1)
+        self.assertNotIn("stop_steps =", self.source)
+        self.assertNotIn("total_steps = settle_steps", self.source)
+        self.assertIn("schedule.phase_of(step)", self.source)
 
     def test_three_phases_and_cart_reset_at_tow_start(self):
         """阶段划分为 station→tow→coast；拖曳段开始前必须显式重摆小车并清零速度。"""

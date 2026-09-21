@@ -346,6 +346,30 @@ commit `0e19d07`，已含 `--cart-drop 0.03`）：
 **待下一次实跑确认**：`takeup_robot_travel_m` 是否 ≈ 0.40 m、站定段张力是否确实为 0、
 以及 50 N 起步冲击的实际幅度与它对小车的影响。
 
+### 5.8 修 `UnboundLocalError`：阶段算术抽成纯函数
+
+上一提交加的 `--stop-at` 引入了一个**先用后赋值**的错误：
+
+```text
+[FAILED] UnboundLocalError: cannot access local variable 'stop_steps' where it is not associated with a value
+```
+
+`stop_steps` 在 `config` 字典里被引用（算 `tow_phase_s`/`coast_phase_s`），而它的赋值写在
+字典**之后** —— `main()` 只有跑仿真才会执行，所以 213 项离线测试全过、一跑就崩。
+
+**修法**：不再把这段算术内联在 `main()`，抽成纯函数 `make_schedule()` / `PhaseSchedule`
+（含 `phase_of()` 与三段的步数），`main()` 只拿结果用。算术进入离线测试覆盖后，
+这类顺序错误不会再静默发生：
+
+- `ScheduleTests` 6 项：三段步数、无 `--stop-at` 时 `coast=0`、**station→tow 与 tow→coast
+  的边界下标**（包括阶跃点那一步）、`coast` 段样本计数自洽、退化输入报错；
+- 源码契约：`schedule = make_schedule(` 必须早于 `config = {`，且不允许再出现内联的
+  `stop_steps` / `total_steps` 局部量。
+
+**教训记录**：AST/字符串契约测试与纯标准库测试都**抓不到**「只在仿真路径里执行的顺序错误」。
+可用的 lint 工具（pyflakes/flake8/ruff）在本机都没有装，所以当前的防线是
+「把可测的算术搬出 `main()`」+ 关键顺序写成契约。
+
 ### 5.8 其它覆盖与测试抓到的缺陷
 覆盖：初始间距算术（用场景常量与 `cart.urdf` 实读值反解）、后挂点在机体后表面之后、
 小车挂点朝向机器人、参数校验、记录器的表头/非有限值/时间不递增/拒绝覆盖、以及接口契约

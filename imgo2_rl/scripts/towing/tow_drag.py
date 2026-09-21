@@ -15,6 +15,7 @@ Run with an Isaac Lab Python environment；`--help` 只要标准 Python。
 """
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
@@ -124,6 +125,57 @@ def cart_x_for_attachment_gap(rope_length: float, slack: float, *, robot_x: floa
     horizontal = math.sqrt(target * target - dz * dz)
     # 机器人在前（x 大），小车的挂点在车体 +x ⇒ 机器人挂点 x − 小车挂点 x = horizontal
     return robot_x + robot_offset[0] - cart_offset[0] - horizontal
+
+
+@dataclass(frozen=True)
+class PhaseSchedule:
+    """`station` / `tow` / `coast` 三段的步数划分（纯算术，可离线测）。"""
+
+    station_steps: int
+    tow_steps: int
+    coast_steps: int
+    dt: float
+
+    @property
+    def total_steps(self) -> int:
+        return self.station_steps + self.tow_steps + self.coast_steps
+
+    @property
+    def tow_phase_s(self) -> float:
+        return self.tow_steps * self.dt
+
+    @property
+    def coast_phase_s(self) -> float:
+        return self.coast_steps * self.dt
+
+    def phase_of(self, step: int) -> str:
+        if step < self.station_steps:
+            return "station"
+        return "tow" if step - self.station_steps < self.tow_steps else "coast"
+
+
+def make_schedule(*, settle_steps: int, duration: float, stop_at: float | None,
+                  dt: float) -> PhaseSchedule:
+    """由时长与 `--stop-at` 算出阶段划分。
+
+    抽成纯函数是为了能离线测：这段算术原本内联在 `main()` 里，结果 `stop_steps` 在
+    config 字典里被提前引用、赋值却在后面，实跑直接 `UnboundLocalError`——只有跑仿真
+    才会暴露。现在算术在离线测试覆盖之下。
+    """
+    if settle_steps < 0:
+        raise ValueError("station 步数不能为负")
+    command_steps = int(round(duration / dt))
+    if command_steps <= 0:
+        raise ValueError("指令阶段步数为 0")
+    if stop_at is None:
+        tow_steps, coast_steps = command_steps, 0
+    else:
+        tow_steps = int(round(stop_at / dt))
+        coast_steps = command_steps - tow_steps
+    if tow_steps <= 0 or coast_steps < 0:
+        raise ValueError(f"非法阶段划分：tow={tow_steps} coast={coast_steps}")
+    return PhaseSchedule(station_steps=settle_steps, tow_steps=tow_steps,
+                         coast_steps=coast_steps, dt=dt)
 
 
 def initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
@@ -240,7 +292,11 @@ def main(args):
         policy = FrozenLowLevelPolicy(policy_cfg, device=args.device)
         settle_steps = policy.reset()          # reset 契约：last_action 归零 + 站定步数
         settle_steps = max(settle_steps, int(round(args.settle_time / dt)))
-        command_steps = int(round(args.duration / dt))
+        # 阶段划分必须先于 config 字典算好：上一版把 stop_steps 的赋值放在 config 之后，
+        # 字典里提前引用 ⇒ 实跑 UnboundLocalError（纯算术已抽成 make_schedule，离线可测）
+        schedule = make_schedule(settle_steps=settle_steps, duration=args.duration,
+                                 stop_at=args.stop_at, dt=dt)
+        command_steps = schedule.tow_steps + schedule.coast_steps
 
         gravity_world = torch.tensor([0.0, 0.0, -1.0], dtype=torch.float32, device=args.device)
         robot_attach = torch.tensor(robot_attachment, dtype=torch.float32, device=args.device).view(1, 1, 3)
@@ -317,8 +373,10 @@ def main(args):
                      "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
             "wheel_damping_nms_per_rad": args.wheel_damping, "user_command_mps": args.velocity,
             "settle_time_s": settle_steps * dt, "duration_s": command_steps * dt,
-            "stop_at_s": args.stop_at, "tow_phase_s": stop_steps * dt,
-            "coast_phase_s": (command_steps - stop_steps) * dt,
+            "stop_at_s": args.stop_at, "tow_phase_s": schedule.tow_phase_s,
+            "coast_phase_s": schedule.coast_phase_s,
+            "phase_steps": {"station": schedule.station_steps, "tow": schedule.tow_steps,
+                            "coast": schedule.coast_steps},
             "cart_reset_at_tow_start": True,
             "cart_reset_note": "拖曳段开始时把小车摆到「挂点间距 = L0 - slack」并清零速度，"
                                "使初始条件由设计决定，而不是取决于机器人的出生窜动",
@@ -328,15 +386,7 @@ def main(args):
         }
 
         recorder = TowRecorder(output, config)
-        # 阶段划分：station（站定，指令 0）→ tow（指令 = v_user）→ coast（阶跃归零后滑行）
-        stop_steps = (int(round(args.stop_at / dt)) if args.stop_at is not None else command_steps)
-        total_steps = settle_steps + command_steps
-
-        def phase_of(step):
-            if step < settle_steps:
-                return "station"
-            return "tow" if step - settle_steps < stop_steps else "coast"
-
+        # 阶段：station（站定，指令 0）→ tow（指令 = v_user）→ coast（阶跃归零后滑行）
         def reset_cart_for_tow():
             """把小车摆到设计的初始位姿并清零速度，作为拖曳段的初始条件。
 
@@ -366,8 +416,8 @@ def main(args):
             return cart_x
 
         tow_started = False
-        for step in range(total_steps):
-            phase = phase_of(step)
+        for step in range(schedule.total_steps):
+            phase = schedule.phase_of(step)
             command = args.velocity if phase == "tow" else 0.0
             if phase == "tow" and not tow_started:
                 reset_cart_for_tow()
