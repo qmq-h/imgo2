@@ -39,8 +39,12 @@ JOINT_NAMES = ["FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
 
 
 def add_witness_columns(rows, *, joints=(0.0, 0.87, -1.82), robot_z=0.2735, deck_fx=0.0,
-                        load_z=0.15):
-    """给合成轨迹补上「接触力 + 姿态 + 关节角」三组见证列（模拟新记录的字段）。"""
+                        load_z=0.15, deck_fx_station=0.0):
+    """给合成轨迹补上「接触力 + 姿态 + 关节角」三组见证列（模拟新记录的字段）。
+
+    `deck_fx` 只作用在拖曳之后（真实的追尾发生在拖曳开始之后）；`deck_fx_station`
+    模拟「生成时就贴上」，那是另一条判据（`load_touching_at_settle`）。
+    """
     for row in rows:
         row.update(recording.joint_position_fields(list(joints) * 4))
         row["robot_z_m"] = robot_z
@@ -48,7 +52,8 @@ def add_witness_columns(rows, *, joints=(0.0, 0.87, -1.82), robot_z=0.2735, deck
         row.update({"robot_quat_x": 0.0, "robot_quat_y": 0.0, "robot_quat_z": 0.0,
                     "robot_quat_w": 1.0, "load_quat_x": 0.0, "load_quat_y": 0.0,
                     "load_quat_z": 0.0, "load_quat_w": 1.0,
-                    "cart_deck_fx_n": deck_fx, "cart_wheel_fx_n": 0.0})
+                    "cart_deck_fx_n": deck_fx_station if row["phase"] == "station" else deck_fx,
+                    "cart_wheel_fx_n": 0.0})
     return rows
 
 
@@ -284,6 +289,27 @@ class CoastPhaseTests(unittest.TestCase):
         self.assertIn("deck_contact_force", summary["reached_robot_source"])
         self.assertTrue(summary["reached_robot"])
         self.assertTrue(summary["valid"], summary["failures"])
+
+    def test_deck_contact_at_settle_is_a_failure(self):
+        """生成时就贴上机器人（station 段车斗受力）必须单独判失败。
+
+        依据：挂点间距 0.40 m 听着安全，实测车头间隙只有 0.0955 m（§5.19），
+        所以「贴上了」这件事不能等到「追尾」那条判据里去发现。
+        """
+        rows = add_witness_columns(_run(coast_s=0.5), deck_fx_station=9.0)
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertAlmostEqual(summary["deck_contact_peak_station_n"], 9.0, places=6)
+        self.assertIn("load_touching_at_settle", summary["failures"])
+        self.assertFalse(summary["valid"])
+
+    def test_station_clearance_is_reported_separately(self):
+        """station 段的车头间隙单独报（它是初始条件的安全余量），不计入 reached_robot。"""
+        rows = add_witness_columns(_run(coast_s=0.5))
+        for row in rows:                    # 全程 x_R − x_L = 0.6084 ⇒ 间隙 −0.04 m
+            row["load_x_m"], row["robot_x_m"] = 0.0, 0.6084
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertLess(summary["min_clearance_station_m"], 0.0)
+        self.assertLess(summary["min_clearance_m"], 0.0)
 
     def test_geometric_clearance_witness_fires_when_the_pose_reaches(self):
         """几何间隙 ≤ 0 ⇒ 接触。判据用的是 FK 算出的真实间隙，不是挂点间距。

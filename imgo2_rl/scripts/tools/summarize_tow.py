@@ -97,9 +97,15 @@ def _elasticity(tow_rows, taut_rows, steady_tension, config):
     result["takeup_peak_time_s"] = float(peak_row["time_s"])
     if taut_rows:
         result["takeup_peak_delay_s"] = (float(peak_row["time_s"]) - float(taut_rows[0]["time_s"]))
-        # 绷直瞬间的相对接近速度 = 记录里的 ḋ（近一维，方向沿绳）
-        result["takeup_closing_speed_mps"] = (float(taut_rows[0]["robot_vx_mps"])
-                                              - float(taut_rows[0]["load_vx_mps"]))
+        # 绷直瞬间的相对接近速度必须取**前一个松弛步**：绳在上一个 5 ms 步内就绷直了，
+        # 「首个 T>0」那行的速度已经被冲量改过。实测 k=1×10⁵ / c=1528 那次，首个 T>0 行的
+        # v_R 已从 0.547 掉到 0.176、v_L 已从 0 跳到 0.431 —— 用它会把上界算成 195 N
+        # 而实测是 921 N。力是在每步**开始时**按当时状态算的（见 config 的 torque_convention），
+        # 所以正确输入就是最后一个松弛步的状态。
+        first_taut = tow_rows.index(taut_rows[0])
+        reference = tow_rows[first_taut - 1] if first_taut > 0 else taut_rows[0]
+        result["takeup_closing_speed_mps"] = (float(reference["robot_vx_mps"])
+                                              - float(reference["load_vx_mps"]))
     if steady_tension and steady_tension > 0:
         result["tension_overshoot_ratio"] = peak / steady_tension
     if not config:
@@ -246,8 +252,10 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
     # 这里必须把「挂点间距」和「车头到机器人的间隙」区分开：`rope_distance_m` 是两个**挂点**
     # 的距离，碰撞时它在 0.12~0.44 m 之间浮动（取决于机器人腿伸到多后），所以它既不能判
     # 「有没有追上」，也不能当「停车距离」。判定用三路见证，并把每个见证量都报出来：
-    #   ① 接触力（车斗永不着地 ⇒ 非零即机器人压上来；车轮那路正常滚动时只有几十 N 量级的
-    #      克服轮阻的力，所以只作为辅助读数）；
+    # 判定用三路见证，并把每个见证量都报出来：
+    #   ① 接触力（车斗永不着地 ⇒ 非零即机器人压上来；车轮那路的 x 分量**前后轮符号相反、
+    #      稳态下互相抵消**（实测稳态和值 1.3e-5 N），所以不能拿它当「滚动基线」，
+    #      反过来任何明显的非零和值都是异常——撞击只打一个轮子，不会成对抵消）；
     #   ② 负载单步速度跃变（黏性滑行的单步变化只有 1e-3 量级，撞击是 1e-2~1e-1）；
     #   ③ 由记录关节角 FK 算出的真实几何间隙 `min_clearance_m`（有该列时最可靠）。
     after_tow = tow_rows + coast_rows
@@ -277,18 +285,26 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
     if "cart_deck_fx_n" in (after_tow[0] if after_tow else {}):
         summary["deck_contact_peak_n"] = max(abs(float(r["cart_deck_fx_n"])) for r in after_tow)
         summary["wheel_fx_peak_n"] = max(abs(float(r["cart_wheel_fx_n"])) for r in after_tow)
+        # station 段（拖曳之前）的接触单独报出来：出生时挂点间距只有 0.40 m，而机器人在
+        # 下蹲姿态下后腿能伸到 base 后方 0.41 m —— 实测最小车头间隙只有 **0.0955 m**
+        # （见 §5.19），所以「生成时就贴上」是需要单独盯的一种坏情况。
+        summary["deck_contact_peak_station_n"] = (max(abs(float(r["cart_deck_fx_n"]))
+                                                      for r in station_rows) if station_rows else None)
         if summary["deck_contact_peak_n"] > CONTACT_DECK_LIMIT_N:
             witnesses.append("deck_contact_force")
     else:
         summary["deck_contact_peak_n"] = None
         summary["wheel_fx_peak_n"] = None
+        summary["deck_contact_peak_station_n"] = None
 
     if joint_names and rows and "robot_jp_00" in rows[0]:
         clearance = _clearance_series(rows, joint_names)
         after_tow_clearance = [g for phase, g in clearance if phase != "station"]
         coast_clearance = [g for phase, g in clearance if phase == "coast"]
+        station_clearance = [g for phase, g in clearance if phase == "station"]
         summary["min_clearance_m"] = min(after_tow_clearance)
         summary["min_clearance_coast_m"] = min(coast_clearance) if coast_clearance else None
+        summary["min_clearance_station_m"] = min(station_clearance) if station_clearance else None
         summary["final_clearance_m"] = clearance[-1][1]
         summary["clearance_samples"] = len(clearance)
         if summary["min_clearance_m"] <= CLEARANCE_CONTACT_M:
@@ -296,6 +312,7 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
     else:
         summary["min_clearance_m"] = None
         summary["min_clearance_coast_m"] = None
+        summary["min_clearance_station_m"] = None
         summary["final_clearance_m"] = None
 
     # 三路见证的可用性与结论。**注意别把「没有见证通道」当成「没追上」**：
@@ -365,6 +382,11 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
     if summary["settle_load_drift_m"] is not None and \
             abs(summary["settle_load_drift_m"]) > SETTLE_LOAD_DRIFT_LIMIT_M:
         failures.append("load_moved_during_settle")
+    # 生成时就贴上机器人：station 段车斗接触力非零。挂点间距 0.40 m 听着安全，但实测
+    # 车头间隙只有 0.0955 m（§5.19），所以这一档要单独判失败，而不是留到「追尾」里去
+    if summary["deck_contact_peak_station_n"] is not None and \
+            summary["deck_contact_peak_station_n"] > CONTACT_DECK_LIMIT_N:
+        failures.append("load_touching_at_settle")
     # ---- tow
     if abs(summary["steady_speed_gap_mps"]) > SPEED_GAP_LIMIT_MPS:
         failures.append("robot_and_load_speeds_differ")
