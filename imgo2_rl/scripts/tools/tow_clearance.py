@@ -178,6 +178,22 @@ def shape_points(shape):
             [0.0, -radius, 0.0], [0.0, 0.0, radius], [0.0, 0.0, -radius]]
 
 
+def urdf_total_mass(urdf) -> float:
+    """URDF 全部 link 的质量之和。
+
+    用途不在间隙，而在弹性诊断（§5.18）：绳的折合质量 `μ = ((1/m_eff)+(1/m_robot))⁻¹`
+    需要机器人质量，而旧 run 的 `config.json` 里没有记它——从 URDF 求和就能让这些 run
+    **不用重跑**也把伸长/过冲比算出来。
+    """
+    total = 0.0
+    for link in urdf.findall("link"):
+        inertial = link.find("inertial")
+        mass = inertial.find("mass") if inertial is not None else None
+        if mass is not None:
+            total += float(mass.get("value"))
+    return total
+
+
 class Body:
     """一个刚体：若干 (链, 碰撞几何) 部件，能把采样点送到世界系。"""
 
@@ -219,7 +235,6 @@ WHEEL_JOINT_ANGLES = {f"wheel_{leg}_joint": 0.0 for leg in ("fl", "fr", "rl", "r
 def build_bodies(repo: Path):
     robot_urdf = ET.parse(repo / "imgo2_description" / "urdf" / "imgo2.urdf").getroot()
     cart_urdf = ET.parse(repo / "imgo2_description" / "cart" / "cart.urdf").getroot()
-
     # 机器人：base（躯干）+ 四条腿。前腿正常情况够不到小车，但姿态极端时可能，
     # 所以四条都算，不用「后腿」这种会随姿态失效的假设。
     robot_parts = []
@@ -239,6 +254,11 @@ def build_bodies(repo: Path):
         cart_parts.append((chain, read_primitives(cart_urdf, link)))
     cart = Body("cart", cart_parts, "base_link", None)
     return robot, cart
+
+
+def robot_mass_kg(repo: Path) -> float:
+    """机器人总质量（URDF 求和），供弹性诊断算折合质量。"""
+    return urdf_total_mass(ET.parse(repo / "imgo2_description" / "urdf" / "imgo2.urdf").getroot())
 
 
 # ------------------------------------------------------------------ 间隙计算

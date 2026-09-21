@@ -499,6 +499,10 @@ def main(args):
                 "phase_steps": {"station": schedule.station_steps, "tow": schedule.tow_steps,
                                 "coast": schedule.coast_steps},
                 "dt_s": dt, "decimation": decimation, "device": args.device,
+                # 机器人总质量：弹性诊断要算绳的折合质量 μ = ((1/m_eff)+(1/m_robot))⁻¹。
+                # 从仿真读（全部 link 之和，实测 **12.6996 kg**），**不是** base 单链的 5.5339 kg
+                # ——用错会让 ω、ζ、步长上限全偏（我手算时踩过，见 docs §5.18）。
+                "robot_mass_kg": float(robot.root_physx_view.get_masses().sum()),
                 # 记录里 `robot_jp_00..11` 的关节顺序（策略/契约顺序，逐腿 FL/FR/RL/RR）：
                 # 离线算间隙的 FK 需要它，写进产物免得靠"约定"记忆。
                 "policy_joint_names": list(policy_cfg.joint_names),

@@ -65,6 +65,90 @@ def _col(rows, key):
     return [float(r[key]) for r in rows]
 
 
+def _elasticity(tow_rows, taut_rows, steady_tension, config):
+    """绳的弹性诊断：伸长、绷直过冲、固有频率/阻尼比，以及显式积分的步长上限。
+
+    用户 2026-09-21 提出「照理说我们的绳子应该不是很弹性」。这些量由**配置常量**
+    （`k`/`c`/`L0`、小车质量与轮惯量、机器人质量）与**记录里的张力**决定，所以
+    `summarize_tow.py <run>` 就能对**已有 run 复算，不必重跑仿真**（见 docs §5.18）。
+
+    为什么关心：`k=4000 N/m` 比 6 mm 涤纶绳（6×10⁴~1.2×10⁵ N/m）软 15~800 倍，
+    稳态伸长只有零点几毫米（几乎不可伸长），但绷直瞬间是欠阻尼弹簧，过冲 6~25 倍。
+    而显式弹簧的稳定条件 `dt < 2/(ω(ζ+√(ζ²+1)))` 限制了 k 能提到多大——所以
+    `spring_dt_limit_ms` 必须与 `rope_stiffness_n_per_m` 一起读。
+
+    缺 `config`（合成轨迹、旧调用方）时全部为 `None`，并写明缺什么。
+    """
+    result = {
+        "rope_stiffness_n_per_m": None, "rope_damping_ns_per_m": None,
+        "rope_stretch_steady_mm": None, "rope_stretch_peak_mm": None,
+        "takeup_peak_tension_n": None, "takeup_peak_time_s": None, "takeup_peak_delay_s": None,
+        "tension_overshoot_ratio": None, "takeup_closing_speed_mps": None,
+        "rope_reduced_mass_kg": None, "rope_natural_freq_hz": None,
+        "rope_damping_ratio": None, "spring_dt_limit_ms": None,
+        "predicted_takeup_peak_n": None, "elasticity_note": None,
+    }
+    if not tow_rows:
+        result["elasticity_note"] = "没有 tow 段样本"
+        return result
+    peak_row = max(tow_rows, key=lambda r: float(r["rope_tension_n"]))
+    peak = float(peak_row["rope_tension_n"])
+    result["takeup_peak_tension_n"] = peak
+    result["takeup_peak_time_s"] = float(peak_row["time_s"])
+    if taut_rows:
+        result["takeup_peak_delay_s"] = (float(peak_row["time_s"]) - float(taut_rows[0]["time_s"]))
+        # 绷直瞬间的相对接近速度 = 记录里的 ḋ（近一维，方向沿绳）
+        result["takeup_closing_speed_mps"] = (float(taut_rows[0]["robot_vx_mps"])
+                                              - float(taut_rows[0]["load_vx_mps"]))
+    if steady_tension and steady_tension > 0:
+        result["tension_overshoot_ratio"] = peak / steady_tension
+    if not config:
+        result["elasticity_note"] = "未提供 config（缺 rope/cart_model），只能报峰值张力"
+        return result
+    rope = config.get("rope") or {}
+    stiffness = rope.get("stiffness_n_per_m")
+    damping = rope.get("damping_ns_per_m")
+    model = config.get("cart_model") or {}
+    radius = model.get("wheel_radius_m")
+    inertias = (model.get("inertias_kgm2") or {}).get("wheel_fl")
+    mass_cart = config.get("cart_mass_actual_kg") or model.get("total_mass_kg")
+    missing = [name for name, value in (("rope.stiffness_n_per_m", stiffness),
+                                        ("rope.damping_ns_per_m", damping),
+                                        ("cart_model.wheel_radius_m", radius),
+                                        ("cart_model.inertias_kgm2.wheel_fl", inertias),
+                                        ("cart_mass_actual_kg", mass_cart)) if value is None]
+    if missing:
+        result["elasticity_note"] = f"config 缺 {missing}"
+        return result
+    result["rope_stiffness_n_per_m"] = stiffness
+    result["rope_damping_ns_per_m"] = damping
+    if steady_tension:
+        # 稳态伸长：绳在稳态张力下的静态伸长 δ = T/k
+        result["rope_stretch_steady_mm"] = steady_tension / stiffness * 1000.0
+    result["rope_stretch_peak_mm"] = peak / stiffness * 1000.0
+
+    # 折合质量：绳两端的等效惯量。小车侧是 m_eff = m + 4I/r²（车轮滚动惯量折算），
+    # 机器人侧取 URDF 总质量（config 没记时用 URDF 求和，见 tow_clearance.robot_mass_kg）
+    mass_eff = mass_cart + 4.0 * float(inertias[1]) / radius ** 2
+    mass_robot = config.get("robot_mass_kg")
+    if mass_robot is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import tow_clearance
+        mass_robot = tow_clearance.robot_mass_kg(tow_clearance.repo_root())
+    reduced = 1.0 / (1.0 / mass_eff + 1.0 / mass_robot)
+    omega = math.sqrt(stiffness / reduced)
+    zeta = damping / (2.0 * math.sqrt(stiffness * reduced))
+    result["rope_reduced_mass_kg"] = reduced
+    result["rope_natural_freq_hz"] = omega / (2.0 * math.pi)
+    result["rope_damping_ratio"] = zeta
+    result["spring_dt_limit_ms"] = 2.0 / (omega * (zeta + math.sqrt(zeta ** 2 + 1.0))) * 1000.0
+    if result["takeup_closing_speed_mps"] is not None:
+        # 绷直能量界 ½μv² = ½kδ² ⇒ 峰值 ≈ v√(kμ)（无阻尼上界）
+        result["predicted_takeup_peak_n"] = abs(result["takeup_closing_speed_mps"]) * math.sqrt(
+            stiffness * reduced)
+    return result
+
+
 def _clearance_series(rows, joint_names, stride=5):
     """由记录关节角 FK 算出每步「小车车头 ↔ 机器人后表面」的纵向间隙。
 
@@ -102,7 +186,8 @@ def _phases(rows):
             "coast": rows[commanded[-1] + 1:]}
 
 
-def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_names=None):
+def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_names=None,
+                  config=None):
     """由逐物理步记录算出汇总与判据；`rows` 为 `tow.csv` 的字典列表。"""
     if not rows:
         raise ValueError("拖动记录为空")
@@ -237,6 +322,7 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
                                      if steady_tension > 0 else None)
     summary["tension_ripple_ratio"] = (summary["steady_tension_std_n"] / steady_tension
                                       if steady_tension > 0 else None)
+    summary.update(_elasticity(tow_rows, taut_rows, steady_tension, config))
 
     # 收松弛的耗时与机器人走过多远才发力：设计上应当 ≈ `--slack`（可直接核对）
     if taut_rows:
@@ -313,7 +399,7 @@ def summarize_run(directory):
     with (directory / "tow.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     summary = summarize_tow(rows, user_command=float(config["user_command_mps"]),
-                            joint_names=config.get("policy_joint_names"))
+                            joint_names=config.get("policy_joint_names"), config=config)
     # 与启动时的解析预判对照（预判只考虑滑行段的黏性衰减；实测还会受机器人减速影响）
     predicted = config.get("predicted_min_gap_m")
     if predicted is not None:

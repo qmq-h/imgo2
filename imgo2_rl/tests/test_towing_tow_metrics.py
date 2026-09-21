@@ -324,6 +324,78 @@ class CoastPhaseTests(unittest.TestCase):
         self.assertNotIn("coast_min_gap_m", summary)
 
 
+class ElasticityTests(unittest.TestCase):
+    """绳的弹性诊断（§5.18）：伸长、绷直过冲、固有频率/阻尼比与步长上限。
+
+    关键点是**这些量只用配置常量 + 记录里的张力**，所以已有 run 不重跑也能复算；
+    这里用合成轨迹 + 一份最小 config 把算式钉住。
+    """
+
+    CONFIG = {
+        "rope": {"rest_length_m": 0.8, "stiffness_n_per_m": 4000.0,
+                 "damping_ns_per_m": 100.0, "initial_slack_m": 0.4},
+        "cart_model": {"wheel_radius_m": 0.08, "inertias_kgm2": {"wheel_fl": [0.00069, 0.00128, 0.00069]},
+                       "total_mass_kg": 10.0},
+        "cart_mass_actual_kg": 10.0,
+        "robot_mass_kg": 12.6996,
+    }
+
+    def _summary(self, config):
+        # tow 段：张力先冲到 70 N（绷直过冲）再落到稳态 10 N
+        def tension(t):
+            return 70.0 if t < 0.05 else 10.0
+        rows = _run(tow_s=1.0, takeup_s=0.01, tension=tension)
+        return summarize_tow(rows, user_command=0.5, config=config)
+
+    def test_stretch_and_overshoot(self):
+        summary = self._summary(self.CONFIG)
+        self.assertAlmostEqual(summary["steady_tension_n"], 10.0, places=6)
+        self.assertAlmostEqual(summary["takeup_peak_tension_n"], 70.0, places=6)
+        self.assertAlmostEqual(summary["tension_overshoot_ratio"], 7.0, places=6)
+        # 伸长 δ = T/k：稳态 10/4000 = 2.5 mm、峰值 70/4000 = 17.5 mm
+        self.assertAlmostEqual(summary["rope_stretch_steady_mm"], 2.5, places=6)
+        self.assertAlmostEqual(summary["rope_stretch_peak_mm"], 17.5, places=6)
+
+    def test_reduced_mass_uses_total_robot_mass_not_the_base_link(self):
+        """折合质量必须用**整机**质量：base 单链只有 5.5339 kg，整机 12.6996 kg。
+
+        用错会让 ω、ζ、步长上限全偏（手算时踩过，差约 1.6 倍）。
+        """
+        summary = self._summary(self.CONFIG)
+        mass_eff = 10.0 + 4 * 0.00128 / 0.08 ** 2          # 10.8 kg
+        expected = 1.0 / (1.0 / mass_eff + 1.0 / 12.6996)  # 5.8365 kg
+        self.assertAlmostEqual(summary["rope_reduced_mass_kg"], expected, places=6)
+        self.assertNotAlmostEqual(summary["rope_reduced_mass_kg"],
+                                  1.0 / (1.0 / mass_eff + 1.0 / 5.5339), places=2)
+        omega = math.sqrt(4000.0 / expected)
+        self.assertAlmostEqual(summary["rope_natural_freq_hz"], omega / (2 * math.pi), places=6)
+        zeta = 100.0 / (2 * math.sqrt(4000.0 * expected))
+        self.assertAlmostEqual(summary["rope_damping_ratio"], zeta, places=6)
+        # 显式弹簧步长上限 dt < 2/(ω(ζ+√(ζ²+1)))
+        self.assertAlmostEqual(summary["spring_dt_limit_ms"],
+                               2.0 / (omega * (zeta + math.sqrt(zeta ** 2 + 1))) * 1000.0, places=6)
+        self.assertGreater(summary["spring_dt_limit_ms"], 5.0)   # 当前 dt=5 ms 有余量
+
+    def test_stiffer_rope_shrinks_the_dt_limit(self):
+        """k 提到真实绳量级时步长上限会掉到 5 ms 以下——这是不能随便加刚度的硬约束。"""
+        summary = self._summary(dict(self.CONFIG, rope=dict(self.CONFIG["rope"],
+                                                           stiffness_n_per_m=1.6e6)))
+        self.assertLess(summary["spring_dt_limit_ms"], 5.0)
+
+    def test_missing_config_still_reports_the_measurable_part(self):
+        summary = self._summary(None)
+        self.assertEqual(summary["takeup_peak_tension_n"], 70.0)
+        self.assertAlmostEqual(summary["tension_overshoot_ratio"], 7.0, places=6)
+        self.assertIsNone(summary["rope_stretch_peak_mm"])
+        self.assertIn("config", summary["elasticity_note"])
+
+    def test_incomplete_config_names_what_is_missing(self):
+        config = {"rope": {"stiffness_n_per_m": 4000.0}, "cart_mass_actual_kg": 10.0}
+        summary = self._summary(config)
+        self.assertIsNone(summary["rope_natural_freq_hz"])
+        self.assertIn("cart_model.wheel_radius_m", summary["elasticity_note"])
+
+
 class BackwardCompatibilityTests(unittest.TestCase):
     def test_rows_without_phase_column_are_segmented_by_command(self):
         """旧记录（无 phase 列）也要能复算——阶段按指令推断。"""
