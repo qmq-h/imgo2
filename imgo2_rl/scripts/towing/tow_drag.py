@@ -39,7 +39,11 @@ def parse_args(argv=None):
     parser.add_argument("--duration", type=float, default=5.0, help="指令阶段时长，s（计划 P4 要求 5 s）")
     parser.add_argument("--settle-time", type=float, default=1.0,
                         help="复位后站定时长，s（此阶段指令为 0，再交给速度指令）")
-    parser.add_argument("--rope-length", type=float, default=1.0, help="绳长 L0，m")
+    parser.add_argument("--rope-length", type=float, default=0.8,
+                        help="绳长 L0，m。默认 0.8：0.5 m/s 下停车后小车滑行约 0.52 m，"
+                             "留 0.28 m 余量不会追到机器人（L0=1.0 时间距更大但看不出追尾趋势）。"
+                             "注意 L0 必须与速度和轮阻一起定：v=1.0 m/s、b=0.016 时滑行 1.06 m，"
+                             "L0=1.0 就已经会撞（启动时会打印预测）")
     parser.add_argument("--stiffness", type=float, default=4000.0, help="绳刚度 k，N/m")
     parser.add_argument("--damping", type=float, default=100.0, help="绳阻尼 c，N·s/m")
     parser.add_argument("--slack", type=float, default=0.40,
@@ -178,6 +182,28 @@ def make_schedule(*, settle_steps: int, duration: float, stop_at: float | None,
                          coast_steps=coast_steps, dt=dt)
 
 
+def predicted_coast_distance(initial_speed: float, wheel_damping: float, *,
+                             cart_mass_kg: float, wheel_inertia_kgm2: float,
+                             wheel_radius_m: float, stop_speed: float = 0.02) -> float:
+    """预测停车后小车会滑多远：`D = v0·τ·(1 − v_stop/v0)`，`τ = m_eff·r²/(4b)`。
+
+    绳一旦松弛，小车就只受轮轴阻力，所以这条解析式直接适用。P2 验收的 8 个工况实测与它
+    吻合 **0.27%–0.96%**，因此在跑之前就能判断「停车后小车会不会追到机器人」。
+
+    `m_eff = m_cart + 4·I_wheel/r²`（四个轮的转动惯量折算成平动质量）。
+    """
+    for name, value in (("initial_speed", initial_speed), ("wheel_damping", wheel_damping),
+                        ("cart_mass_kg", cart_mass_kg), ("wheel_inertia_kgm2", wheel_inertia_kgm2),
+                        ("wheel_radius_m", wheel_radius_m), ("stop_speed", stop_speed)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} 必须为有限正数")
+    m_eff = cart_mass_kg + 4.0 * wheel_inertia_kgm2 / (wheel_radius_m ** 2)
+    tau = m_eff * wheel_radius_m ** 2 / (4.0 * wheel_damping)
+    if initial_speed <= stop_speed:
+        return 0.0
+    return initial_speed * tau * (1.0 - stop_speed / initial_speed)
+
+
 def initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
                    cart_height: float, robot_offset, cart_offset) -> float:
     """机器人在原点出生时的小车初始 x（`cart_x_for_attachment_gap` 的特例）。"""
@@ -233,6 +259,18 @@ def main(args):
                            cart_height=model["resting_height_m"],
                            robot_offset=robot_attachment, cart_offset=cart_attachment),
             0.0, model["resting_height_m"] + args.cart_drop)
+
+        # 跑之前的预判：停车后小车会滑多远、会不会追到机器人（用 P2 验收过的解析式）。
+        # 参数组合（L0 / 速度 / 轮阻）必须一起看：v=1.0 m/s、b=0.016 时滑行 1.06 m，
+        # L0=1.0 就已经会撞。这里只警告不拦——计划 P6 本来就想观察「追尾」现象。
+        predicted_coast = predicted_coast_distance(
+            args.velocity, args.wheel_damping, cart_mass_kg=model["total_mass_kg"],
+            wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1],
+            wheel_radius_m=model["wheel_radius_m"])
+        predicted_gap = args.rope_length - predicted_coast
+        print(f"[PLAN] L0={args.rope_length:g} m, v={args.velocity:g} m/s, b={args.wheel_damping:g} "
+              f"⇒ 预测停车后小车滑行 {predicted_coast:.3f} m，最小间距 {predicted_gap:+.3f} m"
+              + ("   ⚠ 会追到机器人" if predicted_gap <= 0.05 else ""), flush=True)
 
         sim_cfg = sim_utils.SimulationCfg(
             dt=args.dt, device=args.device,
@@ -372,6 +410,10 @@ def main(args):
             "rope": {"rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
                      "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
             "wheel_damping_nms_per_rad": args.wheel_damping, "user_command_mps": args.velocity,
+            "predicted_coast_distance_m": predicted_coast,
+            "predicted_min_gap_m": predicted_gap,
+            "prediction_note": "由 P2 验收过的黏性衰减解析式 D = v0*tau*(1-v_stop/v0)，"
+                               "tau = m_eff*r^2/(4b)；P2 实测吻合 0.27%-0.96%",
             "settle_time_s": settle_steps * dt, "duration_s": command_steps * dt,
             "stop_at_s": args.stop_at, "tow_phase_s": schedule.tow_phase_s,
             "coast_phase_s": schedule.coast_phase_s,

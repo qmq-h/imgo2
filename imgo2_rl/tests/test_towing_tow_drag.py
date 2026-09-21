@@ -222,6 +222,56 @@ class ScheduleTests(unittest.TestCase):
             tow_drag.make_schedule(settle_steps=-1, duration=5.0, stop_at=None, dt=0.005)
 
 
+class CoastPredictionTests(unittest.TestCase):
+    """停车后小车滑行距离的解析预测（决定 L0 / 速度 / 轮阻怎么配）。"""
+
+    # P2 验收实跑（run 16885db6，2026-09-20）的实测停止距离
+    P2_MEASURED = {
+        (0.5, 0.008): 1.033949, (0.5, 0.016): 0.515817, (0.5, 0.032): 0.256703,
+        (1.0, 0.008): 2.111118, (1.0, 0.016): 1.053125, (1.0, 0.032): 0.524179,
+    }
+    CART = dict(cart_mass_kg=10.0, wheel_inertia_kgm2=0.00128, wheel_radius_m=0.08)
+
+    def _predict(self, v, b):
+        return tow_drag.predicted_coast_distance(v, b, **self.CART)
+
+    def test_matches_the_p2_acceptance_measurements(self):
+        """解析式必须重现 P2 的 6 个实测点（否则不能拿它做参数选择）。"""
+        for (speed, damping), measured in self.P2_MEASURED.items():
+            got = self._predict(speed, damping)
+            self.assertLess(abs(got - measured) / measured, 0.015,
+                            f"v={speed} b={damping}: 预测 {got:.4f} 对实测 {measured:.4f}")
+
+    def test_default_configuration_keeps_a_margin(self):
+        """默认组合（L0=0.8、slack=0.40、v=0.5、b=0.016）必须留出余量。"""
+        args = tow_drag.parse_args([])
+        self.assertEqual(args.rope_length, 0.8)
+        self.assertEqual(args.slack, 0.40)
+        self.assertEqual(args.velocity, 0.5)
+        gap_at_stop = args.rope_length - self._predict(args.velocity, args.wheel_damping)
+        self.assertGreater(gap_at_stop, 0.2, f"停车后最小间距只有 {gap_at_stop:.3f} m")
+
+    def test_rope_length_must_be_chosen_with_speed_and_damping(self):
+        """记录这个耦合：v=1.0、b=0.016 时滑行 1.06 m，L0=0.8/1.0 都会追到机器人。
+
+        所以「缩短绳子」不能在 1.0 m/s 那一步沿用，要么加长 L0、要么加大轮阻
+        （b=0.032 时滑行 0.53 m）。
+        """
+        self.assertLess(0.8 - self._predict(1.0, 0.016), 0.0)
+        self.assertLess(1.0 - self._predict(1.0, 0.016), 0.0)
+        self.assertGreater(0.8 - self._predict(1.0, 0.032), 0.2)
+
+    def test_below_stop_speed_predicts_zero(self):
+        self.assertEqual(self._predict(0.02, 0.016), 0.0)
+
+    def test_rejects_nonpositive_inputs(self):
+        with self.assertRaises(ValueError):                      # 轮阻为 0 ⇒ 永远不停
+            tow_drag.predicted_coast_distance(0.5, 0.0, **self.CART)
+        for bad in ({"cart_mass_kg": 0.0}, {"wheel_radius_m": -1.0}, {"wheel_inertia_kgm2": 0.0}):
+            with self.assertRaises(ValueError):
+                tow_drag.predicted_coast_distance(0.5, 0.016, **{**self.CART, **bad})
+
+
 class TowRecorderTests(unittest.TestCase):
     def _row(self, time_s=0.005, **changes):
         row = {"phase": "tow", "time_s": time_s, "user_cmd_mps": 0.5, "ref_cmd_mps": 0.5,
