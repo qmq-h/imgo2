@@ -40,6 +40,8 @@ SETTLE_TENSION_LIMIT_N = 1.0   # station 阶段张力超过此值 ⇒ 初始松�
 STOP_ROBOT_VX_FRACTION = 0.2   # coast 段末机器人 vx 应降到指令的 20% 以下
 SETTLE_ROBOT_TRAVEL_LIMIT_M = 0.15   # station 段机器人位移超过此值 ⇒ 启动窜动过大
 SETTLE_LOAD_DRIFT_LIMIT_M = 0.02     # station 段小车位移超过此值 ⇒ 拖曳前它没静止
+CAUGHT_UP_LIMIT_M = 0.0             # 拖曳开始后最小间距 ≤ 此值 ⇒ 小车追到了机器人
+PREDICTION_TOLERANCE_M = 0.10       # 实测最小间距与启动预判的允许偏差
 
 
 def _mean(values):
@@ -123,6 +125,17 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
         "settle_max_abs_load_vx_mps": (max(abs(v) for v in _col(station_rows, "load_vx_mps"))
                                        if station_rows else None),
     }
+    # ---- 「会不会追到机器人」与「最终停在离机器人多远」 ------------------------------
+    # 注意：station 段的间距（= L0 - slack）本来就很近，不能算作追尾，
+    # 所以最小间距从**拖曳段开始**起算。
+    after_tow = tow_rows + coast_rows
+    gaps = _col(after_tow, "rope_distance_m")
+    summary["initial_gap_m"] = float(rows[0]["rope_distance_m"])
+    summary["min_gap_after_tow_start_m"] = min(gaps)
+    summary["final_gap_m"] = float(rows[-1]["rope_distance_m"])
+    summary["gap_closed_m"] = summary["initial_gap_m"] - summary["final_gap_m"]
+    summary["caught_up"] = summary["min_gap_after_tow_start_m"] <= CAUGHT_UP_LIMIT_M
+
     summary["steady_speed_gap_mps"] = summary["steady_robot_vx_mps"] - summary["steady_load_vx_mps"]
     summary["steady_tracking_ratio"] = summary["steady_robot_vx_mps"] / user_command
     summary["tension_drift_ratio"] = (abs(mean_second - mean_first) / steady_tension
@@ -187,11 +200,11 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
     if summary["max_abs_pitch_rad"] > PITCH_LIMIT_RAD:
         failures.append("body_pitch_excessive")
     # ---- coast：机器人要真的停下；小车不得到顶到机器人（追尾）
-    if coast_rows:
-        if summary["coast_final_robot_vx_mps"] > STOP_ROBOT_VX_FRACTION * user_command:
-            failures.append("robot_did_not_stop")
-        if summary["coast_min_gap_m"] <= 0.0:
-            failures.append("load_reached_robot")
+    if coast_rows and summary["coast_final_robot_vx_mps"] > STOP_ROBOT_VX_FRACTION * user_command:
+        failures.append("robot_did_not_stop")
+    # 拖曳开始后任意时刻撞上机器人（含滑行段追尾）都算失败
+    if summary["caught_up"]:
+        failures.append("load_reached_robot")
     summary["failures"] = failures
     summary["valid"] = not failures
     return summary
@@ -204,6 +217,12 @@ def summarize_run(directory):
     with (directory / "tow.csv").open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
     summary = summarize_tow(rows, user_command=float(config["user_command_mps"]))
+    # 与启动时的解析预判对照（预判只考虑滑行段的黏性衰减；实测还会受机器人减速影响）
+    predicted = config.get("predicted_min_gap_m")
+    if predicted is not None:
+        summary["predicted_min_gap_m"] = predicted
+        summary["prediction_error_m"] = summary["min_gap_after_tow_start_m"] - predicted
+        summary["prediction_ok"] = abs(summary["prediction_error_m"]) <= PREDICTION_TOLERANCE_M
     (directory / "summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
     return summary

@@ -182,6 +182,38 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(args.slack, 0.0)
 
 
+class PlanTimeOrderingTests(unittest.TestCase):
+    """`main()` 里的局部量不得「先用后赋值」。
+
+    这个错误已经踩过两次：`stop_steps`（config 字典里提前引用）与 `scale`（预判里提前
+    引用）——两者都只在**跑仿真时**才执行，所以离线测试全过、一跑就 `UnboundLocalError`，
+    而且注释里出现同一个词会让朴素的字符串检查假阳性。这里用 AST 按源码顺序判断：
+    对每个被监视的局部量，第一次 **Store** 必须不晚于第一次 **Load**。
+    """
+
+    WATCHED = ("scale", "schedule", "predicted_coast", "predicted_gap", "decimation",
+               "settle_steps", "command_steps")
+
+    def test_no_local_is_used_before_assignment_in_main(self):
+        tree = ast.parse(TOW_DRAG.read_text(encoding="utf-8"))
+        main = next(n for n in ast.walk(tree)
+                    if isinstance(n, ast.FunctionDef) and n.name == "main")
+        events = {}
+        for node in ast.walk(main):
+            if isinstance(node, ast.Name) and node.id in self.WATCHED:
+                kind = "store" if isinstance(node.ctx, ast.Store) else "load"
+                events.setdefault(node.id, []).append((node.lineno, node.col_offset, kind))
+        for name, items in events.items():
+            items.sort()
+            kinds = [kind for _, _, kind in items]
+            first_store = kinds.index("store") if "store" in kinds else None
+            first_load = kinds.index("load") if "load" in kinds else None
+            self.assertIsNotNone(first_store, f"{name} 在 main() 里从未被赋值")
+            if first_load is not None:
+                self.assertLess(first_store, first_load,
+                                f"{name} 在赋值前就被引用（先用后赋值）")
+
+
 class ScheduleTests(unittest.TestCase):
     """阶段划分是纯算术，必须离线可测。
 
@@ -260,6 +292,41 @@ class CoastPredictionTests(unittest.TestCase):
         self.assertLess(0.8 - self._predict(1.0, 0.016), 0.0)
         self.assertLess(1.0 - self._predict(1.0, 0.016), 0.0)
         self.assertGreater(0.8 - self._predict(1.0, 0.032), 0.2)
+
+    def test_mass_scale_factor(self):
+        self.assertEqual(tow_drag.mass_scale_factor(None, 10.0), 1.0)
+        self.assertEqual(tow_drag.mass_scale_factor(20.0, 10.0), 2.0)
+        self.assertEqual(tow_drag.mass_scale_factor(5.0, 10.0), 0.5)
+        for bad in (0.0, -1.0, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                tow_drag.mass_scale_factor(bad, 10.0)
+        with self.assertRaises(ValueError):
+            tow_drag.mass_scale_factor(None, 0.0)
+
+    def test_coast_distance_scales_with_mass(self):
+        """质量与惯量同比例缩放 ⇒ m_eff 同比例 ⇒ 滑行距离也同比例。"""
+        base = self._predict(0.5, 0.016)
+        doubled = tow_drag.predicted_coast_distance(
+            0.5, 0.016, cart_mass_kg=20.0, wheel_inertia_kgm2=0.00128 * 2,
+            wheel_radius_m=0.08)
+        self.assertAlmostEqual(doubled, base * 2, places=9)
+
+    def test_heavy_cart_needs_longer_rope_or_more_damping(self):
+        """重量扫描的耦合：20 kg 时默认 L0=0.8/b=0.016 会追到机器人。
+
+        这决定扫描命令怎么写：要么加 --wheel-damping 0.032，要么加长 --rope-length。
+        """
+        def margin(mass, damping, rope=0.8):
+            scale = mass / 10.0
+            coast = tow_drag.predicted_coast_distance(
+                0.5, damping, cart_mass_kg=10.0 * scale, wheel_inertia_kgm2=0.00128 * scale,
+                wheel_radius_m=0.08)
+            return rope - coast
+        self.assertGreater(margin(5.0, 0.016), 0.5)
+        self.assertGreater(margin(10.0, 0.016), 0.2)
+        self.assertLess(margin(20.0, 0.016), 0.0)          # 会追尾
+        self.assertGreater(margin(25.0, 0.032), 0.1)       # 加大轮阻后安全
+        self.assertGreater(margin(25.0, 0.016, rope=1.5), 0.1)   # 或加长绳
 
     def test_below_stop_speed_predicts_zero(self):
         self.assertEqual(self._predict(0.02, 0.016), 0.0)

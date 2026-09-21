@@ -59,6 +59,16 @@ def parse_args(argv=None):
                         help="每个车轮的轴承阻力 b，N·m·s/rad（P2 的候选值之一）")
     parser.add_argument("--spawn-height", type=float, default=None,
                         help="机器人初始高度，m；默认用 towing_env_cfg.ROBOT_SPAWN_HEIGHT_M")
+    parser.add_argument("--cart-mass", type=float, default=None,
+                        help="小车的目标总质量，kg（缺省用 URDF 的名义 10 kg）。"
+                             "**质量与惯量按同一比例一起缩放**（AGENTS.md：只改质量不改惯量"
+                             "会造成模型不自洽）⇒ 几何与质心位置不变、轮半径不变。"
+                             "注意 m_eff 随质量线性增长，滑行距离也随之增长：默认 L0=0.8、"
+                             "b=0.016 时 15 kg 只剩 +0.02 m 余量、20 kg 起会追到机器人")
+    parser.add_argument("--ground-friction", type=float, default=0.8,
+                        help="地面静/动摩擦系数（两者取同值），默认 0.8 与 P1/P2 一致。"
+                             "注意：**轮子滚动时摩擦不耗散能量**，停车距离由轮轴阻力 b 决定，"
+                             "所以改摩擦主要影响起步/打滑等瞬态，而不是滑行距离")
     parser.add_argument("--cart-drop", type=float, default=0.03,
                         help="小车生成时离地高度，m（P1/P2 用 0.03 落定；精确贴地会产生接触自漂）")
     parser.add_argument("--dt", type=float, default=0.005)
@@ -97,6 +107,11 @@ def parse_args(argv=None):
         parser.error("--spawn-height must be finite and positive")
     if not math.isfinite(args.cart_drop) or not 0.0 <= args.cart_drop <= 0.1:
         parser.error("--cart-drop must be in [0, 0.1] m")
+    if args.cart_mass is not None and (not math.isfinite(args.cart_mass)
+                                       or not 2.0 <= args.cart_mass <= 50.0):
+        parser.error("--cart-mass must be in [2, 50] kg")
+    if not math.isfinite(args.ground_friction) or not 0.0 < args.ground_friction <= 2.0:
+        parser.error("--ground-friction must be in (0, 2]")
     return args
 
 
@@ -182,6 +197,21 @@ def make_schedule(*, settle_steps: int, duration: float, stop_at: float | None,
                          coast_steps=coast_steps, dt=dt)
 
 
+def mass_scale_factor(target_total_kg: float | None, nominal_total_kg: float) -> float:
+    """目标总质量相对名义值的缩放比例（质量与惯量按同一比例一起缩放）。
+
+    只缩质量不缩惯量会让模型不自洽（AGENTS.md 的模型约定），所以这里只给出**一个**比例，
+    由调用方同时乘到 masses 与 inertias 上；质心位置与轮半径都不变。
+    """
+    if not math.isfinite(nominal_total_kg) or nominal_total_kg <= 0:
+        raise ValueError("名义总质量必须为有限正数")
+    if target_total_kg is None:
+        return 1.0
+    if not math.isfinite(target_total_kg) or target_total_kg <= 0:
+        raise ValueError("目标质量必须为有限正数")
+    return target_total_kg / nominal_total_kg
+
+
 def predicted_coast_distance(initial_speed: float, wheel_damping: float, *,
                              cart_mass_kg: float, wheel_inertia_kgm2: float,
                              wheel_radius_m: float, stop_speed: float = 0.02) -> float:
@@ -254,6 +284,9 @@ def main(args):
         cart_cfg, model = make_cart_cfg(output / "usd", drop_height=args.cart_drop)
         cart_attachment = tuple(model["attachment_position_m"])
         robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
+        # 计划期（plan-time）的标量都在这里一次算好，避免后面「先用后赋值」：
+        # 之前 stop_steps 与 scale 各踩过一次（main() 只有跑仿真才执行，离线测试抓不到）。
+        scale = mass_scale_factor(args.cart_mass, model["total_mass_kg"])
         cart_cfg.init_state.pos = (
             initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
                            cart_height=model["resting_height_m"],
@@ -264,8 +297,9 @@ def main(args):
         # 参数组合（L0 / 速度 / 轮阻）必须一起看：v=1.0 m/s、b=0.016 时滑行 1.06 m，
         # L0=1.0 就已经会撞。这里只警告不拦——计划 P6 本来就想观察「追尾」现象。
         predicted_coast = predicted_coast_distance(
-            args.velocity, args.wheel_damping, cart_mass_kg=model["total_mass_kg"],
-            wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1],
+            args.velocity, args.wheel_damping,
+            cart_mass_kg=model["total_mass_kg"] * scale,
+            wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1] * scale,
             wheel_radius_m=model["wheel_radius_m"])
         predicted_gap = args.rope_length - predicted_coast
         print(f"[PLAN] L0={args.rope_length:g} m, v={args.velocity:g} m/s, b={args.wheel_damping:g} "
@@ -275,11 +309,15 @@ def main(args):
         sim_cfg = sim_utils.SimulationCfg(
             dt=args.dt, device=args.device,
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=0.8, dynamic_friction=0.8, restitution=0.0,
-                friction_combine_mode="average", restitution_combine_mode="min"))
+                static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
+                restitution=0.0, friction_combine_mode="average", restitution_combine_mode="min"))
         sim = sim_utils.SimulationContext(sim_cfg)
         sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
         scene_cfg = TowSceneCfg(num_envs=1, env_spacing=6.0, cart=cart_cfg)
+        # 地面材质也要在构造场景之前改（与 init_state 同理：构造时才会读配置建 prim）
+        ground = scene_cfg.ground.spawn.physics_material
+        ground.static_friction = args.ground_friction
+        ground.dynamic_friction = args.ground_friction
         # 机器人初始位姿必须在 **构造 InteractiveScene 之前** 写进配置：场景在构造时就把
         # 资产按 init_state 摆好，之后再改 cfg 不会生效（`--spawn-height` 会被静默忽略）。
         scene_cfg.robot.init_state.pos = (0.0, 0.0, spawn_height)
@@ -287,6 +325,19 @@ def main(args):
                                                         policy_cfg.default_dof_pos))
         scene = InteractiveScene(scene_cfg)
         sim.reset()
+        # 质量/惯量一起缩放（在 sim.reset() 之后**应用**，保证 PhysX 已初始化）
+        if scale != 1.0:
+            masses = cart.root_physx_view.get_masses().clone()
+            inertias = cart.root_physx_view.get_inertias().clone()
+            cart.root_physx_view.set_masses(masses * scale, torch.arange(cart.num_instances, dtype=torch.int, device="cpu"))
+            cart.root_physx_view.set_inertias(inertias * scale, torch.arange(cart.num_instances, dtype=torch.int, device="cpu"))
+            scene.update(dt)
+            actual = float(cart.root_physx_view.get_masses().sum())
+            if abs(actual - args.cart_mass) > 1e-3 * args.cart_mass:
+                raise RuntimeError(f"缩放后总质量 {actual:.6f} kg 与目标 {args.cart_mass} kg 不符")
+            print(f"[MASS] 小车质量 {model['total_mass_kg']:.3f} → {actual:.3f} kg"
+                  f"（质量与惯量同比例 ×{scale:.4f}）", flush=True)
+
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
         dt = sim.get_physics_dt()
         if not math.isclose(dt, args.dt, rel_tol=1e-6):
@@ -410,6 +461,11 @@ def main(args):
             "rope": {"rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
                      "damping_ns_per_m": args.damping, "initial_slack_m": args.slack},
             "wheel_damping_nms_per_rad": args.wheel_damping, "user_command_mps": args.velocity,
+            "cart_mass_target_kg": args.cart_mass,
+            "cart_mass_scale": scale,
+            "cart_mass_actual_kg": (float(cart.root_physx_view.get_masses().sum())
+                                    if scale != 1.0 else model["total_mass_kg"]),
+            "ground_friction": args.ground_friction,
             "predicted_coast_distance_m": predicted_coast,
             "predicted_min_gap_m": predicted_gap,
             "prediction_note": "由 P2 验收过的黏性衰减解析式 D = v0*tau*(1-v_stop/v0)，"
@@ -485,6 +541,9 @@ def main(args):
               f"d={summary['steady_distance_m']:.4f} m "
               f"发力@+{summary['takeup_time_s']:.2f}s/走了{summary['takeup_robot_travel_m']:.3f}m "
               f"站定小车漂移={summary['settle_load_drift_m']:+.3f} m "
+              f"| 最小间距={summary['min_gap_after_tow_start_m']:.3f} m "
+              f"最终间距={summary['final_gap_m']:.3f} m "
+              f"追尾={'是' if summary['caught_up'] else '否'} "
               f"valid={summary['valid']} failures={summary['failures']}", flush=True)
         if application is not None:
             application.close()
