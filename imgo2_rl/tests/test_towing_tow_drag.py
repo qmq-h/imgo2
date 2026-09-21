@@ -774,6 +774,23 @@ class InterfaceContractTests(unittest.TestCase):
                          "env0=(0.00,0.00), env1=(6.00,6.00)")
         self.assertEqual(tow_drag.format_env_origins([[1.234, 5.678, 9.0]]), "env0=(1.23,5.68)")
 
+    def test_run_manifest_is_not_shadowed_by_the_case_config(self):
+        """运行级清单（`experiment.json`）必须装的是**命令/版本/状态**，不能被 case config 顶替。
+
+        回归（2026-09-21）：多环境补丁里逐 env 循环的局部变量也叫 `manifest`，遮蔽了运行级
+        清单 ⇒ `experiment.json` 被写成 case config，`arguments`/`git`/`python` 全丢——
+        而 `arguments` 正是「这个 run 是用什么命令跑的」的唯一记录（case 目录里还有关键参数，
+        但完整命令没了）。实测两个 run（112517Z、112918Z）中招。
+        """
+        self.assertIn("experiment_manifest = {", self.source)
+        self.assertIn('json_file(output / "experiment.json", experiment_manifest)', self.source)
+        self.assertIn("case_manifest = case_config(", self.source)
+        self.assertIn("recorders.append(TowRecorder(case_dir, case_manifest))", self.source)
+        # 逐 env 循环里不得再出现裸 `manifest = `
+        loop = self.source[self.source.index("for env_index, env_name in enumerate(env_names)"):]
+        loop = loop[:loop.index("for step in range(")]
+        self.assertNotIn("\n                manifest = ", loop)
+
     def test_multi_env_does_not_repeat_the_case_per_model(self):
         """回归：多环境时绳索模型是**逐 env** 维度，不能再当 case 维度。
 
@@ -944,7 +961,7 @@ class InterfaceContractTests(unittest.TestCase):
         第一版两边都建目录，实跑报 FileExistsError（自己撞自己）。这条把职责固定住。
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
-        self.assertIn("recorders.append(TowRecorder(case_dir, manifest))", self.source)
+        self.assertIn("recorders.append(TowRecorder(case_dir, case_manifest))", self.source)
         self.assertIn("case_config(case, case_scale,", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")

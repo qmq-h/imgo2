@@ -390,9 +390,13 @@ def main(args):
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False, default=str) + "\n",
                         encoding="utf-8")
 
-    manifest = {"state": "starting", "arguments": vars(args), "git": git_info(),
-                "python": platform.python_version()}
-    json_file(output / "experiment.json", manifest)
+    # 名字要区分清楚：`experiment_manifest` 是**运行级**清单（命令/版本/状态），
+    # `case_manifest` 是逐 case/逐 env 的实验配置。上一版两者都叫 `manifest`，
+    # 逐 env 循环里的赋值把运行级清单**遮蔽**了 ⇒ `experiment.json` 被写成 case config，
+    # 丢掉 `arguments`/`git`/`python`（2026-09-21 实测：run 112517Z 与 112918Z）。
+    experiment_manifest = {"state": "starting", "arguments": vars(args), "git": git_info(),
+                           "python": platform.python_version()}
+    json_file(output / "experiment.json", experiment_manifest)
     print(f"[INFO] Output: {output}", flush=True)
 
     application = None
@@ -767,7 +771,7 @@ def main(args):
                                    "非零即机器人压上来）；cart_wheel_fx_n 为四轮同类分量之和",
                 "torque_convention": "rope force and wheel torque are computed from the state at the start of each step",
                 "sweep": {"cases": sweep_records(cases)},
-                "git": manifest["git"],
+                "git": experiment_manifest["git"],
             }
 
         def reset_case(mass_target, case_scale):
@@ -815,12 +819,12 @@ def main(args):
                                                case.cart_mass, case.wheel_damping,
                                                model["total_mass_kg"], env_name)
                 case_dir.mkdir(parents=True, exist_ok=False)
-                manifest = case_config(case, case_scale, prediction.coast_m,
-                                       prediction.min_gap_m, env_name, env_index)
+                case_manifest = case_config(case, case_scale, prediction.coast_m,
+                                           prediction.min_gap_m, env_name, env_index)
                 env_dirs.append(case_dir.name)
                 labels.append(f"env{env_index}:{env_name}")
-                manifests.append(manifest)
-                recorders.append(TowRecorder(case_dir, manifest))
+                manifests.append(case_manifest)
+                recorders.append(TowRecorder(case_dir, case_manifest))
             case_dirs.extend(env_dirs)
             print(f"[CASE {case_index}] 小车 {actual_mass:.3f} kg b={case.wheel_damping:g} ⇒ "
                   f"{', '.join(env_dirs)}", flush=True)
@@ -925,8 +929,8 @@ def main(args):
                                "rope_models": args.rope_model,
                                "stop_at": args.stop_at, "duration": args.duration}}
         json_file(output / "sweep.json", sweep)
-        manifest.update(state="completed", valid=all_valid, cases=case_dirs)
-        json_file(output / "experiment.json", manifest)
+        experiment_manifest.update(state="completed", valid=all_valid, cases=case_dirs)
+        json_file(output / "experiment.json", experiment_manifest)
         print(f"[SWEEP] {len(results)} 个 case，all_valid={all_valid} ⇒ {output}", flush=True)
         # 结束方式与失败路径一致：**不依赖 `application.close()` 让进程退出**。
         # 实测（2026-09-21，friction 扫描）跑完后 summary.json 与 sweep.json 都已写好、
@@ -938,8 +942,8 @@ def main(args):
         sys.stderr.flush()
         os._exit(0 if all_valid else 2)
     except (Exception, KeyboardInterrupt) as exc:
-        manifest.update(state="failed", error=f"{type(exc).__name__}: {exc}")
-        json_file(output / "experiment.json", manifest)
+        experiment_manifest.update(state="failed", error=f"{type(exc).__name__}: {exc}")
+        json_file(output / "experiment.json", experiment_manifest)
         if recorder is not None:
             recorder.close()
         print(f"[FAILED] {type(exc).__name__}: {exc}", flush=True)
