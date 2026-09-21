@@ -34,6 +34,7 @@ def _row(t, phase, cmd, vR, vL, tension, *, dist=1.001, pitch=0.05, z=0.284,
 def _run(*, command=0.5, dt=0.005, settle_s=1.0, tow_s=5.0, coast_s=0.0, takeup_s=0.1,
          tension=lambda t: 5.0, settle_peak_tension=0.0, robot_vx=lambda t: 0.5,
          load_vx=lambda t: 0.5, pitch=0.05, settle_load_vx=0.0, with_phase=True,
+         settle_robot_vx=0.0,
          coast_robot_vx=lambda t: 0.0, coast_load_vx=lambda t: 0.5,
          coast_tension=lambda t: 0.0, coast_gap=lambda t: 0.5):
     """合成一条拖动轨迹：station（站定）→ tow（拖曳）→ 可选 coast（指令归零滑行）。"""
@@ -54,7 +55,7 @@ def _run(*, command=0.5, dt=0.005, settle_s=1.0, tow_s=5.0, coast_s=0.0, takeup_
 
     for _ in range(int(round(settle_s / dt))):
         # 站定阶段绳本应松弛；settle_peak_tension 用来模拟「被出生窜动拉直」
-        add("station", 0.0, 0.0, settle_load_vx, settle_peak_tension, t, z=0.30)
+        add("station", 0.0, settle_robot_vx, settle_load_vx, settle_peak_tension, t, z=0.30)
     for _ in range(int(round(tow_s / dt))):
         el = t - settle_s + dt
         add("tow", command, robot_vx(el), load_vx(el), 0.0 if el < takeup_s else tension(el),
@@ -152,6 +153,21 @@ class StationPhaseTests(unittest.TestCase):
         summary = summarize_tow(_run(settle_peak_tension=0.0), user_command=0.5)
         self.assertEqual(summary["settle_max_tension_n"], 0.0)
         self.assertNotIn("rope_taut_during_settle", summary["failures"])
+
+    def test_robot_lurching_during_settle_fails(self):
+        """出生高度不当会让机器人自己窜出去（实测 0.30 m 出生窜了 0.994 m，把绳拉直后翻倒）。
+
+        0.35 m 出生两次实跑都是 0.044 m，所以阈值 0.15 m 能把两者干净分开。"""
+        ok = summarize_tow(_run(settle_robot_vx=0.044), user_command=0.5)
+        self.assertNotIn("robot_lurches_during_settle", ok["failures"])
+        bad = summarize_tow(_run(settle_robot_vx=1.0), user_command=0.5)
+        self.assertGreater(bad["settle_robot_travel_m"], 0.15)
+        self.assertIn("robot_lurches_during_settle", bad["failures"])
+        self.assertFalse(bad["valid"])
+
+    def test_settle_robot_travel_is_reported(self):
+        summary = summarize_tow(_run(settle_robot_vx=0.044), user_command=0.5)
+        self.assertAlmostEqual(summary["settle_robot_travel_m"], 0.044, delta=0.005)
 
     def test_small_settle_tension_below_threshold_is_tolerated(self):
         summary = summarize_tow(_run(settle_peak_tension=0.5), user_command=0.5)

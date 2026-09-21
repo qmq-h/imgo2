@@ -38,6 +38,7 @@ TAIL_SLACK_LIMIT = 0.05
 PITCH_LIMIT_RAD = 0.6
 SETTLE_TENSION_LIMIT_N = 1.0   # station 阶段张力超过此值 ⇒ 初始松弛量不够
 STOP_ROBOT_VX_FRACTION = 0.2   # coast 段末机器人 vx 应降到指令的 20% 以下
+SETTLE_ROBOT_TRAVEL_LIMIT_M = 0.15   # station 段机器人位移超过此值 ⇒ 启动窜动过大
 
 
 def _mean(values):
@@ -114,6 +115,10 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
                                         if station_rows else None),
         "settle_load_drift_m": (float(station_rows[-1]["load_x_m"]) - float(station_rows[0]["load_x_m"])
                                 if station_rows else None),
+        # station 段机器人自己走了多少：出生窜动超过松弛量就会把绳拉直（实测 0.46 m 时
+        # 直接把机器人拽翻），所以这是选出生高度/松弛量的关键读数
+        "settle_robot_travel_m": (float(station_rows[-1]["robot_x_m"]) - float(station_rows[0]["robot_x_m"])
+                                  if station_rows else None),
         "settle_max_abs_load_vx_mps": (max(abs(v) for v in _col(station_rows, "load_vx_mps"))
                                        if station_rows else None),
     }
@@ -154,10 +159,13 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION):
         })
 
     failures = []
-    # ---- station：绳不得被拉直（初始松弛量要够）
+    # ---- station：绳不得被拉直（初始松弛量要够），且机器人不应自己窜出去
     if summary["settle_max_tension_n"] is not None and \
             summary["settle_max_tension_n"] > SETTLE_TENSION_LIMIT_N:
         failures.append("rope_taut_during_settle")
+    if summary["settle_robot_travel_m"] is not None and \
+            abs(summary["settle_robot_travel_m"]) > SETTLE_ROBOT_TRAVEL_LIMIT_M:
+        failures.append("robot_lurches_during_settle")
     # ---- tow
     if abs(summary["steady_speed_gap_mps"]) > SPEED_GAP_LIMIT_MPS:
         failures.append("robot_and_load_speeds_differ")
