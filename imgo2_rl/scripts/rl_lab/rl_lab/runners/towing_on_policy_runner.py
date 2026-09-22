@@ -91,6 +91,15 @@ class TowingOnPolicyRunner:
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         if self.log_dir is not None and self.writer is None:
             self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
+        # 启动行：Isaac Sim 起来 + 第一轮采集完要等一会儿（256 环境约 2.5 分钟），
+        # 中间完全没有输出会让人误判成卡住。这条先说明「已开始、写到哪、跑多少轮」。
+        print(
+            f"[towing] 开始训练 | envs={self.env.num_envs} | "
+            f"iterations={num_learning_iterations} | steps/env={self.num_steps_per_env} | "
+            f"save_interval={self.save_interval} | log_dir={self.log_dir or '(不落盘)'}\n"
+            f"[towing] 第一条进度需等环境首次 rollout 完成，请勿在此期间判断为卡死。",
+            flush=True,
+        )
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length))
@@ -132,8 +141,16 @@ class TowingOnPolicyRunner:
 
                     self.alg.process_env_step(rewards, dones, infos)
                     self.decoder_hidden = reset_gru_hidden(self.decoder_hidden, dones.bool())
+                    # Isaac Lab 的 ``ManagerBasedRLEnv`` 把 RewardManager／TerminationManager
+                    # 的回合统计写在 ``extras["log"]`` 里（`Episode_Reward/*`、
+                    # `Episode_Termination/*`），**不是** ``extras["episode"]``。只读后者会让
+                    # 这些量一个都进不了 TensorBoard（2026-09-22 4 环境冒烟即如此：日志里只有
+                    # 8 个标量，没有任何 reward 分项与终止原因）。此处按官方 rsl_rl runner
+                    # 的同样顺序兼容两个键。
                     if "episode" in infos:
                         episode_infos.append(infos["episode"])
+                    elif "log" in infos:
+                        episode_infos.append(infos["log"])
                     current_rewards += rewards
                     current_lengths += 1
                     ended = (dones > 0).nonzero(as_tuple=False).flatten()
@@ -155,12 +172,14 @@ class TowingOnPolicyRunner:
             )
             learn_time = time.time() - learn_start
 
-            if self.writer is not None:
-                self._log(
-                    iteration, total_iter, collection_time, learn_time,
-                    value_loss, surrogate_loss, decoder_loss,
-                    reward_buffer, length_buffer, episode_infos,
-                )
+            # **无条件**调用：`_log` 内部自己判断 writer 是否可用。此前整块藏在
+            # `if self.writer is not None` 里，一旦 writer 没建起来就一行进度都不出，
+            # 看起来像卡死（用户 2026-09-22 据此误判为「运行很慢」）。
+            self._log(
+                iteration, total_iter, collection_time, learn_time,
+                value_loss, surrogate_loss, decoder_loss,
+                reward_buffer, length_buffer, episode_infos, start_iter,
+            )
             if self.log_dir is not None and iteration % self.save_interval == 0:
                 self.save(os.path.join(self.log_dir, f"model_{iteration}.pt"))
 
@@ -168,32 +187,98 @@ class TowingOnPolicyRunner:
         if self.log_dir is not None:
             self.save(os.path.join(self.log_dir, f"model_{total_iter}.pt"))
 
-    def _log(
-        self, iteration, total_iter, collection_time, learn_time,
-        value_loss, surrogate_loss, decoder_loss,
-        reward_buffer, length_buffer, episode_infos,
-    ):
-        self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
-        self.tot_time += collection_time + learn_time
+    @staticmethod
+    def _aggregate_episode_infos(episode_infos):
+        """把逐步收集的 episode 统计按键聚合成一份（标量取均值）。
+
+        ``episode_infos`` 是 rollout 内**每一步**只要有环境 reset 就追加一条
+        ``infos["log"]``，48 步 × 多环境会累积几十份字典。逐份打印会把同一批指标刷屏
+        （2026-09-22 实测：每次 _log 打印上百行同名列，用户报告「每个环境都输出了一条」）。
+        聚合成一份后，每次迭代每个指标只输出一行。
+        """
+        values = {}
+        for info in episode_infos:
+            for key, value in info.items():
+                value = value if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+                values.setdefault(key, []).append(value.float().mean().item())
+        return {key: statistics.mean(vals) for key, vals in values.items()}
+
+    def _write_scalars(self, iteration, collection_time, learn_time, value_loss,
+                       surrogate_loss, decoder_loss, mean_std, fps, reward_buffer,
+                       length_buffer, episode_stats):
+        # 只在 TensorBoard writer 可用时写；**控制台输出不走这里**，见 `_log`。
         self.writer.add_scalar("Loss/value_function", value_loss, iteration)
         self.writer.add_scalar("Loss/surrogate", surrogate_loss, iteration)
         self.writer.add_scalar("Loss/decoder", decoder_loss.item(), iteration)
-        self.writer.add_scalar("Policy/mean_noise_std", self.alg.actor_critic.std.mean().item(), iteration)
+        self.writer.add_scalar("Policy/mean_noise_std", mean_std, iteration)
+        self.writer.add_scalar("Perf/total_fps", fps, iteration)
         self.writer.add_scalar("Perf/collection_time", collection_time, iteration)
         self.writer.add_scalar("Perf/learning_time", learn_time, iteration)
         if reward_buffer:
             self.writer.add_scalar("Train/mean_reward", statistics.mean(reward_buffer), iteration)
             self.writer.add_scalar("Train/mean_episode_length", statistics.mean(length_buffer), iteration)
-        for info in episode_infos:
-            for key, value in info.items():
-                value = value if isinstance(value, torch.Tensor) else torch.as_tensor(value)
-                self.writer.add_scalar(f"Episode/{key}", value.float().mean().item(), iteration)
-        print(
-            f"iteration {iteration}/{total_iter} | reward "
-            f"{statistics.mean(reward_buffer) if reward_buffer else 0.0:.3f} | "
-            f"value {value_loss:.4f} | policy {surrogate_loss:.4f} | "
-            f"decoder {decoder_loss.item():.4f}"
-        )
+        for key, value in episode_stats.items():
+            self.writer.add_scalar(f"Episode/{key}", value, iteration)
+
+    def _format_progress(self, iteration, total_iter, collection_time, learn_time,
+                         value_loss, surrogate_loss, decoder_loss, mean_std, fps,
+                         reward_buffer, length_buffer, episode_stats, start_iter):
+        """控制台排版对齐 `rl_lab/runners/ppo_on_policy_runner.py::log()`。
+
+        ETA 分母用 `iteration - start_iter + 1`：resume 时 tot_time 只累计本次运行的时间。
+        """
+        width, pad = 80, 26
+        lines = [
+            "#" * width,
+            f" Learning iteration {iteration}/{total_iter} ".center(width, " "),
+            "",
+            f"{'Computation:':>{pad}} {fps:.0f} steps/s "
+            f"(collection: {collection_time:.3f}s, learning: {learn_time:.3f}s)",
+            f"{'Value function loss:':>{pad}} {value_loss:.4f}",
+            f"{'Surrogate loss:':>{pad}} {surrogate_loss:.4f}",
+            f"{'Mean decoder loss:':>{pad}} {decoder_loss.item():.4f}",
+            f"{'Mean action noise std:':>{pad}} {mean_std:.2f}",
+        ]
+        if reward_buffer:
+            lines.append(f"{'Mean reward:':>{pad}} {statistics.mean(reward_buffer):.2f}")
+            lines.append(f"{'Mean episode length:':>{pad}} {statistics.mean(length_buffer):.2f}")
+        else:
+            lines.append(f"{'Mean reward:':>{pad}} (本批尚无回合结束)")
+        # 每个指标一行；episode_stats 已聚合，不会重复打印同名列。
+        for key, value in episode_stats.items():
+            lines.append(f"{key + ':':>{pad}} {value:.4f}")
+
+        avg_iter_s = self.tot_time / (iteration - start_iter + 1)
+        eta_s = avg_iter_s * (total_iter - iteration)
+        lines += [
+            "-" * width,
+            f"{'Total timesteps:':>{pad}} {self.tot_timesteps}",
+            f"{'Iteration time:':>{pad}} {collection_time + learn_time:.2f}s",
+            f"{'Avg iteration:':>{pad}} {avg_iter_s:.2f}s",
+            f"{'Total time:':>{pad}} {self.tot_time:.2f}s ({self.tot_time / 3600:.2f}h)",
+            f"{'ETA:':>{pad}} {eta_s:.1f}s ({eta_s / 3600:.2f}h)",
+        ]
+        return "\n".join(lines)
+
+    def _log(
+        self, iteration, total_iter, collection_time, learn_time,
+        value_loss, surrogate_loss, decoder_loss,
+        reward_buffer, length_buffer, episode_infos, start_iter,
+    ):
+        self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
+        self.tot_time += collection_time + learn_time
+        fps = self.tot_timesteps / self.tot_time if self.tot_time > 0 else 0.0
+        mean_std = self.alg.actor_critic.std.mean().item()
+        episode_stats = self._aggregate_episode_infos(episode_infos)
+        # TensorBoard 写入是可选路径，控制台输出是必须路径，两者不共用条件。
+        if self.writer is not None:
+            self._write_scalars(iteration, collection_time, learn_time, value_loss,
+                                surrogate_loss, decoder_loss, mean_std, fps,
+                                reward_buffer, length_buffer, episode_stats)
+        print(self._format_progress(iteration, total_iter, collection_time, learn_time,
+                                    value_loss, surrogate_loss, decoder_loss, mean_std,
+                                    fps, reward_buffer, length_buffer, episode_stats,
+                                    start_iter), flush=True)
 
     def save(self, path, infos=None):
         torch.save({

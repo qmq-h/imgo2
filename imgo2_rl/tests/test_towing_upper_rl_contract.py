@@ -3,6 +3,8 @@
 import ast
 import importlib.util
 from pathlib import Path
+import re
+import statistics
 import sys
 import unittest
 
@@ -72,9 +74,232 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(logic.scheduled_command(2.0, 0.7, tow_start_s=1.0, stop_time_s=5.0), 0.7)
         self.assertEqual(logic.scheduled_command(5.0, 0.7, tow_start_s=1.0, stop_time_s=5.0), 0.0)
 
-    def test_environment_is_not_registered_before_physics_adapter_is_complete(self):
+    def _registered_entry_points(self):
+        """Parse the towing registry block and resolve the two config entry points."""
         source = (PKG / "__init__.py").read_text("utf-8")
-        self.assertNotIn("Imgo2-towing-upper", source)
+        env_match = re.search(
+            r'"env_cfg_entry_point"\s*:\s*f"\{__name__\}\.'
+            r'([A-Za-z_][\w.]*):([A-Za-z_]\w*)"',
+            source,
+        )
+        agent_match = re.search(
+            r'"([A-Za-z_][\w]*)_cfg_entry_point"\s*:\s*f"\{agents\.__name__\}\.'
+            r'([A-Za-z_][\w.]*):([A-Za-z_]\w*)"',
+            source,
+        )
+        self.assertIsNotNone(env_match, "注册块缺少 env_cfg_entry_point")
+        self.assertIsNotNone(agent_match, "注册块缺少 agent cfg entry point")
+        env_module, env_class = env_match.group(1), env_match.group(2)
+        agent_key, agent_module, agent_class = agent_match.groups()
+
+        def resolves(relative_module, class_name):
+            path = PKG / (relative_module.replace(".", "/") + ".py")
+            if not path.exists():
+                return False
+            names = {node.name for node in ast.walk(ast.parse(path.read_text("utf-8")))
+                     if isinstance(node, ast.ClassDef)}
+            return class_name in names
+
+        return env_module, env_class, agent_key, agent_module, agent_class, resolves
+
+    def _train_agent_default(self):
+        train = (RL / "scripts/rl_lab/towing/train.py").read_text("utf-8")
+        default_agent = re.search(r'"--agent",\s*type=str,\s*default="([^"]+)"', train)
+        self.assertIsNotNone(default_agent, "train.py 未声明 --agent 默认值")
+        return default_agent.group(1)
+
+    def test_registry_entry_points_resolve_and_match_the_train_agent_name(self):
+        env_module, env_class, agent_key, agent_module, agent_class, resolves = \
+            self._registered_entry_points()
+        self.assertEqual((env_module, env_class), ("upper_env_cfg", "UpperTowingEnvCfg"))
+        self.assertTrue(resolves(env_module, env_class))
+        self.assertTrue(resolves(f"agents.{agent_module}", agent_class))
+        # The task is driven by the repository-owned rl_lab stack, not an external RSL-RL runner.
+        self.assertEqual(agent_key, "rl_lab")
+        # load_cfg_from_registry 把 --agent 的值当**完整注册键**查表，不做后缀推导
+        # （官方入口默认 "rsl_rl_cfg_entry_point"），所以默认值必须是完整键名。
+        self.assertEqual(self._train_agent_default(), f"{agent_key}_cfg_entry_point")
+
+    def test_train_agent_default_is_a_full_registry_key(self):
+        """回归守卫：--agent 必须是完整注册键，不能是去掉后缀的 ``rl_lab``。
+
+        2026-09-22 冒烟实遇
+        ``ValueError: Could not find configuration ... entry point: 'rl_lab'``：
+        默认值曾被写成去后缀的名字，而 ``load_cfg_from_registry`` 是拿该值**原样**在注册
+        kwargs 里查，只有完整键名能解析。
+        """
+        default_agent = self._train_agent_default()
+        self.assertTrue(
+            default_agent.endswith("_cfg_entry_point"),
+            f"--agent 必须是完整注册键（形如 'rl_lab_cfg_entry_point'），当前为 {default_agent!r}")
+        self.assertNotEqual(default_agent, "rl_lab")
+        _, _, agent_key, _, _, _ = self._registered_entry_points()
+        self.assertEqual(default_agent, f"{agent_key}_cfg_entry_point")
+
+    def test_towing_runner_log_gets_start_iter(self):
+        """回归守卫：``_log`` 必须把 ``start_iter`` 作为形参，且调用处要传。
+
+        2026-09-22 实跑崩在 ``_log`` 里的 ``NameError: name 'start_iter' is not defined``——
+        ``start_iter`` 是 ``learn()`` 的局部变量，``_log()`` 取不到；ETA 计算依赖它。
+        该错误只在训练跑到 ``_log`` 时才暴露，静态断言成本更低。
+        """
+        path = RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py"
+        tree = ast.parse(path.read_text("utf-8"))
+        log_fn = next((n for n in ast.walk(tree)
+                       if isinstance(n, ast.FunctionDef) and n.name == "_log"), None)
+        self.assertIsNotNone(log_fn, "未找到 _log")
+        params = [a.arg for a in log_fn.args.args]
+        self.assertIn("start_iter", params, "_log 形参缺少 start_iter")
+        self.assertIn("iteration", params)
+        self.assertIn("total_iter", params)
+        call = next((n for n in ast.walk(tree)
+                     if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "_log"), None)
+        self.assertIsNotNone(call, "未找到 _log 的调用处")
+        self.assertEqual(len(call.args), len(params) - 1,
+                         f"_log 调用实参 {len(call.args)} 个，形参 {len(params) - 1} 个")
+
+    def test_episode_infos_are_aggregated_before_logging(self):
+        """回归守卫：同名的 episode 指标只能输出一行。
+
+        ``episode_infos`` 是 rollout 内**每一步**有环境 reset 就追加一份 ``infos["log"]``，
+        48 步会累积几十份同键字典。2026-09-22 用户实测看到「每个环境都输出了一条」：
+        旧的日志拼接对每份字典逐条打印，90 行同名指标刷屏。修复是按键聚合后只打印一份。
+        """
+        path = RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py"
+        tree = ast.parse(path.read_text("utf-8"))
+        names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        self.assertIn("_aggregate_episode_infos", names,
+                      "缺少 episode 统计聚合函数；直接逐份遍历会刷屏")
+        # 聚合函数必须是 staticmethod 且接受 episode_infos
+        agg = next(n for n in ast.walk(tree)
+                   if isinstance(n, ast.FunctionDef) and n.name == "_aggregate_episode_infos")
+        self.assertEqual([a.arg for a in agg.args.args], ["episode_infos"])
+        self.assertTrue(any(isinstance(d, ast.Name) and d.id == "staticmethod"
+                            for d in agg.decorator_list),
+                        "_aggregate_episode_infos 应为 staticmethod")
+
+    @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
+    def test_aggregation_writes_each_episode_scalar_once(self):
+        """端到端：用真实 SummaryWriter 确认同一 (tag, step) 只写一次。
+
+        旧代码对 `episode_infos` 逐份遍历写 TensorBoard，而该列表在 48 步 rollout 里会累积
+        ~48 份同键字典 ⇒ 每个指标在每个 step 被重复写 48 次（2026-09-22 实测 tfevents：
+        `tracking_velocity` 单轮多出 940 条重复）。修复后应恰好 1 次。
+        """
+        import tempfile
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        path = RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py"
+        source = path.read_text("utf-8")
+        # 只取聚合函数与写入函数，避免触发 rl_lab / isaaclab 的导入链
+        tree = ast.parse(source)
+        wanted = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+        cls = next(c for c in wanted if c.name == "TowingOnPolicyRunner")
+        keep = [n for n in cls.body
+                if isinstance(n, ast.FunctionDef)
+                and n.name in ("_aggregate_episode_infos", "_write_scalars")]
+        mini = ast.Module(body=[ast.ClassDef(
+            name="MiniRunner", bases=[], keywords=[], decorator_list=[], type_params=[],
+            body=keep)], type_ignores=[])
+        ns = {"torch": torch, "statistics": statistics}
+        exec(compile(ast.fix_missing_locations(mini), "<mini>", "exec"), ns)
+        runner = ns["MiniRunner"]()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            from torch.utils.tensorboard import SummaryWriter
+            runner.writer = SummaryWriter(log_dir=tmp, flush_secs=1)
+            keys = ["Episode_Reward/tracking_velocity", "Episode_Termination/time_out"]
+            infos = [{k: torch.tensor(0.5) for k in keys} for _ in range(48)]
+            stats = runner._aggregate_episode_infos(infos)
+            self.assertEqual(sorted(stats), sorted(keys), "聚合后键集合应不变")
+            runner._write_scalars(0, 1.0, 0.1, 1.0, 0.1, torch.tensor(0.1), 0.5, 100.0,
+                                  [-1.0], [10.0], stats)
+            runner.writer.flush()
+            ea = EventAccumulator(tmp, size_guidance={"scalars": 0}); ea.Reload()
+            for key in keys:
+                events = ea.Scalars(f"Episode/{key}")
+                self.assertEqual(len(events), 1,
+                                 f"Episode/{key} 应只写 1 次，实际 {len(events)} 次")
+
+    def test_collision_filters_resolve_one_prim_per_environment(self):
+        """回归守卫：碰撞传感器的 filter 不得用 `Robot/.*` 通配。
+
+        Isaac Lab 的 `ContactSensorCfg` 要求每个 filter 项在每个环境里只解析出一个 prim
+        （`contact_sensor_cfg.py` attention 段）。2026-09-22 实测 `{ENV_REGEX_NS}/Robot/.*`
+        每环境展开 19 个 prim × 256 环境 = 4864，抛
+        `Filter pattern ... (expected 256, found 4864)`，使 `force_matrix_w` 失效 ⇒
+        `cart_collision` 恒假 ⇒ 碰撞 reward 与终止全部失效。
+        """
+        src = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        # 只看可执行代码：注释与 docstring 里会引用这个错误写法作为反例。
+        # 用 AST 剥掉所有常量字符串（含 docstring），再序列化回代码检查。
+        tree_all = ast.parse(src)
+        for node in ast.walk(tree_all):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                node.value = ""
+        code = ast.unparse(tree_all)
+        self.assertNotIn("Robot/.*", code, "可执行代码里不能对 Robot 用 .* 通配")
+        self.assertNotIn("Robot/*", code, "可执行代码里不能对 Robot 用 * 通配")
+        # filter 必须从 URDF link 名逐个构造（用 AST 确认函数与调用存在）
+        tree = ast.parse(src)
+        funcs = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        self.assertIn("_robot_body_filters", funcs)
+        self.assertIn("_robot_link_names_from_urdf", funcs)
+        self.assertIn("_ROBOT_BODY_FILTERS = _robot_body_filters()", src)
+
+        # URDF 与传感器数量：5 个车体传感器各自使用 shared filter 列表
+        self.assertEqual(src.count("filter_prim_paths_expr=_ROBOT_BODY_FILTERS"), 5,
+                         "5 个车体碰撞传感器都应使用显式 filter 列表")
+
+        # 仓库根下标必须是 7（2026-09-22 修过 parents[6] 的写错）
+        self.assertIn("_REPO_ROOT = Path(__file__).resolve().parents[7]", src,
+                      "upper_env_cfg 的仓库根应是 parents[7]；写错会让 USD 缓存落到 imgo2_rl/")
+
+    def test_collision_filter_matches_urdf_link_count(self):
+        """filter 项数必须等于 URDF 的 link 数（每 link 一项，避免通配展开）。"""
+        import re as _re
+        urdf = RL.parent / "imgo2_description" / "urdf" / "imgo2.urdf"
+        links = _re.findall(r'<link\s+name="([^"]+)"', urdf.read_text(encoding="utf-8"))
+        self.assertEqual(len(links), 17, f"URDF link 数应为 17，实际 {len(links)}")
+        src = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        # 构造式子必须是逐 link 一项
+        self.assertIn('f"{{ENV_REGEX_NS}}/Robot/{name}" for name in _robot_link_names_from_urdf()', src)
+
+    def test_per_step_physics_does_not_readback_physx(self):
+        """性能守卫：每个物理步的拖曳物理不得回读 PhysX 的质量／惯量。
+
+        `apply_actions` 每个 5 ms 物理步调用一次，4096 环境下每轮 `480 × 4096` 次。原来的
+        `_apply_towing_physics` 每步都 `root_physx_view.get_masses()/get_inertias()`，即每步一次
+        GPU→CPU→GPU 往返，实测把每轮固定开销推到约 4.6 s（与算力无关）。现在这些量只在
+        reset 后重建一次缓存。
+        """
+        src = (PKG / "upper_mdp.py").read_text("utf-8")
+        tree = ast.parse(src)
+        funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        self.assertIn("_refresh_mass_cache", funcs)
+        self.assertIn("_invalidate_mass_cache", funcs)
+
+        def calls(func_name, wanted):
+            found = []
+            for n in ast.walk(funcs[func_name]):
+                if isinstance(n, ast.Call) and getattr(n.func, "attr", "") in wanted:
+                    found.append((n.lineno, n.func.attr))
+            return found
+
+        hot = calls("_apply_towing_physics", {"get_masses", "get_inertias"})
+        self.assertEqual(hot, [], f"每步热路径里仍有 PhysX 回读: {hot}")
+        # 缓存必须由 _refresh_mass_cache 统一重建
+        self.assertTrue(calls("_refresh_mass_cache", {"get_masses", "get_inertias"}),
+                        "_refresh_mass_cache 应负责回读并缓存")
+
+        # reset 改写质量后必须失效缓存，且顺序在 set_masses 之后
+        reset = funcs["reset_towing_episode"]
+        set_line = min(n.lineno for n in ast.walk(reset)
+                       if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "set_masses")
+        inv = [n.lineno for n in ast.walk(reset)
+               if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "_invalidate_mass_cache"]
+        self.assertTrue(inv, "reset_towing_episode 改质量后必须调用 _invalidate_mass_cache")
+        self.assertGreater(min(inv), set_line, "失效缓存必须发生在 set_masses 之后")
 
     def test_policy_observation_excludes_privileged_load_signals(self):
         tree = ast.parse((PKG / "upper_env_cfg.py").read_text("utf-8"))
@@ -162,7 +387,10 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn('prim_path="{ENV_REGEX_NS}/Cart/base_link"', cfg)
         for body in ("wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"):
             self.assertIn(f'prim_path="{{ENV_REGEX_NS}}/Cart/{body}"', cfg)
-        self.assertEqual(cfg.count('filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"]'), 5)
+        # 2026-09-22 改：filter 必须逐个列出机器人 body，不能用 `Robot/.*` 通配
+        # （每 filter 项须每环境只解析出 1 个 prim，否则 force_matrix_w 失效）。
+        self.assertEqual(cfg.count("filter_prim_paths_expr=_ROBOT_BODY_FILTERS"), 5,
+                         "5 个车体传感器都应使用显式 filter 列表")
         self.assertIn("sensor.data.force_matrix_w", mdp)
         self.assertIn("maximum_force > self.cfg.collision_force_threshold", mdp)
         self.assertIn("self.rope_state[:, 0] =", mdp)
