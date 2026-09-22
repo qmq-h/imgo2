@@ -23,7 +23,7 @@
 
 ## 待修复／待确认
 
-- 当前机器没有 Isaac Lab／PyTorch 运行环境，尚未构造环境、执行单步 reward／termination，也未核对 ContactSensor 的实际张量和终止步计奖顺序。因此代码状态是“已修，待训练机验证”，任务继续保持未注册。
+- 当前机器没有 Isaac Lab／PyTorch 运行环境，尚未构造环境、执行单步 reward／termination，也未核对 ContactSensor 的实际张量和终止步计奖顺序。因此代码状态是“已修，待训练机验证”，任务继续保持未注册。（2026-09-22 训练机前置核查补记：`train.py` 的 `--agent` 默认值原为全仓无对应注册项的 `towing_rl_lab_cfg`，已改为 `rl_lab`，属“已修，待验证”；任务仍按本条保持未注册，注册块见 [训练前置记录](towing_training_prep_2026-09-22.md)）
 - 连续间隙是 base／车斗表面代理，不包含腿部 FK 几何。训练机需与 `tow_clearance.py` 的全腿 FK 间隙和 `tow_drag.py` 的车斗／车轮接触记录交叉验证；若误差会改变 reward 排序，应把完整几何 producer 迁入环境。
 - `TowingDynamicsDecoder`、GT-force weighted mass supervision 和 optimizer 仍是独立模块，普通 `OnPolicyRunner` 不会调用。需要实现 rollout estimate 固化、三套 hidden state 的逐环境 reset、episode 序列切分和 checkpoint 保存／恢复。
 - 注册前仍需单环境 scripted policy 复现 `tow_drag.py`，再做 4／256 环境短 rollout，检查异步 reset、NaN、绳模型比例和 GPU/CPU view 写入。

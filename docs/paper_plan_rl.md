@@ -157,10 +157,10 @@ v0 reset event 已按 episode 采样以下工况：
 | `towing/agents/upper_ppo_cfg.py` | 已建：使用仓库 `rl_lab.config.TowingOnPolicyRunnerCfg`，不再导入 `isaaclab_rl.rsl_rl` |
 | `rl_lab/runners/towing_on_policy_runner.py` | 已建：三套 GRU 状态、detached estimate rollout、critic-only normalizer、PPO 后 decoder 更新及联合 checkpoint |
 | `rl_lab/wrapper/towing_vec_env_wrapper.py` | 已建：适配 Isaac Lab 的 `policy/critic/decoder` observation groups 与五元 step 接口 |
-| `scripts/rl_lab/towing/train.py` | 已建：自有 towing runner 训练入口；任务保持未注册，因此尚无可执行 task ID |
+| `scripts/rl_lab/towing/train.py` | 已建：自有 towing runner 训练入口。2026-09-22 修掉其 `--agent` 默认值（原值全仓无对应注册项），改为与 `rl_lab_cfg_entry_point` 推导一致的 `rl_lab`（**已修，待验证**） |
 | `rl_lab/modules/towing_decoder.py` | 已建：`51→128→GRU(128)` dynamics decoder、三个 prediction heads、连续力加权质量监督和梯度隔离 |
 | `tests/test_towing_upper_rl_contract.py` | 已完成：五维 decoder target、56 维 actor 拼接、force-weighted mass supervision 和梯度隔离契约 |
-| Gym task registration | **未做**：物理 adapter 未与测量台对齐前禁止注册 |
+| Gym task registration | **已注册（2026-09-22 用户决定）**：`Imgo2-towing-upper-rl-lab`，`--agent=rl_lab_cfg_entry_point`。这显式翻过了原先「物理 adapter 未与测量台对齐前禁止注册」的保护，故运行验收项仍未完成。注册接线与验收清单见 [训练前置记录](towing_training_prep_2026-09-22.md) |
 
 ## 8. 下一步与注册门槛
 
@@ -168,7 +168,7 @@ v0 reset event 已按 episode 采样以下工况：
 2. 在训练机核对车体表面间隙代理，以及车斗／四轮过滤机器人接触的判据，并与测量台 FK 间隙、车斗／车轮记录交叉验证。
 3. 在训练机验证自有 recurrent runner：在线保存 5 维 decoder estimate 并拼成 56 维 actor observation；检查三套 GRU reset、GT-force mass weight、episode 边界切分、PPO 后 decoder 更新及 checkpoint 恢复。
 4. 用 scripted action 在单环境复现 `tow_drag.py` 的跟速、稳态张力、停车滑行和间隙指标。
-5. 完成短 rollout 后，才注册 `Imgo2-towing-upper-ppo`。
+5. 任务已于 2026-09-22 注册为 `Imgo2-towing-upper-rl-lab`（`--agent=rl_lab_cfg_entry_point`），用于在训练机执行训练；第 1–4 项运行验收仍未完成，不得因任务可启动而视为通过。
 6. 注册后先跑单工况短训练，排查持续前进、故意碰撞／跌倒等 reward hacking，再扩展课程。
 
 ## 9. 总体实施路线

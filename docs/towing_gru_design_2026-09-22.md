@@ -40,7 +40,9 @@ Target 使用 `vx/1.0`、`vy/0.5`、质量 5–15 kg 线性映射以及逐分量
 - Isaac Lab 环境构造、scripted policy、4／256 环境 rollout 和张量接口验证；
 - 根据真实 `v/F/m` 分布确定归一化尺度、`F_min` 和三项 loss 权重。
 
-当前任务仍不注册，不把静态配置改造记为运行通过。
+任务已于 2026-09-22 注册（`Imgo2-towing-upper-rl-lab`，`--agent=rl_lab_cfg_entry_point`），以便在训练机执行训练；
+但这只是解开启动前置，**运行验收仍未完成**，不得把静态配置改造记为运行通过。注册决定与验收清单见
+[训练前置记录](towing_training_prep_2026-09-22.md)。
 
 ## 离线验证
 
