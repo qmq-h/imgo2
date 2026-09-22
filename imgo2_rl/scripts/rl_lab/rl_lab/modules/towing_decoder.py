@@ -96,16 +96,47 @@ def reset_gru_hidden(hidden_state, dones):
 class DynamicsDecoderTrainer:
     """Update the decoder on episode-consistent sequences between PPO updates."""
 
-    def __init__(self, decoder, *, learning_rate=1.0e-3, max_grad_norm=1.0):
+    def __init__(
+        self,
+        decoder,
+        *,
+        learning_rate=1.0e-3,
+        max_grad_norm=1.0,
+        velocity_coef=1.0,
+        force_coef=1.0,
+        mass_coef=1.0,
+    ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
+        self.velocity_coef = velocity_coef
+        self.force_coef = force_coef
+        self.mass_coef = mass_coef
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    def update(self, frames, targets, mass_supervision_weight, hidden_state=None):
+    def update(self, frames, targets, mass_supervision_weight, dones=None, hidden_state=None):
         self.decoder.train()
-        prediction, _ = self.decoder(frames.detach(), hidden_state)
+        if dones is None:
+            prediction, _ = self.decoder(frames.detach(), hidden_state)
+        else:
+            if dones.shape != frames.shape[:2]:
+                raise ValueError(f"decoder dones must have shape {frames.shape[:2]}, got {dones.shape}")
+            predictions = []
+            state = hidden_state
+            for step in range(frames.shape[0]):
+                if step > 0 and state is not None:
+                    keep = (~dones[step - 1].bool()).to(frames.dtype).view(1, -1, 1)
+                    state = state * keep
+                step_prediction, state = self.decoder(frames[step].detach(), state)
+                predictions.append(step_prediction)
+            prediction = torch.stack(predictions)
         loss = self.decoder.loss(
-            prediction, targets.detach(), mass_supervision_weight.detach())
+            prediction,
+            targets.detach(),
+            mass_supervision_weight.detach(),
+            velocity_coef=self.velocity_coef,
+            force_coef=self.force_coef,
+            mass_coef=self.mass_coef,
+        )
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)

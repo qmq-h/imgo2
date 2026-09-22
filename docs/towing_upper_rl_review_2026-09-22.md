@@ -117,6 +117,8 @@ Isaac Lab 会先执行 reset event，再调用 action term 的 `reset(env_ids)`�
 
 后续“修一下”工作已处理第 1／2／3／5 类问题和第 4 类中的 `obs_groups`：安全信号已有 producer，actor 改为 51×2 的 frame-major 输入并加入积分器状态，动作映射改为零中心，异步 reset 与绳模型采样已修。追加复核还发现冻结 AMP 契约把 50 Hz 策略周期误写成 200 Hz 物理周期；现已统一为 `0.005 s × 4 = 0.02 s` 并加入物理／底层／上层三层周期校验。具体改动、验证和剩余限制见 [修复记录](towing_upper_rl_fix_2026-09-22.md)。
 
+版本更正：上述 `obs_groups`／独立 model 配置结论来自本机较新的 Isaac Lab 源码，不适用于用户确认的训练栈 Isaac Lab 2.2.1／RSL-RL 2.3.3。当前 towing 配置已沿用 AMP 模式，改接仓库自有 `rl_lab.TowingOnPolicyRunner`；actor／critic 独立记忆由仓库 `ActorCriticRecurrent` 的 `memory_a`／`memory_c` 提供，不再依赖外部 RSL-RL runner/config。详见 [训练栈兼容性记录](training_stack_compatibility_2026-09-22.md)。
+
 仍未完成的是 decoder runner 闭环和 Isaac Lab 运行验收，因此本复审最初的“不可注册”结论暂不撤销；安全 producer 的“恒零／恒 false”与 observation/reset 问题已不再是当前源码状态。
 
 同日最终方案又改为 recurrent 架构：actor／critic／decoder 分别使用 GRU，actor 每步读取当前 51 维帧；decoder 同时预测质量和张力，并以连续张力替代本记录早期提出的 active mask。当前契约以 [GRU 改造记录](towing_gru_design_2026-09-22.md) 为准。

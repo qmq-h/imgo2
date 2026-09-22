@@ -30,7 +30,7 @@
 | 增益 | kp 25 / kd 0.5（标称） | `rl_kp 25` / `rl_kd 0.5` | `assets/imgo2.py:82-84` / `ppo/config.yaml` |
 | 默认关节角 | 0 / 0.87 / −1.82 | 同 | `assets/imgo2.py` init_state / `base.yaml` |
 | 关节顺序 | `FL,FR,RL,RR` × (hip,thigh,shank)，`preserve_order=True` | 恒等 `joint_mapping` | `rough_env_cfg.py:18-25` |
-| 无归一化 | `empirical_normalization=False`、actor/critic_obs_normalization=False | 导出用 `normalizer=None`，部署不归一化 | `rsl_rl_ppo_cfg.py` |
+| 无归一化 | Isaac Lab 2.2.1 接口使用 `empirical_normalization=False` | 导出用 `normalizer=None`，部署不归一化 | `rsl_rl_ppo_cfg.py` |
 | 观测历史 | 空 | `observations_history: []` | — |
 | 策略周期 | `dt=0.005 × decimation=4` = 50 Hz | 同（MuJoCo 路径） | `velocity_env_cfg.py:715,718` / `rl_sim_mujoco.cpp:109-110` |
 | `last_action` | 裁剪后的动作，episode 开始为 0 | `obs.actions` 为裁剪后动作，`InitObservations()` 置 0 | `rl_sdk.cpp:195-196` |

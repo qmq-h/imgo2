@@ -26,16 +26,16 @@ Target 使用 `vx/1.0`、`vy/0.5`、质量 5–15 kg 线性映射以及逐分量
 
 ## 已实现
 
-- PPO actor／critic 使用独立单层 256 维 GRU；
+- PPO 使用仓库 `rl_lab` 的 `ActorCriticRecurrent`，actor／critic 各自维护单层 256 维 GRU，不再调用外部 RSL-RL runner 或配置类；
 - policy 原始输入从 102 维两帧展平改为 51 维单帧；
 - decoder 建成 `51→128→GRU(128)` 和 velocity／mass／force 三个 head；
 - 牵引力使用机器人机体系 `Fx/Fy`，不预测小车速度、位置、绳长或绳参数；
 - 提供 56 维 actor 拼接、PPO 梯度隔离、force-weighted mass supervision 和逐环境 hidden reset 的模块契约。
+- `TowingOnPolicyRunner` 已把 decoder／actor／critic 三套 GRU、critic-only normalizer、rollout 固化、PPO 后 decoder 更新及联合 checkpoint 接成闭环；`TowingVecEnvWrapper` 负责读取 `policy/critic/decoder` 三组 observation。
 
 ## 待实现／待验证
 
-- 自定义 recurrent runner：保存采样时的 decoder estimate、三套 GRU 初始 hidden state 和每步 GT-force weight，按 episode 边界构造序列；
-- decoder 和 optimizer 的 checkpoint 保存／恢复；
+- 在训练机运行自有 runner，验证三套 hidden state、按 done 切断 decoder 序列、critic-only normalizer以及 decoder／optimizer checkpoint 恢复；
 - decoder＋actor 的联合导出及部署逐环境 reset；
 - Isaac Lab 环境构造、scripted policy、4／256 环境 rollout 和张量接口验证；
 - 根据真实 `v/F/m` 分布确定归一化尺度、`F_min` 和三项 loss 权重。
@@ -45,8 +45,8 @@ Target 使用 `vx/1.0`、`vy/0.5`、质量 5–15 kg 线性映射以及逐分量
 ## 离线验证
 
 - `compileall` 通过；
-- 上层拖曳契约 13 项通过、2 项因当前解释器没有 PyTorch 跳过；
-- 全部 `test_towing*.py` 为 188 项通过、12 项按可选运行环境跳过；
+- 上层拖曳契约 16 项通过、2 项因当前解释器没有 PyTorch 跳过；
+- 全部 `test_towing*.py` 为 191 项通过、12 项按可选运行环境跳过；
 - `git diff --check` 通过。
 
 Decoder 的张量数值、RSL-RL recurrent minibatch 和 Isaac Lab rollout 仍须在带 PyTorch／Isaac Lab 的训练环境验证。

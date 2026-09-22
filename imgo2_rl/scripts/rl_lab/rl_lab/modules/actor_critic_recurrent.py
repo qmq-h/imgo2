@@ -111,6 +111,9 @@ class Memory(torch.nn.Module):
         return out
 
     def reset(self, dones=None):
-        # When the RNN is an LSTM, self.hidden_states_a is a list with hidden_state and cell_state
-        for hidden_state in self.hidden_states:
-            hidden_state[..., dones, :] = 0.0
+        if self.hidden_states is None or dones is None:
+            return
+        done_mask = dones.bool()
+        states = self.hidden_states if isinstance(self.hidden_states, tuple) else (self.hidden_states,)
+        for hidden_state in states:
+            hidden_state[..., done_mask, :] = 0.0

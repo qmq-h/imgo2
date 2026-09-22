@@ -52,7 +52,7 @@ actor input = [51D frame, v_hat(2), m_hat(1), F_hat(2)]
 
 PPO actor 自身仍使用独立的单层 256 维 GRU，critic 使用另一套 GRU。Decoder、actor、critic 不共享参数或 hidden state。
 
-Actor 不启用 RSL-RL 经验归一化，保持上表约定的显式缩放和部署契约；critic 单独启用经验归一化，以处理张力、质量、摩擦和轮阻等特权量的尺度差异。该处理不修改 reward，只通过价值拟合与 advantage 间接影响 Actor 更新。Critic 及其 normalizer 不导出到部署策略。
+Actor 不启用经验归一化，保持上表约定的显式缩放和部署契约；仓库自有 `rl_lab` towing runner 只对 critic 特权输入维护 running mean/variance，以处理张力、质量、摩擦和轮阻等尺度差异。该处理不修改 reward，只通过价值拟合与 advantage 间接影响 Actor 更新；critic 及其 normalizer 不导出到部署策略。
 
 上层 action 与用户 command 都是三维。v0.1 的训练分布仍可先固定 `vy=yaw_rate=0`，但接口和网络不能退化为一维，否则后续转向时 observation/action 契约都要重做。
 
@@ -154,7 +154,10 @@ v0 reset event 已按 episode 采样以下工况：
 | `towing/upper_logic.py` | 已完成：动作、观测、decoder 的纯逻辑契约 |
 | `towing/upper_mdp.py` | 已修待运行：分层 action、每物理步绳力／轮阻、底层 50 Hz、车体表面间隙代理，以及车斗／四轮分别过滤机器人接触的碰撞判据均已接入 |
 | `towing/upper_env_cfg.py` | 已建：scene/action/observation/reward/termination class 配置 |
-| `towing/agents/upper_ppo_cfg.py` | 已建：actor／critic 独立 GRU 配置 |
+| `towing/agents/upper_ppo_cfg.py` | 已建：使用仓库 `rl_lab.config.TowingOnPolicyRunnerCfg`，不再导入 `isaaclab_rl.rsl_rl` |
+| `rl_lab/runners/towing_on_policy_runner.py` | 已建：三套 GRU 状态、detached estimate rollout、critic-only normalizer、PPO 后 decoder 更新及联合 checkpoint |
+| `rl_lab/wrapper/towing_vec_env_wrapper.py` | 已建：适配 Isaac Lab 的 `policy/critic/decoder` observation groups 与五元 step 接口 |
+| `scripts/rl_lab/towing/train.py` | 已建：自有 towing runner 训练入口；任务保持未注册，因此尚无可执行 task ID |
 | `rl_lab/modules/towing_decoder.py` | 已建：`51→128→GRU(128)` dynamics decoder、三个 prediction heads、连续力加权质量监督和梯度隔离 |
 | `tests/test_towing_upper_rl_contract.py` | 已完成：五维 decoder target、56 维 actor 拼接、force-weighted mass supervision 和梯度隔离契约 |
 | Gym task registration | **未做**：物理 adapter 未与测量台对齐前禁止注册 |
@@ -163,7 +166,7 @@ v0 reset event 已按 episode 采样以下工况：
 
 1. 在训练机运行环境构造冒烟，验证每物理步 compliant／inextensible 绳力、逐环境轮阻和底层 50 Hz 保持；当前代码已接但未运行。
 2. 在训练机核对车体表面间隙代理，以及车斗／四轮过滤机器人接触的判据，并与测量台 FK 间隙、车斗／车轮记录交叉验证。
-3. 自定义 recurrent runner 在线计算并保存 5 维 decoder estimate，拼成 56 维 actor observation；保存三套 GRU 初始状态和 GT-force mass weight，按 episode 边界切分序列，在 PPO 使用完 rollout 后更新 decoder。
+3. 在训练机验证自有 recurrent runner：在线保存 5 维 decoder estimate 并拼成 56 维 actor observation；检查三套 GRU reset、GT-force mass weight、episode 边界切分、PPO 后 decoder 更新及 checkpoint 恢复。
 4. 用 scripted action 在单环境复现 `tow_drag.py` 的跟速、稳态张力、停车滑行和间隙指标。
 5. 完成短 rollout 后，才注册 `Imgo2-towing-upper-ppo`。
 6. 注册后先跑单工况短训练，排查持续前进、故意碰撞／跌倒等 reward hacking，再扩展课程。
@@ -198,7 +201,7 @@ sim2sim 完成标准：导出网络与训练 actor 在确定性输入上数值�
 ## 10. 已知限制
 
 - 本轮没有 Isaac Lab 运行验证；代码只能标为“已建，待运行验证”。
-- GRU decoder、监督 loss、连续力加权质量监督和 detached actor augmentation 已定义，但 recurrent rollout／PPO runner 尚未接入，未训练。
+- GRU decoder、监督 loss、连续力加权质量监督、detached actor augmentation 和 `rl_lab` recurrent rollout／PPO runner 已接线，尚未训练机运行。
 - ManagerBased 绳力／轮阻 adapter、双频控制、event、stop schedule、安全 producer 已接入代码，但尚未在 Isaac Lab 运行；间隙当前是 base 后表面到车斗前表面的有向代理，腿部几何由车斗和四轮对机器人过滤接触的终止信号兜底，仍需与离线 FK 指标交叉验证。
-- 2026-09-22 已把 actor 改为 51 维单帧 GRU 输入，加入 `reference_command`，修复 per-env 底层 history／rope state reset，改用逐环境 Bernoulli 绳模型采样，并补齐 RSL-RL `obs_groups`。decoder runner 仍未接线，任务继续保持未注册。
+- 2026-09-22 已把 actor 改为 51 维单帧 GRU 输入，加入 `reference_command`，修复 per-env 底层 history／rope state reset 并改用逐环境 Bernoulli 绳模型采样；随后将 towing recurrent PPO、decoder 更新和 critic-only normalizer 全部移入仓库 `rl_lab`，不再依赖外部 RSL-RL runner/config API。任务仍未注册，训练机 rollout 尚未执行。
 - 最大可拖质量仍待边界扫描实跑，不能从配置范围直接推断。

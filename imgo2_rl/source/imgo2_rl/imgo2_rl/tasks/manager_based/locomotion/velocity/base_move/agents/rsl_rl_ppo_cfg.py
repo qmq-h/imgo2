@@ -4,7 +4,6 @@ from isaaclab_rl.rsl_rl import(
     RslRlOnPolicyRunnerCfg, 
     RslRlPpoActorCriticCfg, 
     RslRlPpoAlgorithmCfg,
-    RslRlMLPModelCfg,
 )
 
 @configclass
@@ -17,8 +16,6 @@ class Imgo2RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     clip_actions = 3
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",

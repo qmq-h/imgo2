@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-22。已在 Windows／Python 3.14.6 完成本轮离线检查；上层拖曳采用 dynamics decoder＋recurrent PPO：51 维本体帧经 GRU 估计机器人速度、负载质量和牵引力，估计值 detach 后进入 actor，预测误差不进入 reward。当前仍缺自定义 recurrent runner 和 Isaac Lab 运行验证。详见 [离线检查记录](docs/offline_check_2026-09-22.md)、[拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md) 与 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md)。
+> 最后核对：2026-09-22。已在 Windows／Python 3.14.6 完成本轮离线检查；上层拖曳采用 dynamics decoder＋recurrent PPO：51 维本体帧经 GRU 估计机器人速度、负载质量和牵引力，估计值 detach 后进入 actor，预测误差不进入 reward。自有 `rl_lab` recurrent runner 已接线，当前仍缺 Isaac Lab 训练机运行验证。详见 [离线检查记录](docs/offline_check_2026-09-22.md)、[拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md) 与 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md)。
 >
 > 当前阶段只说明“仿真链路和基本行为成立”，不等于两类绳的物理真实性、瞬态品质或控制效果已经完成评价。可复现数据结论见 §2 和问题表；详细实验与调试历史放在 `docs/`，不在 README 展开。
 
@@ -98,8 +98,8 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 以下 Python 命令均从 `imgo2_rl/` 执行，并使用已配置好 Isaac Lab/Isaac Sim 的 Python 环境。
 
-- `imgo2_rl` 和 `rl_lab` 安装脚本声明 Python `>=3.10`；这不是完整的 Isaac Lab、Isaac Sim、CUDA 和 PyTorch 兼容性记录。
-- 本次没有核验这些依赖的实际安装版本。首次跑通后，在第 8 节记录实际版本和启动命令。
+- 当前训练机版本基线由用户确认：**Isaac Lab 2.2.1、RSL-RL 2.3.3**；Python、Isaac Sim、PyTorch、CUDA 和驱动版本仍需在训练机实际命令输出中补齐。
+- `imgo2_rl` 和 `rl_lab` 安装脚本声明 Python `>=3.10`，不代表完整兼容矩阵。上层拖曳已像 AMP 一样使用仓库自有 `rl_lab` runner／PPO／recurrent model，不依赖外部 RSL-RL runner/config API；普通 PPO 入口仍按 2.2.1 接口维护。详见 [训练栈兼容性记录](docs/training_stack_compatibility_2026-09-22.md)。
 - `assets/imgo2.py` 的 URDF 与动作数据路径已改为**由文件自身位置推导**（`Path(__file__)` 上溯 4 层得到 `imgo2_rl/` 项目根），不再写死机器绝对路径。无论仓库 clone 到哪里、从哪个目录启动都成立；前提是可编辑安装（`pip install -e`），非可编辑安装会把包拷进 site-packages，届时数据目录不在上溯路径上。
 - 需要把数据或模型放在别处时，用环境变量覆盖而不用改代码：`IMGO2_AMP_MOTION_DIR` 覆盖动作数据目录，`IMGO2_URDF_PATH` 覆盖 URDF 路径。
 - 在新机器（尤其训练服务器）上训练前，先运行 `python scripts/tools/check_asset_paths.py`：它不需要 Isaac Lab，会打印实际解析到的路径、动作文件数（应为 21）以及是否还有残留的机器绝对路径。
@@ -451,7 +451,7 @@ bash build.sh --cmake
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
-| TOW-03 | P0 | **Dynamics decoder 契约及 STOP 后拉力惩罚已落地，待 runner 与训练机验证；当前仍不注册** | 2026-09-22 decoder 使用 `51→128→GRU(128)`，预测机器人机体系 `vx/vy`、负载质量和机体系牵引力 `Fx/Fy`；5 维 estimate detach 后组成 56 维 actor 输入。质量 loss 由 GT 牵引力大小连续加权；预测误差不进入 reward。收到本回合 STOP 后新增有界 GT 拉力惩罚，初始站定和无小车环境不生效。actor／critic 使用独立 GRU，critic 读取特权真值。详见 [GRU 记录](docs/towing_gru_design_2026-09-22.md) | 实现自定义 recurrent runner、三套 hidden state、GT-force weight、rollout estimate 固化和 checkpoint；在 Isaac Lab 复核 estimator 精度、STOP reward 排序、无小车隔离及 4／256 环境 rollout，重点排除策略为卸载拉力而让小车逼近的捷径。通过后再注册任务 |
+| TOW-03 | P0 | **自有 recurrent PPO＋decoder runner 已接线，待训练机验证；当前仍不注册** | decoder 使用 `51→128→GRU(128)` 预测机器人机体系 `vx/vy`、负载质量和牵引力 `Fx/Fy`，5 维 estimate detach 后组成 56 维 actor 输入。仓库 `rl_lab` runner 已管理 decoder／actor／critic 三套 GRU、critic-only normalizer、rollout estimate 固化、PPO 后 decoder 更新及联合 checkpoint；不依赖外部 RSL-RL runner/config API。STOP 后有界 GT 拉力惩罚已加入。详见 [GRU 记录](docs/towing_gru_design_2026-09-22.md) | 在 Isaac Lab 2.2.1 训练机完成 wrapper 构造、4／256 环境 recurrent rollout、checkpoint 恢复、estimator 精度、STOP reward 排序和无小车隔离验证，重点排除策略为卸载拉力而让小车逼近的捷径；通过后再注册任务 |
 | CART-01 | P1 | **基础模型已验证** | 小车落地、轮接触、质量惯量、黏性轮阻和自由滑行已通过训练机实验；关键数据见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 后续只在模型或记录接口变化时回归，不重复展开早期调试历史 |
 | DOC-01 | P1 | 已完成 | 训练 README 曾引用失效的 `script/himloco_rsl_rl` 安装路径和写死的个人服务器 checkpoint | 已改为 `scripts/rl_lab`，checkpoint 改为 `<run>` 占位并注明不可沿用；根 README 与子项目 README 表述一致 |
 | ENV-01 | P0 | 代码已修正，待服务器验证 | 原先 `assets/imgo2.py` 的两条路径写死为 `/root/gpufree-data/Imgo2_rl/...`（当时目录名还是 `Imgo2_rl`），且假定该目录就是项目根，合并成 monorepo 后必然失效且 glob 为空时无明确报错 | 已改为由 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖；新增 `scripts/tools/check_asset_paths.py` 供新机器自检（本机通过：URDF 存在、动作文件 21 份、无残留机器路径）。服务器上仍需运行该脚本并记录实际加载路径 |
@@ -549,10 +549,11 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-22 | 上层拖曳训练闭环移入仓库 `rl_lab` | 按现有 AMP 模式新增 `TowingOnPolicyRunner`、`TowingVecEnvWrapper`、独立 critic normalizer 和 towing 配置；三套 GRU、detached rollout estimate、done 边界 decoder 更新及联合 checkpoint 已接线，上层配置不再导入外部 RSL-RL runner/config。另修复自有 recurrent memory 把整型 done 当索引、未按环境清 hidden state 的旧问题。训练机基线为 Isaac Lab 2.2.1／RSL-RL 2.3.3；拖曳离线测试 191 项通过／12 项按可选环境跳过，尚未运行 Isaac Lab。详见 [兼容性记录](docs/training_stack_compatibility_2026-09-22.md) |
 | 2026-09-22 | 上层拖曳 reward 增加 STOP 后绳力惩罚 | 仅在随机 `stop_time_s` 后计算 `||F_tow||/(||F_tow||+10 N)`，权重 `−1.0`；初始零速站定及无小车环境屏蔽。完整拖曳离线测试 188 项通过／12 项按可选环境跳过；尚需 Isaac Lab scripted rollout 验证其与 clearance／collision 的回报排序，排除快速松绳后追尾的策略捷径 |
 | 2026-09-22 | 拖曳采用 dynamics decoder＋recurrent PPO | decoder 改为 `51→128→GRU(128)`，显式预测机器人 `vx/vy`、负载质量和牵引力 `Fx/Fy`；estimate detach 后与原始帧组成 56 维 actor 输入。预测误差移出 reward，质量 loss 由 GT 牵引力大小连续加权。actor／critic 各用独立 GRU。离线拖曳测试 187 通过／12 跳过；runner 与 Isaac Lab 验证仍未完成。详见 [记录](docs/towing_gru_design_2026-09-22.md) |
 | 2026-09-22 | AMP 配置收缩为两套 | `amp_rsl_rl_cfg.py` 只保留 `AMPHeightRunnerCfg` 与 `FanziqiAMPRunnerCfg`；只注册平地高度奖励和 Fanziqi 两套 train/play 任务，删除 go2／粗糙 AMP 环境实现与旧测试。Fanziqi 任务改为 42 维 actor、无持续外力、参考 std clamp／训练轮数／保存间隔。AMP 离线测试 14 通过／1 跳过，未运行 Isaac Lab。详见 [记录](docs/amp_config_cleanup_2026-09-22.md) |
-| 2026-09-22 | 修复上层拖曳 RL 静态复审阻断项 | 安全 producer、51×2 frame-major observation、`reference_command`、零中心 action、per-env reset、绳模型异步采样和 PPO `obs_groups` 已落地；actor 关闭、critic 单独开启经验归一化。复核后又补齐车斗／四轮过滤接触，修正 `extra_distance` 初始站定误生效，把冻结 AMP 推理周期修正为 20 ms（50 Hz），并加入默认 12.5% 无小车零负载环境及完整 mask。拖曳离线测试 199 通过／12 跳过；未运行 Isaac Lab，decoder runner 尚未接线，任务保持未注册。详见 [修复记录](docs/towing_upper_rl_fix_2026-09-22.md) |
+| 2026-09-22 | 修复上层拖曳 RL 静态复审阻断项 | 安全 producer、51 维单帧 observation、`reference_command`、零中心 action、per-env reset 和绳模型异步采样已落地；后续已用仓库 `rl_lab` 取代当时基于较新外部接口写入的 PPO model／normalization 配置。复核还补齐车斗／四轮过滤接触，修正 `extra_distance` 初始站定误生效，把冻结 AMP 推理周期修正为 20 ms（50 Hz），并加入默认 12.5% 无小车零负载环境及完整 mask。未运行 Isaac Lab，任务保持未注册。详见 [修复记录](docs/towing_upper_rl_fix_2026-09-22.md) |
 | 2026-09-22 | 复审上层拖曳 RL 环境完整链路 | 核对 scene→event→action→冻结 AMP→绳力／轮阻→obs/reward/termination→PPO/decoder，并与本机 Isaac Lab 源码的 ActionTerm、ObservationManager、RewardManager、reset 顺序和 RSL-RL 配置接口对照。确认架构方向合理但存在 5 类训练阻断项，TOW-03 升为 P0；upper-RL 离线契约测试 7 通过／2 因无 PyTorch 跳过，未运行 Isaac Lab。详见 [复审记录](docs/towing_upper_rl_review_2026-09-22.md) |
 | 2026-09-22 | 拉取 `cf465a2` 后执行全仓离线检查 | `check_asset_paths.py`、`check_model_sync.py`、`audit_amp_dataset.py`、`check_amp_joint_order.py`、`compileall` 与 tracked-ignore 检查通过；拖曳测试 194 项通过／12 跳过。全量测试为 256 通过／24 跳过／1 导入错误，错误原因是本机 Python 3.14.6 缺 NumPy；PyTorch／Isaac Lab 项也未在本机执行。无代码修复，待补验证见 CHECK-01 与 [详细记录](docs/offline_check_2026-09-22.md) |
 | 2026-09-21 | 将 decoder 收缩为独立质量识别奖励 | 取代同日“6 维 decoder／latent 进 actor”的早期设计：actor 直接读取 96 维两帧 history；训练期 decoder 只预测小车质量，prediction 不进 observation，rollout reward 强制 detach，decoder 只在批间监督更新。保留 VIME 信息增益为后续方向。`test_towing*.py`：194 通过、5 跳过；`py_compile`、asset path、model sync 与 tracked-ignore 检查通过。两个 decoder 数值测试因当前解释器无 PyTorch 跳过；尚未接自定义 runner 或运行 Isaac Lab |

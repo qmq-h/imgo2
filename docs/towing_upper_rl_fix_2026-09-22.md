@@ -6,7 +6,7 @@
 - actor observation 保留完整 51 维单帧，并新增部署可得的 `reference_command`；PPO actor／critic 改为各自独立的单层 256 维 GRU，不再由环境展平两帧历史。
 - 非对称 action 使用以零为中心的分段缩放；归一化零动作现在对应零加速度。前 1 s settle 阶段强制参考指令为零。
 - 子环境 reset 只清对应环境的底层 `last_action`，同时清 `rope_state`；绳模型改为逐环境 Bernoulli 采样，singleton 异步 reset 不再固定落入 compliant。
-- PPO 配置补齐 `actor→policy`、`critic→critic` 的 `obs_groups`。Actor GRU 关闭经验归一化，critic GRU 单独开启；配置使用当前 `RslRlRNNModelCfg` 接口。
+- PPO 最初按本机较新源码补了 `obs_groups` 和 `RslRlRNNModelCfg`；用户随后确认训练机是 Isaac Lab 2.2.1／RSL-RL 2.3.3，并决定沿用 AMP 的仓库自有算法模式。现已改由 `rl_lab.TowingOnPolicyRunner` 管理 recurrent PPO、decoder 与 critic-only normalizer，上层配置不再导入外部 RSL-RL runner/config；尚未在训练机运行。
 - `extra_distance` 改为只在 `t ≥ t_stop` 后生效，不再把最初 1 s 站定阶段误判成停车后滑行。
 - 修正冻结 AMP 的频率契约：训练与部署均为物理／关节控制 `0.005 s`、`decimation=4`，所以策略推理周期是 `0.02 s`（50 Hz），不是 `0.005 s`（200 Hz）。`tow_drag.py` 现在会按 4 个物理步调用一次策略；上层 action term 启动时还会交叉核对环境物理周期、上层 20 Hz 周期和底层 50 Hz 周期。
 - 增加无小车零负载环境：每次 reset 默认以 `12.5%` 概率采样，256 环境时期望约 32 个。由于 Isaac Lab scene 仍会复制 cart articulation，无小车实例把小车横向停放 2 m，并通过 `cart_present` 屏蔽绳力、轮阻、碰撞／间隙 reward 和碰撞 termination。decoder 的速度／零力监督保留，质量监督权重自然为零；critic 读取存在标志，actor 不读取。

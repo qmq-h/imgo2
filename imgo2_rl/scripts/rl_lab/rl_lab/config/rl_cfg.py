@@ -2,6 +2,7 @@ from .amp_algorithm_cfg import AMPActorCriticCfg, AMPAlgorithmCfg, AMPOnPolicyRu
 from .base_runner_cfg import RLLabBaseRunnerCfg
 from .himloco_algorithm_cfg import HIMPPOActorCriticCfg, HIMPPPOAlgorithmCfg, HIMOnPolicyRunnerCfg
 from .ppo_algorithm_cfg import PPOActorCriticCfg, PPOAlgorithmCfg, PPOOnPolicyRunnerCfg
+from .towing_algorithm_cfg import TowingActorCriticCfg, TowingDecoderCfg, TowingOnPolicyRunnerCfg
 
 __all__ = [
     "AMPActorCriticCfg",
@@ -14,4 +15,7 @@ __all__ = [
     "PPOAlgorithmCfg",
     "PPOOnPolicyRunnerCfg",
     "RLLabBaseRunnerCfg",
+    "TowingActorCriticCfg",
+    "TowingDecoderCfg",
+    "TowingOnPolicyRunnerCfg",
 ]

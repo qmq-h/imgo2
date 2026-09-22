@@ -169,16 +169,47 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("self.towing_force_b[:] = force_robot_b[:, 0, :2]", mdp)
         self.assertIn("frame = ObsTerm(func=mdp.policy_frame)", cfg)
         self.assertNotIn("cmd_vel = ObsTerm", cfg)
-        self.assertIn('obs_groups = {"actor": ["policy"], "critic": ["critic"]}',
-                      (PKG / "agents/upper_ppo_cfg.py").read_text("utf-8"))
+        ppo_cfg = (PKG / "agents/upper_ppo_cfg.py").read_text("utf-8")
+        self.assertIn("TowingActorCriticCfg", ppo_cfg)
+        self.assertNotIn("RslRlRNNModelCfg", ppo_cfg)
+        self.assertNotIn("isaaclab_rl.rsl_rl", ppo_cfg)
 
     def test_upper_ppo_normalizes_only_privileged_critic_input(self):
         cfg = (PKG / "agents/upper_ppo_cfg.py").read_text("utf-8")
-        self.assertIn("obs_normalization=False", cfg)
-        self.assertIn("obs_normalization=True", cfg)
-        self.assertEqual(cfg.count('rnn_type="gru"'), 2)
-        self.assertIn("RslRlRNNModelCfg", cfg)
-        self.assertNotIn("empirical_normalization", cfg)
+        self.assertIn("critic_empirical_normalization = True", cfg)
+        self.assertEqual(cfg.count('rnn_type="gru"'), 1)
+        self.assertIn("policy = TowingActorCriticCfg", cfg)
+
+    def test_ppo_configs_use_isaac_lab_2_2_rsl_rl_interface(self):
+        upper_cfg = (PKG / "agents/upper_ppo_cfg.py").read_text("utf-8")
+        base_cfg = (PKG.parent / "locomotion/velocity/base_move/agents/rsl_rl_ppo_cfg.py").read_text("utf-8")
+        for cfg in (base_cfg,):
+            self.assertNotIn("RslRlMLPModelCfg", cfg)
+            self.assertNotIn("actor_obs_normalization", cfg)
+            self.assertNotIn("critic_obs_normalization", cfg)
+        self.assertNotIn("isaaclab_rl.rsl_rl", upper_cfg)
+
+    def test_towing_runner_owns_decoder_normalizer_and_checkpoint(self):
+        runner = (RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py").read_text("utf-8")
+        wrapper = (RL / "scripts/rl_lab/rl_lab/wrapper/towing_vec_env_wrapper.py").read_text("utf-8")
+        self.assertIn("class TowingOnPolicyRunner", runner)
+        self.assertIn("augment_actor_observation(raw_obs, estimate)", runner)
+        self.assertIn("critic_normalizer(critic_obs, update=update)", runner)
+        self.assertIn('"decoder_optimizer_state_dict"', runner)
+        self.assertIn('"critic_normalizer_state_dict"', runner)
+        self.assertIn("dones=torch.stack(done_rollout)", runner)
+        self.assertIn("class TowingVecEnvWrapper", wrapper)
+        self.assertIn('{"policy", "critic", "decoder"}', wrapper)
+        train = (RL / "scripts/rl_lab/towing/train.py").read_text("utf-8")
+        self.assertIn("TowingVecEnvWrapper", train)
+        self.assertIn("TowingOnPolicyRunner", train)
+        self.assertNotIn("rsl_rl.runners", train)
+
+    def test_rl_lab_recurrent_reset_uses_boolean_done_mask(self):
+        recurrent = (RL / "scripts/rl_lab/rl_lab/modules/actor_critic_recurrent.py").read_text("utf-8")
+        self.assertIn("done_mask = dones.bool()", recurrent)
+        self.assertIn("hidden_state[..., done_mask, :] = 0.0", recurrent)
+        self.assertIn("if self.hidden_states is None or dones is None", recurrent)
 
     def test_hierarchical_frequency_contract_is_200_50_20_hz(self):
         env_cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")

@@ -9,6 +9,9 @@ from .rl_cfg import (
     PPOAlgorithmCfg,
     PPOOnPolicyRunnerCfg,
     RLLabBaseRunnerCfg,
+    TowingActorCriticCfg,
+    TowingDecoderCfg,
+    TowingOnPolicyRunnerCfg,
 )
 
 __all__ = [
@@ -22,4 +25,7 @@ __all__ = [
     "PPOAlgorithmCfg",
     "PPOOnPolicyRunnerCfg",
     "RLLabBaseRunnerCfg",
+    "TowingActorCriticCfg",
+    "TowingDecoderCfg",
+    "TowingOnPolicyRunnerCfg",
 ]
