@@ -40,11 +40,23 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = IMGO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     cart: ArticulationCfg = make_cart_cfg(_USD_CACHE)[0]
     cart.init_state.pos = (-0.7564, 0.0, 0.18)
-    robot_contacts = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", update_period=0.0, history_length=2,
-        track_air_time=True)
-    cart_contacts = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Cart/.*", update_period=0.0, history_length=1)
+    # Each sensor body is filtered against all robot bodies. Separate sensors are required by
+    # Isaac Lab's one-to-many filtering contract; wheel/ground forces never enter this matrix.
+    cart_deck_robot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/base_link", update_period=0.0, history_length=1,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
+    cart_wheel_fl_robot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/wheel_fl", update_period=0.0, history_length=1,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
+    cart_wheel_fr_robot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/wheel_fr", update_period=0.0, history_length=1,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
+    cart_wheel_rl_robot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/wheel_rl", update_period=0.0, history_length=1,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
+    cart_wheel_rr_robot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Cart/wheel_rr", update_period=0.0, history_length=1,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
 
 
 @configclass
@@ -61,38 +73,32 @@ class UpperActionsCfg:
 class UpperObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
-        # Exact order from docs/paper_plan_rl.md.  History is applied to the concatenated frame.
-        cmd_vel = ObsTerm(func=mdp.user_command)
-        last_action = ObsTerm(func=mdp.upper_last_action)
-        base_ang_vel = ObsTerm(func=mdp.base_angular_velocity, scale=0.25)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)
-        last_loco_action = ObsTerm(func=mdp.last_locomotion_action)
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel_policy_order)
-        joint_vel = ObsTerm(func=mdp.joint_vel_policy_order, scale=0.05)
+        frame = ObsTerm(func=mdp.policy_frame)
 
         def __post_init__(self):
             self.concatenate_terms = True
             self.enable_corruption = True
-            self.history_length = 2
-            self.flatten_history_dim = True
 
     @configclass
-    class CriticCfg(PolicyCfg):
+    class CriticCfg(ObsGroup):
+        policy_frame = ObsTerm(func=mdp.policy_frame)
         robot_velocity = ObsTerm(func=mdp.robot_velocity)
         cart_velocity = ObsTerm(func=mdp.cart_velocity)
         rope_state = ObsTerm(func=mdp.rope_privileged_state)
+        towing_force = ObsTerm(func=mdp.towing_force)
         cart_parameters = ObsTerm(func=mdp.cart_privileged_parameters)
 
         def __post_init__(self):
-            super().__post_init__()
+            self.concatenate_terms = True
             self.enable_corruption = False
-            self.history_length = 1
 
     @configclass
     class DecoderCfg(ObsGroup):
-        # Training-only label and reward gate. Neither enters policy observations.
-        normalized_mass = ObsTerm(func=mdp.decoder_targets)
-        active_mask = ObsTerm(func=mdp.decoder_active_mask)
+        targets = ObsTerm(func=mdp.decoder_targets)
+        mass_weight = ObsTerm(
+            func=mdp.decoder_mass_weight,
+            params={"minimum_force": 1.0, "force_scale": 10.0},
+        )
 
         def __post_init__(self):
             self.concatenate_terms = True
@@ -114,6 +120,8 @@ class UpperRewardsCfg:
                    params={"minimum_height": 0.18})
     clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
+    stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
+                                params={"force_scale": 10.0})
     extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
 
@@ -139,6 +147,9 @@ class UpperEventsCfg:
             "robot_x_range": (-0.03, 0.03),
             "robot_y_range": (-0.02, 0.02),
             "robot_yaw_range": (-0.03, 0.03),
+            # About 32 of 256 environments provide a zero-load anchor each reset batch.
+            "no_cart_fraction": 0.125,
+            "no_cart_lateral_offset": 2.0,
         },
     )
 

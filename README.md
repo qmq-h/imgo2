@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-21。小车、弹性绳（compliant）与不可伸长绳（inextensible）的 Isaac Sim 仿真已经实现；支持单环境、多环境对照、参数扫描与完整数据落盘。用户已通过可视化确认机器人能够拖动小车，停止后小车会继续向前滑行。
+> 最后核对：2026-09-22。已在 Windows／Python 3.14.6 完成本轮离线检查；上层拖曳采用 dynamics decoder＋recurrent PPO：51 维本体帧经 GRU 估计机器人速度、负载质量和牵引力，估计值 detach 后进入 actor，预测误差不进入 reward。当前仍缺自定义 recurrent runner 和 Isaac Lab 运行验证。详见 [离线检查记录](docs/offline_check_2026-09-22.md)、[拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md) 与 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md)。
 >
 > 当前阶段只说明“仿真链路和基本行为成立”，不等于两类绳的物理真实性、瞬态品质或控制效果已经完成评价。可复现数据结论见 §2 和问题表；详细实验与调试历史放在 `docs/`，不在 README 展开。
 
@@ -17,7 +17,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
                                       └─→ MuJoCo / Gazebo / 真机入口
 ```
 
-当前拖曳研究主线是：①完成上层强化学习环境与训练；②导出读取两帧 history 的 actor 并完成 MuJoCo／Gazebo sim2sim 拖曳和停车验证。真机作为独立后续分支，目前只维护可部署 observation 与控制频率契约，不纳入这一阶段验收。详细路线见 [上层拖曳 RL 计划](docs/paper_plan_rl.md)。
+当前拖曳研究主线是：①完成上层 recurrent PPO 与 decoder 训练闭环；②导出读取 51 维单帧并维护 GRU hidden state 的 actor，完成 MuJoCo／Gazebo sim2sim 拖曳和停车验证。真机作为独立后续分支，目前只维护可部署 observation 与控制频率契约，不纳入这一阶段验收。详细路线见 [上层拖曳 RL 计划](docs/paper_plan_rl.md)。
 
 最后一段部署链路仍需验证。`himloco` 仍是 Go2 参考占位策略；AMP 已于 2026-09-17 换成
 Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导出并接入部署，Gazebo 侧
@@ -127,12 +127,10 @@ python scripts/tools/list_envs.py
 | `Imgo2-heightmove-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-handstand-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-basemove-rough-himloco` | `scripts/rl_lab/himloco/train.py` |
-| `Imgo2-basemove-flat-amp` | `scripts/rl_lab/amp/train.py`（AMP-only 配方：6 项任务奖励、每步 4.0/2.0/−5.0） |
-| `Imgo2-basemove-flat-amp-go2` | `scripts/rl_lab/amp/train.py`（**amp_go2 配方**：整套 legged_gym 步态奖励 + 风格 ≤0.04/步，2026-09-18 新增，与上行并存） |
-| `Imgo2-basemove-flat-amp-rlamp` | `scripts/rl_lab/amp/train.py`（**rl_amp（fan-ziqi）配方**：任务只留线/角速度跟踪每步 1.0/0.3333，其余全 0；AMP `coef 2.0 / lerp 0.3`；观测缩放/动作缩放+裁剪、指令范围、域随机化、reset 分布、观测噪声、`min_normalized_std` 均**逐项对齐参考**，见 [§15.1/§15.2](docs/amp_gait_adjust_plan_2026-09-18.md)；`AMPRLAmpRunnerCfg`；2026-09-18 新增）；**2026-09-20 用户决定加回随机持续外力**：base 上 ±10 N / ±10 Nm，reset 采样、episode 内持续（对参考的主动偏离）） |
-| `Imgo2-basemove-rough-amp-rlamp` | `scripts/rl_lab/amp/train.py`（**粗糙地形 + 同一 rl_amp 配方** ⇒ 与上行成对，地形是单变量；加地形相对根高（仅 AMP 观测）+ 关参考状态初始化 + reset xy ±1 m（参考的 `custom_origins` 分支）；actor 保持 45 维盲走） |
+| `Imgo2-basemove-flat-amp-height` | `scripts/rl_lab/amp/train.py`（平坦地形，保留 Imgo2 高度与轻量姿态奖励；`AMPHeightRunnerCfg`） |
+| `Imgo2-basemove-flat-amp-fanziqi` | `scripts/rl_lab/amp/train.py`（Fanziqi A1 AMP 配方：`dt=0.005 s`、`decimation=6`，只留线／角速度任务奖励，42 维 actor，无持续外力；`FanziqiAMPRunnerCfg`） |
 
-此外注册了 `Imgo2-basemove-rough-himloco-play`、`Imgo2-basemove-flat-amp-play` 与 `Imgo2-basemove-flat-amp-go2-play`，分别使用对应回放配置。
+此外注册了 `Imgo2-basemove-rough-himloco-play`，两套 AMP 分别使用同名 `-play` 任务。
 
 基础检查及训练命令示例：
 
@@ -153,13 +151,8 @@ python scripts/tools/zero_agent.py --task=Imgo2-basemove-flat-ppo --num_envs=1
 python scripts/rsl_rl/train.py --task=Imgo2-basemove-flat-ppo --headless
 python scripts/rsl_rl/train.py --task=Imgo2-basemove-rough-ppo --headless
 python scripts/rl_lab/himloco/train.py --task=Imgo2-basemove-rough-himloco --headless
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --headless
-# amp_go2 配方（2026-09-18）：先跑短训练做前置检查，再提交长训练
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 --num_envs=256 --max_iterations=100 --seed=42 --headless
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-go2 --headless
-# 粗糙地形版（2026-09-18）：与平地版同配方，先短训练做前置检查
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp-rlamp --num_envs=256 --max_iterations=100 --seed=42 --headless
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-rough-amp-rlamp --headless
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-height --headless
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-fanziqi --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
 
 公共配置默认 `num_envs=4096`。初次检查可使用脚本的 `--num_envs` 参数缩小规模；具体训练规模依实际显存确定。
@@ -195,7 +188,7 @@ TorchScript**（用户 2026-09-18 决定）。`play.py` 自己调用
 ```bash
 python scripts/rsl_rl/play.py --task=Imgo2-basemove-flat-ppo --num_envs=1 --checkpoint="/absolute/path/to/model.pt"
 python scripts/rl_lab/himloco/play.py --task=Imgo2-basemove-rough-himloco-play --num_envs=1 --checkpoint="/absolute/path/to/model.pt"
-python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-play --num_envs=1 --headless --checkpoint="/absolute/path/to/model.pt"
+python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-height-play --num_envs=1 --headless --checkpoint="/absolute/path/to/model.pt"
 ```
 
 导出后按三条契约复核，再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`：① 导出件与 checkpoint 的
@@ -455,9 +448,10 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
-| TOW-03 | P1 | **上层 RL 环境、event 与物理 adapter 骨架已建，待运行验证** | 已按 [RL 计划](docs/paper_plan_rl.md) 建立三维 command shaper；reset event 包含站定→牵引→置零 schedule、质量／惯量、摩擦、轮阻、小幅位姿偏移和两类绳 1:1 掩码。每物理步绳力／轮阻与底层 50 Hz 保持已接入；actor 直接读取 96 维两帧 history；独立质量 decoder 的监督更新与 detached 奖励已实现 | 训练机验证 physics adapter；接入真实间隙／碰撞 producer（当前缓冲无有效来源）；自定义 runner 接入 decoder reward／批间更新；scripted policy 验证后才能注册训练 |
+| TOW-03 | P0 | **Dynamics decoder 契约及 STOP 后拉力惩罚已落地，待 runner 与训练机验证；当前仍不注册** | 2026-09-22 decoder 使用 `51→128→GRU(128)`，预测机器人机体系 `vx/vy`、负载质量和机体系牵引力 `Fx/Fy`；5 维 estimate detach 后组成 56 维 actor 输入。质量 loss 由 GT 牵引力大小连续加权；预测误差不进入 reward。收到本回合 STOP 后新增有界 GT 拉力惩罚，初始站定和无小车环境不生效。actor／critic 使用独立 GRU，critic 读取特权真值。详见 [GRU 记录](docs/towing_gru_design_2026-09-22.md) | 实现自定义 recurrent runner、三套 hidden state、GT-force weight、rollout estimate 固化和 checkpoint；在 Isaac Lab 复核 estimator 精度、STOP reward 排序、无小车隔离及 4／256 环境 rollout，重点排除策略为卸载拉力而让小车逼近的捷径。通过后再注册任务 |
 | CART-01 | P1 | **基础模型已验证** | 小车落地、轮接触、质量惯量、黏性轮阻和自由滑行已通过训练机实验；关键数据见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 后续只在模型或记录接口变化时回归，不重复展开早期调试历史 |
 | DOC-01 | P1 | 已完成 | 训练 README 曾引用失效的 `script/himloco_rsl_rl` 安装路径和写死的个人服务器 checkpoint | 已改为 `scripts/rl_lab`，checkpoint 改为 `<run>` 占位并注明不可沿用；根 README 与子项目 README 表述一致 |
 | ENV-01 | P0 | 代码已修正，待服务器验证 | 原先 `assets/imgo2.py` 的两条路径写死为 `/root/gpufree-data/Imgo2_rl/...`（当时目录名还是 `Imgo2_rl`），且假定该目录就是项目根，合并成 monorepo 后必然失效且 glob 为空时无明确报错 | 已改为由 `Path(__file__)` 推导项目根，并支持 `IMGO2_AMP_MOTION_DIR`／`IMGO2_URDF_PATH` 覆盖；新增 `scripts/tools/check_asset_paths.py` 供新机器自检（本机通过：URDF 存在、动作文件 21 份、无残留机器路径）。服务器上仍需运行该脚本并记录实际加载路径 |
@@ -469,7 +463,7 @@ bash build.sh --cmake
 | AMP-05 | P0 | **45 维 + 正式导出 + sim2sim 确认完成** | actor 移除 `base_lin_vel`（真机需状态估计）：`amp_env_cfg.py` 设 `observations.policy.base_lin_vel = None`，actor 45 维、critic 保留 48 维；部署侧 `amp/config.yaml` 为 45 维、观测项/顺序/缩放/动作/增益已与训练配置**逐项核对一致**。**24500 轮 checkpoint（`model_24500.pt`，sha256 `cc8ee22a…`；部署 `policy.pt` `cba59d44…`）已在 Gazebo 确认**：契约① 与 actor max diff 0.0、② 部署 libtorch 2.3.0 加载通过；按「每条命令一条新栈」测得跟速 **0.2 → 93.4%、0.3 → 97.9%、0.5 → 95.9%、0.75 → 98.7%、1.0 → 99.8%、1.2 → 99.8%、1.5 → 98.5%**，高度 0.277–0.300 m，`vx=0` 漂移 **0.001 m/s**、抖动 8.6/6.1/9.3（5000 轮时是 0.047 m/s、35.7/39.8/80.1）。**顺带实证了 AMP-08**：这份 checkpoint 的 `iter` 字段为 24500（不再是 0）。详见 [Gazebo 记录](docs/gazebo_ros2_bringup_2026-09-17.md) 9.7 节 | 剩余项：**步频仍是录制参考的约 2.5 倍**（周期 0.208–0.365 s 对 0.600 s / 1.67 Hz），且抖动绝对值随速度上升（shank 57→412）；若要"像真机录的那样走"，这是下一档目标。另：极低速 0.2 m/s 的周期强度只有 0.23（0.3 是 0.78）。**不得直接截掉旧网络的 3 个输入。** |
 | AMP-06 | P0 | 配比已调好并训练验证；**步态在 sim2sim 侧已确认由「高频乱倒腿」变为「干净对角步」**；训练侧足端回放把剩余差距的根因定为**步幅偏小（0.61 倍）**而非相位乱 | ① **"一启动就飞"已修**：`PhysicsThread` 不套 keyframe；场景 base 高度改 `0 0 0.5` 后不再弹飞。② 抄入参考项目求解器/接触块后能站起。③ **MODEL-03**：`framequat` 挂 `imu` site 后站姿 0.2663→0.3015。④/⑤ 已排除「缺 `lin_vel` 观测」与「模型物理错误」（参考策略在我们模型上 `vx=0.5` 走 0.454 m/s）。**⑥ 2026-09-17 定位真因并调好配比**：三次训练对照——Run1 `1.0/0.3/-10` 只站不走（误差恒 1.72、1000 轮后指标全平）；Run2 `50/17/-1` 退化为贴地滑行（高度 0.172、贴地 0.89、std 失控 12.17）；本次 `4.0/2.0/-5` + 三项轻量姿态约束（`lin_vel_z_l2 -1`/`ang_vel_xy_l2 -0.05`/`joint_pos_limits -2`）**线速度误差 1.31→0.554 m/s**、高度 **0.305**、贴地 **0.08%**、触地终止 2.1%、超时终止 97.9%、std 稳定 0.394。**关键不是绝对权重，而是速度项与高度项的量级比**：Run1 惩罚是速度的 7.7 倍（不动）、Run2 速度是惩罚的 66 倍（趴滑）、本次 0.75:1 才同时拿住「走 + 站得住」 | **待修**：速度跟踪 kernel 仍仅 0.037（误差波动大，平均速度约为指令的 84%），24500 轮后 Gazebo 复测（每条命令一条新栈）周期强度升到 **0.71–0.83**、FL-FR 相位 174°–188°（trot），与键 1 参考策略（强度 0.96–0.97）同量级。**2026-09-18 训练侧足端回放（Isaac Lab，8 环境 × 950 步、丢弃前 50 步，`model_24500`）**：**唯一实质缺陷是步频 3.1 倍**（周期 **0.1926 s / 5.19 Hz** 对参考 0.600 s / 1.67 Hz；0.6 m/s 下同样是 0.198 s ⇒ **不是指令超范围**）。其余指标都对得上参考：**相位是干净对角步**（FL-FR **+174.2°**、FL-RR **+17.3°**、集中度 R **0.86–0.91**，与 Gazebo 侧 176.9° 相差 3° 以内）、**关节峰峰值落在参考范围内**（shank 0.516–0.618 对参考中位 0.635 / 范围 0.477–1.063；thigh 0.407–0.470 对中位 0.477）、抬脚 0.067–0.085 m（参考 0.083–0.121）、前后腿比 1.06（参考 0.87–1.06）、步幅 0.139–0.160 m（参考同档 0.295）、高度 0.3117 m、线速度误差 0.108 m/s。**逐条更正（v1→v3）**：v1 报的「高抬腿 1.6 倍」「前后腿不对称 1.33」「shank 幅度 1.35–2.25 倍」全部是**未 warmup 的出生瞬态污染**（加 50 步 warmup 后真值 0.066–0.083 m、1.06、0.52–0.62 rad）外加一处 `joint_pos` 堆叠轴 bug，已撤回；v2 报的「相位 156°、集中度 0.17」是相位估计器被非整数周期（0.1926 s ÷ 0.02 s = 9.63 步）抹平，换插值法后恢复。**为什么「加风格权重」不是解法（离线判别器分析）**：终局每步混合回报 1.97 = 任务 1.402（71%）+ 风格 0.540（29%），风格项按判别器标定可达 1.335；把策略的「关节角+足端+关节速度」三块换成专家能补回 **86%** 的风格差距（**关节速度块单独占 53%**，其 σ 是专家的 **1.7 倍**＝3 倍步频的印记），而姿态/足端的边缘分布几乎重合（σ 比 1.00）；**但判别器在策略点的局部梯度只有 8e-5**（1σ 全维扰动只移动 d 约 5e-4）⇒ 风格奖励是个没有方向的台阶，20000 轮里 d_policy 只动了 0.07。合成对照进一步指向 **λ_gp=10**：同预算下 λ 10→1→0 时「正常节律 vs 3 倍速节律」的风格奖励差为 **0.105 / 0.564 / 1.262** 每步。⇒ 优先级：**P1 降 λ_gp（10→1~2）**、**P2 加 `feet_air_time`（目标滞空 ≈0.2 s，当前 0.067–0.085）**、P3 兜底试 `lerp 0.3→0.5`、P4 恒定抬头 +2.1°/+2.9° 用 `flat_orientation_l2` 单变量消融；压指令范围已降级。完整证据、表格与判据见 [AMP 步态调整方案](docs/amp_gait_adjust_plan_2026-09-18.md)。三次训练完整对照与结论见 [AMP 实验记录](docs/amp_experiments_2026-09-17.md)，代价/步态详情见 [策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md) |
 | AMP-08 | P0 | **已修（测试锁定）；影响此前所有 AMP/PPO checkpoint 的续训** | `amp_on_policy_runner.py` 与 `ppo_on_policy_runner.py` 的 `learn()` **循环内从不更新** `self.current_learning_iteration`（只在循环结束后 `+= num_learning_iterations`），而 `save()` 写的是它 —— 于是**循环内保存的 checkpoint 里 `iter` 恒为该次运行的起点（通常 0）**，只有最后一次保存是正确的。实测证据：运行 `2026-09-17_17-19-04` 的 **20 个 checkpoint 全部 `iter=0`**。`load()` 又用 `loaded_dict['iter']` 作续训起点 ⇒ **`--resume` 会从第 0 轮重跑**，且第一次保存（`it=0`）覆盖 `model_0.pt`、此后每 `save_interval` 覆盖同名文件，等于把已训轮次全部作废。HIM runner（`him_on_policy_runner.py:199`）本来就有这一行，故不受影响 | **已修**：两个 runner 的循环首行加 `self.current_learning_iteration = it`；新增 `test_runners_keep_checkpoint_iter_in_sync` 断言三个 runner 都有该行且 `save()` 写 `'iter'`（8 项测试通过）。**未验证**：修复后尚未产生新的 checkpoint（需一次新训练或续训才能确认 `iter` 写入正确） |
-| AMP-09 | P1 | **已由用户拍板（2026-09-18）**：actor 观测**保持 45 维**（保留 `base_ang_vel`），不改成参考的 42 维 | 2026-09-18 用户要求「除关节 kp/kd 以外都对齐」后，rlamp 两个任务已在奖励配方、观测缩放、动作缩放/裁剪、指令范围、域随机化、reset 分布、观测噪声、`min_normalized_std` 上逐项对齐（[§15.1/§15.2](docs/amp_gait_adjust_plan_2026-09-18.md)）。**仍不一致且必须由用户拍板的是 actor 观测集**：参考 `rl_amp` 的 actor 是 `privileged_obs_buf[:, 6:]`（`legged_robot_amp.py:269`），**既不看线速度也不看角速度** ⇒ 42 维；我们是 45 维（AMP-05 只去掉线速度、保留 IMU 角速度，用户此前的决定）。**两个选项的代价**：① 保持 45 —— 与参考差一个 3 维块，但部署契约（`amp/config.yaml` 的 `observations` 列表 + C++ 观测拼接 + 已部署 24500 策略）不变；② 改成 42 —— 与参考逐字一致，但要同步改 `imgo2_deploy/policy/imgo2/amp/config.yaml`、C++ 观测拼接与导出复核，且**必须重训**（旧 checkpoint 第一层是 45 维，不得截网络）。另：参考的 `noise.noise_scales.ang_vel = 0.3` 之所以在参考里无效果，正是因为 actor 不含角速度；若改成 42，那条噪声对齐也随之变成死代码 | **决定与理由**：① `base_ang_vel` 是部署契约里的一项（`amp/config.yaml` 的 `observations` 列表 + C++ 观测拼接），拆掉会连带导出与部署复核；② 真机 IMU 本来就有陀螺仪，参考去掉它更多是「不依赖速度估计」的通用性取舍，不是硬件限制；③ 对齐已经改了奖励/缩放/动作/DR/reset/噪声六块，再把观测集一起换掉，结果就说不清是哪一个变量起作用。**要严格 42 维时**：作为独立单变量另开任务/新 run（改 actor 观测 → 重训 → 重导出 → 三条契约复核），不要和本轮叠在一起 |
+| AMP-09 | P1 | **两套任务已分开，待训练验证** | 2026-09-22 用户把 AMP 入口收缩为两套：`flat-amp-height` 继续使用可部署的 45 维 actor；`flat-amp-fanziqi` 严格采用参考的 42 维 actor（同时移除基座线速度和角速度），关闭非参考持续外力，并恢复参考 runner 的 std 下限、500000 轮和 50 轮保存配置。旧 45 维 checkpoint 与新 42 维任务不兼容 | 在训练机分别做两套 256 环境／100 轮冒烟；Fanziqi 新训完成后必须单独导出并建立自己的部署观测契约，不能覆盖当前 45 维部署策略。详见 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md) |
 | MODEL-02 | P0 | 已完成并验证（①–⑤） | 用户决定把模型统一到 `imgo2_description`（D1 命名 FL/FR/RL/RR；D2 Gazebo/IMU/transmission 留在 description 作可选模块；D3 生成物入库；D4 删冗余副本、git 兜底；D5 Gazebo 插件暂不处理）。**① 命名/网格**：`meshes/` 改 FL 命名（指纹 `8dc5b5995a11`，10 文件）。**② 模块化**：`xacro/core.xacro`（物理内核）＋ `{transmission,gazebo,imu}.xacro` ＋ `robot.xacro` 组装入口（开关默认 false）；生成物 `urdf/imgo2.urdf`（纯）与 `urdf/imgo2.gazebo.urdf`。**③ MJCF**：`mjcf/{imgo2.xml,scene.xml}`（训练物理 + 参考求解器/接触块 + `framelinvel`）。**④ 消费者切换**：RL 的 `assets/imgo2.py` 经 `_REPO_ROOT` 指向 `imgo2_description/urdf/imgo2.urdf`；`check_asset_paths.py` 改为按声明解析多个 root 变量；`audit_amp_dataset.py`/`tests`/`inertia_urdf.py` 同步；deploy 新增编译期 `IMGO2_MODEL_DIR`、`rl_sim_mujoco.cpp` 读 `imgo2_description/mjcf/<scene>.xml`；`build.sh` 与两个 Gazebo launch 改指 description；`CMakeLists` 安装列表去掉 `robot_description`。**⑤ 清理**：删除 `imgo2_model/`、`imgo2_rl/source/imgo2_rl/data/`、`imgo2_deploy/robot_description/`（共 46 文件、约 57 MB 工作树）；AGENTS.md 模型章节改写为单一源规则 | **验证**：`check_model_sync.py` 全 PASS（2 份已登记 URDF、网格指纹、mesh 引用存在性、FK 恒等 RMSE 0.00214 m / 交换 0.22470 m）；`check_amp_joint_order.py` 三项全 PASS 且数值与统一前一致（0.00107/0.00214 m、0.22491、0.0191/0.1339 rad、r 0.9546/0.2317）；`check_asset_paths.py` PASS（URDF 17 mesh 引用全在、21 份动作）；单元测试 5 通过 + 1 跳过（跳过的是需要 torch 的 AMP-03 回归）；`bash build.sh -mj` 删目录后仍构建成功，二进制内 `IMGO2_MODEL_DIR` 指向 `<repo>/imgo2_description`；`git ls-files -i -c --exclude-standard` 为空。**未运行**：GUI、Isaac Lab 训练/回放、ROS/Gazebo、真机；Gazebo 插件 `liblegged_hw_sim.so` 仍缺（DEPLOY-05 未解）。详见 [sim2sim 记录](docs/sim2sim_amp_2026-09-17.md) 第 6.6 节 |
 | MODEL-03 | P0 | 已修并在无头回放验证，GUI 待确认 | MuJoCo 的 `framequat`/`framelinvel` 原先写成 `objtype="body" objname="base"`，返回值会再乘上该 body 的**惯量主轴旋转** `iquat`（base 的 `fullinertia` 主轴非 `ixx<iyy<izz` 排列，实际偏移 ≈180° 绕 (1,0,1)/√2），于是部署侧姿态观测整体偏转 90°：`GetUp` 结束后机器人明明直立（`xquat=(1,0,0,0)`），`gravity_vec` 却报 `(-1.000, 0.004, -0.025)` 而非 `(0,0,-1)`，策略把"站直"判成"已翻倒"——PPO 接管瞬间就输出饱和动作并塌成深蹲（`z_final=0.154`），himloco 侧倾，只有 AMP 恰好鲁棒。判据：`QuatRotateInverse(·,(0,0,-1))` 的第三分量恒为 `-1-2q_z² ≤ -1`，不可能出现 `-0.025`，故读到的三元组并非 `(g_x,g_y,g_z)`；再对照 `xquat` 与 `sensordata[36..39]` 的时间线确认是固定偏移。参考项目用的是 site（`objtype="site" objname="base_site"`）。修法：三个传感器改挂 base 内原有的 `imu` site（site 无 `quat`、`pos` 默认原点，故 site 系 = link 系），**声明顺序不变**，`sensordata` 偏移与 `GetState` 的 `[3n..3n+3]`/`[3n+4..3n+6]` 均无需改动；同时注释掉文件末尾那条陈旧 `<keyframe>`（`base z=0.35`，C++ 不应用但 GUI 的 Key 下拉框会应用） | 已通过：修后三个键的 `gravity_vec` 均为 `(0,-0,-1)`；PPO `vx=0/0.5/1.0` 站姿 0.321、实测 0.509/0.975 m/s（FL_thigh 极差 1.1–1.4 rad，是真步态）、AMP 站姿 0.3015；`check_model_sync.py`／`check_asset_paths.py`／`check_amp_joint_order.py` 仍全 PASS，单元测试 5 通过 + 1 跳过（跳过的是需要 torch 的 AMP-03 回归）。细节见[策略运行期排查](docs/sim2sim_policy_runtime_2026-09-17.md)。**待办**：在 GUI 里人工确认一次按键 1/2/3 与 1→2→3 切换 |
 | DEPLOY-08 | P1 | 已归因：harness 假象，真实代码无此问题；GUI 仍待确认 | 2026-09-17 加 PPO（键 1）后，用**多键连续切换**的临时 harness（0→1→2→3）在进入 himloco 后崩溃：`mat1 and mat2 shapes cannot be multiplied (1x45 and 270x128)`，即把 45 维（单帧）输入喂给了 himloco 的 270 维（6 帧历史）网络。**2026-09-17 晚查明是我那版 harness 的错**：它的 `Forward()` 被简化成 `model->forward({ComputeObservation()})`，漏掉了真实 `RL_Sim::Forward()` 里的历史分支（`history_obs_buf.insert` → `get_obs_vec(observations_history)`）。把 `Forward()` 逐行照搬真实实现后，单键与 `0→1→2→3` 连续切换**都不再崩溃**；同一轮还确认仓库里 `RL_Sim::Forward()` 与参考项目逐行相同，故真实部署代码没有这个缺陷 | 用**真实 GUI 依次按 1→2→3** 再确认一次（预期不崩；会看到 himloco 把机器人掀翻，那是 DEPLOY-01/DEPLOY-06 的占位策略问题，不是崩溃）。若仍崩，再查 `RL::InitRL` 在「无历史配置 ↔ 有历史配置」切换时 `history_obs_buf` 与 `params["observations_history"]` 的时序 |
@@ -514,7 +508,7 @@ python scripts/tools/check_model_sync.py
 python scripts/tools/audit_amp_dataset.py --output logs/amp_data_audit.json
 python scripts/tools/check_amp_joint_order.py
 python -m unittest discover -s tests -p test_amp_alignment.py -v
-python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp --num_envs=256 --max_iterations=100 --seed=42 --headless
+python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-height --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
 
 `check_asset_paths.py` 确认 URDF 与动作数据能按 `Path(__file__)` 推导的路径找到（应为 21 份动作文件），是本机 ENV-01 的自检项。`check_model_sync.py` 按逻辑关节名与逻辑 link 名（与腿序、LF_/LH_ 命名无关）比对四份 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何、base 规范值、三份共用的网格集合，并让每份 URDF 都对录制数据做 FK——五项任一破坏都会报错（已用翻符号与改足端 CoM 两次负向测试确认）。
@@ -555,6 +549,12 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-22 | 上层拖曳 reward 增加 STOP 后绳力惩罚 | 仅在随机 `stop_time_s` 后计算 `||F_tow||/(||F_tow||+10 N)`，权重 `−1.0`；初始零速站定及无小车环境屏蔽。完整拖曳离线测试 188 项通过／12 项按可选环境跳过；尚需 Isaac Lab scripted rollout 验证其与 clearance／collision 的回报排序，排除快速松绳后追尾的策略捷径 |
+| 2026-09-22 | 拖曳采用 dynamics decoder＋recurrent PPO | decoder 改为 `51→128→GRU(128)`，显式预测机器人 `vx/vy`、负载质量和牵引力 `Fx/Fy`；estimate detach 后与原始帧组成 56 维 actor 输入。预测误差移出 reward，质量 loss 由 GT 牵引力大小连续加权。actor／critic 各用独立 GRU。离线拖曳测试 187 通过／12 跳过；runner 与 Isaac Lab 验证仍未完成。详见 [记录](docs/towing_gru_design_2026-09-22.md) |
+| 2026-09-22 | AMP 配置收缩为两套 | `amp_rsl_rl_cfg.py` 只保留 `AMPHeightRunnerCfg` 与 `FanziqiAMPRunnerCfg`；只注册平地高度奖励和 Fanziqi 两套 train/play 任务，删除 go2／粗糙 AMP 环境实现与旧测试。Fanziqi 任务改为 42 维 actor、无持续外力、参考 std clamp／训练轮数／保存间隔。AMP 离线测试 14 通过／1 跳过，未运行 Isaac Lab。详见 [记录](docs/amp_config_cleanup_2026-09-22.md) |
+| 2026-09-22 | 修复上层拖曳 RL 静态复审阻断项 | 安全 producer、51×2 frame-major observation、`reference_command`、零中心 action、per-env reset、绳模型异步采样和 PPO `obs_groups` 已落地；actor 关闭、critic 单独开启经验归一化。复核后又补齐车斗／四轮过滤接触，修正 `extra_distance` 初始站定误生效，把冻结 AMP 推理周期修正为 20 ms（50 Hz），并加入默认 12.5% 无小车零负载环境及完整 mask。拖曳离线测试 199 通过／12 跳过；未运行 Isaac Lab，decoder runner 尚未接线，任务保持未注册。详见 [修复记录](docs/towing_upper_rl_fix_2026-09-22.md) |
+| 2026-09-22 | 复审上层拖曳 RL 环境完整链路 | 核对 scene→event→action→冻结 AMP→绳力／轮阻→obs/reward/termination→PPO/decoder，并与本机 Isaac Lab 源码的 ActionTerm、ObservationManager、RewardManager、reset 顺序和 RSL-RL 配置接口对照。确认架构方向合理但存在 5 类训练阻断项，TOW-03 升为 P0；upper-RL 离线契约测试 7 通过／2 因无 PyTorch 跳过，未运行 Isaac Lab。详见 [复审记录](docs/towing_upper_rl_review_2026-09-22.md) |
+| 2026-09-22 | 拉取 `cf465a2` 后执行全仓离线检查 | `check_asset_paths.py`、`check_model_sync.py`、`audit_amp_dataset.py`、`check_amp_joint_order.py`、`compileall` 与 tracked-ignore 检查通过；拖曳测试 194 项通过／12 跳过。全量测试为 256 通过／24 跳过／1 导入错误，错误原因是本机 Python 3.14.6 缺 NumPy；PyTorch／Isaac Lab 项也未在本机执行。无代码修复，待补验证见 CHECK-01 与 [详细记录](docs/offline_check_2026-09-22.md) |
 | 2026-09-21 | 将 decoder 收缩为独立质量识别奖励 | 取代同日“6 维 decoder／latent 进 actor”的早期设计：actor 直接读取 96 维两帧 history；训练期 decoder 只预测小车质量，prediction 不进 observation，rollout reward 强制 detach，decoder 只在批间监督更新。保留 VIME 信息增益为后续方向。`test_towing*.py`：194 通过、5 跳过；`py_compile`、asset path、model sync 与 tracked-ignore 检查通过。两个 decoder 数值测试因当前解释器无 PyTorch 跳过；尚未接自定义 runner 或运行 Isaac Lab |
 | 2026-09-21 | 明确拖曳项目主路线 | 当前主线固定为“上层 RL 训练闭环 → 两帧 history actor 导出 → MuJoCo/Gazebo sim2sim”；真机单列为后续分支，不混入当前验收标准 |
 | 2026-09-21 | 实现上层拖曳 event、速度 schedule 与物理 adapter | 每回合先置零站定、随机速度牵引、4–6 s 时再次置零；随机质量／惯量、摩擦、轮阻、小幅位姿和两类绳 1:1 分配。轮阻与绳力进入每 5 ms 更新，底层策略每 20 ms 推理并保持目标。真实间隙／碰撞 producer 仍缺；未运行 Isaac Lab |

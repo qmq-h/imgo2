@@ -1,8 +1,7 @@
 """Manager terms for upper towing RL.
 
-The observation/reward functions are deliberately explicit about privileged data.  The action
-term currently closes the hierarchical control path; per-physics-step rope/resistance application
-is the next milestone and keeps the task unregistered until it is verified against tow_drag.py.
+The observation/reward functions are deliberately explicit about privileged data. The task stays
+unregistered until its physics and safety signals are verified against ``tow_drag.py`` in Isaac Lab.
 """
 
 from dataclasses import MISSING
@@ -28,7 +27,15 @@ class HierarchicalVelocityAction(ActionTerm):
 
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
+        UpperActionSpec(
+            control_dt=cfg.upper_control_dt,
+            acceleration_min=cfg.acceleration_min,
+            acceleration_max=cfg.acceleration_max,
+            reference_min=cfg.reference_min,
+            reference_max=cfg.reference_max,
+        ).validate()
         self._cart = env.scene[cfg.cart_asset_name]
+        self._collision_sensors = tuple(env.scene.sensors[name] for name in cfg.collision_sensor_names)
         self._raw = torch.zeros(env.num_envs, 3, device=env.device)
         self._processed = torch.zeros_like(self._raw)
         self._previous = torch.zeros_like(self._raw)
@@ -41,15 +48,30 @@ class HierarchicalVelocityAction(ActionTerm):
         # [clearance, tension, extension, taut]. Collision is deliberately separate: tautness is
         # a rope state and must never double as a contact flag.
         self.rope_state = torch.zeros(env.num_envs, 4, device=env.device)
+        self.towing_force_b = torch.zeros(env.num_envs, 2, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.stop_origin_x = self._asset.data.root_pos_w[:, 0].clone()
         self._was_stopped = torch.linalg.vector_norm(self.user_command, dim=1) <= 1.0e-4
         self.cart_mass = torch.full((env.num_envs, 1), cfg.initial_cart_mass, device=env.device)
         self.ground_friction = torch.full((env.num_envs, 1), cfg.initial_ground_friction, device=env.device)
         self.wheel_damping = torch.full((env.num_envs, 1), cfg.initial_wheel_damping, device=env.device)
-        # 0 = compliant, 1 = inextensible. The reset event fills an exactly balanced mask.
+        # A subset of environments acts as a zero-load locomotion/stopping anchor. The cart
+        # articulation still exists in the replicated scene but is parked laterally and masked
+        # out of towing physics, safety costs, termination, and decoder supervision.
+        self.cart_present = torch.ones(env.num_envs, 1, dtype=torch.bool, device=env.device)
+        # 0 = compliant, 1 = inextensible. Reset samples each environment independently.
         self.rope_model_id = torch.zeros(env.num_envs, 1, device=env.device)
         self._policy_cfg = get_policy(cfg.policy_name)
+        if abs(cfg.physics_dt - env.physics_dt) > 1.0e-9:
+            raise ValueError(
+                f"physics_dt {cfg.physics_dt} does not match environment {env.physics_dt}")
+        if abs(cfg.upper_control_dt - env.step_dt) > 1.0e-9:
+            raise ValueError(
+                f"upper_control_dt {cfg.upper_control_dt} does not match environment {env.step_dt}")
+        if abs(cfg.low_level_control_dt - self._policy_cfg.control_dt) > 1.0e-9:
+            raise ValueError(
+                f"low_level_control_dt {cfg.low_level_control_dt} does not match frozen policy "
+                f"period {self._policy_cfg.control_dt}")
         self._policy = FrozenLowLevelPolicy(self._policy_cfg, device=env.device)
         self._physics_step = 0
         self._held_joint_targets = self._asset.data.default_joint_pos.clone()
@@ -108,12 +130,37 @@ class HierarchicalVelocityAction(ActionTerm):
         self._processed.copy_(actions.clamp(-1.0, 1.0))
         lo = torch.tensor(self.cfg.acceleration_min, device=self.device)
         hi = torch.tensor(self.cfg.acceleration_max, device=self.device)
-        acceleration = lo + 0.5 * (self._processed + 1.0) * (hi - lo)
+        acceleration = torch.where(self._processed < 0.0,
+                                   -self._processed * lo, self._processed * hi)
         self.reference_command.add_(acceleration * self.cfg.upper_control_dt)
         ref_lo = torch.tensor(self.cfg.reference_min, device=self.device)
         ref_hi = torch.tensor(self.cfg.reference_max, device=self.device)
         self.reference_command.copy_(torch.maximum(torch.minimum(
             self.reference_command, ref_hi), ref_lo))
+        self.reference_command[elapsed_s < self.tow_start_s] = 0
+
+    def update_safety_state(self):
+        """Refresh the oriented body-surface gap and direct deck-contact collision witness."""
+        rear = torch.tensor((-self.cfg.robot_rear_surface_x, 0.0, 0.0), device=self.device)
+        front = torch.tensor((self.cfg.cart_front_surface_x, 0.0, 0.0), device=self.device)
+        robot_surface = self._asset.data.root_pos_w + math_utils.quat_apply(
+            self._asset.data.root_quat_w, rear.expand(self.num_envs, 3))
+        cart_surface = self._cart.data.root_pos_w + math_utils.quat_apply(
+            self._cart.data.root_quat_w, front.expand(self.num_envs, 3))
+        forward = math_utils.quat_apply(
+            self._asset.data.root_quat_w,
+            torch.tensor((1.0, 0.0, 0.0), device=self.device).expand(self.num_envs, 3))
+        self.rope_state[:, 0] = ((robot_surface - cart_surface) * forward).sum(dim=1)
+        pair_forces = []
+        for sensor in self._collision_sensors:
+            force_matrix = sensor.data.force_matrix_w
+            if force_matrix is None:
+                raise RuntimeError("filtered cart/robot contact force matrix is unavailable")
+            pair_forces.append(torch.linalg.vector_norm(force_matrix, dim=-1).reshape(self.num_envs, -1))
+        maximum_force = torch.cat(pair_forces, dim=1).amax(dim=1)
+        present = self.cart_present[:, 0]
+        self.rope_state[~present, 0] = 0.0
+        self.cart_collision.copy_((maximum_force > self.cfg.collision_force_threshold) & present)
 
     def apply_actions(self):
         # apply_actions is called every 5 ms physics step. Evaluate the frozen locomotion policy
@@ -184,8 +231,9 @@ class HierarchicalVelocityAction(ActionTerm):
                 self._cart, self._cart_body_id, cart_offset_w,
                 effective_mass=cart_effective_mass))
 
-        force_robot_w = torch.stack(tuple(state.force_on_robot), dim=-1)
-        force_cart_w = torch.stack(tuple(state.force_on_cart), dim=-1)
+        present = self.cart_present.to(dtype=robot_point.dtype)
+        force_robot_w = torch.stack(tuple(state.force_on_robot), dim=-1) * present
+        force_cart_w = torch.stack(tuple(state.force_on_cart), dim=-1) * present
         force_robot_b = math_utils.quat_apply_inverse(
             self._asset.data.body_quat_w[:, self._robot_body_id], force_robot_w).unsqueeze(1)
         force_cart_b = math_utils.quat_apply_inverse(
@@ -197,14 +245,16 @@ class HierarchicalVelocityAction(ActionTerm):
         self._cart.set_external_force_and_torque(
             force_cart_b, zero_torque, positions=cart_offset.unsqueeze(1),
             body_ids=[self._cart_body_id])
+        self.towing_force_b[:] = force_robot_b[:, 0, :2]
 
         effort = torch.zeros_like(self._cart.data.joint_pos)
         effort[:, self._wheel_joint_ids] = (
-            -self.wheel_damping * self._cart.data.joint_vel[:, self._wheel_joint_ids])
+            -self.wheel_damping * self._cart.data.joint_vel[:, self._wheel_joint_ids]
+            * present)
         self._cart.set_joint_effort_target(effort)
-        self.rope_state[:, 1] = state.rope_tension
-        self.rope_state[:, 2] = state.rope_extension
-        self.rope_state[:, 3] = state.is_taut
+        self.rope_state[:, 1] = state.rope_tension * present[:, 0]
+        self.rope_state[:, 2] = state.rope_extension * present[:, 0]
+        self.rope_state[:, 3] = state.is_taut * present[:, 0]
 
     def reset(self, env_ids=None):
         if env_ids is None:
@@ -215,11 +265,13 @@ class HierarchicalVelocityAction(ActionTerm):
         self.reference_command[env_ids] = 0
         self.user_command[env_ids] = 0
         self.last_loco_action[env_ids] = 0
+        self.rope_state[env_ids] = 0
+        self.towing_force_b[env_ids] = 0
         self._held_joint_targets[env_ids] = self._asset.data.default_joint_pos[env_ids]
         self.cart_collision[env_ids] = False
         self.stop_origin_x[env_ids] = self._asset.data.root_pos_w[env_ids, 0]
         self._was_stopped[env_ids] = False
-        self._policy.reset()
+        self._policy.reset(env_ids)
 
 
 @configclass
@@ -255,11 +307,20 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     rope_position_gain: float = 0.2
     rope_max_correction_rate: float = 0.2
     wheel_radius: float = 0.08
+    collision_sensor_names: tuple[str, ...] = (
+        "cart_deck_robot_contacts",
+        "cart_wheel_fl_robot_contacts", "cart_wheel_fr_robot_contacts",
+        "cart_wheel_rl_robot_contacts", "cart_wheel_rr_robot_contacts",
+    )
+    collision_force_threshold: float = 1.0
+    robot_rear_surface_x: float = 0.1575
+    cart_front_surface_x: float = 0.25
 
 
 def reset_towing_episode(
     env, env_ids, *, speed_range, stop_time_range, mass_range, friction_range,
     wheel_damping_range, robot_x_range, robot_y_range, robot_yaw_range,
+    no_cart_fraction, no_cart_lateral_offset,
 ):
     """Reset the v0 towing work condition and keep its parameters fixed for one episode."""
     if env_ids is None:
@@ -286,11 +347,15 @@ def reset_towing_episode(
     term.cart_mass[env_ids, 0] = masses_kg
     term.ground_friction[env_ids, 0] = friction
     term.wheel_damping[env_ids, 0] = wheel_damping
+    if not 0.0 <= no_cart_fraction <= 1.0:
+        raise ValueError("no_cart_fraction must be in [0, 1]")
+    if no_cart_lateral_offset <= 0.0:
+        raise ValueError("no_cart_lateral_offset must be positive")
+    cart_present = torch.rand(count, device=env.device) >= no_cart_fraction
+    term.cart_present[env_ids, 0] = cart_present
 
-    # Random order, exact 1:1 for an even reset batch. Odd batches differ by at most one env.
-    permutation = torch.randperm(count, device=env.device)
-    model_ids = torch.zeros(count, device=env.device)
-    model_ids[permutation[: count // 2]] = 1.0
+    # Independent Bernoulli sampling remains valid for asynchronous singleton resets.
+    model_ids = torch.randint(0, 2, (count,), device=env.device).float()
     term.rope_model_id[env_ids, 0] = model_ids
 
     robot = term._asset
@@ -310,6 +375,9 @@ def reset_towing_episode(
 
     cart_state = cart.data.default_root_state[env_ids].clone()
     cart_state[:, :3] += env.scene.env_origins[env_ids]
+    # Isaac Lab replicates one cart articulation per environment. For zero-load environments,
+    # park it inside the 6 m cell but well outside the robot's reachable path.
+    cart_state[~cart_present, 1] += no_cart_lateral_offset
     cart_state[:, 7:13] = 0
     cart.write_root_pose_to_sim(cart_state[:, :7], env_ids=env_ids)
     cart.write_root_velocity_to_sim(cart_state[:, 7:13], env_ids=env_ids)
@@ -341,6 +409,7 @@ def reset_towing_episode(
 
 def user_command(env):
     return _term(env).user_command
+def reference_command(env): return _term(env).reference_command
 def upper_last_action(env): return _term(env).processed_actions
 def base_angular_velocity(env): return _term(env)._asset.data.root_ang_vel_b
 def projected_gravity(env):
@@ -353,25 +422,37 @@ def joint_pos_rel_policy_order(env):
     return term._asset.data.joint_pos[:, ids] - term._asset.data.default_joint_pos[:, ids]
 def joint_vel_policy_order(env):
     term = _term(env); return term._asset.data.joint_vel[:, term._policy_to_asset]
-def robot_velocity(env): return _term(env)._asset.data.root_lin_vel_b[:, :1]
-def cart_velocity(env): return _term(env)._cart.data.root_lin_vel_b[:, :1]
-def rope_privileged_state(env): return _term(env).rope_state
+def policy_frame(env):
+    """One complete actor frame; history is applied once to preserve frame-major ordering."""
+    return torch.cat((user_command(env), reference_command(env), upper_last_action(env),
+                      base_angular_velocity(env) * 0.25, projected_gravity(env),
+                      last_locomotion_action(env), joint_pos_rel_policy_order(env),
+                      joint_vel_policy_order(env) * 0.05), dim=1)
+def robot_velocity(env): return _term(env)._asset.data.root_lin_vel_b[:, :2]
+def cart_velocity(env): return _term(env)._cart.data.root_lin_vel_b[:, :2]
+def rope_privileged_state(env):
+    term = _term(env); term.update_safety_state(); return term.rope_state
+def towing_force(env): return _term(env).towing_force_b
 def cart_privileged_parameters(env):
-    term = _term(env); return torch.cat((term.cart_mass, term.ground_friction, term.wheel_damping), 1)
-def decoder_targets(env):
-    # The first active-identification experiment predicts cart mass only. Other privileged
-    # parameters remain critic inputs and evaluation labels, but mixing them into this decoder
-    # would make the source of an identification reward ambiguous.
-    return ((_term(env).cart_mass - 5.0) / 5.0 - 1.0).clamp(-1.0, 1.0)
-def decoder_active_mask(env):
     term = _term(env)
-    towing = torch.linalg.vector_norm(term.user_command, dim=1, keepdim=True) > 1.0e-4
-    taut = term.rope_state[:, 3:4] > 0.5
-    return (towing & taut).float()
+    return torch.cat((term.cart_mass, term.ground_friction, term.wheel_damping,
+                      term.cart_present.float()), 1)
+def decoder_targets(env):
+    term = _term(env)
+    velocity_scale = torch.tensor((1.0, 0.5), device=term.device)
+    robot_velocity_xy = (term._asset.data.root_lin_vel_b[:, :2] / velocity_scale).clamp(-1.0, 1.0)
+    mass = ((term.cart_mass - 5.0) / 5.0 - 1.0).clamp(-1.0, 1.0)
+    force = term.towing_force_b
+    normalized_force = force / (force.abs() + 10.0)
+    return torch.cat((robot_velocity_xy, mass, normalized_force), dim=1)
+def decoder_mass_weight(env, minimum_force, force_scale):
+    force = torch.linalg.vector_norm(_term(env).towing_force_b, dim=1, keepdim=True)
+    effective_force = (force - minimum_force).clamp_min(0.0)
+    return effective_force / (effective_force + force_scale)
 
 
-def _stop_mask(env): return torch.linalg.vector_norm(_term(env).user_command, dim=1) <= 1.0e-4
-def cart_collision(env): return _term(env).cart_collision
+def cart_collision(env):
+    term = _term(env); term.update_safety_state(); return term.cart_collision
 def cart_collision_cost(env): return cart_collision(env).float()
 def velocity_tracking_exp(env, linear_std, yaw_std):
     term = _term(env)
@@ -379,11 +460,21 @@ def velocity_tracking_exp(env, linear_std, yaw_std):
     yaw_error = (term._asset.data.root_ang_vel_b[:, 2] - term.user_command[:, 2]) / yaw_std
     return torch.exp(-(linear_error.square().sum(1) + yaw_error.square()))
 def clearance_barrier(env, warning_distance, scale):
-    clearance = _term(env).rope_state[:, 0]
-    return torch.nn.functional.softplus((warning_distance - clearance) / scale)
+    term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
+    return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
+            * term.cart_present[:, 0])
+def post_stop_towing_force(env, force_scale):
+    term = _term(env)
+    elapsed_s = env.episode_length_buf * env.step_dt
+    post_stop = (elapsed_s >= term.stop_time_s).float()
+    force = torch.linalg.vector_norm(term.towing_force_b, dim=1)
+    normalized_force = force / (force + force_scale)
+    return normalized_force * post_stop * term.cart_present[:, 0]
 def post_stop_distance(env):
     term = _term(env)
-    return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * _stop_mask(env)
+    elapsed_s = env.episode_length_buf * env.step_dt
+    post_stop = (elapsed_s >= term.stop_time_s).float()
+    return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
 def robot_fall(env, minimum_height): return _term(env)._asset.data.root_pos_w[:, 2] < minimum_height

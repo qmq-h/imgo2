@@ -112,8 +112,8 @@ class AmpContractTests(unittest.TestCase):
             offset += len(per_term[term])
         self.assertEqual(offset, self.cfg.num_observations)
         self.assertEqual([float(v) for v in self.cfg.observation_scales], scales)
-        # 控制周期在 base.yaml
-        self.assertEqual(self.cfg.control_dt, base["dt"])
+        # 策略周期 = base.yaml 的物理/关节控制步长 × 降采样。
+        self.assertEqual(self.cfg.control_dt, base["dt"] * base["decimation"])
 
     def test_exported_policy_exists_with_recorded_hash(self):
         path = self.cfg.model_path

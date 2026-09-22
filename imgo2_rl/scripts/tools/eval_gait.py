@@ -7,7 +7,7 @@
 
     cd <工作区根>/imgo2_rl
     python scripts/tools/eval_gait.py \
-        --task=Imgo2-basemove-flat-amp-play \
+        --task=Imgo2-basemove-flat-amp-height-play \
         --checkpoint=logs/amp_rsl_rl/base_move_amp/<run>/model_24500.pt \
         --num_envs=8 --steps=1000 --warmup=50 --out ../docs/gait_eval_amp_24500.json
 
@@ -38,7 +38,8 @@ from pathlib import Path
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Gait evaluation by replaying a checkpoint.")
-parser.add_argument("--task", type=str, required=True, help="Task name, e.g. Imgo2-basemove-flat-amp-play.")
+parser.add_argument("--task", type=str, required=True,
+                    help="Task name, e.g. Imgo2-basemove-flat-amp-height-play.")
 parser.add_argument("--checkpoint", type=str, required=True, help="Path to the .pt checkpoint.")
 parser.add_argument("--num_envs", type=int, default=8, help="Number of parallel envs to sample.")
 parser.add_argument("--steps", type=int, default=1000, help="Policy steps to record per env.")

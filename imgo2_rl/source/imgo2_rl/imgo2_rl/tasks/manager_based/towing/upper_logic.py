@@ -24,14 +24,18 @@ class UpperActionSpec:
             raise ValueError("每维 reference_min 必须小于 reference_max")
         if self.reference_min[0] < 0:
             raise ValueError("第一版纵向参考速度不允许倒车")
+        if any(lo > 0.0 or hi < 0.0 for lo, hi in
+               zip(self.acceleration_min, self.acceleration_max)):
+            raise ValueError("每维 acceleration 范围必须包含零")
 
 
 @dataclass(frozen=True)
 class UpperObservationSpec:
-    """The exact v0.1 actor contract requested in paper_plan_rl.md."""
+    """Raw recurrent input plus the deployable decoder estimate."""
 
     terms: tuple[tuple[str, int], ...] = (
         ("cmd_vel", 3),       # [vx, vy, yaw_rate]
+        ("reference_command", 3),
         ("last_action", 3),      # [ax, ay, yaw_acceleration]
         ("base_ang_vel", 3),     # body-frame IMU gyroscope
         ("projected_gravity", 3),
@@ -39,7 +43,7 @@ class UpperObservationSpec:
         ("joint_pos", 12),
         ("joint_vel", 12),
     )
-    history_steps: int = 2
+    decoder_dim: int = 5
 
     @property
     def frame_dim(self):
@@ -47,37 +51,46 @@ class UpperObservationSpec:
 
     @property
     def actor_dim(self):
-        return self.frame_dim * self.history_steps
+        return self.frame_dim + self.decoder_dim
 
 
 @dataclass(frozen=True)
 class DecoderSpec:
-    """First-stage privileged target used only by the training-time decoder."""
+    """GRU decoder targets used only during training."""
 
     terms: tuple[tuple[str, int], ...] = (
+        ("robot_velocity_xy", 2),
         ("cart_mass", 1),
+        ("towing_force_xy", 2),
     )
 
     @property
     def dim(self):
         return sum(dim for _, dim in self.terms)
 
-    # Physical ranges used to normalize regression targets.  Values outside are clipped and logged;
-    # these are training-domain contracts, not claims about the robot's absolute capability.
-    ranges: tuple[tuple[float, float], ...] = (
-        (5.0, 15.0),       # kg; matches the first training curriculum
-    )
+    mass_range: tuple[float, float] = (5.0, 15.0)
+    velocity_scale: tuple[float, float] = (1.0, 0.5)
+    force_scale: float = 10.0
 
 
 def normalize_decoder_targets(values, spec: DecoderSpec = DecoderSpec()):
-    """Normalize a flat target sequence to [-1, 1] without importing torch."""
+    """Normalize [vx, vy, mass, Fx, Fy] without importing torch."""
     if len(values) != spec.dim:
         raise ValueError(f"decoder target 维数 {len(values)} != {spec.dim}")
-    normalized = []
-    for value, (lower, upper) in zip(values, spec.ranges):
-        clipped = min(upper, max(lower, float(value)))
-        normalized.append(2.0 * (clipped - lower) / (upper - lower) - 1.0)
-    return tuple(normalized)
+    lower, upper = spec.mass_range
+    velocity = tuple(
+        min(1.0, max(-1.0, float(value) / scale))
+        for value, scale in zip(values[:2], spec.velocity_scale))
+    mass = min(upper, max(lower, float(values[2])))
+    force = tuple(
+        float(value) / (abs(float(value)) + spec.force_scale)
+        for value in values[3:])
+    return (*velocity, 2.0 * (mass - lower) / (upper - lower) - 1.0, *force)
+
+
+def denormalize_force(value, spec: DecoderSpec = DecoderSpec()):
+    normalized = min(1.0 - 1.0e-6, max(-1.0 + 1.0e-6, float(value)))
+    return spec.force_scale * normalized / (1.0 - abs(normalized))
 
 
 def normalized_acceleration(action, spec: UpperActionSpec = UpperActionSpec()):
@@ -88,7 +101,7 @@ def normalized_acceleration(action, spec: UpperActionSpec = UpperActionSpec()):
     result = []
     for value, lower, upper in zip(action, spec.acceleration_min, spec.acceleration_max):
         u = min(1.0, max(-1.0, float(value)))
-        result.append(lower + 0.5 * (u + 1.0) * (upper - lower))
+        result.append((-u * lower) if u < 0.0 else (u * upper))
     return tuple(result)
 
 

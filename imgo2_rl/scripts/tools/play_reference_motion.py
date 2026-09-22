@@ -52,7 +52,7 @@ from imgo2_rl.assets.imgo2 import AMP_MOTION_FILES  # noqa: E402
 from isaaclab.utils import math as math_utils  # noqa: E402
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg  # noqa: E402
 
-TASK = "Imgo2-basemove-flat-amp-play"
+TASK = "Imgo2-basemove-flat-amp-height-play"
 
 
 def _available_motions() -> list[Path]:

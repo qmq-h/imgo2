@@ -188,7 +188,9 @@ AMP_POLICY = LowLevelPolicyCfg(
     clip_actions_lower=(-3.0,) * 12,
     clip_actions_upper=(3.0,) * 12,
     joint_mapping=tuple(range(12)),
-    control_dt=0.005,
+    # Policy inference period. Deployment uses a 5 ms physics/control step with decimation=4,
+    # and the training environment has the same 0.005 * 4 = 0.02 s step_dt.
+    control_dt=0.02,
     # reset 契约：策略在置位后需要先站定再接管。具体时长在 P4 仿真里确认，
     # 这里给一个显式的初值而不是隐式默认，避免「reset 后立刻按速度指令」。
     reset_settle_s=1.0,

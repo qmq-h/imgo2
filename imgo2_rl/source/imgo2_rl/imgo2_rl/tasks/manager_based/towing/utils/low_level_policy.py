@@ -87,13 +87,16 @@ class FrozenLowLevelPolicy:
             raise ValueError(f"{self.cfg.name} 导出件对零输入产生了非有限输出")
 
     # -------------------------------------------------------------- reset 契约
-    def reset(self) -> int:
+    def reset(self, env_ids=None) -> int:
         """回到契约规定的初始状态，返回建议的「站定」步数。
 
         `last_action` 归零与部署一致（部署在 `RL::InitRL()` 里把 actions 清零）。
         `reset_settle_s` 期间不应施加速度指令：参考部署的 FSM 也是先 GetUp/站定再交给策略。
         """
-        self._last_action.zero_()
+        if env_ids is None or self._last_action.ndim == 1:
+            self._last_action.zero_()
+        else:
+            self._last_action[env_ids] = 0
         return int(round(self.cfg.reset_settle_s / self.cfg.control_dt))
 
     # -------------------------------------------------------------- 观测组装

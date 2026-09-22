@@ -1,86 +1,111 @@
-"""Training-only cart-mass decoder and identification reward.
-
-The decoder is deliberately separate from the actor. During rollout its parameters are frozen
-and its detached prediction score may be added to the PPO reward. Decoder optimization happens
-between rollouts from privileged simulation labels. No decoder output is a policy observation or
-part of the deployable policy.
-"""
-
-from __future__ import annotations
+"""Recurrent dynamics decoder used by the upper towing policy."""
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-class TowingMassDecoder(nn.Module):
-    """Predict normalized cart mass in ``[-1, 1]`` from two 48-D actor frames."""
+class TowingDynamicsDecoder(nn.Module):
+    """Estimate robot velocity, load mass and body-frame towing force."""
 
-    def __init__(self, history_dim=96, hidden_dims=(256, 128, 64)):
+    def __init__(self, frame_dim=51, feature_dim=128, hidden_dim=128, num_layers=1, force_scale=10.0):
         super().__init__()
-        layers = []
-        input_dim = history_dim
-        for output_dim in hidden_dims:
-            layers.extend((nn.Linear(input_dim, output_dim), nn.ELU()))
-            input_dim = output_dim
-        layers.extend((nn.Linear(input_dim, 1), nn.Tanh()))
-        self.network = nn.Sequential(*layers)
+        self.frame_dim = frame_dim
+        self.force_scale = force_scale
+        self.encoder = nn.Sequential(nn.Linear(frame_dim, feature_dim), nn.ELU())
+        self.gru = nn.GRU(feature_dim, hidden_dim, num_layers=num_layers)
+        self.velocity_head = nn.Linear(hidden_dim, 2)
+        self.mass_head = nn.Linear(hidden_dim, 1)
+        self.force_head = nn.Linear(hidden_dim, 2)
 
-    def forward(self, observation_history):
-        if observation_history.shape[-1] != self.network[0].in_features:
+    def forward(self, frames, hidden_state=None):
+        single_step = frames.ndim == 2
+        if single_step:
+            frames = frames.unsqueeze(0)
+        if frames.ndim != 3 or frames.shape[-1] != self.frame_dim:
             raise ValueError(
-                f"history dim {observation_history.shape[-1]} != "
-                f"{self.network[0].in_features}")
-        return self.network(observation_history)
+                f"decoder frames must have shape [T, B, {self.frame_dim}] or [B, {self.frame_dim}], "
+                f"got {tuple(frames.shape)}")
+        features = self.encoder(frames)
+        features, hidden_state = self.gru(features, hidden_state)
+        prediction = torch.cat((
+            torch.tanh(self.velocity_head(features)),
+            torch.tanh(self.mass_head(features)),
+            torch.tanh(self.force_head(features)),
+        ), dim=-1)
+        return (prediction.squeeze(0) if single_step else prediction), hidden_state
+
+    def force_newtons(self, prediction):
+        normalized = prediction[..., 3:5].clamp(-1.0 + 1.0e-6, 1.0 - 1.0e-6)
+        return self.force_scale * normalized / (1.0 - normalized.abs())
 
     @staticmethod
-    def loss(prediction, normalized_mass):
-        """Supervised decoder loss; both tensors have shape ``[..., 1]``."""
-        if prediction.shape != normalized_mass.shape or prediction.shape[-1] != 1:
+    def loss(
+        prediction,
+        targets,
+        mass_supervision_weight,
+        *,
+        velocity_coef=1.0,
+        force_coef=1.0,
+        mass_coef=1.0,
+    ):
+        """Supervise velocity/force always and mass after the first towing interaction."""
+        if prediction.shape != targets.shape or prediction.shape[-1] != 5:
             raise ValueError(
-                f"mass decoder shape mismatch: prediction={prediction.shape}, "
-                f"target={normalized_mass.shape}")
-        return F.smooth_l1_loss(prediction, normalized_mass)
+                f"decoder shape mismatch: prediction={prediction.shape}, target={targets.shape}")
+        weight = mass_supervision_weight.to(
+            device=prediction.device, dtype=prediction.dtype).reshape(prediction.shape[:-1])
+        velocity_loss = F.smooth_l1_loss(prediction[..., :2], targets[..., :2])
+        force_loss = F.smooth_l1_loss(prediction[..., 3:5], targets[..., 3:5])
+        mass_error = F.smooth_l1_loss(
+            prediction[..., 2], targets[..., 2], reduction="none")
+        mass_loss = (mass_error * weight).sum() / weight.sum().clamp_min(1.0)
+        return velocity_coef * velocity_loss + force_coef * force_loss + mass_coef * mass_loss
 
 
-@torch.no_grad()
-def mass_identification_reward(
-    decoder,
-    observation_history,
-    normalized_mass,
-    active_mask,
-    *,
-    temperature=0.25,
-):
-    """Return a detached dense score for active towing steps.
-
-    ``active_mask`` should be true only while a non-zero tow command is active and the rope is
-    taut. Weighting is intentionally left to PPO configuration so this helper stays unitless.
-    """
-    if temperature <= 0.0:
-        raise ValueError("temperature must be positive")
-    prediction = decoder(observation_history)
-    if prediction.shape != normalized_mass.shape or prediction.shape[-1] != 1:
+def augment_actor_observation(frames, prediction):
+    """Append detached estimates to form the 56-D actor input."""
+    if frames.shape[:-1] != prediction.shape[:-1] or frames.shape[-1] != 51 or prediction.shape[-1] != 5:
         raise ValueError(
-            f"mass reward shape mismatch: prediction={prediction.shape}, "
-            f"target={normalized_mass.shape}")
-    error = F.smooth_l1_loss(prediction, normalized_mass, reduction="none").squeeze(-1)
-    mask = active_mask.to(device=error.device, dtype=error.dtype).reshape(error.shape)
-    return torch.exp(-error / temperature) * mask
+            f"actor augmentation expects [...,51] and [...,5], got {frames.shape} and {prediction.shape}")
+    return torch.cat((frames, prediction.detach()), dim=-1)
 
 
-class MassDecoderTrainer:
-    """Small optimizer wrapper used only between PPO rollouts."""
+def mass_supervision_weight(
+    towing_force_newtons,
+    *,
+    minimum_force=1.0,
+    force_scale=10.0,
+):
+    """Map GT towing-force magnitude to a continuous mass-loss weight."""
+    if minimum_force < 0.0 or force_scale <= 0.0 or towing_force_newtons.shape[-1] != 2:
+        raise ValueError(
+            "minimum_force must be nonnegative, force_scale positive, and force shape [...,2]")
+    effective_force = (
+        torch.linalg.vector_norm(towing_force_newtons, dim=-1) - minimum_force).clamp_min(0.0)
+    return effective_force / (effective_force + force_scale)
+
+
+def reset_gru_hidden(hidden_state, dones):
+    """Clear decoder state for the environments that ended."""
+    if hidden_state is not None:
+        hidden_state[:, dones, :] = 0.0
+    return hidden_state
+
+
+class DynamicsDecoderTrainer:
+    """Update the decoder on episode-consistent sequences between PPO updates."""
 
     def __init__(self, decoder, *, learning_rate=1.0e-3, max_grad_norm=1.0):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    def update(self, observation_history, normalized_mass):
+    def update(self, frames, targets, mass_supervision_weight, hidden_state=None):
         self.decoder.train()
-        prediction = self.decoder(observation_history.detach())
-        loss = self.decoder.loss(prediction, normalized_mass.detach())
+        prediction, _ = self.decoder(frames.detach(), hidden_state)
+        loss = self.decoder.loss(
+            prediction, targets.detach(), mass_supervision_weight.detach())
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)
