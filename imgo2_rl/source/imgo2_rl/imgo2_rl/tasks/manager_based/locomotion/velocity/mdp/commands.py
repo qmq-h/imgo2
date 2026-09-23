@@ -14,7 +14,7 @@ from isaaclab.utils import configclass
 
 import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
 
-from .utils import is_robot_on_terrain
+from .utils import is_env_assigned_to_terrain
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -23,8 +23,9 @@ if TYPE_CHECKING:
 class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
     """Command generator that generates a velocity command in SE(2) from uniform distribution with threshold.
 
-    This command generator automatically detects "pits" terrain and applies restrictions:
-    - For pit terrains: only allow forward movement (no lateral or rotational movement)
+    Selected terrain types can be restricted to forward-only commands.  This keeps
+    obstacle-crossing samples intentional while preserving omnidirectional commands
+    on ordinary rough terrain.
     """
 
     cfg: mdp.UniformThresholdVelocityCommandCfg  # type: ignore
@@ -38,52 +39,49 @@ class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
             env: The environment.
         """
         super().__init__(cfg, env)
-        # Track which robots were on pit terrain in the previous step
-        self.was_on_pit = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+    def _forward_only_terrain_mask(self) -> torch.Tensor:
+        """Return environments assigned to terrains that use the hard-terrain command ranges."""
+        mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        for terrain_name in self.cfg.forward_only_terrain_names:
+            mask |= is_env_assigned_to_terrain(self._env, terrain_name)
+        return mask
 
     def _resample_command(self, env_ids: Sequence[int]):
         """Resample velocity commands with threshold."""
         super()._resample_command(env_ids)
+        env_ids = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
         # set small commands to zero
         self.vel_command_b[env_ids, :2] *= (torch.norm(self.vel_command_b[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+
+        hard_env_ids = env_ids[self._forward_only_terrain_mask()[env_ids]]
+        if len(hard_env_ids) > 0:
+            forward_speed = torch.empty(len(hard_env_ids), device=self.device)
+            self.vel_command_b[hard_env_ids, 0] = forward_speed.uniform_(*self.cfg.forward_speed_range)
+            self.vel_command_b[hard_env_ids, 1] = 0.0
+            if self.cfg.heading_command:
+                self.heading_target[hard_env_ids] = self.cfg.forward_heading_target
+                self.is_heading_env[hard_env_ids] = True
+            else:
+                self.vel_command_b[hard_env_ids, 2] = 0.0
 
     def _update_command(self):
         """Update commands and apply terrain-aware restrictions in real-time.
 
-        This function:
-        1. Calls parent's update to handle heading and standing envs
-        2. Checks which robots are currently on pit terrain
-        3. For robots leaving pits: resamples their commands
-        4. For robots on pits: restricts to forward-only movement and sets heading to 0
+        Hard-terrain environments keep a fixed world-frame heading while Isaac Lab's
+        built-in heading controller generates the corrective yaw-rate command.
         """
-        # First, call parent's update command
+        hard_env_ids = torch.where(self._forward_only_terrain_mask())[0]
+        if self.cfg.heading_command and len(hard_env_ids) > 0:
+            self.heading_target[hard_env_ids] = self.cfg.forward_heading_target
+            self.is_heading_env[hard_env_ids] = True
+
         super()._update_command()
 
-        # Check which robots are currently on pit terrain (real-time check every step)
-        on_pits = is_robot_on_terrain(self._env, "pits")
-
-        # Find robots that just left pit terrain (need to resample)
-        left_pit_mask = self.was_on_pit & ~on_pits
-        if left_pit_mask.any():
-            left_pit_env_ids = torch.where(left_pit_mask)[0]
-            # Resample commands for robots that left pits
-            self._resample_command(left_pit_env_ids)
-
-        # For robots currently on pits: restrict to forward-only movement with min/max speed
-        if on_pits.any():
-            pit_env_ids = torch.where(on_pits)[0]
-            # Force forward-only movement with min and max speed limits
-            self.vel_command_b[pit_env_ids, 0] = torch.clamp(
-                torch.abs(self.vel_command_b[pit_env_ids, 0]), min=0.3, max=0.6
-            )
-            self.vel_command_b[pit_env_ids, 1] = 0.0  # no lateral movement
-            self.vel_command_b[pit_env_ids, 2] = 0.0  # no yaw rotation
-            # Set heading to 0 for pit robots
-            if self.cfg.heading_command:
-                self.heading_target[pit_env_ids] = 0.0
-
-        # Update tracking state
-        self.was_on_pit = on_pits
+        if len(hard_env_ids) > 0:
+            self.vel_command_b[hard_env_ids, 1] = 0.0
+            if not self.cfg.heading_command:
+                self.vel_command_b[hard_env_ids, 2] = 0.0
 
 
 @configclass
@@ -91,6 +89,9 @@ class UniformThresholdVelocityCommandCfg(mdp.UniformVelocityCommandCfg):
     """Configuration for the uniform threshold velocity command generator."""
 
     class_type: type = UniformThresholdVelocityCommand
+    forward_only_terrain_names: tuple[str, ...] = ("pits",)
+    forward_speed_range: tuple[float, float] = (0.3, 0.6)
+    forward_heading_target: float = 0.0
 
 
 class UniformLevelVelocityCommand(mdp.UniformVelocityCommand):

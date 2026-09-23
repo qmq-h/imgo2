@@ -1,6 +1,5 @@
 """CMoE rough-terrain task built on the existing Imgo2 PPO rough task."""
 
-import isaaclab.terrains as terrain_gen
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -14,6 +13,7 @@ import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
 from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import MySceneCfg, ObservationsCfg, RewardsCfg
 
 from .rough_env_cfg import Imgo2RoughEnvCfg
+from .cmoe_terrains import CMoETrackGapTerrainCfg, CMoETrackStairsTerrainCfg, CMoETrackStepTerrainCfg
 
 
 FOOT_EDGE_SENSOR_NAMES = (
@@ -98,31 +98,61 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         if self.observations.policy.height_scan is not None:
             raise RuntimeError("CMoE height scan must only be exposed through the terrain group")
 
-        # Keep 20% gap terrain.  Imgo2's 0.315 m base makes the 0.10--0.16 m curriculum
-        # progress from roughly one-third to one-half of the trunk length.
+        # Reproduce the original +x obstacle-course layout at quadruped scale.
+        self.scene.terrain.terrain_generator.size = (8.0, 4.0)
         sub_terrains = self.scene.terrain.terrain_generator.sub_terrains
-        sub_terrains["pyramid_stairs"].proportion = 0.15
-        sub_terrains["pyramid_stairs_inv"].proportion = 0.10
-        sub_terrains["boxes"].proportion = 0.15
+        sub_terrains["pyramid_stairs"] = CMoETrackStairsTerrainCfg(
+            proportion=0.15,
+            step_height_range=(0.025, 0.08),
+            ascending=True,
+        )
+        sub_terrains["pyramid_stairs_inv"] = CMoETrackStairsTerrainCfg(
+            proportion=0.10,
+            step_height_range=(0.025, 0.08),
+            ascending=False,
+        )
+        sub_terrains["boxes"] = CMoETrackStepTerrainCfg(
+            proportion=0.15,
+            step_height_range=(0.04, 0.12),
+        )
         sub_terrains["random_rough"].proportion = 0.20
         sub_terrains["hf_pyramid_slope"].proportion = 0.10
         sub_terrains["hf_pyramid_slope_inv"].proportion = 0.10
-        sub_terrains["gap"] = terrain_gen.MeshGapTerrainCfg(
+        sub_terrains["gap"] = CMoETrackGapTerrainCfg(
             proportion=0.20,
-            gap_width_range=(0.10, 0.16),
-            # Reset offsets remain in [-1, 1] m, so a 4 m platform keeps the complete
-            # robot safely away from the gap at spawn while leaving room to approach it.
-            platform_width=4.0,
+            gap_width_range=(0.08, 0.16),
+            platform_length_range=(0.65, 0.95),
+            first_gap_x=1.8,
+            num_gaps=4,
         )
 
-        # Preserve the PPO reset position/velocity ranges, but never spawn with roll or pitch.
+        # Match the original CMoE command split: easy terrain keeps small
+        # omnidirectional commands, while obstacle terrain moves along world +x.
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.3, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.3, 0.3)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.heading = (-1.6, 1.6)
+        self.commands.base_velocity.heading_command = True
+        self.commands.base_velocity.rel_heading_envs = 1.0
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.heading_control_stiffness = 0.5
+        self.commands.base_velocity.forward_only_terrain_names = (
+            "pyramid_stairs",
+            "pyramid_stairs_inv",
+            "boxes",
+            "gap",
+        )
+        self.commands.base_velocity.forward_speed_range = (0.3, 1.0)
+        self.commands.base_velocity.forward_heading_target = 0.0
+
+        # Scale the original reset translation for the smaller course and keep its fixed orientation.
         self.events.randomize_reset_base.params["pose_range"] = {
-            "x": (-1.0, 1.0),
-            "y": (-1.0, 1.0),
+            "x": (-0.5, 0.5),
+            "y": (-0.5, 0.5),
             "z": (0.0, 0.0),
             "roll": (0.0, 0.0),
             "pitch": (0.0, 0.0),
-            "yaw": (-3.14, 3.14),
+            "yaw": (0.0, 0.0),
         }
 
         # Retain task/proprioceptive rewards, remove fixed-gait shaping, and strengthen safety.
@@ -162,11 +192,13 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
         self.scene.terrain.max_init_terrain_level = 5
         self.observations.policy.enable_corruption = False
         self.observations.terrain.enable_corruption = False
-        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.heading_command = True
+        self.commands.base_velocity.rel_heading_envs = 1.0
         self.commands.base_velocity.rel_standing_envs = 0.0
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         self.events.randomize_reset_base.params = {
             "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
                            "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
