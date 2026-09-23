@@ -567,6 +567,32 @@ def post_stop_distance(env):
     elapsed_s = env.episode_length_buf * env.step_dt
     post_stop = (elapsed_s >= term.stop_time_s).float()
     return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
+def heading_deviation(env):
+    """机体系朝向偏离「初始朝向」的 yaw 误差（rad）。
+
+    2026-09-23 用户报告「机器人开始就在自转」：原奖励里**没有任何朝向约束**——
+    `tracking_velocity` 只惩罚 yaw **角速度**误差（`user_command` 的 yaw 恒为 0），
+    因此「原地匀速自转」在 settle 阶段几乎不受罚（角速度也接近 0），
+    而 STOP 后持续缓转同样不易被察觉。
+
+    「正方向」取机器人**初始 yaw**（`default_root_state` 的四元数，即 spawn 朝向，
+    随机化只加 ±0.03 rad）。取相对值而非世界系 0，是为了不依赖小车／世界坐标约定。
+    """
+    term = _term(env)
+    yaw, _pitch, _roll = math_utils.euler_xyz_from_quat(term._asset.data.root_quat_w)
+    yaw_init, _pitch0, _roll0 = math_utils.euler_xyz_from_quat(
+        term._asset.data.default_root_state[:, 3:7])
+    return math_utils.wrap_to_pi(yaw - yaw_init)
+
+
+def yaw_heading_l2(env):
+    """朝向误差平方。τ=1 时立姿为 0；偏 0.2 rad(11°) → 1，偏 0.5 rad(29°) → 6.25。
+
+    平方形式在误差大时梯度更大（误差每增 1 rad 梯度增 2·误差），适合先把自转压住。
+    """
+    return heading_deviation(env).square()
+
+
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
 def robot_fall(env, minimum_height): return _term(env)._asset.data.root_pos_w[:, 2] < minimum_height

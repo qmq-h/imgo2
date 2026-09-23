@@ -432,6 +432,46 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("bias = 0.6931471805599453 * softness", mdp)
         self.assertIn("- bias)", mdp)
 
+    def test_heading_hold_reward_is_relative_to_spawn_heading(self):
+        """朝向保持：必须相对**初始 yaw**，不得硬编码世界系 0。
+
+        2026-09-23 用户报告「机器人开始就在自转」。原奖励只惩罚 yaw **角速度**误差
+        （user_command 的 yaw 恒为 0），匀速自转在 settle 段几乎不受罚（角速度也≈0）。
+        本项补上**朝向**约束。
+
+        取相对值的原因：初始朝向来自 `default_root_state`（含 ±0.03 rad 随机化），
+        用世界系 0 会把随机化的偏移当成初始误差。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def heading_deviation(", mdp)
+        self.assertIn("def yaw_heading_l2(", mdp)
+        # 必须用 default_root_state 的朝向作为基准，而不是写死 0
+        self.assertIn("default_root_state[:, 3:7]", mdp)
+        self.assertIn("math_utils.wrap_to_pi(yaw - yaw_init)", mdp)
+        # 注册项存在且权重为负
+        self.assertIn("yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)", cfg)
+
+    def test_wrap_to_pi_keeps_heading_error_bounded(self):
+        """角度误差必须 wrap 到 [-π, π]，否则跨越 ±π 时会出现 2π 跳变。"""
+        import math
+
+        def yaw_of(y):
+            import torch as _t
+            # 仅 yaw 的纯四元数：w=cos(y/2), z=sin(y/2)
+            w, z = math.cos(y / 2), math.sin(y / 2)
+            return math.atan2(2 * w * z, 1 - 2 * z * z)
+
+        def wrap(a):
+            return (a + math.pi) % (2 * math.pi) - math.pi
+
+        for deg in (-179, -90, 0, 90, 179, 181, 359):
+            err = wrap(yaw_of(math.radians(deg)))
+            self.assertLessEqual(abs(err), math.pi + 1e-9,
+                                 f"{deg}° 的误差 {err} 超出 [-π, π]")
+        # 同朝向时误差必须精确为 0
+        self.assertAlmostEqual(wrap(yaw_of(0.3) - yaw_of(0.3)), 0.0, places=10)
+
     def test_reset_event_contract_has_all_v0_work_condition_axes(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")

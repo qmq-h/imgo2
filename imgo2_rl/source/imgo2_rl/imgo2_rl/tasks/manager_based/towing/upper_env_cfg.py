@@ -164,6 +164,9 @@ class UpperRewardsCfg:
                                 params={"force_scale": 10.0})
     extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+    # 朝向保持：惩罚偏离初始 yaw（2026-09-23 用户报告「开始就在自转」）。
+    # 原奖励只惩罚 yaw 角速度误差，匀速自转在 settle 段几乎不受罚。平方形式 τ=1。
+    yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)
 
     # --- 诊断项：只为进 TensorBoard，不用于塑造策略 ---
     # 不能用 weight=0：`RewardManager.compute()` 对 `weight == 0.0` 的项直接 `continue`，
