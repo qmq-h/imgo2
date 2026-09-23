@@ -384,7 +384,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("return violation * term.cart_present[:, 0]", mdp)
         # 注册项存在且 ratio=0.6、权重为负
         self.assertIn("min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0", cfg)
-        self.assertIn('"ratio": 0.6', cfg)
+        self.assertIn('"ratio": 0.40', cfg)
         self.assertIn('"rope_length": 0.8', cfg)
 
     def test_min_clearance_matches_rope_length_config(self):
@@ -396,6 +396,41 @@ class UpperLogicTests(unittest.TestCase):
         rope_in_reward = _re.search(r'"rope_length": ([0-9.]+)', cfg).group(1)
         self.assertEqual(rope_in_term, rope_in_reward,
                          f"rope_length 不一致：term={rope_in_term} reward={rope_in_reward}")
+
+    def test_min_clearance_is_inactive_at_spawn(self):
+        """意图守卫：spawn 时间的「后表面→车斗」间隙必须**高于** min_clearance 阈值。
+
+        用户 2026-09-23 明确要求「初始的时候这个奖励不生效」。初始间隙 0.349 m，
+        故 ratio 取 0.40（阈值 0.32 m）而不是 0.6（0.48 m）——后者会让该奖励开局即满额
+        惩罚（约 −0.26/步，按 200 步约 −52/回合，比原有全部惩罚之和还大两个量级）。
+
+        本测试从源码读出各常数自行验算，避免把数值重新硬编码一遍。
+        """
+        import re as _re
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        cart_x = float(_re.search(r"cart\.init_state\.pos = \((-?[0-9.]+),", cfg).group(1))
+        rear = float(_re.search(r"robot_rear_surface_x: float = ([0-9.]+)", mdp).group(1))
+        front = float(_re.search(r"cart_front_surface_x: float = ([0-9.]+)", mdp).group(1))
+        rope = float(_re.search(r"rope_length: float = ([0-9.]+)", mdp).group(1))
+        ratio = float(_re.search(r'"ratio": ([0-9.]+)', cfg).group(1))
+        gap0 = abs(cart_x) - rear - front
+        threshold = ratio * rope
+        self.assertGreater(
+            gap0, threshold,
+            f"初始间隙 {gap0:.4f} m 未高于阈值 {threshold:.4f} m；"
+            f"用户要求 spawn 时该奖励不生效")
+
+    def test_min_clearance_hinge_is_exactly_zero_above_threshold(self):
+        """阈值上方必须**精确为 0**（不能留 softplus 偏置）。
+
+        `softplus(0)*softness = 0.0139` 会让间隙略高于阈值时也被扣分（实测 gap=0.40 时
+        −0.0007/步），与"初始不生效"冲突，故实现里减掉了该偏置。
+        """
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("torch.relu(", mdp)
+        self.assertIn("bias = 0.6931471805599453 * softness", mdp)
+        self.assertIn("- bias)", mdp)
 
     def test_reset_event_contract_has_all_v0_work_condition_axes(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")

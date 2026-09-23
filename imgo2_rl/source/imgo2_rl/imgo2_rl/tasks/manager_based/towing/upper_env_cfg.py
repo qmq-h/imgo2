@@ -153,11 +153,13 @@ class UpperRewardsCfg:
                    params={"minimum_height": 0.18})
     clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
-    # 最小间距：间隙不得低于绳长的 ratio 倍（2026-09-23 用户要求，ratio=0.6 ⇒ 0.48 m）。
+    # 最小间距：间隙不得低于绳长的 ratio 倍（2026-09-23 用户要求新增）。
     # 与上面的 clearance 互补：clearance 是 0.20 m 处的软障碍，本项是按绳长比例的硬铰链。
     # 单位是米，故 weight 直接是「每米缺口扣多少奖励」。
+    # **ratio=0.40 ⇒ 阈值 0.32 m**：初始间隙 0.349 m 高于它，故 **spawn 时不触发**
+    # （用户 2026-09-23 明确要求初始不生效）。若取 0.6（=0.48 m）则开局即满额惩罚。
     min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
-                            params={"rope_length": 0.8, "ratio": 0.6, "softness": 0.02})
+                            params={"rope_length": 0.8, "ratio": 0.40, "softness": 0.02})
     stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
                                 params={"force_scale": 10.0})
     extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)

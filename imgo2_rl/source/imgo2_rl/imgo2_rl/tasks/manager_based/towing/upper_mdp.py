@@ -542,10 +542,16 @@ def min_clearance_violation(env, rope_length, ratio, softness=0.02):
     term.update_safety_state()
     clearance = term.rope_state[:, 0]
     threshold = ratio * rope_length
-    violation = torch.relu(threshold - clearance)
-    # softness 用于给铰链拐点一点平滑（避免在阈值处梯度突变）；softness→0 即纯铰链。
+    gap = threshold - clearance
     if softness > 0:
-        violation = torch.nn.functional.softplus((threshold - clearance) / softness) * softness
+        # 平滑只在**阈值下方**过渡：减去 softplus(0)*softness 使缺口 ≤ 0 时精确为 0，
+        # 否则 softplus 在阈值处就有 0.0139 的偏置（间隙略高于阈值也会被扣分），
+        # 与"初始不生效"的意图冲突。
+        bias = 0.6931471805599453 * softness      # softplus(0)
+        violation = torch.relu(
+            torch.nn.functional.softplus(gap / softness) * softness - bias)
+    else:
+        violation = torch.relu(gap)              # 纯铰链
     return violation * term.cart_present[:, 0]
 
 
