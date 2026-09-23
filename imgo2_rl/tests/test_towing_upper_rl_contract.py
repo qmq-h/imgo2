@@ -368,6 +368,35 @@ class UpperLogicTests(unittest.TestCase):
         # 质量项的绝对贡献应远大于速度项（尺度差异的直接体现）
         self.assertGreater(float(parts[2]), float(parts[0]))
 
+    def test_min_clearance_reward_is_ratio_based_and_gated(self):
+        """最小间距奖励：阈值按绳长比例给出，且对无小车环境屏蔽。
+
+        2026-09-23 用户要求「维持小车与机器人距离不低于绳长的 0.6 倍」。注意实测几何：
+        初始「后表面→车斗」间隙约 0.349 m < 0.6×0.8=0.48 m，故该项一开局即激活
+        （docstring 已记录该事实与两种可选处理）。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def min_clearance_violation(", mdp)
+        # 阈值必须是 ratio × rope_length，而不是写死的绝对量
+        self.assertIn("threshold = ratio * rope_length", mdp)
+        # 无小车环境必须屏蔽（与 clearance/collision 同一约定）
+        self.assertIn("return violation * term.cart_present[:, 0]", mdp)
+        # 注册项存在且 ratio=0.6、权重为负
+        self.assertIn("min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0", cfg)
+        self.assertIn('"ratio": 0.6', cfg)
+        self.assertIn('"rope_length": 0.8', cfg)
+
+    def test_min_clearance_matches_rope_length_config(self):
+        """阈值参数必须与 action term 的 rope_length 一致，避免两处漂移。"""
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        import re as _re
+        rope_in_term = _re.search(r"rope_length: float = ([0-9.]+)", mdp).group(1)
+        rope_in_reward = _re.search(r'"rope_length": ([0-9.]+)', cfg).group(1)
+        self.assertEqual(rope_in_term, rope_in_reward,
+                         f"rope_length 不一致：term={rope_in_term} reward={rope_in_reward}")
+
     def test_reset_event_contract_has_all_v0_work_condition_axes(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")

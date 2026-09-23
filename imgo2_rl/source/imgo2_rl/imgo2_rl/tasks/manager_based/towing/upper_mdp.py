@@ -526,6 +526,29 @@ def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
     return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
             * term.cart_present[:, 0])
+def min_clearance_violation(env, rope_length, ratio, softness=0.02):
+    """铰链式「最小间距」惩罚：间隙低于 `ratio × rope_length` 时线性加大。
+
+    为什么单独加一项（而不是复用 `clearance_barrier`）：`clearance_barrier` 是
+    softplus 软障碍，其"警戒距离"是绝对量（0.20 m）且线性区在警戒线**下方**；本项是
+    按**绳长比例**给出的硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是
+    「不得拉得太近」，与「近了要缓」互补。
+
+    注意（2026-09-23 实测几何）：初始「后表面→车斗」间隙约 0.349 m，而 0.6×0.8=0.48 m
+    ⇒ **初始状态已低于阈值**，本项一开局即激活。若本意是"靠近时才罚"，应调低 ratio
+    或把初始间距拉开到阈值以上（否则策略学到的是"远离小车"）。
+    """
+    term = _term(env)
+    term.update_safety_state()
+    clearance = term.rope_state[:, 0]
+    threshold = ratio * rope_length
+    violation = torch.relu(threshold - clearance)
+    # softness 用于给铰链拐点一点平滑（避免在阈值处梯度突变）；softness→0 即纯铰链。
+    if softness > 0:
+        violation = torch.nn.functional.softplus((threshold - clearance) / softness) * softness
+    return violation * term.cart_present[:, 0]
+
+
 def post_stop_towing_force(env, force_scale):
     term = _term(env)
     elapsed_s = env.episode_length_buf * env.step_dt
