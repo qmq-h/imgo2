@@ -496,13 +496,18 @@ def cart_privileged_parameters(env):
     return torch.cat((term.cart_mass, term.ground_friction, term.wheel_damping,
                       term.cart_present.float()), 1)
 def decoder_targets(env):
+    """decoder 的回归目标：**物理量**（m/s、kg、N），不归一化、不 clamp。
+
+    2026-09-23 改为物理量：原先归一化到 [-1,1] 配合 head 的 tanh，但归一化尺度会按 s²
+    压低 loss 的物理权重（力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；而且
+    `v/(1.0,0.5)` 的 clamp 会把超过 1.0/0.5 m/s 的真值截断。去掉后 head 也不带 tanh，
+    稳定性由 `TowingDynamicsDecoder.loss()` 的 smooth_l1(β=1) 提供。
+    """
     term = _term(env)
-    velocity_scale = torch.tensor((1.0, 0.5), device=term.device)
-    robot_velocity_xy = (term._asset.data.root_lin_vel_b[:, :2] / velocity_scale).clamp(-1.0, 1.0)
-    mass = ((term.cart_mass - 5.0) / 5.0 - 1.0).clamp(-1.0, 1.0)
+    robot_velocity_xy = term._asset.data.root_lin_vel_b[:, :2]
+    mass = term.cart_mass
     force = term.towing_force_b
-    normalized_force = force / (force.abs() + 10.0)
-    return torch.cat((robot_velocity_xy, mass, normalized_force), dim=1)
+    return torch.cat((robot_velocity_xy, mass, force), dim=1)
 def decoder_mass_weight(env, minimum_force, force_scale):
     force = torch.linalg.vector_norm(_term(env).towing_force_b, dim=1, keepdim=True)
     effective_force = (force - minimum_force).clamp_min(0.0)

@@ -27,8 +27,8 @@ class TowingDecoderCfg:
     force_scale: float = 10.0
     learning_rate: float = 1.0e-3
     max_grad_norm: float = 1.0
-    velocity_coef: float = 1.0
-    force_coef: float = 1.0
+    velocity_coef: float = 5.0
+    force_coef: float = 10.0
     mass_coef: float = 1.0
 
 

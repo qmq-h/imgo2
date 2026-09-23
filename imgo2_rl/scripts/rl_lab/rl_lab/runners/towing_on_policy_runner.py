@@ -210,6 +210,12 @@ class TowingOnPolicyRunner:
         self.writer.add_scalar("Loss/value_function", value_loss, iteration)
         self.writer.add_scalar("Loss/surrogate", surrogate_loss, iteration)
         self.writer.add_scalar("Loss/decoder", decoder_loss.item(), iteration)
+        # 三项分量单独记录：去掉 target 归一化后三项尺度不同（m/s、kg、N），
+        # 1:1:1 的权重并不等权。用这三条判断权重是否真的配平。
+        _trainer = getattr(self, "decoder_trainer", None)
+        for _name, _val in zip(("velocity", "force", "mass"),
+                               getattr(_trainer, "last_parts", ())):
+            self.writer.add_scalar(f"Loss/decoder_{_name}", _val, iteration)
         self.writer.add_scalar("Policy/mean_noise_std", mean_std, iteration)
         self.writer.add_scalar("Perf/total_fps", fps, iteration)
         self.writer.add_scalar("Perf/collection_time", collection_time, iteration)
@@ -309,9 +315,12 @@ class TowingOnPolicyRunner:
             self.decoder.to(device)
         self.alg.actor_critic.eval()
         self.decoder.eval()
+        # 暴露最近一次的 5 维估计，供 play 端与真值对照（decoder 是部署件，必须能核对精度）。
+        self.last_estimate = None
 
         def policy(raw_obs):
             estimate, self.decoder_hidden = self.decoder(raw_obs, self.decoder_hidden)
+            self.last_estimate = estimate
             return self.alg.actor_critic.act_inference(
                 augment_actor_observation(raw_obs, estimate))
 

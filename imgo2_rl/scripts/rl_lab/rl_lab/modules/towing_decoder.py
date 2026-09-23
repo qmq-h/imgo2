@@ -28,16 +28,23 @@ class TowingDynamicsDecoder(nn.Module):
                 f"got {tuple(frames.shape)}")
         features = self.encoder(frames)
         features, hidden_state = self.gru(features, hidden_state)
+        # 2026-09-23 去掉三个 head 的 tanh：直接回归**物理量**（m/s、kg、N）。
+        # 理由：target 归一化到 [-1,1] 会把 loss 的物理权重按 s² 压低
+        # （力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；tanh 还会在饱和区丢梯度。
+        # 稳定性由 `loss()` 的 smooth_l1(β=1) 提供：大误差处梯度线性、不爆炸。
         prediction = torch.cat((
-            torch.tanh(self.velocity_head(features)),
-            torch.tanh(self.mass_head(features)),
-            torch.tanh(self.force_head(features)),
+            self.velocity_head(features),
+            self.mass_head(features),
+            self.force_head(features),
         ), dim=-1)
         return (prediction.squeeze(0) if single_step else prediction), hidden_state
 
     def force_newtons(self, prediction):
-        normalized = prediction[..., 3:5].clamp(-1.0 + 1.0e-6, 1.0 - 1.0e-6)
-        return self.force_scale * normalized / (1.0 - normalized.abs())
+        """取 force head 的输出。去掉 tanh 与归一化后它本身就是牛顿，故为恒等。
+
+        保留此入口是为了让调用方语义不变（部署端与 play 都走这里）。
+        """
+        return prediction[..., 3:5]
 
     @staticmethod
     def loss(
@@ -60,7 +67,12 @@ class TowingDynamicsDecoder(nn.Module):
         mass_error = F.smooth_l1_loss(
             prediction[..., 2], targets[..., 2], reduction="none")
         mass_loss = (mass_error * weight).sum() / weight.sum().clamp_min(1.0)
-        return velocity_coef * velocity_loss + force_coef * force_loss + mass_coef * mass_loss
+        # 三项加权后的实际贡献单独返回，供日志核对「权重是否真的配平了」。
+        # 去掉归一化后三项尺度不同（m/s、kg、N），1:1:1 并不等权。
+        parts = (velocity_coef * velocity_loss,
+                 force_coef * force_loss,
+                 mass_coef * mass_loss)
+        return parts[0] + parts[1] + parts[2], parts
 
 
 def augment_actor_observation(frames, prediction):
@@ -129,7 +141,7 @@ class DynamicsDecoderTrainer:
                 step_prediction, state = self.decoder(frames[step].detach(), state)
                 predictions.append(step_prediction)
             prediction = torch.stack(predictions)
-        loss = self.decoder.loss(
+        loss, parts = self.decoder.loss(
             prediction,
             targets.detach(),
             mass_supervision_weight.detach(),
@@ -142,4 +154,6 @@ class DynamicsDecoderTrainer:
         nn.utils.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)
         self.optimizer.step()
         self.decoder.eval()
+        # 记下最近一次的三项分量，供 runner 写日志（判断权重是否配平）
+        self.last_parts = tuple(float(x.detach()) for x in parts)
         return loss.detach()

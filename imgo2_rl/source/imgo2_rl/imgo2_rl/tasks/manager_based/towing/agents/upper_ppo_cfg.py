@@ -33,8 +33,8 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
         force_scale=10.0,
         learning_rate=1.0e-3,
         max_grad_norm=1.0,
-        velocity_coef=1.0,
-        force_coef=1.0,
+        velocity_coef=5.0,
+        force_coef=10.0,
         mass_coef=1.0,
     )
     critic_empirical_normalization = True

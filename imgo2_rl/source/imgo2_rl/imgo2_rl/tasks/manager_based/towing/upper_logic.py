@@ -74,23 +74,19 @@ class DecoderSpec:
 
 
 def normalize_decoder_targets(values, spec: DecoderSpec = DecoderSpec()):
-    """Normalize [vx, vy, mass, Fx, Fy] without importing torch."""
+    """已废弃：decoder target 改为直接回归物理量，不再归一化。
+
+    2026-09-23 去掉 target 归一化与 head 的 tanh。保留此函数只为兼容旧调用点，
+    它现在**原样返回**输入（仍做维数检查）。不要再新增调用。
+    """
     if len(values) != spec.dim:
         raise ValueError(f"decoder target 维数 {len(values)} != {spec.dim}")
-    lower, upper = spec.mass_range
-    velocity = tuple(
-        min(1.0, max(-1.0, float(value) / scale))
-        for value, scale in zip(values[:2], spec.velocity_scale))
-    mass = min(upper, max(lower, float(values[2])))
-    force = tuple(
-        float(value) / (abs(float(value)) + spec.force_scale)
-        for value in values[3:])
-    return (*velocity, 2.0 * (mass - lower) / (upper - lower) - 1.0, *force)
+    return tuple(float(v) for v in values)
 
 
 def denormalize_force(value, spec: DecoderSpec = DecoderSpec()):
-    normalized = min(1.0 - 1.0e-6, max(-1.0 + 1.0e-6, float(value)))
-    return spec.force_scale * normalized / (1.0 - abs(normalized))
+    """已废弃：力 head 现在直接输出牛顿，无需反归一化。原样返回。"""
+    return float(value)
 
 
 def normalized_acceleration(action, spec: UpperActionSpec = UpperActionSpec()):

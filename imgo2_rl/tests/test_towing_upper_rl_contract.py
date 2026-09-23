@@ -41,23 +41,25 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(dict(spec.terms)["cmd_vel"], 3)
         self.assertEqual(dict(spec.terms)["last_action"], 3)
 
-    def test_decoder_targets_velocity_mass_and_towing_force(self):
+    def test_decoder_targets_are_physical_units(self):
+        """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
+
+        原先归一化到 [-1,1] 配合 tanh，但归一化尺度会按 s² 压低 loss 的物理权重
+        （力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；且 `v/(1.0,0.5)` 的
+        clamp 会截断超速真值。现在直接回归 m/s、kg、N。
+        """
         decoder = logic.DecoderSpec()
         self.assertEqual(decoder.dim, 5)
         self.assertEqual(
             decoder.terms,
             (("robot_velocity_xy", 2), ("cart_mass", 1), ("towing_force_xy", 2)))
-        self.assertEqual(
-            logic.normalize_decoder_targets((0, 0, 5, 0, 0)),
-            (0.0, 0.0, -1.0, 0.0, 0.0))
-        self.assertEqual(
-            logic.normalize_decoder_targets((0.5, -0.25, 10, 10, -10)),
-            (0.5, -0.5, 0.0, 0.5, -0.5))
-        self.assertEqual(
-            logic.normalize_decoder_targets((2, -2, 15, 30, -30)),
-            (1.0, -1.0, 1.0, 0.75, -0.75))
-        self.assertAlmostEqual(logic.denormalize_force(0.5), 10.0)
-        self.assertAlmostEqual(logic.denormalize_force(-0.75), -30.0)
+        # normalize_decoder_targets 已废弃，现为恒等（仅保留维数检查）
+        for values in ((0, 0, 5, 0, 0), (0.5, -0.25, 10, 10, -10), (2, -2, 15, 30, -30)):
+            self.assertEqual(logic.normalize_decoder_targets(values), tuple(float(v) for v in values))
+        self.assertAlmostEqual(logic.denormalize_force(0.5), 0.5)
+        self.assertAlmostEqual(logic.denormalize_force(-3.5), -3.5)
+        with self.assertRaises(ValueError):
+            logic.normalize_decoder_targets((0, 0, 5, 0))  # 维数不符仍要报错
 
     def test_asymmetric_action_mapping_and_speed_limits(self):
         spec = logic.UpperActionSpec()
@@ -346,6 +348,26 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
 
+    @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
+    def test_decoder_loss_reports_three_weighted_components(self):
+        """去掉 target 归一化与 head tanh 后，三项尺度不同（m/s、kg、N），
+        1:1:1 的权重并不等权（实测质量项可占 85%、速度项仅 0.1%）。因此 loss()
+        必须把三项加权后的贡献单独返回，供日志判断权重是否真的配平。
+        """
+        decoder_module = load(
+            "towing_decoder_parts_test",
+            RL / "scripts/rl_lab/rl_lab/modules/towing_decoder.py")
+        decoder = decoder_module.TowingDynamicsDecoder(
+            frame_dim=51, feature_dim=8, hidden_dim=8)
+        prediction = torch.zeros(2, 5)
+        targets = torch.tensor([[0.0, 0.0, 10.0, 0.0, 0.0], [1.0, 0.0, 12.0, 2.0, 0.0]])
+        weight = torch.ones(2)
+        total, parts = decoder.loss(prediction, targets, weight)
+        self.assertEqual(len(parts), 3)
+        self.assertAlmostEqual(float(total), float(sum(parts)), places=5)
+        # 质量项的绝对贡献应远大于速度项（尺度差异的直接体现）
+        self.assertGreater(float(parts[2]), float(parts[0]))
+
     def test_reset_event_contract_has_all_v0_work_condition_axes(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
@@ -367,10 +389,14 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("self._physics_step % low_level_decimation", mdp)
         self.assertIn("-self.wheel_damping * self._cart.data.joint_vel", mdp)
         self.assertIn("SplitRopeModel(", mdp)
-        self.assertIn("force / (force.abs() + 10.0)", mdp)
+        # target 改为物理量后不再有归一化；断言 decoder_targets 直接返回原始量
+        self.assertIn("return torch.cat((robot_velocity_xy, mass, force), dim=1)", mdp)
+        self.assertNotIn("force / (force.abs() + 10.0)", mdp)
         self.assertIn("(force - minimum_force).clamp_min(0.0)", mdp)
         self.assertIn('params={"minimum_force": 1.0, "force_scale": 10.0}', cfg)
-        self.assertIn("(term.cart_mass - 5.0) / 5.0 - 1.0", mdp)
+        # 质量 target 也改为物理量（不再 (m-5)/5-1）
+        self.assertIn("    mass = term.cart_mass", mdp)
+        self.assertNotIn("(term.cart_mass - 5.0) / 5.0 - 1.0", mdp)
 
     def test_no_cart_environments_are_physically_and_semantically_masked(self):
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
