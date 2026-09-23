@@ -452,6 +452,36 @@ def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Te
     return reward
 
 
+def feet_edge(
+    env: ManagerBasedRLEnv,
+    edge_sensor_names: tuple[str, ...],
+    contact_sensor_cfg: SceneEntityCfg,
+    contact_force_threshold: float = 1.0,
+) -> torch.Tensor:
+    """Penalize a contacting foot when its local ray grid straddles solid ground and a void.
+
+    A gap ray has an infinite hit position in Isaac Lab.  Using one small ray grid per foot makes
+    this term independent of the actor's base-mounted terrain scan and avoids penalizing ordinary
+    stair height discontinuities, where every ray still hits a surface.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[contact_sensor_cfg.name]
+    contact_forces = contact_sensor.data.net_forces_w[:, contact_sensor_cfg.body_ids, :]
+    contacts = torch.linalg.norm(contact_forces, dim=-1) > contact_force_threshold
+    if contacts.shape[1] != len(edge_sensor_names):
+        raise ValueError(
+            "feet_edge requires one edge ray caster per configured contact body: "
+            f"got {len(edge_sensor_names)} scanners and {contacts.shape[1]} bodies"
+        )
+
+    edge_flags = []
+    for sensor_name in edge_sensor_names:
+        edge_sensor: RayCaster = env.scene.sensors[sensor_name]
+        valid_hits = torch.isfinite(edge_sensor.data.ray_hits_w[..., 2])
+        edge_flags.append(valid_hits.any(dim=1) & ~valid_hits.all(dim=1))
+    feet_on_edge = torch.stack(edge_flags, dim=1)
+    return torch.sum((feet_on_edge & contacts).float(), dim=1)
+
+
 def feet_distance_y_exp(
     env: ManagerBasedRLEnv, stance_width: float, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
