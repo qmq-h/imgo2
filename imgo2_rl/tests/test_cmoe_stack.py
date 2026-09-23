@@ -16,6 +16,7 @@ try:
 
     from rl_lab.modules.cmoe_actor_critic import CMoEActorCritic
     from rl_lab.storage.cmoe_rollout_storage import CMoERolloutStorage
+    from rl_lab.utils.export_policy import _CMoEPolicyExporter
 except ModuleNotFoundError as error:
     torch = None
     IMPORT_ERROR = error
@@ -76,6 +77,18 @@ class TestCMoEStack(unittest.TestCase):
         )
         self.assertEqual(tuple(storage.observations.shape), (3, 4, self.actor_obs_dim))
         self.assertEqual(tuple(storage.privileged_observations.shape), (3, 4, self.critic_dim))
+
+    def test_exporter_matches_deterministic_policy(self):
+        self.model.eval()
+        observations = torch.randn(self.batch, self.actor_obs_dim)
+        exporter = _CMoEPolicyExporter(self.model).eval()
+        scripted_exporter = torch.jit.script(exporter)
+        with torch.inference_mode():
+            expected = self.model.act_inference(observations)
+            actual = exporter(observations)
+            scripted_actual = scripted_exporter(observations)
+        self.assertTrue(torch.allclose(actual, expected, atol=1.0e-6, rtol=1.0e-5))
+        self.assertTrue(torch.allclose(scripted_actual, expected, atol=1.0e-6, rtol=1.0e-5))
 
 
 if __name__ == "__main__":

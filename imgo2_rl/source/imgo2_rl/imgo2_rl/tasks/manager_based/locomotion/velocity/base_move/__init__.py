@@ -4,6 +4,27 @@ from . import agents
 
 
 gym.register(
+    id="Imgo2-basemove-rough-cmoe",
+    entry_point="rl_lab.envs:CMoEManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.CMoE_env_cfg:Imgo2CMoERoughEnvCfg",
+        "cmoe_rsl_rl_cfg": f"{agents.__name__}.CMoE_rsl_rl_cfg:Imgo2CMoERoughRunnerCfg",
+    },
+)
+
+gym.register(
+    id="Imgo2-basemove-rough-cmoe-play",
+    entry_point="rl_lab.envs:CMoEManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.CMoE_env_cfg:Imgo2CMoERoughPlayEnvCfg",
+        "cmoe_rsl_rl_cfg": f"{agents.__name__}.CMoE_rsl_rl_cfg:Imgo2CMoERoughRunnerCfg",
+    },
+)
+
+
+gym.register(
     id="Imgo2-basemove-rough-ppo",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

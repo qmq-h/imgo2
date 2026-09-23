@@ -142,8 +142,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
     
-    # CMoE has a state encoder and a terrain encoder; deployment export is added
-    # after the Isaac Lab observation contract is registered.
+    # Preserve the environment-side deployment metadata next to the checkpoint.
+    # The complete CMoE network itself is exported by cmoe/play.py.
     export_deploy_cfg(
         env.unwrapped, 
         log_dir,

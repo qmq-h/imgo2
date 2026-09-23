@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-23。CMoE 独立算法栈已从原版实现移入 `rl_lab` 并完成静态编译，当前只完成算法与 Isaac Lab 适配层，尚未注册 observation task 或运行 PyTorch／Isaac Lab；状态见 [CMoE 移植记录](docs/cmoe_port_2026-09-23.md)。此前上层拖曳离线检查见 [离线检查记录](docs/offline_check_2026-09-22.md)。
+> 最后核对：2026-09-23。CMoE 独立算法栈、PPO rough 训练／play 任务、checkpoint 回放及 JIT／ONNX 导出入口已接齐并完成静态编译；当前机器没有可用的 PyTorch／Isaac Lab 运行环境，尚未执行环境构造或短训练。状态见 [CMoE 移植记录](docs/cmoe_port_2026-09-23.md)。此前上层拖曳离线检查见 [离线检查记录](docs/offline_check_2026-09-22.md)。
 >
 > 当前阶段只说明“仿真链路和基本行为成立”，不等于两类绳的物理真实性、瞬态品质或控制效果已经完成评价。可复现数据结论见 §2 和问题表；详细实验与调试历史放在 `docs/`，不在 README 展开。
 
@@ -51,7 +51,7 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 | 模型 | 四份完整 Imgo2 URDF 的关节轴/限位、每个 link 的质量/质心/惯量/碰撞几何已于 2026-09-15 按训练侧统一（`check_model_sync.py` 五项全通过）；`imgo2_description` 腿序不同是有意设计 | Gazebo/ROS 链路需复核；`imgo2_model/` 的 URDF 是腿部件片段，统一模型副本仍需先补全 |
 | PPO | 用户于 2026-09-15 确认已完成训练及 sim 验证；代码有平地、粗糙地形、变高度、倒立注册项 | 待补具体已验证任务 ID、checkpoint 和指标；不推定所有注册任务均已验证 |
 | HIM-Loco | 环境、历史观察包装器、训练、回放、JIT/ONNX 导出及比较脚本已存在 | 导出数值一致性与 C++ 端适配 |
-| CMoE | 原版 actor/expert/双 estimator/PPO/Storage/Runner 已独立移入，默认保留原版5专家；Isaac Lab terminal observation 与 history wrapper 已接线，静态编译通过 | PyTorch 张量测试、observation task cfg、Gym 注册及 Isaac Lab 短训练；当前 train 入口不可直接用于真实任务 |
+| CMoE | 原版 actor/expert/双 estimator/PPO/Storage/Runner 已独立移入，默认保留原版 5 专家；PPO rough 的 `policy`／`terrain`／`critic` observation、train/play 注册及 JIT／ONNX 导出已接线，静态编译通过 | PyTorch 张量与 TorchScript 测试、Isaac Lab 环境构造、短训练、checkpoint 回放和实际导出；当前只能确认代码链路，不能声称已训练或收敛 |
 | AMP | 用户反馈已有训练步态，但策略贴地爬行；已完成本地数据/URDF 离线核对并修正映射、归一化，补充高度约束及奖励量级调整 | 新配置尚待重新训练验证；正常初始化不视为策略能维持高度 |
 | 数据集 | 21 份 JSON 格式 `.txt`，共 5097 帧；每帧 61 个数，帧间隔均为 0.02 秒 | 动作语义、腿顺序和运动学一致性的回放验证 |
 | 数据副本 | `imgo2_dataset/datasets/imgo2_motion/` 的 21 份文件与训练目录对应副本逐文件哈希一致 | 后续更新时防止两处副本漂移 |
@@ -128,10 +128,11 @@ python scripts/tools/list_envs.py
 | `Imgo2-heightmove-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-handstand-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-basemove-rough-himloco` | `scripts/rl_lab/himloco/train.py` |
+| `Imgo2-basemove-rough-cmoe` | `scripts/rl_lab/cmoe/train.py`（5 专家；继承 PPO rough 地形、奖励和动作） |
 | `Imgo2-basemove-flat-amp-height` | `scripts/rl_lab/amp/train.py`（平坦地形，保留 Imgo2 高度与轻量姿态奖励；`AMPHeightRunnerCfg`） |
 | `Imgo2-basemove-flat-amp-fanziqi` | `scripts/rl_lab/amp/train.py`（Fanziqi A1 AMP 配方：`dt=0.005 s`、`decimation=6`，只留线／角速度任务奖励，42 维 actor，无持续外力；`FanziqiAMPRunnerCfg`） |
 
-此外注册了 `Imgo2-basemove-rough-himloco-play`，两套 AMP 分别使用同名 `-play` 任务。
+此外注册了 `Imgo2-basemove-rough-himloco-play`、`Imgo2-basemove-rough-cmoe-play`，两套 AMP 分别使用同名 `-play` 任务。
 
 基础检查及训练命令示例：
 
@@ -152,6 +153,7 @@ python scripts/tools/zero_agent.py --task=Imgo2-basemove-flat-ppo --num_envs=1
 python scripts/rsl_rl/train.py --task=Imgo2-basemove-flat-ppo --headless
 python scripts/rsl_rl/train.py --task=Imgo2-basemove-rough-ppo --headless
 python scripts/rl_lab/himloco/train.py --task=Imgo2-basemove-rough-himloco --headless
+python scripts/rl_lab/cmoe/train.py --task=Imgo2-basemove-rough-cmoe --headless
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-height --headless
 python scripts/rl_lab/amp/train.py --task=Imgo2-basemove-flat-amp-fanziqi --num_envs=256 --max_iterations=100 --seed=42 --headless
 ```
@@ -189,6 +191,7 @@ TorchScript**（用户 2026-09-18 决定）。`play.py` 自己调用
 ```bash
 python scripts/rsl_rl/play.py --task=Imgo2-basemove-flat-ppo --num_envs=1 --checkpoint="/absolute/path/to/model.pt"
 python scripts/rl_lab/himloco/play.py --task=Imgo2-basemove-rough-himloco-play --num_envs=1 --checkpoint="/absolute/path/to/model.pt"
+python scripts/rl_lab/cmoe/play.py --task=Imgo2-basemove-rough-cmoe-play --num_envs=1 --headless --checkpoint="/absolute/path/to/model.pt"
 python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-height-play --num_envs=1 --headless --checkpoint="/absolute/path/to/model.pt"
 ```
 
@@ -450,7 +453,7 @@ bash build.sh --cmake
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
-| CMOE-01 | P0 | **算法与接口骨架已移植，待训练环境验证；当前不注册任务** | `imgo2_CMoE` 分支从原版 CMoE 复制并适配独立 actor/expert/双 estimator/PPO/Storage/Runner，Wrapper 修复全零初始历史和跨 episode 污染；静态编译通过。张量测试因本机 Python 无 PyTorch 而 2 项跳过，Isaac Lab launcher 也找不到可用解释器。详见 [移植记录](docs/cmoe_port_2026-09-23.md) | 在训练机跑张量测试；新增 `policy`／`terrain`／`critic` observation contract 和 task 注册后，以 4 环境短训练验证 rollout、terminal observation、gate 与 estimator；完成前不得声称可训练或收敛 |
+| CMOE-01 | P0 | **训练／play 代码链路已接齐，待训练环境验证** | `imgo2_CMoE` 分支从原版 CMoE 复制并适配独立 actor/expert/双 estimator/PPO/Storage/Runner；已注册继承 PPO rough 配方的 train/play 任务，并补完整 CMoE JIT／ONNX 导出。静态编译通过；3 项张量测试因本机 Python 无 PyTorch 跳过，Isaac Lab launcher 也找不到可用解释器。详见 [移植记录](docs/cmoe_port_2026-09-23.md) | 在训练机跑张量与 TorchScript 测试；以 4 环境、1～2 iteration 验证 observation 维度、rollout、terminal observation、gate 与 estimator，再加载 checkpoint 运行 play 并核对导出；完成前不得声称已训练或收敛 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
 | TOW-03 | P0 | **自有 recurrent PPO＋decoder runner 已接线，待训练机验证；当前仍不注册** | decoder 使用 `51→128→GRU(128)` 预测机器人机体系 `vx/vy`、负载质量和牵引力 `Fx/Fy`，5 维 estimate detach 后组成 56 维 actor 输入。仓库 `rl_lab` runner 已管理 decoder／actor／critic 三套 GRU、critic-only normalizer、rollout estimate 固化、PPO 后 decoder 更新及联合 checkpoint；不依赖外部 RSL-RL runner/config API。STOP 后有界 GT 拉力惩罚已加入。详见 [GRU 记录](docs/towing_gru_design_2026-09-22.md) | 在 Isaac Lab 2.2.1 训练机完成 wrapper 构造、4／256 环境 recurrent rollout、checkpoint 恢复、estimator 精度、STOP reward 排序和无小车隔离验证，重点排除策略为卸载拉力而让小车逼近的捷径；通过后再注册任务 |
@@ -551,7 +554,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
-| 2026-09-23 | 建立独立 CMoE 算法栈 | 在 `imgo2_CMoE` 分支以原版 CMoE 为算法唯一基准，新增独立 actor/expert/双 estimator/PPO/Storage/Runner、Isaac Lab env/wrapper、配置与 train 入口；维度与专家数参数化，修复历史 reset 和最后一帧 gate bootstrap。静态编译通过；张量测试因本机无 PyTorch 跳过，任务尚未注册。详见 [CMoE 移植记录](docs/cmoe_port_2026-09-23.md) |
+| 2026-09-23 | 建立独立 CMoE 算法栈并补 rough train/play | 在 `imgo2_CMoE` 分支以原版 CMoE 为算法唯一基准，新增独立 actor/expert/双 estimator/PPO/Storage/Runner、Isaac Lab env/wrapper；随后注册继承 PPO rough 配方的 5 专家训练／play 任务，加入完整确定性 CMoE 的 JIT／ONNX 导出。维度与专家数参数化，修复历史 reset 和最后一帧 gate bootstrap。静态编译与 diff 检查通过；3 项张量／TorchScript 测试因本机无 PyTorch 跳过，Isaac Lab 短训练及回放待训练机验证。详见 [CMoE 移植记录](docs/cmoe_port_2026-09-23.md) |
 | 2026-09-22 | 上层拖曳训练闭环移入仓库 `rl_lab` | 按现有 AMP 模式新增 `TowingOnPolicyRunner`、`TowingVecEnvWrapper`、独立 critic normalizer 和 towing 配置；三套 GRU、detached rollout estimate、done 边界 decoder 更新及联合 checkpoint 已接线，上层配置不再导入外部 RSL-RL runner/config。另修复自有 recurrent memory 把整型 done 当索引、未按环境清 hidden state 的旧问题。训练机基线为 Isaac Lab 2.2.1／RSL-RL 2.3.3；拖曳离线测试 191 项通过／12 项按可选环境跳过，尚未运行 Isaac Lab。详见 [兼容性记录](docs/training_stack_compatibility_2026-09-22.md) |
 | 2026-09-22 | 上层拖曳 reward 增加 STOP 后绳力惩罚 | 仅在随机 `stop_time_s` 后计算 `||F_tow||/(||F_tow||+10 N)`，权重 `−1.0`；初始零速站定及无小车环境屏蔽。完整拖曳离线测试 188 项通过／12 项按可选环境跳过；尚需 Isaac Lab scripted rollout 验证其与 clearance／collision 的回报排序，排除快速松绳后追尾的策略捷径 |
 | 2026-09-22 | 拖曳采用 dynamics decoder＋recurrent PPO | decoder 改为 `51→128→GRU(128)`，显式预测机器人 `vx/vy`、负载质量和牵引力 `Fx/Fy`；estimate detach 后与原始帧组成 56 维 actor 输入。预测误差移出 reward，质量 loss 由 GT 牵引力大小连续加权。actor／critic 各用独立 GRU。离线拖曳测试 187 通过／12 跳过；runner 与 Isaac Lab 验证仍未完成。详见 [记录](docs/towing_gru_design_2026-09-22.md) |

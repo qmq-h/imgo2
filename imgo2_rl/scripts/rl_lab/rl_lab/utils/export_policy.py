@@ -7,8 +7,90 @@
 
 import copy
 import os
+from typing import List
+
 import torch
 import torch.nn.functional as F
+
+
+def export_cmoe_policy_as_jit(actor_critic: object, path: str, policy_filename: str = "policy.pt"):
+    """Export the complete deterministic CMoE inference graph as TorchScript."""
+    os.makedirs(path, exist_ok=True)
+    exporter = _CMoEPolicyExporter(actor_critic).cpu().eval()
+    scripted = torch.jit.script(exporter)
+    output_path = os.path.join(path, policy_filename)
+    scripted.save(output_path)
+    print(f"[INFO] Exported CMoE policy JIT to: {output_path}")
+
+
+def export_cmoe_policy_as_onnx(
+    actor_critic: object,
+    path: str,
+    policy_filename: str = "policy.onnx",
+    verbose: bool = False,
+):
+    """Export the complete deterministic CMoE inference graph as one ONNX model."""
+    os.makedirs(path, exist_ok=True)
+    exporter = _CMoEPolicyExporter(actor_critic).cpu().eval()
+    observations = torch.zeros(1, actor_critic.num_actor_obs)
+    output_path = os.path.join(path, policy_filename)
+    torch.onnx.export(
+        exporter,
+        observations,
+        output_path,
+        export_params=True,
+        opset_version=11,
+        verbose=verbose,
+        input_names=["observations"],
+        output_names=["actions"],
+        dynamic_axes={},
+    )
+    print(f"[INFO] Exported CMoE policy ONNX to: {output_path}")
+
+
+class _CMoEPolicyExporter(torch.nn.Module):
+    """Deployment-only CMoE graph using estimator means and weighted expert means."""
+
+    def __init__(self, actor_critic: object):
+        super().__init__()
+        self.num_one_step_obs = actor_critic.num_one_step_obs
+        self.history_obs_dim = actor_critic.history_obs_dim
+        self.terrain_obs_dim = actor_critic.terrain_obs_dim
+        self.state_encoder = copy.deepcopy(actor_critic.state_estimator.encoder)
+        self.state_mu = copy.deepcopy(actor_critic.state_estimator.fc_mu)
+        self.state_explicit = copy.deepcopy(actor_critic.state_estimator.fc_explicit)
+        self.terrain_encoder = copy.deepcopy(actor_critic.terrain_estimator.encoder)
+        self.terrain_mu = copy.deepcopy(actor_critic.terrain_estimator.fc_mu)
+        self.gating_network = copy.deepcopy(actor_critic.gating_network)
+        self.expert_actors = torch.nn.ModuleList(
+            [copy.deepcopy(expert.actor) for expert in actor_critic.experts]
+        )
+
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        history = observations[:, : self.history_obs_dim]
+        terrain = observations[
+            :, self.history_obs_dim : self.history_obs_dim + self.terrain_obs_dim
+        ]
+        state_features = self.state_encoder(history)
+        explicit = self.state_explicit(state_features)
+        state_latent = self.state_mu(state_features)
+        terrain_latent = self.terrain_mu(self.terrain_encoder(terrain))
+        actor_input = torch.cat(
+            (
+                observations[:, : self.num_one_step_obs],
+                explicit,
+                state_latent,
+                terrain,
+                terrain_latent,
+            ),
+            dim=-1,
+        )
+        gate_weights = self.gating_network(actor_input)
+        expert_outputs = torch.jit.annotate(List[torch.Tensor], [])
+        for expert_actor in self.expert_actors:
+            expert_outputs.append(expert_actor(actor_input))
+        expert_means = torch.stack(expert_outputs, dim=1)
+        return (expert_means * gate_weights.unsqueeze(-1)).sum(dim=1)
 
 
 def export_himloco_policy_as_jit(
