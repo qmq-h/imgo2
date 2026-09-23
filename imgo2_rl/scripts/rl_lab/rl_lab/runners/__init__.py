@@ -1,4 +1,5 @@
 from .amp_on_policy_runner import AMPOnPolicyRunner
+from .cmoe_on_policy_runner import CMoEOnPolicyRunner
 from .him_on_policy_runner import HIMOnPolicyRunner
 from .ppo_on_policy_runner import OnPolicyRunner
 from .towing_on_policy_runner import TowingOnPolicyRunner
