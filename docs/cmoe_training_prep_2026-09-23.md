@@ -2219,3 +2219,60 @@ tracking_<地形> / level_<地形>
 * 相关离线测试 **55 项全通过**；`py_compile`、`check_terrain_columns.py`、`git diff --check` 通过。
 * **未验证**：弹跳是否真的下降（需重启后回放 + 看新出现的 `gait_bounce_<地形>`）。
   若 `gait_bounce_*` 仍高，下一档把 `lin_vel_z_l2` 加到 −4~−5 或再降 `feet_air_time`（0.3 → 0.1）。
+
+### 29.29 路线决定：**不续训、从零重训**（2026-09-24 夜，用户定案）
+
+用户先问「要续训吗?」，看到差异与代价后定案「**还是重新训练 / 我计划重新开始训练**」
+⇒ 起新 run，**不带 `--resume`**（`iter` 从 0、会产出 `model_0.pt`）。
+
+#### 29.29.1 C 与新配方的逐项差异（以 **run 自带的 `params/env.yaml`** 为准）
+
+`2026-09-24_19-44-08_cmoe_C_77dim_gait/params/env.yaml` 是"C 究竟跑的哪版代码"的唯一权威记录。
+用标准库 + `yaml.SafeLoader`（需补 `python/tuple`、`python/object/apply:builtins.slice`
+两个 constructor，否则读不了 `dump_yaml` 产物）解析后逐项比对：
+
+| 项 | run C（实际跑的） | 现在（`a46e588`） | 是否变化 |
+|---|---|---|---|
+| `lin_vel_z_l2` | **`null`（整项被移除）** | `MaskedLinVelZ` **−2.0**，`free=('boxes','gap')` | **是**（本次弹跳修复的主项） |
+| `feet_air_time` | `MaskedFeetAirTime` **+1.0**，thr 0.5 | 同函数，**+0.3**，thr 0.5 | **是** |
+| `feet_gait` | `TrotWithoutGapReward` +1.0，`free=(boxes,gap)` | 同 | 否 |
+| `feet_air_time_variance` | `MaskedFeetAirTimeVariance` −8.0，`free=(boxes,gap)` | 同 | 否 |
+| `feet_height_body` | `MaskedFeetHeightBody` −5.0，`free=(boxes,gap)` | 同 | 否 |
+| `joint_mirror` | `MaskedJointMirror` −1.0，`free=(boxes,)`、`bound=('gap',)` | 同 | 否 |
+| `track_world_vel_xy_exp` / `lin_pos_y` / `yaw_abs` | 5.0 / −0.4 / −0.2 | 同 | 否 |
+| 课程 | `tracking_move_up 0.8`、`down 0.35`，**无分档、无步态度量** | ＋`relaxed_terrain_names`(台阶/反台阶/boxes)、`tracking_move_up_relaxed 0.50`、`gait_metric_terms` | **是** |
+| 诊断项 `diag_bounce` / `gait_metric_{trot,bound,pace}` | **不存在**（grep 无命中） | 1e-6 权重，逐列日志 | **是** |
+
+* 结论：**步态塑形面只动了两处**（`lin_vel_z_l2` 从"没有"到 −2.0、`feet_air_time` 降权），
+  其余 trot 相关项 C 里已经在跑 —— 也就是说"蹦"是在**这些项都在**的前提下产生的（§29.28 的根因分析结论不变）。
+* 顺带更正一处**事实**：C 的 `lin_vel_z_l2` 是 `null`（`self.rewards.lin_vel_z_l2 = None`，
+  `RewardManager` 会跳过 `None` 项），不是"权重 0"。两者对训练等价，但读 yaml 时别被 `null` 误导。
+
+#### 29.29.2 为什么选从零而不是续训
+
+* **续训能省的只有 1000 轮 ≈ 1.2 h**（4096 环境 4.15 s/轮），相对 60000 轮（≈69 h）可忽略；
+  地形等级**不会**被继承（见 29.29.3），所以续训也保留不了课程进度。
+* 续训会**把 C 的弹跳习惯带进来**，且 critic 是按**旧回报**（含 `feet_air_time 1.0` 的腾空付款）拟合的
+  ⇒ 前几百轮 advantage 带偏。干净起点把"哪套奖励产生哪套步态"的归因留得干净。
+* 代价：丢掉已学会的过障能力（C 在 1000 轮时 stairs/stairs_inv/boxes/gap 的等级是 6.7/0.3/0.3/6.6），
+  但按 B→C 的历史，从零到同类水平约 1000–1500 轮（1.2–1.8 h）⇒ 这个代价可接受。
+
+#### 29.29.3 起点状态（更正先前口头说法）
+
+先前说"续训会把等级重置回 0"**是错的**：`CMoE_env_cfg.py:536` 设 `max_init_terrain_level = 5`，
+`TerrainImporter._compute_env_origins_curriculum`（`terrain_importer.py:334-341`）在有值时取
+`max_init_level = min(5, num_rows-1) = 5` ⇒ `terrain_levels = randint(0, 6)`，即**每列 0–5 级均匀**
+（均值 2.5），**不是 0**（`max_init_terrain_level=None` 才会是 `randint(0, num_rows)`）。
+C 结束时的逐列均值是 5.0–6.7 ⇒ 新 run 早期 `level_*` 会**先落到 2–3 再往上爬**，属正常，不是退化。
+
+#### 29.29.4 新 run 与待验证项
+
+* 命令：`--run_name=cmoe_F_77dim_fresh`、`--num_envs=4096`、`--headless`、**不加 `--resume`**、
+  `max_iterations` 用 cfg 自带的 **60000**（`--max_iterations` 可省）。
+* **待验证**（重启后）：
+  1. `gait_bounce_<地形>`（`lin_vel_z_l2` 反解，开方＝vz RMS）是否随训练**单调下降**；
+  2. 13 个非 `boxes`/`gap` 列上 `gait_trot_*` 是否**高于** `gait_bound_*` / `gait_pace_*`；
+  3. `level_pyramid_stairs_inv` / `level_boxes` 是否不再像 C 那样钉在 0.3（分档阈值已放宽到 0.5）。
+* 判据同 §29.28：若 `gait_bounce_*` 不降且回放仍见弹跳，下一档是**把 `feet_gait` 的脊变陡**
+  （`max_err` 0.2→0.5、`std` 0.7071→0.2，现在乘积只在 [0.508, 1]，trot 与 bound 差 ≤0.49/s），
+  而不是继续加权重。
