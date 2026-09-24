@@ -31,7 +31,17 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         cls.effective = {t: v for t, v in cls.weights.items() if isinstance(v, (int, float)) and v != 0}
 
     def test_effective_term_count(self):
-        self.assertEqual(len(self.effective), 16, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-09-24：16 → 18（parkour 式"全球速度"约束）→ 19（加回 feet_air_time_variance −8.0）
+        self.assertEqual(len(self.effective), 19, f"生效项数变了：{sorted(self.effective)}")
+
+    def test_world_vel_replaces_body_vel(self):
+        self.assertEqual(self.effective["track_world_vel_xy_exp"], 5.0)
+        self.assertNotIn("track_lin_vel_xy_exp", self.effective,
+                         "机体系速度跟踪应已被世界系版本取代")
+
+    def test_parkour_soft_terms_present(self):
+        self.assertEqual(self.effective["lin_pos_y"], -0.4)
+        self.assertEqual(self.effective["yaw_abs"], -0.2)
 
     def test_gaitshaping_values(self):
         # 三项照搬 PPO 的固定步态 shaping，都挂 masked 类。
@@ -41,14 +51,16 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         self.assertIn("MaskedJointMirror", self.funcs["joint_mirror"])
         self.assertIn("MaskedFeetHeightBody", self.funcs["feet_height_body"])
         self.assertIn("MaskedFeetAirTime", self.funcs["feet_air_time"])
+        # PPO 那套里量级最大的步态项，2026-09-24 晚加回（掩码版）
+        self.assertEqual(self.effective["feet_air_time_variance"], -8.0)
+        self.assertIn("MaskedFeetAirTimeVariance", self.funcs["feet_air_time_variance"])
 
     def test_feet_gait_disabled(self):
         self.assertNotIn("feet_gait", self.effective)
         self.assertNotIn("feet_gait", self.funcs, "feet_gait 不应再被赋 func（已决定不用）")
 
     def test_not_restored_terms(self):
-        # 用户未要求恢复这两项；若日后恢复了，请同步更新本测试与 docs §29.9.5。
-        self.assertNotIn("feet_air_time_variance", self.effective)
+        # `feet_slide` 仍未恢复（用户未要求）；若日后恢复，请同步更新本测试与 docs。
         self.assertNotIn("feet_slide", self.effective)
 
     def test_no_masked_func_is_dead(self):

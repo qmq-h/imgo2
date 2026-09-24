@@ -50,7 +50,10 @@ MASKED_NAMES = {
     "joint_mirror.bound_terrain_names": ("gap",),
     "feet_air_time.free_terrain_names": ("boxes", "gap"),
     "feet_height_body.free_terrain_names": ("boxes", "gap"),
+    "feet_air_time_variance.free_terrain_names": ("boxes", "gap"),
 }
+# 注意：`lin_pos_y` / `yaw_abs` 的 `terrain_names=()` 表示**全局生效**（2026-09-24 用户决定
+# "所有场景都给脱离中心的惩罚"），因此不在上面这张"必须 ≥1 列"的名单里。
 
 
 def base_sub_terrains() -> list[tuple[str, float]]:
@@ -91,6 +94,18 @@ def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
         if m:
             cols["num_cols"] = int(ast.literal_eval(node.value))
     return props, cols
+
+
+def forward_only_names() -> tuple[str, ...] | None:
+    """读 `CMoE_env_cfg.py` 里 `self.commands.base_velocity.forward_only_terrain_names`（没写则 None）。"""
+    tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        if ast.unparse(node.targets[0]) != "self.commands.base_velocity.forward_only_terrain_names":
+            continue
+        return tuple(ast.literal_eval(node.value))
+    return None
 
 
 def allocate(sub_terrains: list[tuple[str, float]], num_cols: int) -> list[str]:
@@ -161,6 +176,22 @@ def main(argv: list[str] | None = None) -> int:
                     problems += 1
     if col_over:
         print(f"\n提示：配置里显式覆盖过 num_cols = {col_over['num_cols']}（play 用）")
+
+    # 2026-09-24 用户决定「所有场景都只给超前的速度」⇒ `forward_only_terrain_names` 必须覆盖
+    # **全部** sub_terrains（漏一项，那一列就会静默退回全向命令）。
+    names = [n for n, _ in merged]
+    fwd = forward_only_names()
+    if fwd is None:
+        print("\n（配置未设置 forward_only_terrain_names，跳过覆盖率校验）")
+    else:
+        missing = [n for n in names if n not in fwd]
+        unknown = [n for n in fwd if n not in names]
+        if missing or unknown:
+            print(f"\n❌ forward_only_terrain_names 未覆盖全部地形：缺 {missing}／多余 {unknown}")
+            problems += 1
+        else:
+            print(f"\n✅ forward_only_terrain_names 覆盖全部 {len(names)} 类地形（全场景前向命令）")
+
     print("\n结论：" + ("全部掩码引用的地形名都有 ≥1 列 ✅" if problems == 0 else f"有 {problems} 处问题 ❌"))
     return 1 if problems else 0
 

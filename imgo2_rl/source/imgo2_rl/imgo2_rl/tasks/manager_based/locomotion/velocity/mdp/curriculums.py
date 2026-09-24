@@ -19,17 +19,59 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def _episode_tracking_average(
+    env: ManagerBasedRLEnv, env_ids: Sequence[int], term_name: str
+) -> torch.Tensor | None:
+    """本回合的**平均速度跟踪核**（0–1）。取不到就返回 None（调用方退回纯距离判据）。
+
+    数据来源是奖励管理器为每个分项累计的"回合和"：`RewardManager.compute` 每步做
+    `_episode_sums[name] += term·weight·dt`，于是
+
+        本回合 term 的时间平均 = _episode_sums[name] / weight / (回合步数 · step_dt)
+
+    **时机是对的**：`ManagerBasedRLEnv._reset_idx` 里 `curriculum_manager.compute()` 在最前面
+    （`manager_based_rl_env.py:358`），而 `reward_manager.reset()`（读走并清零 `_episode_sums`）在后面
+    （同函数 ~377），`episode_length_buf` 更是最后才清零（~396）⇒ 此刻拿到的正是**刚结束那一回合**的值。
+    """
+    manager = getattr(env, "reward_manager", None)
+    sums = getattr(manager, "_episode_sums", None) if manager is not None else None
+    if not sums or term_name not in sums:
+        return None
+    try:  # 权重从 term cfg 取，避免和配置里写死的数字脱钩
+        weight = float(manager.get_term_cfg(term_name).weight)
+    except Exception:
+        return None
+    if weight == 0.0:
+        return None
+    episode_steps = env.episode_length_buf[env_ids].clamp_min(1).float()
+    return sums[term_name][env_ids] / weight / (episode_steps * env.step_dt)
+
+
 def terrain_levels_vel_logged(
     env: ManagerBasedRLEnv,
     env_ids: Sequence[int],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    tracking_term_name: str = "track_world_vel_xy_exp",
+    tracking_move_up: float = 0.80,
+    tracking_move_down: float = 0.35,
 ) -> dict:
-    """`isaaclab_tasks` 的 `terrain_levels_vel` 的**带诊断副本**。
+    """带诊断、且**把速度跟踪效果计入晋级判据**的地形课程（2026-09-24 用户要求）。
 
-    判据与上游逐字一致（晋级 `distance > size[0]/2`、降级 `distance < |cmd_xy|·T·0.5` 且未晋级、
-    `terrain.update_env_origins` 负责等级增减与到顶随机重开），**只额外返回统计量**，
-    用于区分「课程已到能力边界（升降级同量级）」与「有一部分环境被冻住（既不胜级也不降级）」——
-    只看等级均值无法区分这两者。
+    与上游 `terrain_levels_vel` 的两处**有意偏离**：
+
+    1. **晋级看"沿 +x 的前向进度"**（`root_x − origin_x`），不再用含横向分量的欧氏距离
+       —— 上游的欧氏距离把"横移绕开障碍"也算作通过（docs §29.15/§29.16 的实测漏洞）。
+    2. **晋级还要速度跟踪达标**：本回合的 `track_world_vel_xy_exp` 时间平均必须 > `tracking_move_up`；
+       低于 `tracking_move_down` 则**降级**。理由（用户）："地形等级提升还是需要考虑速度跟踪效果"
+       —— 只看走了多远，会奖励"慢慢蹭过去/绕过去"，而不管有没有按指令跟速。
+
+    判据形式：
+
+    * 晋级：`progress > size[0]/2` **且** `track_avg > tracking_move_up`
+    * 降级：`progress < ‖cmd_xy‖·T·0.5` **或** `track_avg < tracking_move_down`（晋级优先）
+    * 取不到跟踪分项（名字变了/被移除）时自动退回纯距离判据，并在日志里给出 `tracking_is_used=0`。
+
+    等级增减与"到顶随机重开"仍由 `terrain.update_env_origins` 负责（`terrain_importer.py:314-321`）。
 
     `CurriculumManager.reset` 会把 dict 的每一项展开成 `Curriculum/<term>/<key>`，
     再经 CMoE runner 前缀成 `Episode/Curriculum/terrain_levels/*`。
@@ -38,10 +80,19 @@ def terrain_levels_vel_logged(
     terrain = env.scene.terrain
     command = env.command_manager.get_command("base_velocity")
 
+    # ① 前向进度（沿 +x；不含横向 ⇒ 绕开不再算通过）
+    progress = asset.data.root_pos_w[env_ids, 0] - env.scene.env_origins[env_ids, 0]
     distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
     command_xy = torch.norm(command[env_ids, :2], dim=1)
-    move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
-    move_down = distance < command_xy * env.max_episode_length_s * 0.5
+
+    # ② 本回合的平均速度跟踪核
+    track_avg = _episode_tracking_average(env, env_ids, tracking_term_name)
+
+    move_up = progress > terrain.cfg.terrain_generator.size[0] / 2
+    move_down = progress < command_xy * env.max_episode_length_s * 0.5
+    if track_avg is not None:
+        move_up = move_up & (track_avg > tracking_move_up)
+        move_down = move_down | (track_avg < tracking_move_down)
     move_down *= ~move_up
     terrain.update_env_origins(env_ids, move_up, move_down)
 
@@ -53,9 +104,16 @@ def terrain_levels_vel_logged(
         "move_up_frac": move_up.float().mean(),
         "move_down_frac": move_down.float().mean(),
         "frozen_frac": (~move_up & ~move_down).float().mean(),
+        "progress_mean": torch.mean(progress),
         "distance_mean": torch.mean(distance),
         "command_norm_mean": torch.mean(command_xy),
+        "tracking_is_used": torch.tensor(1.0 if track_avg is not None else 0.0),
     }
+    if track_avg is not None:
+        out["tracking_mean"] = torch.mean(track_avg)
+        out["tracking_min"] = torch.min(track_avg)
+        out["tracking_pass_frac"] = (track_avg > tracking_move_up).float().mean()
+        out["tracking_fail_frac"] = (track_avg < tracking_move_down).float().mean()
     # 按地形列分组的等级均值（地形列逐环境固定，故可稳定对比「障碍列 vs 粗糙列」）
     from .utils import is_env_assigned_to_terrain  # 延迟导入，避免包内循环依赖
 

@@ -50,6 +50,94 @@ def track_ang_vel_z_exp(
     return reward
 
 
+def track_world_vel_xy_exp(
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """**世界系** xy 线速度跟踪（对照 parkour 的 `_reward_tracking_world_vel`）。
+
+    2026-09-24 加入（用户："该参考 parkour 用全局的速度来约束了"）。与机体系版本
+    `track_lin_vel_xy_exp` 的区别是本项比较**世界系**速度 `root_lin_vel_w`，目标速度也换算到世界系。
+
+    为什么需要它（回放实测的缺陷）：机体系版本 + `heading_command` 下，yaw 指令是 heading 控制器
+    **按当前误差实时生成**的（转身本身几乎不被罚），而奖励只看机体系速度 ⇒ 机器人可以"一边转身
+    一边在机体系里前进"来拿满分，于是**横移绕开障碍**仍能保持很高的跟踪奖励（实测线速度核 0.88、
+    偏航核仅 0.46）。改成世界系后，目标方向由**命令的目标朝向**（`heading_target`，世界系）决定、
+    **不随机器人自身转动**，横移/绕行立刻体现为巨大的世界系速度误差。
+
+    目标速度的构造：命令是机体系 `(vx, vy)`，用命令的**目标朝向** `heading_target` 旋转到世界系
+    ⇒ `target_w = R_z(heading_target) · (vx, vy)`。这样在障碍列（`heading_target = 0`）目标就是
+    纯 `+x`；在普通列则跟随采样到的目标朝向，仍然要求"朝那个方向走"。
+    要求命令项是 heading 命令（本项目 CMoE 的 `heading_command=True`、`rel_heading_envs=1.0`）；
+    若取不到 `heading_target`，退化为用**当前**朝向旋转（等价机体系）。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    cmd_b = env.command_manager.get_command(command_name)
+    term = env.command_manager.get_term(command_name)
+    heading = getattr(term, "heading_target", None)
+    if heading is None:
+        heading = math_utils.euler_xyz_from_quat(asset.data.root_quat_w)[2]
+    cos_h, sin_h = torch.cos(heading), torch.sin(heading)
+    target_w = torch.stack(
+        (cos_h * cmd_b[:, 0] - sin_h * cmd_b[:, 1], sin_h * cmd_b[:, 0] + cos_h * cmd_b[:, 1]), dim=1
+    )
+    lin_vel_error = torch.sum(torch.square(target_w - asset.data.root_lin_vel_w[:, :2]), dim=1)
+    reward = torch.exp(-lin_vel_error / std**2)
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
+def _cached_terrain_mask(env: ManagerBasedRLEnv, terrain_names: tuple[str, ...]) -> torch.Tensor:
+    """按地形列取掩码并**缓存到 env 上**（供逐调用计算掩码的奖励项用）。
+
+    地形列（`terrain.terrain_types`）逐环境固定、不随课程变化 ⇒ 只需算一次。
+    """
+    key = "_cmoe_terrain_mask__" + "__".join(terrain_names)
+    mask = getattr(env, key, None)
+    if mask is None:
+        mask = _terrain_type_mask(env, terrain_names)
+        setattr(env, key, mask)
+    return mask
+
+
+def lin_pos_y(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    terrain_names: tuple[str, ...] = (),
+) -> torch.Tensor:
+    """偏离**本 tile 中心线**的横向距离 `|y − env_origin_y|`（对照 parkour 的 `_reward_lin_pos_y`）。
+
+    `env_origins` 就是该环境的出生点，其 y 恰好落在 tile 的 y 中心（sub-terrain 的 `origin` 是
+    `(spawn_x, 0.5*size[1], ·)`，而 tile 也是以 `0.5*size[1]` 为中心摆放的）⇒ 这个差就是"离赛道中心线多远"。
+
+    `terrain_names` 非空时只在这些地形列上生效（本项目＝`forward_only_terrain_names` 那 4 类）：
+    普通列允许按命令做横向机动（`vy` 有 ±0.3 的指令），不该被罚。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    lateral = torch.abs(asset.data.root_pos_w[:, 1] - env.scene.env_origins[:, 1])
+    if terrain_names:
+        lateral = lateral * _cached_terrain_mask(env, tuple(terrain_names)).float()
+    return lateral
+
+
+def yaw_abs(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    terrain_names: tuple[str, ...] = (),
+) -> torch.Tensor:
+    """偏航角绝对值 `|yaw|`（对照 parkour 的 `_reward_yaw_abs`，目标朝向 +x）。
+
+    与 `lin_pos_y` 一样可用 `terrain_names` 限制到指定地形列。障碍列上命令的 `heading_target = 0`
+    ⇒ 该项就是"别转身"。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    yaw = math_utils.euler_xyz_from_quat(asset.data.root_quat_w)[2]
+    yaw = (yaw + math.pi) % (2 * math.pi) - math.pi  # 归一化到 (-pi, pi]
+    reward = torch.abs(yaw)
+    if terrain_names:
+        reward = reward * _cached_terrain_mask(env, tuple(terrain_names)).float()
+    return reward
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
@@ -458,6 +546,38 @@ class MaskedJointMirror(ManagerTermBase):
                 env, asset, bound_mirror_joints, self, "_bound_pairs"
             ) * self._bound_mask.float()
         return reward
+
+
+class MaskedFeetAirTimeVariance(ManagerTermBase):
+    """`feet_air_time_variance` 的**按地形豁免**版本（2026-09-24 晚，用户问"没看到平地 trot"）。
+
+    语义：在 `free_terrain_names`（默认 `("boxes", "gap")`）上不生效，其余地形保留
+    `Σ_var(clip(滞空)) + var(clip(触地))`（四足之间的**时序均匀度**惩罚，带直立门控）。
+
+    为什么在这个时点把它加回来：它是那次「trot 还行」的 PPO 配方里**量级最大的步态项（−8.0）**，
+    也是我们从 `6220e43` 清零后**唯一一直没有恢复**的一项（docs §29.8/§29.16）。三项 shaping 里
+    `joint_mirror` 只做"对角对内相等"、`feet_air_time` 反而偏袒"同时腾空多"的腾跃式，
+    **没有任何一项在管"四足之间的时序是否均匀"** —— 而 bound（前对与后对错开）恰恰表现为
+    前/后足的滞空与触地时长不一致。
+
+    ⚠️ 边界：本项罚的是"四足时长不一致" ⇒ 排除 **bound/pace**；但 **pronk（四足完全同步）满足它**。
+    要排除 pronk 必须用相位项 `feet_gait`（`TrotWithoutGapReward`）。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        sensor_cfg: SceneEntityCfg,
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
+        reward = feet_air_time_variance_penalty(env, sensor_cfg)
+        return reward * (~self._free_mask).float()
 
 
 class MaskedFeetHeightBody(ManagerTermBase):

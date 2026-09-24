@@ -1347,3 +1347,451 @@ actuation on both front/rear legs when jump"）比较 `actions[:, 0:3]+[6:9]`（
   空出的份额确实落到 `gap`（6 / 3）、其余六列数量不变、所有掩码引用的名字都有列。
 * `py_compile`、`git diff --check` 通过。**未运行**：真实地形生成（列数与名字映射由 Isaac Sim 在
   env 构造时决定）仍待训练机确认。
+
+### 29.12 诊断：「地形等级都上来了」＝**课程已饱和**，不是"爬到了 9 级"
+
+用户观察「好像地形等级都上来了」。核对运行 `2026-09-24_15-34-14_cmoe_A_fresh`（**187 维 A 配方**，
+1072 轮）——观察属实，但含义要说清。
+
+#### 29.12.1 实测（1072 轮）
+
+| 指标 | 值 |
+|---|---|
+| `level_mean` | **5.9399** |
+| 逐列等级 | 上行楼梯 **6.106**、反向楼梯 6.064、**沟壑 6.105**、`boxes` 5.991、反斜坡 5.886、正斜坡 5.827、`random_rough` 5.633 |
+| `level_min` / `level_max` | 0 / 9 |
+| `move_up_frac` / `move_down_frac` / `frozen_frac` | **0.9235** / 0.0539 / 0.0226 |
+| `distance_mean` | **9.7031 m** |
+| `command_norm_mean` | 0.6118 m/s |
+
+沟壑列的轨迹：**0.613 @100 轮 → 3.690 @300 → 7.329 @500 → 5.614 @700 → 6.105 @1072**
+（先冲高再回落到饱和值）——**历史上唯一持续降级的那一列已经补上**。
+
+#### 29.12.2 为什么 5.94 就是"饱和"：理论上限恰好是 **6.000**
+
+判据（`terrain_levels_vel_logged`，与上游逐字一致）：
+* 晋级：`distance > size[0]/2` = **4.0 m**（tile 长 8 m）；
+* 降级：`distance < ‖cmd_xy‖·T·0.5` = `10‖cmd‖` ≈ **6.1 m**（本题 `move_down *= ~move_up`，晋级优先）；
+* 到顶：`terrain.update_env_origins` 里 `level >= max_terrain_level` 时用
+  **`randint(0, max_terrain_level)`＝均匀 0–9 重开**（`terrain_importer.py:317`）。
+
+按这套规则解等级马尔可夫链的稳态（`max_terrain_level = num_rows = 10`）：
+
+| 情形 | 理论稳态 `level_mean` |
+|---|---:|
+| **全晋级（p_up=1）** | **6.000** |
+| 实测率（up .9235 / down .0539 / frozen .0226） | **5.946** |
+| 旧 16.7k 障碍版（up .83 / down .143 / frozen .03） | 5.824 |
+| 半晋级（up .5 / down .5） | 3.429 |
+
+⇒ 观测 **5.9399** 与"实测率对应的稳态 5.946"吻合到小数第三位、与"全晋级上限 6.000"只差 0.06。
+**所以 `level_mean ≈ 6` 正是"每回合几乎都晋级"的稳态签名，而不是"难度爬满了"。**
+饱和时的等级分布（理论）：`0.019 / 0.038 / 0.056 / 0.074 / 0.092 / 0.110 / 0.129 / 0.147 / 0.164 / 0.171`
+⇒ **只有约 17% 的样本落在 9 级**、约 2% 在 0 级，其余散在中间——这正是"到顶就随机重开"造成的。
+
+**为什么必然饱和**：晋级阈值 4.0 m 是固定的，而策略实测走 **9.70 m**（＝阈值的 **2.4 倍**）；
+降级阈值 `10‖cmd‖` 在 ‖cmd‖≈0.61 时是 6.1 m，也被轻松跨过。⇒ 课程已经**不再有区分度**
+（晋级 92% vs 降级 5%），它现在的作用只是"把环境随机撒在 0–9 级之间"。
+
+#### 29.12.3 同一 run 的两个红旗（与课程无关，但需要盯）
+
+* **`Policy/mean_noise_std` 1.16 → 1.42 → 1.53 → 1.56 → 1.84 → 1.94，一路在涨**（对比：旧 PPO
+  run 是降到 0.50）。探索标准差持续上升通常意味着优势信号弱/价值函数跟不上；A 配方关掉了
+  `action_rate`/`ang_vel_xy`/`lin_vel_z`，本轮 `a30b25d` 已把前两项按 PPO 原值恢复（`lin_vel_z` 仍为 0），
+  **新 run 要重点看这条是否还涨**。
+* **`Train/mean_reward` 从 ~300 轮起就基本走平**（57.5 → 58.9，中间峰值 61.2），
+  `ep_len` 935/1000（`time_out` 88.4%、`illegal_contact` 11.6%）、`track_lin_vel` 核 0.70、
+  `track_ang_vel` 核 0.43。⇒ 饱和之后**没有继续变好**，说明瓶颈已不在"地形难度"。
+
+#### 29.12.4 想让课程重新有信号，四个选项（未实施，待用户决定）
+
+1. **提高晋级阈值**（在我们自己的 `terrain_levels_vel_logged` 里改，属**有意偏离上游**）：例如
+   `distance > size[0]`（8 m）或 `> 1.5·size[0]`，或像降级那样做成**随命令缩放**
+   （`distance > ‖cmd‖·T·0.8`）。现在 4 m 对 20 s 回合太松。
+2. **改"到顶重开"规则**：把均匀 0–9 改成"只在高段重开"（如 7–9）或干脆停在最高级
+   ⇒ 直接提高**9 级样本占比**（现在只有 17%）。这需要不再调用上游 `terrain.update_env_origins`。
+3. **拉宽难度区间**：让 9 级真的超出当前能力（沟 >1.0 体长、台阶 >0.15 m…）——但从实测看
+   它现在连 9 级都能过，得一次加得足够多。
+4. **接受饱和**：地形不再是瓶颈，收益只能从奖励/鲁棒性侧拿（对应 §29.12.3 的两条）。
+
+#### 29.12.5 适用边界
+
+以上全部是**187 维、A 配方（parkour 权重）**的结论。刚提交的 **77 维 + PPO 三项步态 shaping +
+地形掩码**（`a30b25d`/`c413eef`）**尚未跑过**，其课程饱和点与列间差异需要在新 run 上重新观察。
+
+### 29.13 在跑的 run `2026-09-24_17-25-50_cmoe_B_77dim_ppogait` 用的是哪一版配方（逐项核对）
+
+用户 2026-09-24 **17:25:50** 起的 run 落在**仓库根**的 `logs/`（不是 `imgo2_rl/logs/`，取决于启动时的
+CWD）——以后找 run 要两个根都看。逐项核对它自带的 `params/{env,agent}.yaml`：
+
+**在（✅）**：
+* **77 维契约**（三重证据）：`terrain_estimator.encoder=(128,**77**)`、`expert actor=(512,**157**)`、
+  `critic=(512,**125**)`、`terrain_projector=(128,93)`、`gating_network=(128,157)`；
+  `height_scanner.offset.pos=(0.25,0,20)`（前移生效）；checkpoint 体积 38.3 MB(187) → 30.9 MB(77)。
+* 三项步态 shaping＋掩码：`joint_mirror` = **`MaskedJointMirror` −1.0**、`mirror_joints` 为对角对**含 hip**；
+  `feet_air_time` = **`MaskedFeetAirTime` +1.0 @0.5**；`feet_height_body` = `MaskedFeetHeightBody` −5.0；
+  三者 `free_terrain_names=(boxes, gap)`。**`feet_gait: null`、`feet_air_time_variance: null`** ✅。
+* 新地形**高度**：台阶 6 级 ×(0.05,0.15)、`boxes` (0.08,0.30)、沟 (0.126,0.315)。
+
+**不在（❌，都是 17:25 之后才提的需求）**：
+| 缺口 | run 里的实际值 | 应有值 |
+|---|---|---|
+| 沟壑换 bound 的 mirror | 两态版：`free=(boxes,gap)`、**无 `bound_terrain_names`** | 三态（沟壑＝左右对） |
+| `boxes` 列数 | `proportion 0.15` ⇒ **3 列** | 0.05 ⇒ 1 列 |
+| `gap` 列数 | `proportion 0.20` ⇒ **4 列** | 0.30 ⇒ 6 列 |
+| 训练长度 | `agent.yaml: max_iterations **2000**` | 60000 |
+
+⇒ 这个 run **会跑到 2000 就停**（≈19:45，4.1 s/轮 ⇒ 全程 ≈2.3 h）。
+
+### 29.14 该 run 的实测（1477 轮）——新步态栈的第一批真实数据
+
+| 项 | 值 | 解读 |
+|---|---|---|
+| `mean_reward` | **77.2** | 与 A_fresh（58.9）不同权重、不可直接比 |
+| `mean_episode_length` | **992.7/1000** | 比 A_fresh 的 935 好 |
+| `Episode_Termination/illegal_contact` | **0.0356** | **比 A_fresh 的 0.116 好 3.3 倍**（摔得少了） |
+| `Policy/mean_noise_std` | **0.654** | ⭐ A_fresh 是 1.94 **且一路在涨**；恢复 `action_rate/ang_vel_xy` 后这条红旗消失了 |
+| `gate_entropy` | 1.443 | 均匀为 ln5=1.609 ⇒ 专家未塌缩（A_fresh 1.306） |
+| `Loss/learning_rate` | **1e-05** | 又贴到 adaptive 下限（§23 的老问题），Kld 12.05 |
+| `feet_air_time` | **−0.1014**/s | 掩码版（7/20 列豁免）。展开 `Σair−0.5·N落地` ⇒ 负值意味着步态周期**短于约 1 s**；量级远小于 A_fresh 的 −0.113（同阈值但全局）⇒ 障碍列（更长的滞空）被掩掉后剩下的更短 |
+| `feet_height_body` | **−0.01502**/s | ÷5 ⇒ 均方误 3.0e-3 ⇒ 抬脚高度 RMS 偏差 **≈5.5 cm**（目标离地 0.10 m）⇒ 有实际塑形压力但**只占 `track_lin`(4.4) 的 0.3%**，不会挡住爬梯 |
+| `joint_mirror` | **−0.0644**/s | 对角腿未完全同步（非平凡满足），量级温和 |
+| 课程 | `level_mean 5.454`↑、`move_up 0.884`、`distance_mean 8.65 m`；**`level_boxes` 4.31（最低）**、**`level_hf_pyramid_slope_inv` 1.72（异常低）**、`level_gap 6.00` | `boxes` 现在最高 30 cm ⇒ 最难；**反向斜坡列只有 1.7 级**需要单独查（掉进坑里？`distance` 判据不适用？） |
+| `Perf/total_fps` | 2.16e4 | 比旧 run 的 2.6e4 略低（奖励项更多＋掩码项） |
+
+### 29.15 「学会绕开障碍」的机制（用户回放 `model_1000` 观察）
+
+用户回放 `2026-09-24_17-25-50_cmoe_B_77dim_ppogait/model_1000.pt` 后反馈「似乎都学会绕开了」。
+逐行核对代码＋日志后确认：**这个行为是被允许的，而且课程在奖励它**。四个环节：
+
+**① 障碍在**自己 tile 内**是全宽的 ⇒ tile 内绕不开。**
+`cmoe_terrains.py::_platform(x0, x1, width, ...)` 的 `width` 全部传 `cfg.size[1]`（＝4.0 m），
+矩形中心 `y = 0.5*width` ⇒ 台阶/独立块/沟在 y∈[0,4] 上完全横贯。
+
+**② 但地形网格是「行＝难度沿 +x、列＝地形类型沿 +y」。**
+`terrain_generator.py::_add_sub_terrain`：`transform[0:2,-1] = (row+0.5)*size[0], (col+0.5)*size[1]`
+⇒ **横向移 4 m 就进入另一种地形**。而本项目 8 类里有 **5 类根本不是"赛道"**：
+`random_rough`／`hf_pyramid_slope`／`hf_pyramid_slope_inv`／`flat` 没有横贯障碍
+（play 的 10 列布局：col0-1 楼梯、col2 反楼梯、col3 `boxes`、col4 粗糙、col5 斜坡、col6-8 沟、col9 平地）
+⇒ **横移到这些列就能直着走**，"绕开"成立。
+
+**③ 越界终止的量程极大，横穿好几列毫无代价。**
+`terrain_out_of_bounds` 用**整张图**的尺寸：`map_width = n_rows*grid_width + 2*border = 10*8+40 = 120 m`、
+`map_height = n_cols*grid_length + 2*border = 10*4+40 = 80 m`（训练 20 列 ⇒ 120 m），
+`distance_buffer = 3 m` ⇒ 离地图中心 **x 57 m / y 37 m** 以内都合法 ⇒ 横穿 9 列（36 m）都不触发。
+日志佐证：`Episode_Termination/terrain_out_of_bounds` **全程 0**。
+
+**④ 课程判据直接奖励它。**
+晋级判据是 `distance = ‖root_xy − origin_xy‖ > size[0]/2 = 4 m`（**欧氏距离，含横向分量**）
+⇒ 横着走同样算"通过" ⇒ `distance_mean 8.65 m`、`move_up_frac 0.884`、课程饱和（§29.12 同一根因）。
+
+**⑤ 命令侧拦不住（这是最隐蔽的一环）。**
+障碍列上 `UniformThresholdVelocityCommand` 强制 `vy = 0` 且 `heading_target = 0`，**但**：
+* yaw 指令是 heading 控制器**按当前误差实时生成**的（`ang_vel_z = k·(0 − yaw)`）⇒ **转身本身不怎么被罚**
+  （只要它在"往回转"，指令就跟着它走）；
+* 速度奖励用的是**机体系**速度 ⇒ 一边转身一边在机体系里前进，vx 跟踪照样拿高分。
+日志佐证（1477 轮）：线速度跟踪核 **0.88**（好），**偏航跟踪核只有 0.46**（等价偏差 ≈0.44 rad/s ≈25°/s）
+⇒ **它确实没有在朝 +x 走**。
+
+**⑥ 附带发现：掩码按"出生列"静态判定。**
+`_terrain_type_mask` 用 `terrain.terrain_types`（**出生时**登记的列，`terrain_importer.py`）
+⇒ 机器人漂到别的列后，`forward_only` 命令与 trot/bound 掩码**都不会更新**（它"以为"自己还在楼梯列）。
+
+#### 候选修法（未实施）
+
+| | 做法 | 代价／影响 |
+|---|---|---|
+| **F1** | 越出本列 ⇒ **终止**（`\|root_y − origin_y\| > size[1]/2`）或按越界距离罚 | 只加一个 term；**逻辑栏杆**，不动地形几何；顺带让"按出生列的掩码"重新变得自洽 |
+| **F2** | 晋级判据改为**沿 +x 的前向进度**（`root_x − origin_x > size[0]/2`），降级同理 | 改我们自己的 `terrain_levels_vel_logged`；顺带修 §29.12 的课程饱和 |
+| **F3** | **物理封边**：`_platform` 的 width 4.0→~2.0 并在两侧加高墙（或所有列都改成带墙赛道） | 根治，但要重新生成地形、且 `rough/slope/flat` 也得改造；会改变已有 checkpoint 的可比性 |
+| **F4** | 命令/奖励侧：障碍列 `heading_command=False`+`ang_vel_z=0`、`heading_control_stiffness` 0.5→1.5、或加"偏离中心线"罚 | 改命令语义，可能让正常行走变僵 |
+| **F5** | **加日志**：`\|y−origin_y\|` 均值/最大值、出列环境比例 | 极便宜，且**不用回放也能从 TB 判断是否在绕**（本机无 GPU，这条价值最高） |
+
+建议 **F1 + F2 + F5** 一起做（都在我们自己的代码里、可离线审），把 F3 留作根治备选。
+
+### 29.16 用户回放确认：**横移绕开** ＋ **全地形仍是 bound**（2026-09-24）
+
+用户回放 `cmoe_B_77dim_ppogait/model_1000.pt` 的结论：「**横移过去了**，在大部分地形；但**平地与粗糙地上
+确实在走**（正常前进）；另外**都还是 bound 步态**」。
+
+**① 「横移」证实了 §29.15 的机制**：绕开＝**侧向平移**进相邻列（`flat/rough/slope` 那几列没有横贯障碍），
+而平地/粗糙列本来就没障碍所以看着是在正常走 —— 与"横移 4 m 换一列"的几何完全吻合。
+⇒ 根因仍是④（课程用**含横向分量的欧氏距离**判通过）＋⑤（速度奖励在**机体系**、yaw 指令由 heading
+控制器实时生成 ⇒ 转身/侧移罚得不够）＋③（越界终止量程 120 m×80 m，横穿几列无代价）。
+
+**② bound 步态不是"绕开"的副产物**：在**平地与粗糙列**（原本没有障碍、也在正常前进）上依然是 bound
+⇒ 步态问题**独立存在**，必须单独修。
+
+**③ 为什么我们这套三项 shaping 拦不住 bound**（逐项分析）：
+
+| 项 | 对 trot / bound 的作用 | 问题 |
+|---|---|---|
+| `joint_mirror −1.0` | 只做"**对角对内相等**" | 量级太小：实测 **−0.064/s**，而 `track_lin_vel` 是 **4.4/s** ⇒ 只占 **1.5%**，属"温和偏好" |
+| `feet_air_time +1.0 @0.5` | 展开＝`4(1−d) − 2·N落地/T`；两种步态**每周期都是 4 次落地**，所以差别只在 `4(1−d)`＝"同时腾空的足数×时间" | **奖励"更多地同时腾空"⇒ 方向上偏袒 bound/腾跃式**（trot 典型 d=0.5、T=0.6 ⇒ −1.33/s；bound d=0.4、T=0.8 ⇒ −0.1/s） |
+| `feet_height_body −5.0` | 只约束抬脚高度 | 对 trot/bound **中立** |
+| **`feet_air_time_variance −8.0`** | 惩罚**四足之间**滞空/触地时长的方差 ⇒ **前/后对时序不一致（＝bound）会被罚** | **PPO 那套里量级最大的步态项，我们自 `6220e43` 清零后一直没恢复**（§29.8 已记）⇒ **这正是最该补的一项** |
+
+另外：**35% 的列（`boxes` 3 + `gap` 4）完全豁免**步态塑形，那些列上学到的 bound 会通过共享主干／
+专家路由渗到其它列。
+
+**④ 从日志反解步频**：`feet_air_time` 实测 **−0.1014/s**，去掉 35% 豁免列的掩码因子（×1/0.65）≈ **−0.156/s**，
+代入 `4(1−d) − 2/T`：d=0.5 ⇒ **T≈0.93 s**、d=0.45 ⇒ 0.85 s、d=0.6 ⇒ 1.14 s
+⇒ **步频约 0.9–1.2 Hz（≈1 Hz）**，只有参考基线（0.600 s／1.67 Hz）的**一半左右**，
+与"低步频、大腾空"的 bound 一致（trot 通常接近参考基线的 1.7 Hz）。
+
+#### 待用户确认的一个判别性问题
+
+看到的 bound 是哪种？
+* **前两足一起 / 后两足一起（真 bound）** ⇒ 加 `feet_air_time_variance −8.0` 就能治（它专门罚前/后对的时序差）；
+* **四足同时起落（pronk）** ⇒ `feet_air_time_variance` 与 `joint_mirror` **都满足**，
+  必须用相位项 `feet_gait`（`mdp.TrotWithoutGapReward` 还留着，直接开权重即可）。
+
+建议同时补 `eval_gait.py` 的 **CMoE 适配**，把 FL-FR 相位（≈180°＝trot、≈0°＝bound/pronk）、
+步周期、集中度 R、抬脚高度**量出来**，不再靠肉眼判断。
+
+#### 动作清单（建议先修再训，不要拿当前配方跑 60000 轮）
+
+1. **F1** 越出本列即终止（`|root_y − origin_y| > size[1]/2`）＝逻辑栏杆 ⇒ 横移立刻变成"丢回合"；
+2. **F2** 晋级判据改成**沿 +x 的前向进度**（`root_x − origin_x > size[0]/2`）⇒ 横移不再得分（顺带修 §29.12 饱和）；
+3. **F5** 加日志：`|y−origin_y|` 均值/最大、**出列环境比例**（不用回放就能从 TB 判断是否在绕）；
+4. **步态**：加回 `feet_air_time_variance **−8.0**`（做成掩码版，豁免 `boxes`/`gap`）；
+   若确认是 pronk，再开 `feet_gait`（`TrotWithoutGapReward`，1.0）；
+5. （可选）把豁免集从 `boxes+gap` 缩到只有 `gap`，让更多列受步态塑形。
+
+### 29.17 按 parkour 修「横移绕开」：世界系速度 + 中心线/朝向罚 + **赛道侧墙**（2026-09-24）
+
+用户看到 `/root/Desktop/parkour/` 后定调：「该参考 parkour 用全局的速度来约束了」。
+把 parkour 那套**逐条读出来**（不是为了照抄参数，而是看它到底靠什么不让机器人绕开）：
+
+| parkour | 位置 | 作用 |
+|---|---|---|
+| `tracking_world_vel = 5.` | `go1_leap_config.py:94` | **世界系**速度跟踪（`_reward_tracking_world_vel` 比 `commands[:, :2]` 与 `root_states[:, 7:9]`＝世界系速度）⇒ 目标方向**不随自身转动而变** |
+| `lin_pos_y = -0.4` | `go1_leap_config.py:99` | `_reward_lin_pos_y = \|root_y − env_origin_y\|` ⇒ **离赛道中心线的横向距离**（L1） |
+| `yaw_abs = -0.2` | `go1_leap_config.py:98` | `_reward_yaw_abs = \|yaw\|`（目标朝向 +x） |
+| **`track_width=1.6`、`wall_thickness=0.04`、`wall_height=0.5`** | `utils/terrain/barrier_track.py:21-24`（源码注释画出 `\|xxxx\|track wall`） | **窄赛道 + 两侧物理墙** ⇒ 物理上绕不开 |
+| `tracking_ang_vel = 0.05` | 同上 | 比我们的 0.6 小 12 倍（他们 yaw 命令近乎为零） |
+
+**关键认识**：parkour 的"不绕开"**首先靠几何**（窄道 + 墙），速度/位置/朝向罚只是软约束。
+我们的地形恰好相反：障碍在 tile 内是全宽的，但**列与列之间完全开放** ⇒ 横移 4 m 就换一种地形。
+
+#### 已落地（三项）
+
+1. **世界系速度跟踪**：新增 `mdp/rewards.py::track_world_vel_xy_exp`，`CMoE_env_cfg.py` 里
+   `track_world_vel_xy_exp = 5.0`、**`track_lin_vel_xy_exp = 0.0`**（被取代）。
+   目标速度由命令的**目标朝向**旋转到世界系：`target_w = R_z(heading_target)·(vx_b, vy_b)`
+   ——障碍列 `heading_target = 0` ⇒ 目标就是纯 `+x`；普通列跟随采样到的目标朝向。
+   σ² 保持我们原来的 **0.25**（parkour 的 leap 用 0.35，偏软；留作单变量）。
+2. **中心线 + 朝向罚**：新增 `lin_pos_y`（`|y − env_origin_y|`）与 `yaw_abs`（`|yaw|` 归一化到 (−π,π]），
+   权重 **−0.4 / −0.2**（＝parkour），**只在 `forward_only_terrain_names` 那 4 个障碍列生效**
+   （普通列本来就有 ±0.3 的 `vy` 指令与随机朝向目标，不该被罚）。中心线取 `env_origins`——
+   `track_*` 的 `origin` 是 `(spawn_x, 0.5*size[1], ·)`，而 tile 也以 `0.5*size[1]` 为中心摆放，
+   所以这个差正是"离赛道中线多远"。
+3. **赛道侧墙**：`cmoe_terrains.py` 新增 `_side_walls()`，在 `track_gap`/`track_step`/`track_stairs`
+   三条赛道的 `y≈0` 与 `y≈width` 各加一堵 `0.04 m × (最高平台 + 0.5) m` 的墙（参数照 parkour）。
+   ⇒ 机器人**物理上无法离开本列**。连带三件事一起好了：①"绕开"不可能；②课程用的"离出生点欧氏
+   距离"重新等价于"沿 +x 的前向进度"（§29.12/§29.15 的利用点失效）；③"按出生列"的奖励掩码与
+   命令掩码重新自洽（不会再漂到别的列去）。
+
+**生效奖励 16 → 18 项**（新增 3、移除 1）：
+
+```
+track_world_vel_xy_exp +5.0   ← 新增（取代机体系版本）
+lin_pos_y              −0.4   ← 新增（仅障碍列）
+yaw_abs                −0.2   ← 新增（仅障碍列）
+track_lin_vel_xy_exp    0     ← 移除
+```
+
+#### 验证（离线，全部可复现）
+
+| 测试 | 内容 |
+|---|---|
+| `tests/test_world_vel_tracking.py`（**8 项**） | 目标速度按 `heading_target` 旋转（0°→(v,0)、90°→(0,v)）；**核心回归**：障碍列上机器人转身 90°、机体系"前进"、世界系里横移 ⇒ 世界系项给 **0.056**（机体系版本会给 **1.0**，这正是漏洞来源）；倒走 ≈0.003；直立门控归零；另有 3 项 AST 断言锁配置（世界系已启用、机体系已归零、两项软约束用的是 `forward_only_terrain_names`）。写法同 `test_masked_joint_mirror.py`：AST 抽真实源码 + 桩 exec（整模块因 `omni.log` 无法 import）。 |
+| `tests/test_track_walls.py`（**6 项**） | 三段赛道在 d=0/0.5/1 各**恰好 2 堵墙**；墙贴 `y=0` 与 `y=width−0.04` 且覆盖整条 x∈[0,8]；墙顶高出最高平台 ≥0.5 m；非墙网格数量不变（gap＝`num_gaps+1`、step＝`1+num_steps`、stairs＝`1+num_steps+1`）；出生点 (0.75, 2.0) 与出生平面高度不变。用 `sys.modules` 塞桩模块后 exec 真实源码（`trimesh` 是真的）⇒ 纯几何离线可算。 |
+| **测试抓到的真 bug** | 下行楼梯（`ascending=False`）在**起点**就处于 `total_height`，我最初只给上行梯按 `total_height` 加高墙 ⇒ 下行梯那段高台把墙埋掉。已修（两种排布都按 `total_height`）。 |
+| **负向对照** | 把 `track_gap` 的墙去掉 ⇒ `test_two_walls_per_track` / `..._both_y_edges...` 立刻失败；还原后通过。 |
+| 合计 | 相关离线测试 **37 项全通过**（含原有的 mirror 10、reward-overrides 7、terrain-columns 5），`py_compile`、`check_terrain_columns.py`（新名单也纳入校验）、`git diff --check` 通过。 |
+
+#### 未做 / 待定
+
+* **`feet_air_time_variance`（−8.0）仍未恢复** —— 它是针对 **bound**（前/后对时序不对称）的那一项，
+  但要不要加取决于用户确认"看到的是 bound 还是 pronk"（§29.16）。pronk 的话必须改开相位项 `feet_gait`。
+* parkour leap 配方里我们还缺：`penetrate_depth/volume`（穿模罚）、`hip_pos −5`、`dof_error −0.15`、
+  `exceed_dof_pos_limits −0.8`、`delta_torques −1e-7`、`legs_energy_substeps`；以及他们的
+  `tracking_ang_vel` 只有 0.05（我们 0.6）。这些没照搬，属**未评估**项。
+* **侧墙改的是地形几何** ⇒ 2026-09-24 之前的所有 CMoE checkpoint（含 `cmoe_A_fresh`、16.7k 障碍版、
+  `cmoe_B_77dim_ppogait`）与新地形**不可比**；必须从零重训。
+* 侧墙只在机器人贴近边线时才会进入高度扫描视野（扫描足迹仅 1.0 m × 0.6 m，赛道宽 4 m），
+  所以 77 维地形观测的**内容**变化极小；但仍是观测分布的一次变化。
+
+### 29.18 用户改定：**不加侧墙**；**全场景只给"超前"速度**；脱离中心的惩罚**全局**生效（2026-09-24）
+
+用户对 §29.17 的两条否决/收窄：
+
+> 1. 侧墙不该有
+> 2. 所有场景都变成只有超前的速度，都给脱离中心的惩罚
+
+#### 29.18.1 改动
+
+| 项 | §29.17（已作废） | 现在 |
+|---|---|---|
+| 赛道侧墙 | 三条 `track_*` 两侧加 `0.04×0.5 m` 墙 | **全部移除**（`git checkout` 还原 `cmoe_terrains.py`，与 `HEAD` 逐字一致；赛道保持**开放**） |
+| 前向命令范围 | 只有 4 个障碍列（`forward_only_terrain_names`） | **全部 8 类地形**都进该名单 ⇒ 全场景统一"沿世界 +x 前进 0.3–1.0 m/s、朝向锁 0"，不再有全向命令的列 |
+| `lin_pos_y` / `yaw_abs` | 只作用于 4 个障碍列 | `terrain_names = ()` ⇒ **全局**（"都给脱离中心的惩罚"） |
+
+生效奖励仍是 **18 项**（`track_world_vel_xy_exp +5.0`、`lin_pos_y −0.4`、`yaw_abs −0.2`、`track_lin_vel_xy_exp 归零`）。
+`yaw_abs` 一并全局化：既然全场景的 `heading_target` 都是 0，该项与命令一致（用户只点名了"脱离中心"，
+如果不想全局罚朝向，把那一行的 `terrain_names=()` 换成障碍列名单即可）。
+
+#### 29.18.2 现在的"不许绕开"靠什么
+
+去掉了几何约束（墙）之后，只剩下**奖励端两层**：
+
+1. **世界系速度跟踪**（`+5.0`）——目标方向是命令的目标朝向（全场景为 +x），**不随自身转动而变**，
+   横移/掉头立刻体现为巨大误差；
+2. **全局中心线罚**（`lin_pos_y = −0.4`，L1）——离赛道中线 4 m 就持续扣 **1.6/s**（整回合总奖励量级 ~4/s）
+   ⇒ 长期"绕到邻列去跑"在收益上不可行。
+
+**残留风险（必须知道）**：这两条都是**软约束**，不像墙那样物理禁止；且课程的晋级判据仍是
+"离出生点的**欧氏**距离 > 4 m"（含横向分量）。所以理论上"一次性横移出去、再在邻列直着跑"仍有
+局部收益（一次性付 ~1 s 的跟踪罚，换来一条无障碍的通道）。若回放仍见绕开，下一档最小改动是
+**把晋级判据换成沿 +x 的前向进度**（§29.15 的 F2，只改我们自己的 `terrain_levels_vel_logged`）。
+
+#### 29.18.3 验证
+
+* 删掉 `tests/test_track_walls.py`（那是在测墙），换成 `tests/test_track_geometry.py` **5 项**：
+  **断言赛道"没有沿 y 边缘的薄网格"**（＝没有侧墙，防止以后被顺手加回来）＋平台横贯整宽、
+  平台数量、出生点、出生平面不变。
+* `tests/test_world_vel_tracking.py` 更新为：两项软约束 `terrain_names=()` 全局 ＋
+  **断言 `forward_only_terrain_names` 恰好覆盖 8 类地形全部**。
+* `scripts/tools/check_terrain_columns.py` 新增**覆盖率校验**：`forward_only_terrain_names` 与
+  `sub_terrains` 的键集合必须一致（漏一项那一列会**静默**退回全向命令）——实跑输出
+  `✅ forward_only_terrain_names 覆盖全部 8 类地形`。
+* 相关离线测试 **37 项全通过**；`py_compile`、`git diff --check` 通过。
+* **未运行**（需训练机）：Isaac Lab 构造、全场景前向命令是否真的生效、以及绕开是否被抑制。
+
+### 29.19 用户问"joint_mirror 是不是权重太低，平地也没看到 trot"——量级够了但**方向不对**
+
+#### 29.19.1 权重确实低（用户直觉对）
+
+在跑的 run（`cmoe_B_77dim_ppogait` @1477）实测：
+
+| 项 | 值 | 占比 |
+|---|---|---|
+| `Episode_Reward/track_lin_vel_xy_exp` | 4.40/s | 100% |
+| `Episode_Reward/joint_mirror` | **−0.0644/s** | **1.5%** |
+| `Episode_Reward/feet_height_body` | −0.0150/s | 0.3% |
+
+#### 29.19.2 但**加大它不是拿到 trot 的办法**（这是关键）
+
+`joint_mirror` 的对角对比较的是"**对内相等**"：
+
+* **trot**：`FL≈RR`、`FR≈RL` ⇒ 满足；
+* **bound**（前对同相、后对同相）：对角腿**反相** ⇒ 违反（会被罚）；
+* **pronk**（四足同相）：对角腿当然也相等 ⇒ **满足**。
+
+⇒ 它**同时与 trot 和 pronk 相容**，加大权重只会更用力地压"对角相等"，而这一步 **pronk 满足得最彻底**
+⇒ **有可能把步态推向 pronk，而不是 trot**。
+
+**更值得注意的是实测数值本身**：`joint_mirror` 的时间平均只有 **0.0644**（＝weight −1 时的 term 值，
+即两对之和的均值）。用参考步态的关节幅度估一下：若对角腿真的**反相半个周期**，thigh p2p≈0.45 rad、
+shank p2p≈0.55 rad ⇒ `Σ(Δq²)` 的时间平均应在 **0.2–0.3** 量级，是实测值的 **3–5 倍**。
+⇒ 现在这点残差说明**对角腿之间只错开一点点** —— 也就是：
+**用户看到的"bound"更可能是"四足接近同相（pronk 倾向）"或"相位差很小的快 bound"**，而不是经典的前/后对分明的 bound。
+这一点直接决定该加哪一项（见下）。
+
+#### 29.19.3 根因：整个配方里**没有任何一项管"对角对之间的反相"**
+
+| 项 | 管什么 | 能否区分 trot / bound / pronk |
+|---|---|---|
+| `joint_mirror −1.0` | 对角**对内相等** | trot ✓／bound ✗／**pronk ✓** |
+| `feet_air_time +1.0 @0.5` | 展开 `4(1−d) − 2·N落地/T` ⇒ **奖励"同时腾空多"** | **偏袒 bound/pronk**（trot d=0.5/T=0.6 ⇒ −1.33/s；bound d=0.4/T=0.8 ⇒ −0.1/s） |
+| `feet_height_body −5.0` | 抬脚高度 | 中立 |
+| ~~四足时序均匀度~~ | —— | **缺**（`feet_air_time_variance` 从 `6220e43` 起一直没恢复） |
+
+#### 29.19.4 已落地：把 `feet_air_time_variance −8.0` 加回来（掩码版）
+
+* `mdp/rewards.py` 新增 `MaskedFeetAirTimeVariance`（复用 `_terrain_type_mask`，豁免 `boxes`/`gap`，
+  与另两项一致）；`CMoE_env_cfg.py` 接线 **−8.0**（＝PPO 原值，那次 trot 配方里量级最大的步态项）。
+* **生效奖励 18 → 19 项**。
+* 它罚"四足之间滞空/触地时长的**方差**" ⇒ **bound（前/后对错开）会被罚**；
+  ⚠️ 但 **pronk（四足完全同步）满足它** —— 所以它能不能治，取决于 §29.19.2 里那个待确认的形态。
+* **`joint_mirror` 权重保持 −1.0 不动**（理由见 §29.19.2：加大它可能加深 pronk）；
+  若确实想加强"稠密姿态先验"，建议最多到 **−2.0**，且不要指望它单独出 trot。
+
+#### 29.19.5 下一步（按性价比）
+
+1. **先客观量出相位，别再靠肉眼**：给 `scripts/tools/eval_gait.py` 加 **CMoE 适配**
+   （它现在硬编码 `AmpVecEnvWrapper`/`AMPOnPolicyRunner`）。它直接给 **FL-FR 相位**（≈180°＝trot、
+   ≈0°＝bound/pronk）、步周期、集中度 R、抬脚高度 —— 用现成的 `model_1000.pt` 就能测，不用重训。
+2. **若确认是 pronk / 相位差很小** ⇒ 必须开相位项 `feet_gait`（`mdp.TrotWithoutGapReward`，权重 1.0）；
+   `variance` 与 `mirror` 都对 pronk 无效。
+3. **若确认是真 bound** ⇒ 先看这一轮 `feet_air_time_variance` 是否把它压下去（它的 `Episode_Reward` 分项
+   本身就是"bound 程度"的度量）。
+4. **可选的干净对照**：把 `sub_terrains` 的比例临时改成"`flat` = 1.0、其余 = 0"（一行），
+   在**纯平地**上训练若干千轮 —— 平地最容易出 trot，能一眼分清"配方本身缺相位约束"还是
+   "混合地形把步态带偏了"。注意这会把 `level_*` 课程变成无意义（但 `forward_only` 与掩码都还有效）。
+
+### 29.20 地形晋级判据改造：**前向进度 + 速度跟踪门控**（2026-09-24 用户要求）
+
+用户：「地形等级提升还是需要考虑速度跟踪效果」。据此 `mdp/curriculums.py::terrain_levels_vel_logged`
+相对上游 `terrain_levels_vel` 有**两处有意偏离**（原实现是"判据逐字一致、只加日志"）。
+
+#### 29.20.1 新判据
+
+```python
+progress = root_pos_w[:, 0] − env_origins[:, 0]            # ① 沿 +x 的前向进度（不含横向）
+track_avg = _episode_tracking_average(env, env_ids, "track_world_vel_xy_exp")   # ② 本回合平均跟踪核
+
+move_up   = (progress > size[0]/2)  &  (track_avg > 0.80)              # 4.0 m 且跟踪达标
+move_down = (progress < ‖cmd_xy‖·T·0.5) | (track_avg < 0.35)           # 距离不够 或 跟踪太差
+move_down *= ~move_up                                                  # 晋级优先
+terrain.update_env_origins(env_ids, move_up, move_down)                # 等级增减与到顶重开不变
+```
+
+* **偏离 ①（前向进度）**：上游用 `‖Δxy‖`（欧氏距离）。实测漏洞是"**横移绕开**"照样算通过
+  （§29.15/§29.16）。改用 `Δx` 后，**"绕开"从判据里彻底消失** —— 这比 §29.15 里提的"越界即终止(F1)"
+  更轻，也不需要侧墙（用户已否决侧墙）。
+* **偏离 ②（跟踪门控）**：只看走了多远会奖励"慢慢蹭过去"。现在要求本回合
+  **平均速度跟踪核 > 0.80**（取不到分项时自动退回纯距离判据，并记 `tracking_is_used=0`）。
+  阈值依据：A 配方 run 的核 ≈ **0.70**、当前 run ≈ **0.88** ⇒ 0.80 是一条"确实要跟速"的实线；
+  0.35 以下视为明显失败。
+
+#### 29.20.2 跟踪均值怎么来的（时机已核对，不是想当然）
+
+读奖励管理器为每个分项累计的**回合和**（`RewardManager.compute` 每步 `_episode_sums[name] += term·weight·dt`）：
+
+```
+track_avg = _episode_sums[name][env_ids] / weight / (episode_length_buf[env_ids] · step_dt)
+```
+
+**能这么读的关键是顺序**（`isaaclab/envs/manager_based_rl_env.py::_reset_idx`）：
+`curriculum_manager.compute()` 在**最前面**（:358）→ … → `reward_manager.reset()`（读走并清零
+`_episode_sums`，~:377）→ … → `episode_length_buf[env_ids] = 0` 在**最后**（:396）
+⇒ 课程判定时拿到的正是**刚结束那一回合**的和与回合长度。权重从 `get_term_cfg(name).weight` 取，
+不写死数字。取不到（改名/被移除）⇒ 退回纯距离判据。
+
+#### 29.20.3 新增日志（能在 TB 里看出门控是否在起作用）
+
+`Episode/Curriculum/terrain_levels/` 下新增：`progress_mean`、**`tracking_mean`**、`tracking_min`、
+**`tracking_pass_frac`**（>0.80 的比例）、**`tracking_fail_frac`**（<0.35 的比例）、`tracking_is_used`；
+原有 `level_*`、`move_up/down/frozen_frac`、`distance_mean`、`command_norm_mean` 保留。
+
+#### 29.20.4 预期效果（训练机验证）
+
+* `move_up_frac` 会从 **0.884 明显下降**（跟踪门控 + 前向进度同时收紧）⇒ 课程**不再饱和**
+  （§29.12 的 `level_mean≈6` 稳态会被打破）；
+* 硬列（`boxes` 现在最高 30 cm）会稳定在更低的等级——这正是"在能跟速的前提下"的真实水平；
+* "横移绕开"不再得分（晋级看 `Δx`）。
+
+#### 29.20.5 验证
+
+* 新增 `tests/test_terrain_curriculum.py` **4 项**（AST/桩 exec 真实源码；含函数体内相对导入的处理）：
+  - 五个环境的判据矩阵（进度够+跟踪好⇒晋级；进度够+跟踪中等⇒冻结；跟踪差⇒降级；没走够⇒降级；
+    **横向走 3 m（欧氏 4.24 > 4）但前向只 3 m ⇒ 不许晋级**——这条就是"绕开"的回归）；
+  - `tracking_is_used=1/0` 与 `tracking_pass_frac=3/5`、`tracking_fail_frac=1/5`；
+  - **取不到跟踪分项时退回纯距离判据**（该矩阵里 env1/env2 变成晋级，且不输出 `tracking_mean`）；
+  - 晋级优先（`move_down *= ~move_up`）。
+  **负向对照**：把跟踪门控那段去掉 ⇒ `test_progress_and_tracking_both_required` 立刻失败；还原后通过。
+* 相关离线测试 **41 项全通过**；`py_compile`、`git diff --check` 通过。
+* **未运行**（需训练机）：真实 `_episode_sums` 读取（时机由源码顺序保证，但没有真跑过）、
+  阈值 0.80/0.35 是否合适、以及 `move_up_frac` 的实际下降幅度。

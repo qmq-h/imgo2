@@ -52,6 +52,16 @@ class TestTerrainColumns(unittest.TestCase):
         self.assertEqual(self.train["hf_pyramid_slope_inv"], 1)
         self.assertEqual(self.train["flat"], 2)
 
+    def test_forward_only_covers_every_terrain(self):
+        """用户 2026-09-24："所有场景都只给超前的速度" ⇒ 该名单必须覆盖全部地形，漏项会静默退回全向命令。"""
+        fwd = chk.forward_only_names()
+        self.assertIsNotNone(fwd, "配置里没有设置 forward_only_terrain_names")
+        names = [name for name, _ in chk.base_sub_terrains()]
+        props, _ = chk.cmoe_overrides()
+        names += [n for n in props if n not in names]
+        self.assertEqual(sorted(fwd), sorted(names),
+                         f"forward_only 名单与 sub_terrains 不一致：缺 {[n for n in names if n not in fwd]}")
+
     def test_every_masked_terrain_name_has_columns(self):
         for num_cols, counts in ((20, self.train), (10, self.play)):
             for key, names in chk.MASKED_NAMES.items():

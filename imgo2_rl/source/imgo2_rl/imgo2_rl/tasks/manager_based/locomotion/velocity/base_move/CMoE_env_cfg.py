@@ -68,6 +68,37 @@ class CMoERewardsCfg(RewardsCfg):
         },
     )
 
+    # ------------------------------------------------------------------ parkour 式"全球速度"约束
+    # 2026-09-24（用户："该参考 parkour 用全局的速度来约束了"）。起因：回放发现策略**横移绕开障碍**
+    # （§29.15/§29.16）。parkour 的 barrier/leap 配方在**世界系**上约束速度，并额外罚横向位置与朝向：
+    #   `tracking_world_vel = 5.`、`lin_pos_y = -0.4`、`yaw_abs = -0.2`
+    # （`legged_robot_field.py:476/493/496`、`go1_leap_config.py:93-100`）。三项一一对应如下。
+    track_world_vel_xy_exp = RewTerm(
+        func=mdp.track_world_vel_xy_exp,
+        weight=0.0,
+        params={
+            "command_name": "base_velocity",
+            "std": math.sqrt(0.25),  # 与机体系版本同 σ²（parkour 的 leap 用 0.35，偏软一点）
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+    lin_pos_y = RewTerm(
+        func=mdp.lin_pos_y,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "terrain_names": (),  # __post_init__ 里填 forward_only_terrain_names
+        },
+    )
+    yaw_abs = RewTerm(
+        func=mdp.yaw_abs,
+        weight=0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "terrain_names": (),
+        },
+    )
+
 
 @configclass
 class CMoEObservationsCfg(ObservationsCfg):
@@ -212,11 +243,21 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.commands.base_velocity.rel_heading_envs = 1.0
         self.commands.base_velocity.rel_standing_envs = 0.0
         self.commands.base_velocity.heading_control_stiffness = 0.5
+        # 2026-09-24（用户）：**所有地形列都只给"超前"的速度**——不再分"简单地形全向命令／障碍地形
+        # 前向命令"，全场景统一为"沿世界 +x 前进 0.3–1.0 m/s、朝向锁 0"。
+        # 起因：回放发现策略**横移绕开障碍**（§29.15/§29.16）。下面 `forward_only_terrain_names`
+        # 因此列全 8 类地形；`lin_pos_y`／`yaw_abs` 也改成**全局**（不再只作用于障碍列）。
+        # 注意：本列表必须覆盖 `sub_terrains` 的**全部键**（漏项会静默退回全向命令）；
+        # `scripts/tools/check_terrain_columns.py` 会做覆盖率校验。
         self.commands.base_velocity.forward_only_terrain_names = (
             "pyramid_stairs",
             "pyramid_stairs_inv",
             "boxes",
+            "random_rough",
+            "hf_pyramid_slope",
+            "hf_pyramid_slope_inv",
             "gap",
+            "flat",
         )
         self.commands.base_velocity.forward_speed_range = (0.3, 1.0)
         self.commands.base_velocity.forward_heading_target = 0.0
@@ -243,7 +284,25 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 他们的 leap 技能：tracking_world_vel=+5.0、orientation=-0.1，且**完全没有**
         # lin_vel_z / ang_vel_xy / action_rate / base_height（见 docs §21）。
         # 目的：让「向前冲」的收益压倒「停在障碍前」。
-        self.rewards.track_lin_vel_xy_exp.weight = 5.0
+        #
+        # 2026-09-24 晚（用户："该参考 parkour 用全局的速度来约束了"）——**把机体系跟踪换成世界系**：
+        # 回放确认策略「横移绕开障碍」（§29.15/§29.16）。根因之一是**速度奖励在机体系**：机体系版本
+        # 配合 `heading_command`（yaw 指令由 heading 控制器按当前误差实时生成）时，机器人可以
+        # "一边转身一边在机体系里前进"来拿满分（实测线速度核 0.88、偏航核仅 0.46）。parkour 用的是
+        # **世界系** `tracking_world_vel`（`legged_robot_field.py:476`）⇒ 目标方向不随自身转动而变。
+        self.rewards.track_world_vel_xy_exp.weight = 5.0  # parkour 的 tracking_world_vel = 5.
+        self.rewards.track_lin_vel_xy_exp.weight = 0.0  # 被世界系版本取代
+        # parkour 同配方里另外两项"别绕开"的软约束（`go1_leap_config.py`：`lin_pos_y=-0.4`、
+        # `yaw_abs=-0.2`；实现见 `legged_robot_field.py:493/496`）：
+        #   `lin_pos_y` = |y − 出生点 y|＝**离赛道中心线的横向距离**；
+        #   `yaw_abs`   = |yaw|（全场景 heading_target 都是 0 ⇒ 即"别转身"）。
+        # 2026-09-24（用户）：**所有场景都给脱离中心的惩罚** ⇒ `terrain_names=()`（空＝全局生效），
+        # 不再只作用于障碍列（那时普通列有 vy 指令与随机朝向，加全局罚会与命令打架；现在全场景
+        # 都是前向命令，中心线/朝向罚与命令一致）。
+        self.rewards.lin_pos_y.weight = -0.4
+        self.rewards.lin_pos_y.params["terrain_names"] = ()
+        self.rewards.yaw_abs.weight = -0.2
+        self.rewards.yaw_abs.params["terrain_names"] = ()
         self.rewards.flat_orientation_l2.weight = -0.1
         self.rewards.lin_vel_z_l2.weight = 0.0
         self.rewards.ang_vel_xy_l2.weight = 0.0
@@ -325,13 +384,21 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.feet_height_body.func = mdp.MaskedFeetHeightBody
         self.rewards.feet_height_body.weight = -5.0
         self.rewards.feet_height_body.params["free_terrain_names"] = ("boxes", "gap")
+        # ③ 之四（2026-09-24 晚，用户："没看到在平坦地形的 trot 步态"）：把 PPO 那套里
+        # **量级最大的步态项** `feet_air_time_variance` 加回来（−8.0＝PPO 原值），但按地形豁免。
+        # 它是三项 shaping 里唯一管"**四足之间时序是否均匀**"的项：bound（前对/后对错开）会让
+        # 前/后足的滞空与触地时长不一致而被罚。判据/门控沿用 `rough_env_cfg` 的配置（同一函数）。
+        # ⚠️ 它排除 bound/pace，但 pronk（四足完全同步）满足它；要排除 pronk 得开相位项 `feet_gait`。
+        self.rewards.feet_air_time_variance.func = mdp.MaskedFeetAirTimeVariance
+        self.rewards.feet_air_time_variance.weight = -8.0
+        self.rewards.feet_air_time_variance.params["free_terrain_names"] = ("boxes", "gap")
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
         self.rewards.feet_height.weight = 0.0
         # `feet_height_body` 同理不清零——已在上方设为 −5.0（MaskedFeetHeightBody）。
         self.rewards.feet_slide.weight = 0.0
-        self.rewards.feet_air_time_variance.weight = 0.0
+        # `feet_air_time_variance` 不在这里清零——已在上方设为 −8.0（MaskedFeetAirTimeVariance，掩码）。
         # 注意：`joint_mirror` 不在这里清零——它在本函数上方被设为 −1.0（MaskedJointMirror，
         # 障碍块/沟槽豁免）。2026-09-24 曾因这一行在下方、晚赋值把它覆盖成 0，导致 mirror 静默失效。
 
@@ -344,9 +411,20 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
             },
         )
 
-        # 用仓库本地的带诊断副本替下上游 `terrain_levels_vel`：判据逐字一致，
-        # 只额外记录 move_up/move_down/frozen 比例与逐地形列的等级均值（用于判断课程是否真的饱和）。
-        self.curriculum.terrain_levels = CurrTerm(func=mdp.terrain_levels_vel_logged)
+        # 用仓库本地的带诊断副本替下上游 `terrain_levels_vel`。**注意：判据自 2026-09-24 起
+        # 与上游有两处有意偏离**（见 `mdp/curriculums.py` 的 docstring 与 docs §29.20）：
+        #   ① 晋级看**沿 +x 的前向进度**（不再用含横向分量的欧氏距离 ⇒ "横移绕开"不算通过）；
+        #   ② 晋级还要求**本回合速度跟踪达标**（`track_avg > tracking_move_up`），
+        #      跟踪太差（< `tracking_move_down`）直接降级 —— 用户："地形等级提升还是需要考虑速度跟踪效果"。
+        # 另额外记录 move_up/down/frozen 比例、逐地形列等级均值与跟踪统计量（用于判断课程是否饱和）。
+        self.curriculum.terrain_levels = CurrTerm(
+            func=mdp.terrain_levels_vel_logged,
+            params={
+                "tracking_term_name": "track_world_vel_xy_exp",
+                "tracking_move_up": 0.80,
+                "tracking_move_down": 0.35,
+            },
+        )
 
         edge_scan_period = self.decimation * self.sim.dt
         for sensor_name in FOOT_EDGE_SENSOR_NAMES:
