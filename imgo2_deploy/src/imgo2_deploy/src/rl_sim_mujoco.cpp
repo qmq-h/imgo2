@@ -4,6 +4,7 @@
  */
 
 #include "rl_sim_mujoco.hpp"
+#include <cmath>
 
 RL_Sim* RL_Sim::instance = nullptr;
 
@@ -388,6 +389,45 @@ std::vector<float> RL_Sim::Forward()
 
     std::vector<float> clamped_obs = this->ComputeObservation();
 
+    if (this->config_name == "cmoe")
+    {
+        if (clamped_obs.size() != 45)
+            throw std::runtime_error("CMoE requires a 45-element proprioceptive frame");
+        if (this->params.Get<bool>("observation_noise"))
+        {
+            // Isaac Lab adds noise before term scaling/clipping. These are
+            // the corresponding amplitudes after ComputeObservation scaling.
+            const auto add_noise = [this, &clamped_obs](int first, int last, float amplitude)
+            {
+                std::uniform_real_distribution<float> noise(-amplitude, amplitude);
+                for (int i = first; i < last; ++i)
+                    clamped_obs[i] = std::clamp(clamped_obs[i] + noise(cmoe_noise_rng), -100.0f, 100.0f);
+            };
+            add_noise(0, 3, 0.05f);    // base_ang_vel: 0.2 * 0.25
+            add_noise(3, 6, 0.05f);    // projected_gravity
+            add_noise(9, 21, 0.01f);   // joint_pos_rel
+            add_noise(21, 33, 0.075f); // joint_vel_rel: 1.5 * 0.05
+        }
+        if (!this->cmoe_history_initialized)
+        {
+            this->history_obs_buf.reset({0}, clamped_obs);
+            this->cmoe_history_initialized = true;
+        }
+        else
+        {
+            this->history_obs_buf.insert(clamped_obs);
+        }
+        auto input = this->history_obs_buf.get_obs_vec(this->params.Get<std::vector<int>>("observations_history"));
+        auto terrain = this->ComputeCMoETerrain();
+        input.insert(input.end(), terrain.begin(), terrain.end());
+        if (terrain.size() != static_cast<size_t>(this->params.Get<int>("num_terrain_observations")) ||
+            input.size() != static_cast<size_t>(this->params.Get<int>("num_observations")))
+            throw std::runtime_error("CMoE actor input dimension does not match deployment config");
+        auto actions = this->model->forward({input});
+        return clamp(actions, this->params.Get<std::vector<float>>("clip_actions_lower"),
+                     this->params.Get<std::vector<float>>("clip_actions_upper"));
+    }
+
     std::vector<float> actions;
     if (this->params.Get<std::vector<int>>("observations_history").size() != 0)
     {
@@ -408,6 +448,54 @@ std::vector<float> RL_Sim::Forward()
     {
         return actions;
     }
+}
+
+std::vector<float> RL_Sim::ComputeCMoETerrain()
+{
+    // Isaac Lab GridPatternCfg(ordering="xy"): y outside, x inside.
+    const auto grid_size = this->params.Get<std::vector<float>>("terrain_grid_size");
+    const auto grid_center = this->params.Get<std::vector<float>>("terrain_grid_center");
+    const float resolution = this->params.Get<float>("terrain_grid_resolution");
+    if (grid_size.size() != 2 || grid_center.size() != 2 || resolution <= 0)
+        throw std::runtime_error("Invalid CMoE terrain grid configuration");
+    const int nx = static_cast<int>(std::lround(grid_size[0] / resolution)) + 1;
+    const int ny = static_cast<int>(std::lround(grid_size[1] / resolution)) + 1;
+    std::vector<float> heights;
+    heights.reserve(nx * ny);
+    const std::lock_guard<std::recursive_mutex> lock(sim->mtx);
+    const int base_id = mj_name2id(mj_model, mjOBJ_BODY, "base");
+    if (base_id < 0)
+        throw std::runtime_error("CMoE height scan requires MuJoCo body 'base'");
+    const mjtNum* pos = mj_data->xpos + 3 * base_id;
+    const mjtNum* mat = mj_data->xmat + 9 * base_id;
+    const mjtNum yaw = std::atan2(mat[3], mat[0]);
+    const mjtNum c = std::cos(yaw), s = std::sin(yaw);
+    // cfg.offset.pos raises ray starts; sensor.data.pos_w remains the base pose.
+    const mjtNum offset_z = this->params.Get<float>("terrain_scanner_offset_z");
+    const mjtNum ray_start_z = pos[2] + offset_z;
+    const mjtNum down[3] = {0, 0, -1};
+    const mjtByte terrain_group[6] = {0, 0, 0, 0, 0, 1};
+    const bool observation_noise = this->params.Get<bool>("observation_noise");
+    std::uniform_real_distribution<float> terrain_noise(-0.1f, 0.1f);
+    for (int yi = 0; yi < ny; ++yi)
+    {
+        const mjtNum y = grid_center[1] - 0.5 * grid_size[1] + resolution * yi;
+        for (int xi = 0; xi < nx; ++xi)
+        {
+            const mjtNum x = grid_center[0] - 0.5 * grid_size[0] + resolution * xi;
+            const mjtNum origin[3] = {pos[0] + c * x - s * y,
+                                      pos[1] + s * x + c * y, ray_start_z};
+            int geom_id = -1;
+            const mjtNum distance = mj_ray(mj_model, mj_data, origin, down,
+                                           terrain_group, 1, -1, &geom_id);
+            // hit_z = ray_start_z - distance; observation = base_z - hit_z - 0.5.
+            mjtNum raw = distance < 0 ? -1 : distance - offset_z - 0.5;
+            if (observation_noise && distance >= 0)
+                raw += terrain_noise(cmoe_noise_rng);
+            heights.push_back(static_cast<float>(std::clamp(raw, mjtNum(-1), mjtNum(1))));
+        }
+    }
+    return heights;
 }
 
 void RL_Sim::Plot()

@@ -116,6 +116,10 @@ public:
             {
                 return "RLFSMStateAMPLocomotion";
             }
+            else if (rl.control.current_keyboard == Input::Keyboard::Num4)
+            {
+                return "RLFSMStateCMoELocomotion";
+            }
             else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
             {
                 return "RLFSMStateGetDown";
@@ -229,6 +233,10 @@ public:
         {
             return "RLFSMStateAMPLocomotion";
         }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num4)
+        {
+            return "RLFSMStateCMoELocomotion";
+        }
         return state_name_;
     }
 };
@@ -304,6 +312,10 @@ public:
         {
             return "RLFSMStateAMPLocomotion";
         }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num4)
+        {
+            return "RLFSMStateCMoELocomotion";
+        }
         return state_name_;
     }
 };
@@ -376,6 +388,72 @@ public:
         {
             return "RLFSMStateAMPLocomotion";
         }
+        else if (rl.control.current_keyboard == Input::Keyboard::Num4)
+        {
+            return "RLFSMStateCMoELocomotion";
+        }
+        return state_name_;
+    }
+};
+
+// CMoE needs a terrain ray grid supplied by the MuJoCo backend.
+class RLFSMStateCMoELocomotion : public RLFSMState
+{
+public:
+    RLFSMStateCMoELocomotion(RL *rl) : RLFSMState(*rl, "RLFSMStateCMoELocomotion") {}
+
+    void Enter() override
+    {
+        rl.episode_length_buf = 0;
+        if (!rl.SupportsCMoE())
+        {
+            std::cout << LOGGER::ERROR << "CMoE terrain scan is only available in MuJoCo" << std::endl;
+            rl.fsm.RequestStateChange("RLFSMStatePassive");
+            return;
+        }
+        rl.config_name = "cmoe";
+        try
+        {
+            const std::string policy_dir = std::string(POLICY_DIR) + "/" + rl.robot_name + "/cmoe/";
+            if (!std::ifstream(policy_dir + "config.yaml") || !std::ifstream(policy_dir + "policy.pt"))
+                throw std::runtime_error("CMoE requires config.yaml and a play.py-exported policy.pt in " + policy_dir);
+            rl.InitRL(rl.robot_name + "/cmoe");
+            rl.ResetCMoEState();
+            rl.now_state = *fsm_state;
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << LOGGER::ERROR << "CMoE InitRL() failed: " << e.what() << std::endl;
+            rl.rl_init_done = false;
+            rl.fsm.RequestStateChange("RLFSMStatePassive");
+        }
+    }
+
+    void Run() override
+    {
+        if (!rl.SupportsCMoE() || !rl.model) return;
+        if (!rl.rl_init_done) rl.rl_init_done = true;
+        std::cout << "\r\033[K" << std::flush << LOGGER::INFO << "RL Controller [cmoe] x:"
+                  << rl.control.x << " y:" << rl.control.y << " yaw:" << rl.control.yaw << std::flush;
+        RLControl();
+    }
+
+    void Exit() override { rl.rl_init_done = false; }
+
+    std::string CheckChange() override
+    {
+        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+            return "RLFSMStatePassive";
+        if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+            return "RLFSMStateGetDown";
+        if (rl.control.current_keyboard == Input::Keyboard::Num0 || rl.control.current_gamepad == Input::Gamepad::A)
+            return "RLFSMStateGetUp";
+        if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+            return "RLFSMStatePPOLocomotion";
+        if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+            return "RLFSMStateRLLocomotion";
+        if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
+            return "RLFSMStateAMPLocomotion";
         return state_name_;
     }
 };
@@ -401,6 +479,8 @@ public:
             return std::make_shared<imgo2_fsm::RLFSMStatePPOLocomotion>(rl);
         else if (state_name == "RLFSMStateAMPLocomotion")
             return std::make_shared<imgo2_fsm::RLFSMStateAMPLocomotion>(rl);
+        else if (state_name == "RLFSMStateCMoELocomotion")
+            return std::make_shared<imgo2_fsm::RLFSMStateCMoELocomotion>(rl);
         return nullptr;
     }
     std::string GetType() const override { return "imgo2"; }
@@ -412,7 +492,8 @@ public:
             "RLFSMStateGetDown",
             "RLFSMStateRLLocomotion",
             "RLFSMStatePPOLocomotion",
-            "RLFSMStateAMPLocomotion"
+            "RLFSMStateAMPLocomotion",
+            "RLFSMStateCMoELocomotion"
         };
     }
     std::string GetInitialState() const override { return initial_state_; }

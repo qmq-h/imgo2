@@ -212,6 +212,8 @@ public:
 
     // rl functions
     virtual std::vector<float> Forward() = 0;
+    virtual bool SupportsCMoE() const { return false; }
+    virtual void ResetCMoEState() {}
     std::vector<float> ComputeObservation();
     virtual void GetState(RobotState<float> *state) = 0;
     virtual void SetCommand(const RobotCommand<float> *command) = 0;

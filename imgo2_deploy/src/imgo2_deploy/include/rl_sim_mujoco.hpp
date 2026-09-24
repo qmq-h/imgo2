@@ -25,6 +25,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <memory>
+#include <random>
 
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
@@ -62,6 +63,9 @@ public:
 private:
     // rl functions
     std::vector<float> Forward() override;
+    bool SupportsCMoE() const override { return true; }
+    void ResetCMoEState() override { cmoe_history_initialized = false; }
+    std::vector<float> ComputeCMoETerrain();
     void GetState(RobotState<float> *state) override;
     void SetCommand(const RobotCommand<float> *command) override;
     void RunModel();
@@ -84,6 +88,8 @@ private:
     mjData *mj_data;
     mjModel *mj_model;
     std::string scene_name;
+    bool cmoe_history_initialized = false;
+    std::mt19937 cmoe_noise_rng{std::random_device{}()};
 
     // joystick
     std::unique_ptr<Joystick> sys_js;

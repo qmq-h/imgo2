@@ -1,0 +1,43 @@
+# CMoE actor: 10 x 45 proprioception (newest first) + current 11 x 7 terrain.
+# Match Imgo2CMoERoughEnvCfg after the 77-dimensional scan change.
+imgo2/cmoe:
+  model_name: "policy.pt"
+  num_observations: 527
+  observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
+  observations_history: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  observations_history_priority: "time"
+  terrain_grid_size: [1.0, 0.6]
+  terrain_grid_center: [0.25, 0.0]
+  terrain_grid_resolution: 0.1
+  num_terrain_observations: 77
+  terrain_scanner_offset_z: 20.0
+  # False matches the CMoE -play task (policy and terrain corruption disabled).
+  # True reproduces training uniform observation noise before term clipping.
+  observation_noise: false
+  clip_obs: 100.0
+  clip_actions_lower: [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0,
+                       -3.0, -3.0, -3.0, -3.0, -3.0, -3.0]
+  clip_actions_upper: [3.0, 3.0, 3.0, 3.0, 3.0, 3.0,
+                       3.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+  rl_kp: [25.0, 25.0, 25.0, 25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0, 25.0, 25.0, 25.0]
+  rl_kd: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+  fixed_kp: [60.0, 60.0, 60.0, 60.0, 60.0, 60.0,
+             60.0, 60.0, 60.0, 60.0, 60.0, 60.0]
+  fixed_kd: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
+             2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+  num_of_dofs: 12
+  action_scale: [0.125, 0.25, 0.25, 0.125, 0.25, 0.25,
+                 0.125, 0.25, 0.25, 0.125, 0.25, 0.25]
+  wheel_indices: []
+  lin_vel_scale: 1.0
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  commands_scale: [1.0, 1.0, 1.0]
+  torque_limits: [23.7, 23.7, 23.7, 23.7, 23.7, 23.7,
+                  23.7, 23.7, 23.7, 23.7, 23.7, 23.7]
+  default_dof_pos: [0.00, 0.87, -1.82, 0.00, 0.87, -1.82,
+                    0.00, 0.87, -1.82, 0.00, 0.87, -1.82]
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
