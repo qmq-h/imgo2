@@ -76,13 +76,18 @@ class CMoERewardsCfg(RewardsCfg):
     # ⚠️ 权重必须是**非零**（否则 `disable_zero_weight_rewards()` 会把 term 整个移除、日志就没了），
     # 取 **1e-6**：`≤1e-6 × 1 = 1e-6/s`，相对整回合 ~4/s 完全可以忽略（占比 ~2.5e-7），不影响训练。
     # 这三项**不加地形掩码** —— 正是为了看清 `boxes`/`gap` 上"自己演化"成了什么步态。
+    # ⚠️ 2026-09-24 夜：`std`/`max_err` 必须与 `feet_gait`（post_init 里那三项赋值）**保持一致**，
+    # 否则分类器的读数不再代表奖励。改动理由见 docs §29.31/§29.32：旧值 `std=√0.5=0.7071` 让
+    # 单核地板高达 `exp(−2·0.2²/0.7071)=0.893`（配错也拿 89 分）⇒ 6 核乘积只有 [0.508, 1]，
+    # 实测 trot−bound 仅差 0.010（≈0.1 个核）⇒ 相位项的边际奖励只有 0.01/s，PPO 不会理它。
+    # 新值让地板降到 `exp(−2·0.5²/0.2)=0.082`，trot/bound 溢价 0.26 → **0.70/s**（2.7×）。
     gait_metric_trot = RewTerm(
         func=mdp.GaitReward,
         weight=1e-6,
         params={
-            "std": math.sqrt(0.5),
+            "std": 0.2,
             "command_name": "base_velocity",
-            "max_err": 0.2,
+            "max_err": 0.5,
             "velocity_threshold": 0.5,
             "command_threshold": 0.1,
             "synced_feet_pair_names": (("FL_FOOT", "RR_FOOT"), ("FR_FOOT", "RL_FOOT")),
@@ -94,9 +99,9 @@ class CMoERewardsCfg(RewardsCfg):
         func=mdp.GaitReward,
         weight=1e-6,
         params={
-            "std": math.sqrt(0.5),
+            "std": 0.2,
             "command_name": "base_velocity",
-            "max_err": 0.2,
+            "max_err": 0.5,
             "velocity_threshold": 0.5,
             "command_threshold": 0.1,
             "synced_feet_pair_names": (("FL_FOOT", "FR_FOOT"), ("RL_FOOT", "RR_FOOT")),
@@ -111,13 +116,30 @@ class CMoERewardsCfg(RewardsCfg):
         weight=1e-6,
         params={"asset_cfg": SceneEntityCfg("robot")},
     )
+    # 接触时序诊断（2026-09-24 夜，用户同意）：两个 1e-6 纯记录项，用来把"步子到底是长是短"和
+    # "相位差到底多大"从日志里**直接读出来**，不再靠间接反解猜参数。
+    # `gait_airtime_<地形>` ＝该列四足 `last_air_time` 均值（s，＝最近一次完整滞空时长）；
+    #   与 `Episode_Reward/feet_air_time` 联立可解出**落地频率**（那个量只约束 `N落地·(ā−0.5)`，
+    #   单看它"长步幅慢步"与"短步快蹭"不可分辨 —— 见 docs §29.31.2）。
+    # `gait_mismatch_<地形>` ＝该列六对脚 `|Δair|+|Δcon|` 的均值（s）＝**相位核真正面对的时间差尺度**
+    #   ⇒ 用来按实测选 `max_err`（若实测只有 0.1 s 级，0.5 就永远够不着地板、项又变回人人高分）。
+    diag_air_time = RewTerm(
+        func=mdp.diag_air_time,
+        weight=1e-6,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces")},
+    )
+    diag_pair_mismatch = RewTerm(
+        func=mdp.diag_pair_mismatch,
+        weight=1e-6,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces")},
+    )
     gait_metric_pace = RewTerm(
         func=mdp.GaitReward,
         weight=1e-6,
         params={
-            "std": math.sqrt(0.5),
+            "std": 0.2,
             "command_name": "base_velocity",
-            "max_err": 0.2,
+            "max_err": 0.5,
             "velocity_threshold": 0.5,
             "command_threshold": 0.1,
             "synced_feet_pair_names": (("FL_FOOT", "RL_FOOT"), ("FR_FOOT", "RR_FOOT")),
@@ -466,6 +488,17 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
             ("FR_FOOT", "RL_FOOT"),
         )
         self.rewards.feet_gait.params["free_terrain_names"] = ("boxes", "gap")
+        # ⚠️ 2026-09-24 夜（用户同意）：**把相位核变陡**。`std`/`max_err` 一直在沿用原版 PPO 的值
+        # （`velocity_env_cfg.py:551` 的 `feet_gait`，`std=√0.5=0.7071`、`max_err=0.2`），
+        # 于是单核地板＝`exp(−2·0.2²/0.7071)=0.893`：**配对完全错（差半个周期 ≈0.45 s）也拿 89 分**，
+        # 6 核乘积只跨 [0.508, 1] ⇒ 这个项度量的是"有几对配上了"（近似二值），不是"差多少"。
+        # run G @436 实测：`trot−bound` 只有 **−0.010**（≈0.1 个核），且从第 50 轮到 436 轮**完全平坦**
+        # （期间速度核 0.20→0.62）⇒ 边际奖励 0.01/s（总量 ~5.5/s 的 0.2%），PPO 不会因它改步态。
+        # 新值：地板降到 `exp(−2·0.5²/0.2)=0.082`，参考步态 trot 1.000 / bound 0.302
+        # ⇒ 溢价 **0.264 → 0.698/s（2.7×）**。**必须与三个 `gait_metric_*` 的 std/max_err 同步**
+        # （否则分类器读数不再代表奖励）。详见 docs §29.31.2 与 §29.32。
+        self.rewards.feet_gait.params["std"] = 0.2
+        self.rewards.feet_gait.params["max_err"] = 0.5
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
@@ -508,6 +541,9 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                     ("pace", "gait_metric_pace"),
                     ("bounce", "diag_bounce"),        # 逐列 vz 均方（开方＝vz RMS）
                     ("height", "base_height_l2"),     # 逐列 (base 高度误差)²（开方＝RMS 误差）
+                    # 2026-09-24 夜新增：把"步子长短"与"相位差尺度"直接读出来
+                    ("airtime", "diag_air_time"),     # 逐列四足 last_air_time 均值（s）
+                    ("mismatch", "diag_pair_mismatch"),  # 逐列六对 |Δair|+|Δcon| 均值（s）
                 ),
                 # 2026-09-24（用户）：**台阶与 boxes 用 0.50、其余仍 0.80**。
                 # ⚠️ 0.50 在这三类上**等价于取消跟踪门控**（整回合平均跟踪核实测 mean≈0.78、min≈0.69

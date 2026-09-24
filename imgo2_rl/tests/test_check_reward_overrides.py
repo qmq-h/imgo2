@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import ast
 import sys
 import tempfile
 import textwrap
@@ -20,6 +21,51 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 import check_reward_overrides as chk  # noqa: E402
+
+
+def _number(node: ast.AST):
+    """字面量数字；`math.sqrt(0.5)` 这类表达式返回 None（表示"这处不参与比较"）。"""
+    try:
+        return ast.literal_eval(node)
+    except Exception:
+        return None
+
+
+def _gait_kernel_params(steps, term_names):
+    """按 `CHAINS` 顺序回放 cfg 源码，读出各 term 最终的 `std`/`max_err`。
+
+    看两类赋值：① 类体 `name = RewTerm(..., params={...})` 的字面量；
+    ② `__post_init__` 里 `self.rewards.<term>.params["std"] = ...` 的覆盖（后写的生效）。
+    """
+    params: dict[str, dict[str, object]] = {}
+    for path, class_name in steps:
+        tree = ast.parse(Path(path).read_text(encoding="utf-8-sig"))
+        cls = next((n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name), None)
+        if cls is None:
+            continue
+        for node in ast.walk(cls):
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in term_names and isinstance(node.value, ast.Call):
+                for kw in node.value.keywords:
+                    if kw.arg == "params" and isinstance(kw.value, ast.Dict):
+                        for key, value in zip(kw.value.keys, kw.value.values):
+                            number = _number(value)
+                            if isinstance(key, ast.Constant) and key.value in ("std", "max_err") and number is not None:
+                                params.setdefault(target.id, {})[key.value] = number
+            elif isinstance(target, ast.Subscript):
+                owner = target.value
+                if (isinstance(owner, ast.Attribute) and owner.attr == "params"
+                        and isinstance(owner.value, ast.Attribute) and owner.value.attr in term_names):
+                    try:
+                        key = ast.literal_eval(target.slice)
+                    except Exception:
+                        continue
+                    number = _number(node.value)
+                    if key in ("std", "max_err") and number is not None:
+                        params.setdefault(owner.value.attr, {})[key] = number
+    return params
 
 
 class TestCmoeEffectiveRewards(unittest.TestCase):
@@ -34,7 +80,8 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         # 2026-09-24：16 → 18（parkour 式"全球速度"约束）→ 19（加回 feet_air_time_variance −8.0）
         #            → 20（开 feet_gait，掩码版）→ 23（＋3 个"步态度量"项，权重 1e-6，只为记录）
         #            → 25（＋掩码版 lin_vel_z_l2 −2.0、＋diag_bounce 度量）
-        self.assertEqual(len(self.effective), 25, f"生效项数变了：{sorted(self.effective)}")
+        #            → 27（＋diag_air_time、diag_pair_mismatch 两个接触时序诊断，权重 1e-6）
+        self.assertEqual(len(self.effective), 27, f"生效项数变了：{sorted(self.effective)}")
 
     def test_vertical_velocity_penalty_restored(self):
         """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。"""
@@ -53,6 +100,31 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
             self.assertIn(name, self.effective)
             self.assertLessEqual(abs(float(self.effective[name])), 1e-5,
                                  f"{name} 应是度量项（权重 ≤1e-5），不能真的有奖励量级")
+
+    def test_contact_timing_diagnostics_are_diagnostic_only(self):
+        """2026-09-24 夜新增的两个接触时序诊断项（`ā` 与六对时间差尺度）也只是记录。"""
+        for name in ("diag_air_time", "diag_pair_mismatch"):
+            self.assertIn(name, self.effective)
+            self.assertLessEqual(abs(float(self.effective[name])), 1e-5,
+                                 f"{name} 应是诊断项（权重 ≤1e-5）")
+
+    def test_phase_kernel_is_sharpened_and_classifier_matches_reward(self):
+        """2026-09-24 夜（用户同意）：相位核变陡，且**分类器三项必须与 `feet_gait` 同参数**。
+
+        旧值 `std=√0.5=0.7071`、`max_err=0.2` ⇒ 单核地板 `exp(−2·0.2²/0.7071)=0.893`：**配对差半个
+        周期（≈0.45 s）也拿 89 分**，6 核乘积只跨 [0.508, 1]。run G 实测 `trot−bound` 仅 −0.010
+        且第 50→436 轮完全平坦（期间速度核 0.20→0.62）⇒ 边际奖励只有 0.01/s，PPO 不会理它。
+        新值地板 `exp(−2·0.5²/0.2)=0.082`，参考步态（T 0.93 s、duty 0.5）trot 1.000 / bound 0.302
+        ⇒ 溢价 **0.264 → 0.698/s**。分类器与奖励不同参数时读数就不再代表奖励 ⇒ 一起钉住。
+        """
+        steps = chk.CHAINS["cmoe"][0][1]
+        names = ("feet_gait", "gait_metric_trot", "gait_metric_bound", "gait_metric_pace")
+        params = _gait_kernel_params(steps, names)
+        for name in names:
+            self.assertEqual(params.get(name, {}).get("std"), 0.2,
+                             f"{name} 的 std 没跟相位核同步（分类器会与奖励脱钩）")
+            self.assertEqual(params.get(name, {}).get("max_err"), 0.5,
+                             f"{name} 的 max_err 没跟相位核同步（分类器会与奖励脱钩）")
 
     def test_world_vel_replaces_body_vel(self):
         self.assertEqual(self.effective["track_world_vel_xy_exp"], 5.0)

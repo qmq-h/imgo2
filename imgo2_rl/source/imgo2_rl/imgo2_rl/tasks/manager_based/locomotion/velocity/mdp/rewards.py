@@ -434,6 +434,50 @@ class TrotWithoutGapReward(GaitReward):
         return trot * (~self._free_mask).float()
 
 
+def diag_air_time(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：四足 `last_air_time` 的均值，单位 s。
+
+    为什么需要它：`Episode_Reward/feet_air_time` 只约束一个乘积
+    `N_落地 · (ā − threshold)`（`feet_air_time` 的展开式为 `Σ_落地(last_air_time − c)`，
+    ⇒ 其时间平均＝落地次数/秒 × (平均滞空 − c)）⇒ **"长步幅慢步"与"短步快蹭"能给同一个数**，
+    光看它分不开。有了本项给出的 `ā`（最近一次完整滞空时长），就能用那个乘积解出**落地频率**，
+    从而判断到底是"步幅长但相位错"（⇒ 只把相位核变陡就够）还是"步子又短又碎"
+    （⇒ 必须同时把 `feet_air_time` 的权重调回去）。
+
+    配合 `gait_metric_terms` 使用 ⇒ 逐列 `gait_airtime_<地形>`（各列自己演化成什么步频）。
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    return torch.mean(last_air_time, dim=1)
+
+
+def diag_pair_mismatch(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：六对脚 `|Δair| + |Δcon|` 的均值，单位 s。
+
+    这是**相位核真正面对的那个量**：`GaitReward` 对每一对脚比较 `|air_i − air_j|`（同步核）
+    与 `|air_i − con_j|`（反相核），差一超过 `max_err` 就被截断到地板。所以本项给出
+    "错配的那几对到底差多少" ⇒ 用来**按实测**选 `max_err`：若实测只有 0.1 s 级，`max_err=0.5`
+    就永远够不着地板、项又变回"人人高分"；若实测在 0.4 s 级，就必须让地板低于它。
+    配合 `gait_metric_terms` ⇒ 逐列 `gait_mismatch_<地形>`。
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    air = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    contact = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    total = torch.zeros(air.shape[0], device=air.device, dtype=air.dtype)
+    n_pairs = 0
+    for i in range(air.shape[1]):
+        for j in range(i + 1, air.shape[1]):
+            total = total + torch.abs(air[:, i] - air[:, j]) + torch.abs(contact[:, i] - contact[:, j])
+            n_pairs += 1
+    return total / max(n_pairs, 1)
+
+
 def _pairwise_joint_mirror(
     env: ManagerBasedRLEnv,
     asset: Articulation,

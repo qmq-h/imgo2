@@ -2430,3 +2430,31 @@ run G＝`logs/cmoe/base_move_cmoe_rough/2026-09-24_21-23-48_cmoe_G_77dim_fresh`�
    `max_err`）。有了这两条，参数就不必再猜。
 4. 不论改不改，**判步态的时间点应提前**：run C 在 1000 轮时步态已经定型（并已在蹦）⇒ 相位的压力
    要**在 400–1000 轮之间**加上，等 2000 轮再改等于先固化再拆。
+
+### 29.32 已落地：相位核变陡 ＋ 两个接触时序诊断项（2026-09-24 夜，用户同意）
+
+用户问"是哪个奖励"、确认是 **④ 相位项 `feet_gait`**（`TrotWithoutGapReward`）后，选了"变陡 + 加诊断"。
+
+| 改动 | 旧 | 新 | 理由 |
+|---|---|---|---|
+| `feet_gait.params["std"]` | `√0.5 = 0.7071`（原版 PPO 值，CMoE 从未覆盖过） | **0.2** | 让核掉分变快：`0.45 s` 的时间差从 0.893 → **0.132** |
+| `feet_gait.params["max_err"]` | `0.2`（同上） | **0.5** | 让地板降下去：单核下限 `exp(−2·0.2²/0.7071)=0.893` → `exp(−2·0.5²/0.2)=`**0.082** |
+| `gait_metric_{trot,bound,pace}` 的 `std`/`max_err` | 同旧值 | **同新值** | ⚠️ 分类器必须与奖励**同参**，否则读数不再代表奖励（新增测试断言） |
+| `diag_air_time`（**1e-6**） | — | 四足 `last_air_time` 均值 `ā`（s） | `feet_air_time` 只约束 `N落地·(ā−0.5)`，`ā` 与落地率分不开 ⇒ 直接记录 `ā` |
+| `diag_pair_mismatch`（**1e-6**） | — | 六对 `\|Δair\|+\|Δcon\|` 均值（s） | ＝相位核面对的**同步侧**时间差尺度；lockstep≈0、2+2 分开≈半周期 ⇒ 用来按实测定 `max_err` |
+
+* 位置：`feet_gait` 的两行加在 `CMoE_env_cfg.py` 的 `__post_init__`（`self.rewards.feet_gait.params[...]`，
+  紧随原有的 `synced_feet_pair_names`/`free_terrain_names`）；三个度量项在 `CMoERewardsCfg` 类体内；
+  两个诊断项紧跟 `diag_bounce`；并把它们挂进 `curriculum.terrain_levels.params["gait_metric_terms"]`
+  ⇒ 逐列 `gait_airtime_<地形>` / `gait_mismatch_<地形>`（另有全局 `gait_airtime_mean` / `gait_mismatch_mean`）。
+* **预期效应**：参考步态（T 0.93 s、duty 0.5，按源码公式离线复算）trot 1.000 / bound **0.302**（旧 0.736）
+  ⇒ trot 溢价 **0.264 → 0.698/s（2.7×）**；非 trot 步态不再拿 0.74。
+* **生效奖励 25 → 27 项**（两个 1e-6 诊断）。
+* **验证**：新增 `test_contact_timing_diag.py` **5 例**（`ā` 均值、lockstep⇒0、trot 快照⇒0.4、
+  六对全覆盖、`body_ids` 真被使用）；`test_check_reward_overrides.py` 改为 **27 项**＋新增
+  "`feet_gait` 与三个分类器 `std`/`max_err` 四处同参"断言。**负向对照**：只把 `feet_gait` 的 `std`
+  改回 0.7071 ⇒ 该用例**失败**。全仓离线 **349 通过 / 8 跳过**。
+* **未验证**：重启后的实际效应。**判读清单**：①`gait_trot_*` 是否开始**压过** `gait_bound_*`（不再只差 0.01）；
+  ②`gait_mismatch_<地形>` 的实测量级——若只有 0.1 s 级说明时间差本来就小（`max_err=0.5` 够不着地板），
+  若在 0.4 s 级则正好；③`gait_airtime_<地形>`：若 `ā` ≈0.05 s（短步快蹭）⇒ 必须同时把 `feet_air_time`
+  的权重从 0.3 调回去（那是唯一要求"长滞空"的项）；若 `ā` ≈0.45 s（长步幅）⇒ 只靠这次变陡就够。
