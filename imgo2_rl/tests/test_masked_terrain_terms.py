@@ -1,4 +1,4 @@
-"""`feet_gait`（`TrotWithoutGapReward`）的按地形豁免 —— 离线回归。
+"""按地形豁免的 masked 项 —— 离线回归（`TrotWithoutGapReward`、`MaskedLinVelZ`，以及其它同套掩码项）。
 
 2026-09-24 用户："那就开 feet gait，同样加掩码"。`TrotWithoutGapReward` 继承 `GaitReward`
 （6 核乘积：2 个"对角对内同步"核 × 4 个"对角对之间反相"核），只把结果乘上**与其余四项步态 shaping
@@ -49,12 +49,20 @@ class _BaseStub:
         return torch.ones(args[0].num_envs)
 
 
-def _load_class(terrain_mask):
+class _StubSceneEntityCfg:
+    """`SceneEntityCfg` 的桩（真实类在 isaaclab 里；有些 masked 项的默认参数会实例化它）。"""
+
+    def __init__(self, name="robot", **kwargs):
+        self.name = name
+
+
+def _load_class(terrain_mask, class_name="TrotWithoutGapReward", extra_ns=None):
+    """AST 抽出指定类的真实源码，在桩命名空间里 exec。"""
     source = REWARDS.read_text(encoding="utf-8")
     tree = ast.parse(source)
     node = next(
         n for n in tree.body
-        if isinstance(n, ast.ClassDef) and n.name == "TrotWithoutGapReward"
+        if isinstance(n, ast.ClassDef) and n.name == class_name
     )
     ns = {
         "torch": torch,
@@ -63,11 +71,12 @@ def _load_class(terrain_mask):
         "ManagerBasedRLEnv": object,
         "RewTerm": object,
         "Articulation": object,
-        "SceneEntityCfg": object,
+        "SceneEntityCfg": _StubSceneEntityCfg,
         "_terrain_type_mask": terrain_mask,
     }
+    ns.update(extra_ns or {})
     exec(compile(ast.get_source_segment(source, node), str(REWARDS), "exec"), ns)  # noqa: S102
-    return ns["TrotWithoutGapReward"]
+    return ns[class_name]
 
 
 def _terrain_mask(env, terrain_names):
@@ -105,6 +114,28 @@ class TestFeetGaitMask(unittest.TestCase):
         self.assertAlmostEqual(float(self._reward(free=())[0]), 1.0, places=6)
 
 
+@unittest.skipIf(torch is None, f"PyTorch unavailable: {IMPORT_ERROR}")
+class TestMaskedLinVelZ(unittest.TestCase):
+    """`MaskedLinVelZ`（竖直速度罚，2026-09-24 晚为治"蹦蹦跳跳"恢复）：豁免 `boxes`/`gap`。"""
+
+    TERRAINS = ["pyramid_stairs", "gap", "boxes", "flat"]
+
+    def _reward(self, free=("boxes", "gap")):
+        env = _Env(self.TERRAINS)
+        cfg = type("Cfg", (), {"params": {"free_terrain_names": free}})()
+        # 桩：`lin_vel_z_l2` 恒返回 1.0 ⇒ 便于观察"乘法掩码"
+        cls = _load_class(_terrain_mask, "MaskedLinVelZ",
+                          {"lin_vel_z_l2": lambda env, asset_cfg=None: torch.ones(env.num_envs)})
+        return cls(cfg, env)(env, None, free)
+
+    def test_exempt_columns_are_zero(self):
+        out = self._reward()
+        self.assertEqual(out.int().tolist(), [1, 0, 0, 1], "竖直速度罚应豁免 boxes/gap")
+
+    def test_no_mask_when_free_is_empty(self):
+        self.assertEqual(self._reward(free=()).int().tolist(), [1, 1, 1, 1])
+
+
 class TestCmoeCfgWiring(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -114,6 +145,13 @@ class TestCmoeCfgWiring(unittest.TestCase):
         self.assertIn("self.rewards.feet_gait.func = mdp.TrotWithoutGapReward", self.src)
         self.assertIn("self.rewards.feet_gait.weight = 1.0", self.src)
         self.assertIn('self.rewards.feet_gait.params["free_terrain_names"] = ("boxes", "gap")', self.src)
+
+    def test_vertical_penalty_restored_and_masked(self):
+        """2026-09-24 晚：竖直速度罚按地形豁免地恢复（治"蹦蹦跳跳"），并给 feet_air_time 降权。"""
+        self.assertIn("self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ", self.src)
+        self.assertIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
+        self.assertIn('self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")', self.src)
+        self.assertIn("self.rewards.feet_air_time.weight = 0.3", self.src)
 
     def test_pairs_are_diagonal_trot(self):
         block = re.search(r'self\.rewards\.feet_gait\.params\["synced_feet_pair_names"\] = \((.*?)\)\n',

@@ -42,8 +42,11 @@ class _Scene(dict):
 
 
 class _Terrain:
-    def __init__(self, size, levels):
-        self.cfg = _Data(terrain_generator=_Data(size=size, sub_terrains={"flat": None}))
+    def __init__(self, size, levels, terrain_names=("flat",)):
+        # 逐列日志会遍历 `sub_terrains.keys()`，所以桩里要把用例用到的地形名都放进去
+        self.cfg = _Data(terrain_generator=_Data(
+            size=size, sub_terrains={name: None for name in dict.fromkeys(terrain_names)}
+        ))
         self.terrain_levels = levels
         self.calls = []
 
@@ -74,8 +77,12 @@ class _RewardManager:
 
 
 class _Env:
-    def __init__(self, rows, command=(0.3, 0.0), track_avg=None, episode_steps=1000, term="track_world_vel_xy_exp"):
-        """rows: [(x, y)] 相对出生点的位移；track_avg: 每个环境本回合的平均跟踪核（None＝不提供分项）。"""
+    def __init__(self, rows, command=(0.3, 0.0), track_avg=None, episode_steps=1000, term="track_world_vel_xy_exp",
+                 terrains=None, metrics=None):
+        """rows: [(x, y)] 相对出生点的位移；track_avg: 每个环境本回合的平均跟踪核（None＝不提供分项）。
+
+        terrains: 每个环境所属的**地形列名**（用于 relaxed 阈值那组用例；None ⇒ 全部算 "flat"）。
+        """
         n = len(rows)
         self.num_envs = n
         self.device = "cpu"
@@ -89,17 +96,24 @@ class _Env:
         pos[:, 0] = offsets[:, 0]
         pos[:, 1] = offsets[:, 1]
         self.scene["robot"] = _Data(data=_Data(root_pos_w=pos))
-        self.scene.terrain = _Terrain((8.0, 4.0), torch.zeros(n, dtype=torch.long))
+        self.terrain_names = list(terrains) if terrains is not None else ["flat"] * n
+        self.scene.terrain = _Terrain((8.0, 4.0), torch.zeros(n, dtype=torch.long), self.terrain_names)
         cmd = torch.zeros(n, 3)
         cmd[:, 0], cmd[:, 1] = command[0], command[1]
         self.command_manager = _CommandManager(cmd)
-        if track_avg is None:
+        if track_avg is None and not metrics:
             self.reward_manager = None
         else:
-            weight = 5.0
-            # 反解出应有的回合和：sum = weight · mean(term) · 回合秒数
-            sums = torch.tensor(track_avg, dtype=torch.float32) * weight * (episode_steps * self.step_dt)
-            self.reward_manager = _RewardManager({term: sums}, {term: weight})
+            sums: dict[str, torch.Tensor] = {}
+            weights: dict[str, float] = {}
+            if track_avg is not None:
+                weights[term] = 5.0
+                sums[term] = torch.tensor(track_avg, dtype=torch.float32) * 5.0 * (episode_steps * self.step_dt)
+            # 额外"度量为"（如 1e-6 权重的 GaitReward 度量）：反解回原始乘积值
+            for name, (weight, values) in (metrics or {}).items():
+                weights[name] = weight
+                sums[name] = torch.tensor(values, dtype=torch.float32) * weight * (episode_steps * self.step_dt)
+            self.reward_manager = _RewardManager(sums, weights)
 
 
 def _load_functions():
@@ -123,7 +137,9 @@ def _load_functions():
     pkg = types.ModuleType(pkg_name)
     pkg.__path__ = []
     utils = types.ModuleType(f"{pkg_name}.utils")
-    utils.is_env_assigned_to_terrain = lambda env, name: torch.zeros(env.num_envs, dtype=torch.bool)
+    utils.is_env_assigned_to_terrain = lambda env, name: torch.tensor(
+        [t == name for t in getattr(env, "terrain_names", ["flat"] * env.num_envs)], dtype=torch.bool
+    )
     sys.modules.update({"isaaclab": isaaclab, "isaaclab.managers": managers, pkg_name: pkg,
                         f"{pkg_name}.utils": utils})
     try:
@@ -153,12 +169,19 @@ class TestTerrainCurriculum(unittest.TestCase):
         (3.0, 3.0, 0.90),   # 4：横向走了 3 m（欧氏 4.24 > 4）但前向只 3 m ⇒ **不许晋级**（防"横移绕开"）
     ]
 
-    def _run(self, ns, rows, with_tracking=True):
+    def _run(self, ns, rows, with_tracking=True, terrains=None, metrics=None, metric_terms=()):
         env = _Env(
             [(r[0], r[1]) for r in rows],
             track_avg=[r[2] for r in rows] if with_tracking else None,
+            terrains=terrains,
+            metrics=metrics,
         )
-        out = ns["terrain_levels_vel_logged"](env, torch.arange(len(rows)))
+        # 阈值显式传入 ⇒ 用例不随默认值漂移（默认值另有 cfg 断言覆盖）
+        out = ns["terrain_levels_vel_logged"](
+            env, torch.arange(len(rows)),
+            **{"tracking_move_up": 0.80, "tracking_move_up_relaxed": 0.50,
+               "gait_metric_terms": metric_terms},
+        )
         _ids, up, down = env.scene.terrain.calls[0]
         return up, down, out
 
@@ -185,6 +208,46 @@ class TestTerrainCurriculum(unittest.TestCase):
         self.assertEqual(up.int().tolist(), [1, 1, 1, 0, 0])  # env1/2 只看进度 ⇒ 晋级
         self.assertEqual(down.int().tolist(), [0, 0, 0, 1, 0])
         self.assertNotIn("tracking_mean", out)
+
+    def test_relaxed_threshold_for_step_terrains(self):
+        """2026-09-24 晚：台阶/独立块这三类放宽到 0.65（否则长期卡在 frozen 带）。
+
+        两个环境同为 进度 5 m、跟踪 0.70：在 `boxes` 上应**晋级**（0.70 > 0.65），
+        在 `flat` 上应**冻结**（0.70 < 0.80）。
+        """
+        rows = [(5.0, 0.0, 0.55), (5.0, 0.0, 0.55), (5.0, 0.0, 0.45)]
+        up, down, out = self._run(self.ns, rows, terrains=["boxes", "flat", "boxes"])
+        self.assertEqual(up.int().tolist(), [1, 0, 0],
+                         "boxes 放宽到 0.50 ⇒ 0.55 晋级；flat 保持 0.80 ⇒ 0.55 冻结；0.45 在 boxes 上也不够")
+        self.assertEqual(down.int().tolist(), [0, 0, 0])
+        self.assertAlmostEqual(float(out["tracking_up_threshold_mean"]), (0.50 + 0.80 + 0.50) / 3, places=6)
+
+    def test_per_column_tracking_is_logged(self):
+        """逐列跟踪均值：用来判断某列卡住是"跟踪不达标"还是"真过不去"。"""
+        rows = [(5.0, 0.0, 0.90), (5.0, 0.0, 0.50), (5.0, 0.0, 0.70)]
+        _up, _down, out = self._run(self.ns, rows, terrains=["boxes", "boxes", "flat"])
+        self.assertAlmostEqual(float(out["tracking_boxes"]), 0.70, places=6)
+        self.assertAlmostEqual(float(out["tracking_flat"]), 0.70, places=6)
+
+    def test_per_column_gait_metrics_are_logged(self):
+        """逐列步态度量（用户要求）：三成对方式的 GaitReward 度量按列取"本回合平均"。
+
+        度量项权重极小（这里 1e-6）⇒ 反解后应还原成**原始乘积值**，且不能影响晋级判据。
+        """
+        rows = [(5.0, 0.0, 0.90)] * 3
+        metrics = {
+            "m_trot": (1e-6, [0.80, 0.60, 0.70]),
+            "m_bound": (1e-6, [0.55, 0.90, 0.60]),
+        }
+        up, _down, out = self._run(
+            self.ns, rows, terrains=["boxes", "boxes", "flat"],
+            metrics=metrics, metric_terms=(("trot", "m_trot"), ("bound", "m_bound")),
+        )
+        self.assertEqual(up.int().tolist(), [1, 1, 1], "度量项不参与晋级判据")
+        self.assertAlmostEqual(float(out["gait_trot_boxes"]), 0.70, places=6)
+        self.assertAlmostEqual(float(out["gait_bound_boxes"]), 0.725, places=6)
+        self.assertAlmostEqual(float(out["gait_trot_flat"]), 0.70, places=6)
+        self.assertAlmostEqual(float(out["gait_trot_mean"]), 0.70, places=6)
 
     def test_promotion_wins_over_demotion(self):
         """进度与跟踪都很好时不降级（`move_down *= ~move_up`）。"""

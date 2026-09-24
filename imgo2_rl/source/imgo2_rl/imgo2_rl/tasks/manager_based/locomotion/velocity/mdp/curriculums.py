@@ -19,7 +19,21 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-def _episode_tracking_average(
+def _cached_terrain_mask(env: ManagerBasedRLEnv, terrain_names: tuple[str, ...]) -> torch.Tensor:
+    """(N,) bool：环境所属地形列是否落在名单里；按名单缓存到 env 上（地形列逐环境固定）。"""
+    key = "_cmoe_curriculum_mask__" + "__".join(terrain_names)
+    mask = getattr(env, key, None)
+    if mask is None:
+        from .utils import is_env_assigned_to_terrain  # 延迟导入，避免包内循环依赖
+
+        mask = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        for name in terrain_names:
+            mask = mask | is_env_assigned_to_terrain(env, name)
+        setattr(env, key, mask)
+    return mask
+
+
+def _episode_term_average(
     env: ManagerBasedRLEnv, env_ids: Sequence[int], term_name: str
 ) -> torch.Tensor | None:
     """本回合的**平均速度跟踪核**（0–1）。取不到就返回 None（调用方退回纯距离判据）。
@@ -47,6 +61,10 @@ def _episode_tracking_average(
     return sums[term_name][env_ids] / weight / (episode_steps * env.step_dt)
 
 
+# 兼容旧名（原先只有跟踪那一项用它）
+_episode_tracking_average = _episode_term_average
+
+
 def terrain_levels_vel_logged(
     env: ManagerBasedRLEnv,
     env_ids: Sequence[int],
@@ -54,6 +72,9 @@ def terrain_levels_vel_logged(
     tracking_term_name: str = "track_world_vel_xy_exp",
     tracking_move_up: float = 0.80,
     tracking_move_down: float = 0.35,
+    relaxed_terrain_names: tuple[str, ...] = ("pyramid_stairs", "pyramid_stairs_inv", "boxes"),
+    tracking_move_up_relaxed: float = 0.50,
+    gait_metric_terms: tuple[tuple[str, str], ...] = (),
 ) -> dict:
     """带诊断、且**把速度跟踪效果计入晋级判据**的地形课程（2026-09-24 用户要求）。
 
@@ -90,8 +111,24 @@ def terrain_levels_vel_logged(
 
     move_up = progress > terrain.cfg.terrain_generator.size[0] / 2
     move_down = progress < command_xy * env.max_episode_length_s * 0.5
+    up_threshold = None
     if track_avg is not None:
-        move_up = move_up & (track_avg > tracking_move_up)
+        # 2026-09-24 晚（实测反馈）：单一阈值 0.80 会让"台阶/独立块"这三类**只能慢慢过**的地形
+        # 长期卡在 frozen 带（进度够、跟踪 0.35–0.80）⇒ 等级永远不变（反楼梯卡在 0.12、
+        # boxes 卡在 0.10，而 flat/slope 已 4–6 级）。故对这三类放宽到 `tracking_move_up_relaxed`。
+        # ⚠️ **0.50 在这三类地形上等价于"取消跟踪门控"**：这个代理（**整回合**平均跟踪核）又高又窄
+        # —— 实测 `tracking_mean≈0.78`、`tracking_min≈0.69`（全在 0.69 以上），因为每块 tile 有
+        # 70–80% 是平地、障碍只占约 20%（反楼梯 tile：平台 2 m ＋ 台阶 1.8 m ＋ 平地 4.2 m）。
+        # 所以 0.50 意味着"这三类退回**只看前进进度**"（走够 `size[0]/2`＝4 m 就晋级），而 0.80 会
+        # 把它们永久冻死（跟踪 0.69–0.80 落在 frozen 带）。用户 2026-09-24 决定：**台阶与 boxes 用 0.50，
+        # 其余仍 0.80**。依据：旧判据（只看进度）在这三类上曾把 A 跑推到 level 6（反楼梯 6.06／boxes 5.99），
+        # 而"能不能过障碍"本来就该由**进度**管；跟踪门控更适合**容易地形**（那里"糊弄过去"才是失败模式）。
+        # 若想保留一点牙齿，把 0.50 提到 0.60–0.65（仍低于实测 min 0.69 ⇒ 依旧近乎无门控，但语义清楚）。
+        up_threshold = torch.full_like(track_avg, float(tracking_move_up))
+        if len(relaxed_terrain_names) > 0:
+            relaxed = _cached_terrain_mask(env, tuple(relaxed_terrain_names))[env_ids]
+            up_threshold[relaxed] = float(tracking_move_up_relaxed)
+        move_up = move_up & (track_avg > up_threshold)
         move_down = move_down | (track_avg < tracking_move_down)
     move_down *= ~move_up
     terrain.update_env_origins(env_ids, move_up, move_down)
@@ -112,15 +149,32 @@ def terrain_levels_vel_logged(
     if track_avg is not None:
         out["tracking_mean"] = torch.mean(track_avg)
         out["tracking_min"] = torch.min(track_avg)
-        out["tracking_pass_frac"] = (track_avg > tracking_move_up).float().mean()
+        out["tracking_pass_frac"] = (track_avg > up_threshold).float().mean()
         out["tracking_fail_frac"] = (track_avg < tracking_move_down).float().mean()
+        out["tracking_up_threshold_mean"] = torch.mean(up_threshold)
     # 按地形列分组的等级均值（地形列逐环境固定，故可稳定对比「障碍列 vs 粗糙列」）
     from .utils import is_env_assigned_to_terrain  # 延迟导入，避免包内循环依赖
+
+    # 步态度量项（每个只用来**测量**、几乎不产生奖励：权重被设成 1e-6 ⇒ ≤1e-6/s，
+    # 相对整回合 ~4/s 可忽略）。这里按列取"本回合平均"⇒ 逐列步态画像。
+    # 三个成对方式给出一个**分类器**：diagonal＝trot、left-right＝bound、same-side＝pace，
+    # 谁高就是谁；三者都接近下界（`0.893^6 ≈ 0.508`）则既不是 trot/bound/pace（pronk／乱走）。
+    metric_avg: dict[str, torch.Tensor] = {}
+    for label, term_name in gait_metric_terms:
+        value = _episode_term_average(env, env_ids, term_name)
+        if value is not None:
+            metric_avg[label] = value
+            out[f"gait_{label}_mean"] = torch.mean(value)
 
     for name in terrain.cfg.terrain_generator.sub_terrains.keys():
         mask = is_env_assigned_to_terrain(env, name)
         if mask.any():
             out[f"level_{name}"] = torch.mean(levels[mask])
+            if track_avg is not None:
+                # 逐列跟踪均值：用来判断"某一列卡住"到底是跟踪不达标还是真的过不去
+                out[f"tracking_{name}"] = torch.mean(track_avg[mask[env_ids]])
+            for label, value in metric_avg.items():
+                out[f"gait_{label}_{name}"] = torch.mean(value[mask[env_ids]])
     return out
 
 

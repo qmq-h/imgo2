@@ -550,6 +550,32 @@ class MaskedFeetAirTimeVariance(ManagerTermBase):
         return reward * (~self._free_mask).float()
 
 
+class MaskedLinVelZ(ManagerTermBase):
+    """`lin_vel_z_l2`（机体竖直速度平方）的**按地形豁免**版本（2026-09-24 晚）。
+
+    背景：用户回放 1000 轮反馈"**都还是蹦蹦跳跳的走的**"。查下来这条是奖励结构造成的：
+    * `lin_vel_z_l2` 在 A 配方里被**清零**（当时理由："会与过沟所需的爆发式跃起对抗"）；
+    * `feet_air_time +1.0 @0.5` 的展开是 `4(1−d) − 2·N落地/T` ⇒ **滞空越久给得越多**
+      ⇒ 主动奖励"腾空/弹跳"；测下来占空比一降，收益可达 +0.5/s 量级。
+    ⇒ 于是"蹦蹦跳跳"正是这套奖励付钱买来的。修法与其它四项一致：**在 trot 列上恢复竖直速度罚，
+      豁免 `boxes`/`gap`（那里需要爆发式跃起）**——既不与跃起对抗，又把弹跳压下去。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
+        return lin_vel_z_l2(env, asset_cfg) * (~self._free_mask).float()
+
+
 class MaskedFeetHeightBody(ManagerTermBase):
     """`feet_height_body` 的**按地形豁免**版本（2026-09-24）。
 

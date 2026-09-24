@@ -68,6 +68,64 @@ class CMoERewardsCfg(RewardsCfg):
         },
     )
 
+    # ---------------------------------------------------- 步态**度量**项（几乎不产生奖励，只为记录）
+    # 2026-09-24（用户："是不是可以分列统计一下步态指标，在 curriculum 指标中"）：
+    # 用同一个 `GaitReward`（6 核乘积）配**三种成对方式**做成一个**逐列步态分类器**：
+    #   diagonal（FL↔RR、FR↔RL）= trot ／ left-right（FL↔FR、RL↔RR）= bound ／ same-side（FL↔RL、FR↔RR）= pace
+    # 谁的值最高，那一列就是哪种步态；三者都贴近下界 `0.893^6 ≈ 0.508` ⇒ 既不是这三种（pronk／乱走）。
+    # ⚠️ 权重必须是**非零**（否则 `disable_zero_weight_rewards()` 会把 term 整个移除、日志就没了），
+    # 取 **1e-6**：`≤1e-6 × 1 = 1e-6/s`，相对整回合 ~4/s 完全可以忽略（占比 ~2.5e-7），不影响训练。
+    # 这三项**不加地形掩码** —— 正是为了看清 `boxes`/`gap` 上"自己演化"成了什么步态。
+    gait_metric_trot = RewTerm(
+        func=mdp.GaitReward,
+        weight=1e-6,
+        params={
+            "std": math.sqrt(0.5),
+            "command_name": "base_velocity",
+            "max_err": 0.2,
+            "velocity_threshold": 0.5,
+            "command_threshold": 0.1,
+            "synced_feet_pair_names": (("FL_FOOT", "RR_FOOT"), ("FR_FOOT", "RL_FOOT")),
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("contact_forces"),
+        },
+    )
+    gait_metric_bound = RewTerm(
+        func=mdp.GaitReward,
+        weight=1e-6,
+        params={
+            "std": math.sqrt(0.5),
+            "command_name": "base_velocity",
+            "max_err": 0.2,
+            "velocity_threshold": 0.5,
+            "command_threshold": 0.1,
+            "synced_feet_pair_names": (("FL_FOOT", "FR_FOOT"), ("RL_FOOT", "RR_FOOT")),
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("contact_forces"),
+        },
+    )
+    # 弹跳度量：同一个 `lin_vel_z_l2`（机体竖直速度²），权重 1e-6 只为记录 ⇒ 反解后
+    # `gait_bounce_<地形>` ＝该列本回合的 **vz 均方**（开方即 vz RMS，单位 m/s）。
+    diag_bounce = RewTerm(
+        func=mdp.lin_vel_z_l2,
+        weight=1e-6,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+    gait_metric_pace = RewTerm(
+        func=mdp.GaitReward,
+        weight=1e-6,
+        params={
+            "std": math.sqrt(0.5),
+            "command_name": "base_velocity",
+            "max_err": 0.2,
+            "velocity_threshold": 0.5,
+            "command_threshold": 0.1,
+            "synced_feet_pair_names": (("FL_FOOT", "RL_FOOT"), ("FR_FOOT", "RR_FOOT")),
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("contact_forces"),
+        },
+    )
+
     # ------------------------------------------------------------------ parkour 式"全球速度"约束
     # 2026-09-24（用户："该参考 parkour 用全局的速度来约束了"）。起因：回放发现策略**横移绕开障碍**
     # （§29.15/§29.16）。parkour 的 barrier/leap 配方在**世界系**上约束速度，并额外罚横向位置与朝向：
@@ -304,7 +362,13 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.yaw_abs.weight = -0.2
         self.rewards.yaw_abs.params["terrain_names"] = ()
         self.rewards.flat_orientation_l2.weight = -0.1
-        self.rewards.lin_vel_z_l2.weight = 0.0
+        # 2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：**按地形豁免地恢复竖直速度罚**。
+        # 形状：trot 列上恢复（压弹跳），`boxes`/`gap` 豁免（那里需要爆发式跃起，原清零理由是
+        # "会与跃起对抗"——掩码后这个理由不再成立）。权重先取 **−2.0**（＝PPO rough 原值；探针
+        # `gait_bounce_<地形>` 会给出逐列的 vz RMS，可按实测再调）。
+        self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ
+        self.rewards.lin_vel_z_l2.weight = -2.0
+        self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")
         self.rewards.ang_vel_xy_l2.weight = 0.0
         self.rewards.action_rate_l2.weight = 0.0
         # 未照搬（原因见 docs §21.3）：track_ang_vel_z_exp（我们命令里有 ±1.0 的 yaw，
@@ -369,7 +433,9 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 方向一致，差别在**"减少落地次数（步幅更长）"的压力（0.5 是 0.25 的 2 倍）**与日志偏移量
         # （0.5 时该分项通常为负）。PPO 用 0.5 且步态良好，故回到 0.5。
         self.rewards.feet_air_time.func = mdp.MaskedFeetAirTime
-        self.rewards.feet_air_time.weight = 1.0
+        # 2026-09-24 晚：1.0 → **0.3**。该式展开是 `4(1−d) − 2·N落地/T` ⇒ 对"滞空更久"的梯度恒为 +1
+        # ⇒ 权重越大越奖励腾空/弹跳。降权后仍保留"别踩碎步"的作用（阈值仍 0.5 s），但不再主导步态。
+        self.rewards.feet_air_time.weight = 0.3
         self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_air_time.params["free_terrain_names"] = ("boxes", "gap")
 
@@ -431,6 +497,24 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                 "tracking_term_name": "track_world_vel_xy_exp",
                 "tracking_move_up": 0.80,
                 "tracking_move_down": 0.35,
+                # 2026-09-24 晚（用户反馈"反楼梯不是很好"）：这三类只能**慢慢过**的地形在 0.80 下
+                # 长期卡在 frozen 带（反楼梯 0.12、boxes 0.10，而 flat/slope 已 4–6 级）⇒ 单独放宽。
+                "relaxed_terrain_names": ("pyramid_stairs", "pyramid_stairs_inv", "boxes"),
+                # 逐列步态度量（三成对方式＝分类器）：日志会出 `gait_trot_<地形>` / `gait_bound_<地形>`
+                # / `gait_pace_<地形>`，以及全局 `gait_<标签>_mean`。用来验证"除 boxes/gap 外倾向 trot"。
+                "gait_metric_terms": (
+                    ("trot", "gait_metric_trot"),
+                    ("bound", "gait_metric_bound"),
+                    ("pace", "gait_metric_pace"),
+                    ("bounce", "diag_bounce"),        # 逐列 vz 均方（开方＝vz RMS）
+                    ("height", "base_height_l2"),     # 逐列 (base 高度误差)²（开方＝RMS 误差）
+                ),
+                # 2026-09-24（用户）：**台阶与 boxes 用 0.50、其余仍 0.80**。
+                # ⚠️ 0.50 在这三类上**等价于取消跟踪门控**（整回合平均跟踪核实测 mean≈0.78、min≈0.69
+                # ⇒ 没有任何回合会低于 0.50）⇒ 它们回到"只看前进进度（走够 4 m）"的旧判据。
+                # 依据：旧判据在这三类上曾把 A 跑推到 level 6（反楼梯 6.06／boxes 5.99），而"能不能过障碍"
+                # 本来就该由进度管；跟踪门控更适合容易地形（那里"糊弄过去"才是失败模式）。
+                "tracking_move_up_relaxed": 0.50,
             },
         )
 

@@ -32,8 +32,27 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
 
     def test_effective_term_count(self):
         # 2026-09-24：16 → 18（parkour 式"全球速度"约束）→ 19（加回 feet_air_time_variance −8.0）
-        #            → 20（开 feet_gait，掩码版）
-        self.assertEqual(len(self.effective), 20, f"生效项数变了：{sorted(self.effective)}")
+        #            → 20（开 feet_gait，掩码版）→ 23（＋3 个"步态度量"项，权重 1e-6，只为记录）
+        #            → 25（＋掩码版 lin_vel_z_l2 −2.0、＋diag_bounce 度量）
+        self.assertEqual(len(self.effective), 25, f"生效项数变了：{sorted(self.effective)}")
+
+    def test_vertical_velocity_penalty_restored(self):
+        """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。"""
+        self.assertEqual(self.effective["lin_vel_z_l2"], -2.0)
+        self.assertIn("MaskedLinVelZ", self.funcs["lin_vel_z_l2"])
+        # feet_air_time 降权（削弱"奖励腾空"的分量）
+        self.assertEqual(self.effective["feet_air_time"], 0.3)
+
+    def test_bounce_metric_is_diagnostic_only(self):
+        self.assertIn("diag_bounce", self.effective)
+        self.assertLessEqual(abs(float(self.effective["diag_bounce"])), 1e-5)
+
+    def test_gait_metric_terms_are_diagnostics_only(self):
+        """三个步态度量项（trot/bound/pace 成对方式）权重必须极小，纯粹用来记录。"""
+        for name in ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace"):
+            self.assertIn(name, self.effective)
+            self.assertLessEqual(abs(float(self.effective[name])), 1e-5,
+                                 f"{name} 应是度量项（权重 ≤1e-5），不能真的有奖励量级")
 
     def test_world_vel_replaces_body_vel(self):
         self.assertEqual(self.effective["track_world_vel_xy_exp"], 5.0)
@@ -48,7 +67,8 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         # 三项照搬 PPO 的固定步态 shaping，都挂 masked 类。
         self.assertEqual(self.effective["joint_mirror"], -1.0)
         self.assertEqual(self.effective["feet_height_body"], -5.0)
-        self.assertEqual(self.effective["feet_air_time"], 1.0)
+        # 2026-09-24 晚：1.0 → 0.3（该式对"滞空更久"的梯度恒为 +1 ⇒ 降权以削弱"奖励腾空/弹跳"）
+        self.assertEqual(self.effective["feet_air_time"], 0.3)
         self.assertIn("MaskedJointMirror", self.funcs["joint_mirror"])
         self.assertIn("MaskedFeetHeightBody", self.funcs["feet_height_body"])
         self.assertIn("MaskedFeetAirTime", self.funcs["feet_air_time"])
