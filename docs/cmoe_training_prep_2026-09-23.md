@@ -2276,3 +2276,81 @@ C 结束时的逐列均值是 5.0–6.7 ⇒ 新 run 早期 `level_*` 会**先落
 * 判据同 §29.28：若 `gait_bounce_*` 不降且回放仍见弹跳，下一档是**把 `feet_gait` 的脊变陡**
   （`max_err` 0.2→0.5、`std` 0.7071→0.2，现在乘积只在 [0.508, 1]，trot 与 bound 差 ≤0.49/s），
   而不是继续加权重。
+
+### 29.30 run F「逐列全是 NaN」的根因与修法（2026-09-24 夜，已修）
+
+#### 29.30.1 现象
+
+用户从零起的 run F（`logs/cmoe/base_move_cmoe_rough/2026-09-24_21-14-02_cmoe_F_77dim_fresh`，
+21:14 起、约 30 轮后停）控制台刷出大片 `nan`。离线读它自带的 tfevents（132 个 tag，**48 个 NaN**）
+与用户贴的控制台输出**完全一致**：
+
+* **正常**：`level_<地形>`（8 列）、`tracking_mean/min/pass_frac/fail_frac/up_threshold_mean`、
+  `gait_{trot,bound,pace,bounce,height}_mean`、`Episode_Reward/*`、`Loss/*`、`Train/*` —— 全部有限。
+* **NaN**：只有 `tracking_<地形>` / `gait_<标签>_<地形>`（8 列 × 6 = 48 个），且**只有 `gap` 偶尔有值**
+  （step 48/50/52–57），`pyramid_stairs_inv` 在 step 3 有过一次。
+* 前 30 轮的训练量本身与 run C 同龄**几乎逐位一致**（`level_mean` 1.64021 vs 1.64022、
+  `level_boxes` 1.74492 vs 1.74492；同 seed ⇒ 初始课程分布相同）⇒ **不是训练发散**。
+  用户贴出的 `level_mean 0.65` / `move_down_frac 1.0` 是"新策略还站不住、每一步结束的环境全部降级"，
+  与 run C 同期行为相同，不是课程 bug。
+
+#### 29.30.2 根因（两条；第二条是修法时发现、且更严重）
+
+**① `_reset_idx` 的 `env_ids` 只是"这一步刚结束"的环境，不是整轮。**
+`CurriculumManager.compute(env_ids)` 里的 `env_ids` 来自本次 `_reset_idx`；每次 `step()` 只带"这一步
+刚终止"的那几个环境。粗算：4096 环境 × 24 步 ÷ 平均回合长度 ≈ **150 个/轮**，再摊到 24 次调用
+⇒ **每次只剩约 6 个**环境，而地形有 20 列 ⇒ **常见某列一个都没有**。
+`track_avg[mask[env_ids]]` 于是是**空张量**，`torch.mean(空)` ＝ **NaN**。
+
+* 定量佐证（用逐列等级变化反推"该列每轮有多少个回合"：`|Δlevel_<列>| × 该列环境数`）：
+  `pyramid_stairs_inv ≈ 25`、`flat ≈ 8`、其余 5–12 ⇒ 每列**每轮**只有个位数样本，摊到 24 次调用后
+  每次 <1 个 ⇒ 空掩码是常态。
+* 这也正好解释"为什么偏偏 `gap` 有值"：`gap` 占 6/20 列（比例 0.30），样本最多，后期每次调用都凑得出 1 个。
+* `level_<地形>` 用的是**全体环境**的掩码（`mask`，与该步谁结束无关）⇒ 永远非空 ⇒ 从来不 NaN。
+  用户贴的控制台里 `level_pyramid_stairs: 0.8148` 与 `tracking_pyramid_stairs: nan` 相邻，就是这个差别。
+
+**② NaN 会被放大到整轮。** `ep_infos` 每条＝一次 `_reset_idx` 的 `extras["log"]`，
+`CMoEOnPolicyRunner.log` 把该轮各条**一起求平均** ⇒ 24 条里只要有 1 条 NaN，**整轮的该 tag 就是 NaN**
+（所以是 29/29 全 NaN，而不是"偶尔 NaN"）。
+
+**③（修法时发现，更严重）旧 runner 用 `for key in locs['ep_infos'][0]` 驱动遍历。**
+一旦同一轮各条的键集合不同（逐列指标正是如此）：
+
+* 第一条**有**、后面**缺** ⇒ `ep_info[key]` 抛 **`KeyError`**，会直接打断几十小时的训练；
+* 第一条**缺**、后面有 ⇒ 该键**整轮被丢掉**。
+
+负向对照实测到了这个崩溃：把 runner 回退到 `HEAD` 后新测试报
+`KeyError: 'Curriculum/terrain_levels/tracking_gap'`（`cmoe_on_policy_runner.py:136`）。
+也就是说：**即使 NaN 不管，这套逐列日志迟早会把训练打断**（键时有时无是它的固有形态）。
+
+#### 29.30.3 修法
+
+| 位置 | 旧 | 新 |
+|---|---|---|
+| `mdp/curriculums.py` 逐列回合指标 | 无条件写 `torch.mean(track_avg[mask[env_ids]])` ⇒ 空子集＝NaN | **该列这一步有样本才写键**（`inner = mask[env_ids]`；`has_sample = bool(inner.any())`），空则**不写键** |
+| `mdp/curriculums.py` 逐列等级 | `torch.mean(levels[mask])` | **不变**（全体环境统计，永远有值） |
+| `CMoEOnPolicyRunner.log` | `for key in locs['ep_infos'][0]` + 直接 `ep_info[key]` | 按**键的并集**遍历（`dict.fromkeys(k for ep_info in ep_infos for k in ep_info)`）＋ 每条 `if key not in ep_info: continue` |
+
+效果：该轮的 tag ＝ 该轮里"**确实有该列样本的那几次**"的均值 ⇒ 有限值、键不丢、不会 KeyError；
+整轮都没样本时该轮无点（TensorBoard 显示断点），这是诚实的表达——**不写 NaN、也不拿历史值或别的列顶替**
+（曾考虑"样本保持"，放弃：会给曲线塞进并非本轮的数值）。
+
+#### 29.30.4 对训练的影响与验证
+
+* **训练没有被污染**：NaN 只走 `extras["log"] → writer.add_scalar` 这一条路。课程决策
+  （`move_up`/`move_down`/`terrain.update_env_origins`）不碰这两个逐列量；唯一用到掩码的
+  `relaxed = _cached_terrain_mask(...)[env_ids]` 与 `env_ids` 同长、不涉及跨列空索引；
+  当时的 `tracking_mean/min` 本身就是有限值。run F 的 `model_0.pt` 与 30 轮数据有效，
+  但**必须重启**（NaN 是旧代码写进日志的）。
+* **配方核对通过**（run F 自带 `params/*.yaml`，四条全中）：`lin_vel_z_l2 = MaskedLinVelZ **−2.0**
+  free=('boxes','gap')`、`feet_air_time **0.3**`、课程 `relaxed_terrain_names=('pyramid_stairs',
+  'pyramid_stairs_inv','boxes')`＋`tracking_move_up_relaxed **0.5**`＋`gait_metric_terms`（5 项）、
+  `max_init_terrain_level **5**`、`agent.max_iterations **60000**`、契约 77 维（`critic_explicit_start 0`、5 专家）。
+* **测试**：`test_terrain_curriculum.py` 新增 2 例
+  （`test_per_column_metrics_skip_columns_without_episode_samples`、
+  `test_no_nan_when_only_one_column_has_samples`）；新增 `test_cmoe_runner_logging.py` **3 例**
+  （键并集不丢键 / 缺键不崩 / 写出去的不含 NaN；用桩模块 exec 真实 runner 源码，因为
+  `rl_lab.runners.__init__` 会拉进需要 Isaac 的 AMP runner）。
+  **负向对照**：把两处源码 `git checkout HEAD --` 回旧版后，这 **5 例全部失败**（逐列 `tensor(nan)`
+  与 `KeyError` 都复现），恢复后新例 **12 例全通过**；全仓离线 **342 通过 / 8 跳过**。
+* **未验证**：重启后 `tracking_<地形>` / `gait_<标签>_<地形>` 是否成为可用的连续曲线——需要新 run 的 tfevents。

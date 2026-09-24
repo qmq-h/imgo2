@@ -169,7 +169,7 @@ class TestTerrainCurriculum(unittest.TestCase):
         (3.0, 3.0, 0.90),   # 4：横向走了 3 m（欧氏 4.24 > 4）但前向只 3 m ⇒ **不许晋级**（防"横移绕开"）
     ]
 
-    def _run(self, ns, rows, with_tracking=True, terrains=None, metrics=None, metric_terms=()):
+    def _run(self, ns, rows, with_tracking=True, terrains=None, metrics=None, metric_terms=(), env_ids=None):
         env = _Env(
             [(r[0], r[1]) for r in rows],
             track_avg=[r[2] for r in rows] if with_tracking else None,
@@ -178,7 +178,7 @@ class TestTerrainCurriculum(unittest.TestCase):
         )
         # 阈值显式传入 ⇒ 用例不随默认值漂移（默认值另有 cfg 断言覆盖）
         out = ns["terrain_levels_vel_logged"](
-            env, torch.arange(len(rows)),
+            env, torch.arange(len(rows)) if env_ids is None else torch.as_tensor(env_ids),
             **{"tracking_move_up": 0.80, "tracking_move_up_relaxed": 0.50,
                "gait_metric_terms": metric_terms},
         )
@@ -254,6 +254,54 @@ class TestTerrainCurriculum(unittest.TestCase):
         up, down, _out = self._run(self.ns, [(5.0, 0.0, 0.95)])
         self.assertEqual(up.int().tolist(), [1])
         self.assertEqual(down.int().tolist(), [0])
+
+    def test_per_column_metrics_skip_columns_without_episode_samples(self):
+        """回归 2026-09-24 run F 的「逐列全是 NaN」：`env_ids` 只是**这一步**刚结束的环境。
+
+        4096 环境 × 24 步 ÷ 平均回合长度 ≈ 150 个/轮，再摊到 24 次 `_reset_idx` ⇒ 每次只剩约 6 个，
+        20 列里常见某列一个都没有。空子集 `mean` **＝ NaN**，而 runner 会把该轮各次的值一起求平均
+        ⇒ 一次 NaN 就污染整轮（实测 8 列里 7 列的 `tracking_*`／`gait_*_*` 全 NaN，只有样本多的 gap 有值；
+        `level_*` 正常，因为它按全体环境统计）。
+
+        修法：该列这一步没有"本回合"样本就**不写这个键**（runner 侧改成按键并集遍历，见
+        `test_cmoe_runner_logging.py`）。这里断言：有样本的列有值、没样本的列**没有键**（而不是 NaN）、
+        `level_*` 照常有值、且**任何输出都不含 NaN**。
+        """
+        rows = [(5.0, 0.0, 0.90)] * 3
+        metrics = {"m_trot": (1e-6, [0.80, 0.60, 0.70])}
+        # env0/env1 属 boxes，env2 属 flat；只把 env0/env1 当作"这一步结束的环境" ⇒ flat 无样本
+        _up, _down, out = self._run(
+            self.ns, rows, terrains=["boxes", "boxes", "flat"],
+            metrics=metrics, metric_terms=(("trot", "m_trot"),), env_ids=[0, 1],
+        )
+        self.assertIn("tracking_boxes", out)
+        self.assertIn("gait_trot_boxes", out)
+        self.assertNotIn("tracking_flat", out, "flat 这一步没有回合力样本 ⇒ 不能写 NaN 进日志")
+        self.assertNotIn("gait_trot_flat", out)
+        self.assertIn("level_flat", out, "等级是全体环境的状态 ⇒ 该列有环境就要写")
+        self.assertIn("tracking_mean", out, "整轮均值按 env_ids 统计，非空 ⇒ 照常写")
+        for key, value in out.items():
+            self.assertFalse(
+                bool(torch.isnan(torch.as_tensor(value))), f"{key} 是 NaN（空子集取 mean 的旧毛病）"
+            )
+
+    def test_no_nan_when_only_one_column_has_samples(self):
+        """同上的多列版本：这一步只有 1 列有样本时，其余 7 列都不许写 NaN。"""
+        names = ["pyramid_stairs", "pyramid_stairs_inv", "boxes", "random_rough",
+                 "hf_pyramid_slope", "hf_pyramid_slope_inv", "gap", "flat"]
+        rows = [(5.0, 0.0, 0.90)] * 8
+        metrics = {"m_trot": (1e-6, [0.80] * 8)}
+        _up, _down, out = self._run(
+            self.ns, rows, terrains=names,
+            metrics=metrics, metric_terms=(("trot", "m_trot"),), env_ids=[2],  # 只有 boxes
+        )
+        for name in names:
+            self.assertIn(f"level_{name}", out)
+            if name != "boxes":
+                self.assertNotIn(f"tracking_{name}", out)
+                self.assertNotIn(f"gait_trot_{name}", out)
+        for key, value in out.items():
+            self.assertFalse(bool(torch.isnan(torch.as_tensor(value))), f"{key} 是 NaN")
 
 
 if __name__ == "__main__":

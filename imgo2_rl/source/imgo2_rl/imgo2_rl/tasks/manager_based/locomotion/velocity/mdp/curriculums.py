@@ -169,12 +169,25 @@ def terrain_levels_vel_logged(
     for name in terrain.cfg.terrain_generator.sub_terrains.keys():
         mask = is_env_assigned_to_terrain(env, name)
         if mask.any():
+            # 等级是**全体环境的状态**（每个环境固定占一列）⇒ 只要该列有环境就一定有值。
             out[f"level_{name}"] = torch.mean(levels[mask])
-            if track_avg is not None:
+            # ⚠️ `env_ids` 只是**这一步刚结束的那些环境**，不是整轮：4096 环境 × 24 步 ÷ 平均回合长度
+            # ≈ 150 个/轮，再摊到 24 次 `_reset_idx` ⇒ **每次只剩约 6 个**，20 列里常见某列一个都没有。
+            # 空子集取 `mean` 得到 **NaN**，而 runner 会把该轮每次 `_reset_idx` 的这个标量一起求平均
+            # ⇒ 只要有一次 NaN，**整轮的该 tag 就是 NaN**。2026-09-24 run F（21:14）实测正是如此：
+            # 8 列里 7 列的 `tracking_*`／`gait_*_*` 全 NaN，只有样本多的 `gap` 偶尔有值
+            # （`level_*` 反而正常，因为它按全体环境统计）。
+            # 修法：**该列本步没有"本回合"样本就不写这个键**（键缺失会被 `CMoEOnPolicyRunner.log`
+            # 跳过——那里已改成按键集合的并集遍历）⇒ 该轮的值＝该轮里"确实有该列样本的那几次"的均值，
+            # 既不是 NaN，也不是拿别的列/历史值顶替。
+            inner = mask[env_ids]
+            has_sample = bool(inner.any())
+            if track_avg is not None and has_sample:
                 # 逐列跟踪均值：用来判断"某一列卡住"到底是跟踪不达标还是真的过不去
-                out[f"tracking_{name}"] = torch.mean(track_avg[mask[env_ids]])
-            for label, value in metric_avg.items():
-                out[f"gait_{label}_{name}"] = torch.mean(value[mask[env_ids]])
+                out[f"tracking_{name}"] = torch.mean(track_avg[inner])
+            if has_sample:
+                for label, value in metric_avg.items():
+                    out[f"gait_{label}_{name}"] = torch.mean(value[inner])
     return out
 
 

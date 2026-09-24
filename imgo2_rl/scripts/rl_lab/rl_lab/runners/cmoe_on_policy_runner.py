@@ -129,9 +129,17 @@ class CMoEOnPolicyRunner:
 
         ep_string = f''
         if locs['ep_infos']:
-            for key in locs['ep_infos'][0]:
+            # ⚠️ 键集合**可能逐条不同**，不能拿 `ep_infos[0]` 的键去索引所有条目（会 KeyError）：
+            # 逐列指标 `Curriculum/terrain_levels/tracking_<地形>` / `gait_<标签>_<地形>` 只在
+            # "这一步确实有该列的回合力样本"时才写（`env_ids` 只是这一步刚结束的环境，见
+            # `mdp/curriculums.py`）。所以按键的**并集**遍历，并在每条里跳过缺这个键的条目 ⇒
+            # 该轮的值＝该轮里有该列样本的那几次的均值（不会出现 NaN、也不会漏掉整轮的键）。
+            keys = dict.fromkeys(key for ep_info in locs['ep_infos'] for key in ep_info)
+            for key in keys:
                 infotensor = torch.tensor([], device=self.device)
                 for ep_info in locs['ep_infos']:
+                    if key not in ep_info:
+                        continue
                     # handle scalar and zero dimensional tensor infos
                     if not isinstance(ep_info[key], torch.Tensor):
                         ep_info[key] = torch.Tensor([ep_info[key]])
