@@ -24,6 +24,12 @@ parser.add_argument("--task", type=str, default=None)
 parser.add_argument("--agent", type=str, default="cmoe_rsl_rl_cfg")
 parser.add_argument("--seed", type=int, default=None)
 parser.add_argument("--real-time", action="store_true", default=False)
+parser.add_argument(
+    "--scan187",
+    action="store_true",
+    default=False,
+    help="Replay a checkpoint trained with the legacy 187-D height scan (17x11 @ 1.6x1.0 m).",
+)
 cli_args.add_cmoe_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -65,6 +71,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
     agent_cfg = cli_args.update_cmoe_cfg(agent_cfg, args_cli)
     if args_cli.num_envs is not None:
         env_cfg.scene.num_envs = args_cli.num_envs
+    if args_cli.scan187:
+        # 2026-09-24 之前用 187 维高度扫描训出的 checkpoint，必须用旧几何才能 load_state_dict
+        # （契约 637/235 vs 现在的 527/125）。这里在 env cfg 构造之后覆盖，所以不会触发
+        # CMoE_env_cfg 里「必须是 77 条射线」的断言；只影响回放，不影响训练。
+        env_cfg.scene.height_scanner.pattern_cfg.size = (1.6, 1.0)
+        env_cfg.scene.height_scanner.offset.pos = (0.0, 0.0, 20.0)
+        print("[INFO] --scan187: 使用旧几何 17x11=187 维高度扫描（仅用于回放旧 checkpoint）")
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     agent_cfg.device = env_cfg.sim.device

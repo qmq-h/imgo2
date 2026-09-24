@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2024-2025 Ziqi Fan
+# Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
 """Common functions that can be used to create curriculum for the learning environment.
@@ -13,8 +13,57 @@ import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from isaaclab.managers import SceneEntityCfg
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def terrain_levels_vel_logged(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> dict:
+    """`isaaclab_tasks` 的 `terrain_levels_vel` 的**带诊断副本**。
+
+    判据与上游逐字一致（晋级 `distance > size[0]/2`、降级 `distance < |cmd_xy|·T·0.5` 且未晋级、
+    `terrain.update_env_origins` 负责等级增减与到顶随机重开），**只额外返回统计量**，
+    用于区分「课程已到能力边界（升降级同量级）」与「有一部分环境被冻住（既不胜级也不降级）」——
+    只看等级均值无法区分这两者。
+
+    `CurriculumManager.reset` 会把 dict 的每一项展开成 `Curriculum/<term>/<key>`，
+    再经 CMoE runner 前缀成 `Episode/Curriculum/terrain_levels/*`。
+    """
+    asset = env.scene[asset_cfg.name]
+    terrain = env.scene.terrain
+    command = env.command_manager.get_command("base_velocity")
+
+    distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
+    command_xy = torch.norm(command[env_ids, :2], dim=1)
+    move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
+    move_down = distance < command_xy * env.max_episode_length_s * 0.5
+    move_down *= ~move_up
+    terrain.update_env_origins(env_ids, move_up, move_down)
+
+    levels = terrain.terrain_levels.float()
+    out = {
+        "level_mean": torch.mean(levels),
+        "level_min": torch.min(levels),
+        "level_max": torch.max(levels),
+        "move_up_frac": move_up.float().mean(),
+        "move_down_frac": move_down.float().mean(),
+        "frozen_frac": (~move_up & ~move_down).float().mean(),
+        "distance_mean": torch.mean(distance),
+        "command_norm_mean": torch.mean(command_xy),
+    }
+    # 按地形列分组的等级均值（地形列逐环境固定，故可稳定对比「障碍列 vs 粗糙列」）
+    from .utils import is_env_assigned_to_terrain  # 延迟导入，避免包内循环依赖
+
+    for name in terrain.cfg.terrain_generator.sub_terrains.keys():
+        mask = is_env_assigned_to_terrain(env, name)
+        if mask.any():
+            out[f"level_{name}"] = torch.mean(levels[mask])
+    return out
 
 
 def command_levels_lin_vel(

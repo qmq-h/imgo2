@@ -93,8 +93,8 @@ class CMoEOnPolicyRunner:
                     self.alg.process_env_step(rewards, dones, infos, next_critic_obs)
                     if self.log_dir is not None:
                         # Book keeping
-                        if 'episode' in infos:
-                            ep_infos.append(infos['episode'])
+                        if 'log' in infos and infos['log']:
+                            ep_infos.append(infos['log'])
                         cur_reward_sum += rewards
                         cur_episode_length += 1
                         new_ids = (dones > 0).nonzero(as_tuple=False)

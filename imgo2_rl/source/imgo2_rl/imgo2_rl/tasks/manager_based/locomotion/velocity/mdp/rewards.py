@@ -1,8 +1,9 @@
-﻿# Copyright (c) 2024-2025 Ziqi Fan
+# Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
 
+import math
 import torch
 from typing import TYPE_CHECKING
 
@@ -270,6 +271,204 @@ class GaitReward(ManagerTermBase):
         se_act_0 = torch.clip(torch.square(air_time[:, foot_0] - contact_time[:, foot_1]), max=self.max_err**2)
         se_act_1 = torch.clip(torch.square(contact_time[:, foot_0] - air_time[:, foot_1]), max=self.max_err**2)
         return torch.exp(-(se_act_0 + se_act_1) / self.std)
+
+
+def _terrain_type_mask(env: ManagerBasedRLEnv, terrain_names: tuple[str, ...]) -> torch.Tensor:
+    """(N,) bool：环境所属**地形列**是否落在给定名单里。
+
+    地形列（`terrain.terrain_types`）逐环境固定、不随课程变化，所以调用方应在 `__init__` 里算一次并缓存。
+    `is_env_assigned_to_terrain` 对未登记的地形名返回全 False，因此写错名字只会静默失效、不会报错。
+    """
+    from .utils import is_env_assigned_to_terrain  # 延迟导入，避免包内循环依赖
+
+    mask = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    for terrain_name in terrain_names:
+        mask = mask | is_env_assigned_to_terrain(env, terrain_name)
+    return mask
+
+
+def _ray_count(span: float, resolution: float) -> int:
+    """某个轴上的射线数，镜像 `patterns.grid_pattern` 的 `arange(start, end + 1e-9, step)`。"""
+    return math.floor(span / resolution + 1.0e-9) + 1
+
+
+class TrotWithoutGapReward(GaitReward):
+    """`GaitReward`（trot 相位塑形）的**带空洞掩码**版本。
+
+    目标（用户 2026-09-24 决定）：**沟壑以外的地形用 trot，沟壑处放开相位**（那里通常是 bound／跃起）。
+    不做掩码就会在沟前也强行指定 trot，正好与跃起冲突。
+
+    掩码（`no_trot_mask`）＝ 任一为真即**关闭 trot 塑形**：
+
+    1. **地形类型**（`no_trot_terrain_names`，默认 `("boxes", "gap")`）：用户 2026-09-24 决定
+       「除障碍块（`boxes`）与沟槽（`gap`）外都尽量按 trot 走」⇒ 这两类**整列**放开相位，
+       让策略自行选择（那里通常是 bound/跃起）。地形列是**逐环境固定**的，故该掩码在 `__init__`
+       里算一次并缓存（`terrain.terrain_types` 不随课程变化）。
+    2. **局部空洞**：观测用的 `height_scanner`（77 条、前移 0.25 m 的 11×7）**最前 `front_columns` 列**
+       出现**任一**射线落空 ⇒ 前方 0.75 m 内无地面。判据必须是「任一」而不是「全部」：
+       沟是横向条带，只会让某一列（7 条）落空，其余列会打到沟后面的平台。
+    3. 任一足端扫描器整束落空 ⇒ 该足已悬在洞口。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.lookahead_sensor_name: str = cfg.params.get("lookahead_sensor", "height_scanner")
+        self.front_columns: int = int(cfg.params.get("front_columns", 3))
+        self.edge_sensor_names: tuple[str, ...] = tuple(cfg.params.get("edge_sensor_names", ()))
+        self.no_trot_terrain_names: tuple[str, ...] = tuple(
+            cfg.params.get("no_trot_terrain_names", ("boxes", "gap"))
+        )
+        # 地形列逐环境固定 ⇒ 静态掩码只算一次
+        self._static_no_trot_mask = _terrain_type_mask(env, self.no_trot_terrain_names)
+        sensor = env.scene.sensors[self.lookahead_sensor_name]
+        pattern = sensor.cfg.pattern_cfg
+        # 必须镜像 `grid_pattern` 的 `arange(start, end + 1e-9, step)` 语义：写成
+        # `int(size/resolution)+1` 会被浮点截断骗到（0.6/0.1 = 5.999999999999999 ⇒ 6 而不是 7），
+        # 从而把射线索引算错、掩码指到错误的位置。CMoE_env_cfg 里的 77 断言用的是同一写法。
+        num_x = _ray_count(pattern.size[0], pattern.resolution)
+        num_y = _ray_count(pattern.size[1], pattern.resolution)
+        front_ix = range(max(0, num_x - self.front_columns), num_x)
+        # `grid_pattern` 是 meshgrid(x, y, indexing="xy") 之后 flatten ⇒ 索引 = iy * num_x + ix
+        self.front_ray_ids = torch.tensor(
+            [iy * num_x + ix for iy in range(num_y) for ix in front_ix],
+            device=env.device,
+            dtype=torch.long,
+        )
+
+    def no_trot_mask(self, env: ManagerBasedRLEnv) -> torch.Tensor:
+        """(N,) bool：该环境不应被 trot 塑形（地形类型属于放开名单，或前方/足下有空洞）。"""
+        mask = self._static_no_trot_mask
+        hits_z = env.scene.sensors[self.lookahead_sensor_name].data.ray_hits_w[..., 2]
+        mask = mask | (~torch.isfinite(hits_z[:, self.front_ray_ids])).any(dim=1)
+        for sensor_name in self.edge_sensor_names:
+            feet_z = env.scene.sensors[sensor_name].data.ray_hits_w[..., 2]
+            mask = mask | (~torch.isfinite(feet_z)).all(dim=1)
+        return mask
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        std: float,
+        command_name: str,
+        max_err: float,
+        velocity_threshold: float,
+        command_threshold: float,
+        synced_feet_pair_names,
+        asset_cfg: SceneEntityCfg,
+        sensor_cfg: SceneEntityCfg,
+        lookahead_sensor: str = "height_scanner",
+        front_columns: int = 3,
+        edge_sensor_names: tuple[str, ...] = (),
+        no_trot_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del lookahead_sensor, front_columns, edge_sensor_names, no_trot_terrain_names  # 已在 __init__ 缓存
+        trot = super().__call__(
+            env,
+            std,
+            command_name,
+            max_err,
+            velocity_threshold,
+            command_threshold,
+            synced_feet_pair_names,
+            asset_cfg,
+            sensor_cfg,
+        )
+        return trot * (~self.no_trot_mask(env)).float()
+
+
+class MaskedJointMirror(ManagerTermBase):
+    """`joint_mirror` 的**按地形豁免**版本（2026-09-24，用户要求"mirror 根据地形生效"）。
+
+    语义：在 `free_terrain_names`（默认 `("boxes", "gap")`）上**不生效**，其余地形保留对角线腿的
+    关节位置同步惩罚，用来巩固 trot 的**对角同相**特性。
+
+    为什么障碍地形要豁免：障碍块与沟槽上通常是 **bound/跃起**——那里对角腿本来就反相，强加"对角同步"
+    会与动作直接对抗（这正是 4 列 / 3 列障碍上的失败模式）。
+
+    对照 parkour：他们的 `_reward_sync_legs_cond` / `_reward_sync_all_legs_cond` 也是同一模式——
+    **只在 engage `jump` 障碍时**才强制对称；但他们比较的是**左右腿的 action 并翻转肩关节符号**
+    （因此支持 bound/jump），而我们这里比较**对角腿的 joint_pos 且不翻转符号**（因此支持 trot）。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg,
+        mirror_joints: list[list[str]],
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
+        reward = joint_mirror(env, asset_cfg, mirror_joints)
+        return reward * (~self._free_mask).float()
+
+
+class MaskedFeetHeightBody(ManagerTermBase):
+    """`feet_height_body` 的**按地形豁免**版本（2026-09-24）。
+
+    用户指出：parkour 是**在已训好的行走策略上**再 fine-tune 技能，所以可以完全不要 feet 相关奖励；
+    我们是从零训，**需要**足端塑形。这里把"摆动足在机体系的高度误差"（`target_height` 默认 −0.20 m，
+    即 base 下方 0.20 m ≈ 离地约 0.10 m）作为**trot 地形上**的塑形项恢复：
+    障碍块/沟槽（`free_terrain_names`）豁免——那里需要抬得更高或干脆跃起，不该被"固定抬到 0.10 m"约束。
+
+    参考基线（真机录制）：足端 z 峰峰值中位 **0.090 m** ⇒ 目标抬升 0.10 m 与录制步态同量级；
+    当前台阶 5–15 cm 高于它，所以在台阶上该约束由课程与自由相位来处理（台阶不在豁免名单里，
+    但 `feet_height_body` 是**惩罚偏差**而非硬约束，抬更高不会额外受罚……只有偏差会）。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        command_name: str,
+        asset_cfg: SceneEntityCfg,
+        target_height: float,
+        tanh_mult: float,
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del free_terrain_names
+        reward = feet_height_body(env, command_name, asset_cfg, target_height, tanh_mult)
+        return reward * (~self._free_mask).float()
+
+
+class MaskedFeetAirTime(ManagerTermBase):
+    """`feet_air_time` 的**按地形豁免**版本（2026-09-24，用户要求"然后添加地形掩码"）。
+
+    语义：在 `free_terrain_names`（默认 `("boxes", "gap")`）上不生效，其余地形保留 PPO rough 原样的
+    滞空时间奖励（`threshold=0.5`）。
+
+    **关于 threshold（2026-09-24 更正此前记录）**：展开成
+    `Σ_feet(last_air_time − c) = Σ_feet last_air_time − c × N_落地`，所以 `c` 的作用是
+    **每落地一次扣一个常数**——`c` 越大，"减少落地次数（步幅更长／步频更低）"的压力越大，
+    同时整体回报被压得越低。它对 `last_air_time` 的**梯度方向（+1）与 c 无关**，
+    因此 0.25 与 0.5 的**方向一致**，差别在强度（0.5 的"别踩碎步"压力是 0.25 的 2 倍）
+    与日志里的偏移量（0.5 时该分项通常为负）。详见 docs §29.7、§29.9。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        command_name: str,
+        sensor_cfg: SceneEntityCfg,
+        threshold: float,
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+    ) -> torch.Tensor:
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
+        reward = feet_air_time(env, command_name, sensor_cfg, threshold)
+        return reward * (~self._free_mask).float()
 
 
 def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joints: list[list[str]]) -> torch.Tensor:
@@ -677,12 +876,23 @@ def base_height_l2(
     asset: RigidObject = env.scene[asset_cfg.name]
     if sensor_cfg is not None:
         sensor: RayCaster = env.scene[sensor_cfg.name]
-        # Adjust the target height using the sensor data
-        ray_hits = sensor.data.ray_hits_w[..., 2]
-        if torch.isnan(ray_hits).any() or torch.isinf(ray_hits).any() or torch.max(torch.abs(ray_hits)) > 1e6:
-            adjusted_target_height = asset.data.root_link_pos_w[:, 2]
-        else:
-            adjusted_target_height = target_height + torch.mean(ray_hits, dim=1)
+        # Adjust the target height using the sensor data.
+        # 2026-09-24 修复：原实现是**整批**判定 —— 4096 个环境里只要有任意一个的射线落空
+        # （例如它正悬在沟壑上方），**所有环境**都会退回 `adjusted = root_z`（误差恒 0），
+        # 于是 −10 的高度惩罚被整场关掉。后果两条：① 奖励依赖其它环境的状态（污染信用分配）；
+        # ② 奖励随 num_envs 变化（256 环境与 4096 环境实际不是同一个任务）。
+        # 实测：旧 run（停在沟前）75/16717 个回合为 0；真跨沟的新 run 349/400 个回合恰好为 0。
+        # 现改为**逐环境**判定：只用该环境自己的有效射线求局部地面高度，全部落空才退回 root_z
+        # （与同文件 `him_base_height` 的 masked-nanmean 写法保持一致）。
+        ray_hits = sensor.data.ray_hits_w[..., 2]  # (N, R)
+        valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
+        valid_count = valid.sum(dim=1).clamp_min(1)
+        mean_hits = torch.where(valid, ray_hits, torch.zeros_like(ray_hits)).sum(dim=1) / valid_count
+        adjusted_target_height = torch.where(
+            valid.any(dim=1),
+            target_height + mean_hits,
+            asset.data.root_link_pos_w[:, 2],
+        )
     else:
         # Use the provided target height directly for flat terrain
         adjusted_target_height = target_height
