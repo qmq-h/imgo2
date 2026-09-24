@@ -270,7 +270,8 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         #   `joint_mirror −1.0`（对角姿态一致，**含 hip**＝PPO 原配置）
         #   `feet_height_body −5.0`（强制抬脚，目标 −0.20 m ≈ 离地 0.10 m）
         #   `feet_air_time +1.0`（**阈值 0.5**＝PPO 原值）
-        # 掩码：只有障碍块（boxes）与沟槽（gap）豁免，其余 13/20 列保留 trot 塑形。
+        # 掩码：`feet_air_time`／`feet_height_body` 在障碍块（boxes）与沟槽（gap）上豁免，
+        # 其余 13/20 列保留 trot 塑形；`joint_mirror` 的按地形行为见下方「分地形换对子」。
         # ⚠️ 已知代价：`joint_mirror` 的对角对能排除 **bound／pace**，但**排除不了 pronk**
         #    （四足同时跳时对角腿同样同相）；去掉 `feet_gait` 后没有任何项区分 trot 与 pronk。
         #    依据：PPO 同样没有 `feet_gait`，这套组合仍收敛到 trot（部署侧实测周期强度 0.95、
@@ -278,7 +279,17 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         #    第一顺位恢复 `feet_gait`，第二顺位恢复 `feet_air_time_variance`。
         self.rewards.joint_mirror.func = mdp.MaskedJointMirror
         self.rewards.joint_mirror.weight = -1.0
-        self.rewards.joint_mirror.params["free_terrain_names"] = ("boxes", "gap")
+        # 分地形换对子（2026-09-24，用户要求「让 mirror 在沟壑变成 bound」）：
+        #   trot 地形（13/20 列）＝**对角对**（FR↔RL、FL↔RR），巩固对角同相；
+        #   `gap`（6 列）＝**换成正左右对 ⇒ bound 形状先验**（前腿一对同相、后腿一对同相），
+        #        而不是单纯豁免——过沟要的就是前/后腿各自同步的 bound 式跃起；
+        #   `boxes`（1 列）＝完全豁免（保持先前决定；若也想换成 bound，把它从 free 挪到 bound 即可）。
+        # 对照 parkour：`_reward_sync_all_legs_cond`（注释即 "force same actuation on both front/rear
+        # legs when jump"）比较的正是**右侧两腿 vs 左侧两腿**，且只在 engage `jump` 障碍时生效
+        # ⇒ 本项与它同一机制。区别：他们 URDF 左右轴约定相反所以要翻肩关节符号，本 URDF 四腿轴
+        # 完全相同，故左右对直接取**同号**。
+        self.rewards.joint_mirror.params["free_terrain_names"] = ("boxes",)
+        self.rewards.joint_mirror.params["bound_terrain_names"] = ("gap",)
         # **含 hip**（＝ PPO rough 原配置）。⚠️ 更正 2026-09-24 早先的一条错误注释：当时以为
         # mirror 对是"跨左右两侧"，于是删掉了 hip。实际 PPO 的对是 **FR↔RL、FL↔RR（对角对）**：
         # trot 里对角腿同相，而本 URDF **四条腿的关节轴完全相同**（hip=(1,0,0)、thigh/shank=(0,1,0)），
@@ -292,6 +303,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.joint_mirror.params["mirror_joints"] = [
             ["FR_(hip|thigh|shank).*", "RL_(hip|thigh|shank).*"],
             ["FL_(hip|thigh|shank).*", "RR_(hip|thigh|shank).*"],
+        ]
+        self.rewards.joint_mirror.params["bound_mirror_joints"] = [
+            ["FL_(hip|thigh|shank).*", "FR_(hip|thigh|shank).*"],
+            ["RL_(hip|thigh|shank).*", "RR_(hip|thigh|shank).*"],
         ]
         # `feet_air_time` 本来是全局 +1.0；这里改为**按地形豁免**并回到 PPO 的阈值 0.5。
         # ⚠️ 更正 §29.7 的一处过度解读：展开 `Σ(last_air_time − c) = Σ last_air_time − c·N_落地`

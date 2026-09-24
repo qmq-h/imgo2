@@ -1224,6 +1224,74 @@ FL–FR 相位 **+175°**，见 §29.8.4），故先按用户决定执行。**�
   再看 TB 里 `Episode_Reward/*` 是否出现 `feet_air_time` / `feet_height_body` / `joint_mirror`
   （`feet_gait` **不应**出现）。
 
+### 29.10 沟壑上把 `joint_mirror` 换成 **bound**（2026-09-24 用户要求）
+
+用户问「能不能设置掩码，让 mirror 在沟壑变成 bound」——可以，而且比单纯豁免更有信息量：**豁免＝不给先验，
+换成左右对＝把罚项变成"bound 的形状先验"**。已落地。
+
+#### 29.10.1 三种地形行为
+
+| 地形 | 对子 | 语义 |
+|---|---|---|
+| trot 地形（13/20 列） | `mirror_joints`＝**对角对**（FR↔RL、FL↔RR） | trot：对角腿同相 |
+| **`gap`（6 列）** | `bound_mirror_joints`＝**左右对**（FL↔FR、RL↔RR） | **bound：前腿一对同相、后腿一对同相** |
+| `boxes`（1 列） | 不计（`free_terrain_names`） | 完全自由（保持先前决定） |
+
+两边都**含 hip**，都不翻符号（本 URDF 四条腿轴完全相同 ⇒ 同相＝同号）。
+
+#### 29.10.2 实现要点：为什么不能直接调两次 `mdp.joint_mirror`
+
+上游 `joint_mirror` 把解析结果缓存在 **env** 上，而且**只在第一次调用时解析**：
+
+```python
+if not hasattr(env, "joint_mirror_joints_cache") or env.joint_mirror_joints_cache is None:
+    env.joint_mirror_joints_cache = [[asset.find_joints(jn) for jn in pair] for pair in mirror_joints]
+```
+
+⇒ 在同一个环境里用两套对子连调两次，**第二次会被静默忽略**，两套都按第一套算（掩码看起来生效、
+实际对子错）。所以新增 `_pairwise_joint_mirror(env, asset, pairs, cache_owner, cache_attr)`：算式、
+`1/len(pairs)` 归一化与直立门控与上游**逐字一致**，只是把缓存挂在 **term 实例** 上（`_trot_pairs` /
+`_bound_pairs` 两个键），并在文档里记下这个上游陷阱。`MaskedJointMirror.__call__` 现在返回
+
+```
+trot_rew · 1[非 free 且非 bound]  +  bound_rew · 1[bound]
+```
+
+`bound_mirror_joints` 为空时退化为旧行为（沟壑＝豁免）。
+
+#### 29.10.3 与 parkour 的对应（已读源码核对）
+
+parkour 的 `_reward_sync_all_legs_cond`（`legged_robot_field.py:602`，注释即 "A hack to force same
+actuation on both front/rear legs when jump"）比较 `actions[:, 0:3]+[6:9]`（右前+右后）与
+`actions[:, 3:6]+[9:12]`（左前+左后），并对两处 **shoulder 取负**，且只在 `engaging == "jump"` 时生效。
+⇒ **同一机制**（"跃起障碍时强制左右对称＝bound"），差别是他们的 URDF 左右轴约定相反所以要翻肩符号，
+我们四腿轴相同故不翻。
+
+#### 29.10.4 ⚠️ 语义边界（必须知道）
+
+本项只做**对内相等**，不做**对间反相**：
+
+* 与 **bound 一致**（前对同相 + 后对同相）；
+* 但**同样与 pronk 一致**（四足全同相时两对当然各自相等）；
+* front/rear 的**反相**（bound 相对 pronk 的判别特征）**没有任何项在管**——去掉 `feet_gait` 后整个配方
+  都没有相位项。所以本项的作用是"**把沟壑上的错误先验（对角同相）换掉、并给出 bound 的可达方向**"，
+  不是"保证学到 bound"。回放判据仍以足端时序为准。
+
+#### 29.10.5 验证
+
+* **新增离线测试** `tests/test_masked_joint_mirror.py`：10 项通过。做法是从**真实 `rewards.py`** 里用 AST
+  抽出 `_pairwise_joint_mirror` 与 `MaskedJointMirror` 的源码、在带桩的命名空间里 `exec`（整模块因
+  `omni.log` 无法 import），再按地形构造 trot／bound 姿态判定"到底用了哪套对子"。覆盖：trot 地形用对角对、
+  **沟壑换成左右对**、`boxes` 完全豁免、空 `bound_mirror_joints` 退化为豁免、直立门控归零、
+  **两套对子不共享缓存**；另有 4 项 AST 断言锁住配置里的三套名单/对子（含"必须含 hip"）。
+  `bound` 分支被删掉时 `test_gap_switches_to_bound_pairs` 会以 `0.0 != 2.36` 失败（**负向对照已做**）。
+* `py_compile` 两个改动文件、`git diff --check` 通过。
+* **未运行（需训练机）**：真实地形名解析（`is_env_assigned_to_terrain` 对 `gap`/`boxes` 的命中）、
+  分项量级、以及**步态本身是否真的变成 bound**。
+
+**想连 `boxes` 也换成 bound**：把它从 `free_terrain_names` 挪走即可（`free=()`、`bound=("boxes","gap")`），
+一行改动。
+
 ### 29.11 训练拉长到 60000 轮 + 地形列重分配（`boxes` 只留 1 列）（2026-09-24 用户要求）
 
 用户：「我希望训练拉长一点。另外 boxes，只给一个」。
@@ -1262,7 +1330,7 @@ FL–FR 相位 **+175°**，见 §29.8.4），故先按用户决定执行。**�
 ⚠️ **列分配不是"比例 × 列数"四舍五入**：Isaac Lab 用
 `argmin_k(index/num_cols + 0.001 < cumsum(proportion_normalized)[k])` 逐列切
 （`terrain_generator.py:240`）。所以改一个 proportion 可能"看着变了、列数没变"，而**某个地形拿到 0 列时
-不会有任何报错**，引用它名字的奖励掩码（`free_terrain_names` /
+不会有任何报错**，引用它名字的奖励掩码（`free_terrain_names` / `bound_terrain_names` /
 `no_trot_terrain_names`）会**静默退化成"全都不命中"**。新增的
 `scripts/tools/check_terrain_columns.py` 就是为这类"改了但没生效"准备的：它读已安装 Isaac Lab 的
 `ROUGH_TERRAINS_CFG` 取基类顺序/比例、从 `CMoE_env_cfg.py` 解析任务侧覆盖（含新增键），

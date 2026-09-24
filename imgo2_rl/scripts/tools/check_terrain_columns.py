@@ -9,7 +9,7 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 
 ⇒ 0.05 在 `num_cols=20` 时正好 1 列，但在 `num_cols=10` 时**不一定是 0 或 1**；
 改一个 `proportion` 也可能"看起来变了、列数没变"。另外**某个地形拿到 0 列时不会有任何报错**，
-而引用它名字的奖励掩码（`free_terrain_names` / `no_trot_terrain_names`）
+而引用它名字的奖励掩码（`free_terrain_names` / `bound_terrain_names` / `no_trot_terrain_names`）
 会静默退化成"全都不命中"。这类"改了但没生效"只能靠离线算列数发现。
 
 用法::
@@ -46,7 +46,8 @@ ISAACLAB_ROUGH = Path("/root/IsaacLab/source/isaaclab/isaaclab/terrains/config/r
 
 # 奖励掩码引用的地形名（改配方时同步；名单不存在 ⇒ 掩码静默失效）
 MASKED_NAMES = {
-    "joint_mirror.free_terrain_names": ("boxes", "gap"),
+    "joint_mirror.free_terrain_names": ("boxes",),
+    "joint_mirror.bound_terrain_names": ("gap",),
     "feet_air_time.free_terrain_names": ("boxes", "gap"),
     "feet_height_body.free_terrain_names": ("boxes", "gap"),
 }

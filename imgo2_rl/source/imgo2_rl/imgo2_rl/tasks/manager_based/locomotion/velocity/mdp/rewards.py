@@ -376,35 +376,88 @@ class TrotWithoutGapReward(GaitReward):
         return trot * (~self.no_trot_mask(env)).float()
 
 
+def _pairwise_joint_mirror(
+    env: ManagerBasedRLEnv,
+    asset: Articulation,
+    mirror_joints: list[list[str]],
+    cache_owner,
+    cache_attr: str,
+) -> torch.Tensor:
+    """`joint_mirror` 的逐对子实现，缓存挂在**调用方实例**上而不是 env 上。
+
+    为什么要自己写：上游 `joint_mirror`（本文件下方）把解析结果缓存在 `env.joint_mirror_joints_cache`，
+    而且**只在第一次调用时解析**（之后无论传什么 `mirror_joints` 都直接用缓存）⇒ 想在同一环境里
+    按地形切换两套对子（trot 对角对 / bound 左右对）时，第二次调用会被**静默忽略**、两套都按第一套算。
+    算式、归一化与直立门控与上游逐字一致。
+    """
+    cache = getattr(cache_owner, cache_attr, None)
+    if not cache:
+        cache = [[asset.find_joints(joint_name) for joint_name in pair] for pair in mirror_joints]
+        setattr(cache_owner, cache_attr, cache)
+    if len(cache) == 0:
+        return torch.zeros(env.num_envs, device=env.device)
+    reward = torch.zeros(env.num_envs, device=env.device)
+    for joint_pair in cache:
+        reward += torch.sum(
+            torch.square(asset.data.joint_pos[:, joint_pair[0][0]] - asset.data.joint_pos[:, joint_pair[1][0]]),
+            dim=-1,
+        )
+    reward *= 1 / len(cache)
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
 class MaskedJointMirror(ManagerTermBase):
-    """`joint_mirror` 的**按地形豁免**版本（2026-09-24，用户要求"mirror 根据地形生效"）。
+    """`joint_mirror` 的**分地形换对子／豁免**版本（2026-09-24）。
 
-    语义：在 `free_terrain_names`（默认 `("boxes", "gap")`）上**不生效**，其余地形保留对角线腿的
-    关节位置同步惩罚，用来巩固 trot 的**对角同相**特性。
+    三种地形行为：
 
-    为什么障碍地形要豁免：障碍块与沟槽上通常是 **bound/跃起**——那里对角腿本来就反相，强加"对角同步"
-    会与动作直接对抗（这正是 4 列 / 3 列障碍上的失败模式）。
+    | 地形 | 对子 | 语义 |
+    |---|---|---|
+    | `bound_terrain_names`（默认 `("gap",)`） | `bound_mirror_joints`＝**左右对**（FL↔FR、RL↔RR） | **bound**：前腿一对同相、后腿一对同相（跃沟） |
+    | `free_terrain_names`（默认 `("boxes",)`） | 不计 | 完全自由 |
+    | 其余（trot 地形，13/20 列） | `mirror_joints`＝**对角对**（FR↔RL、FL↔RR） | **trot**：对角腿同相 |
 
-    对照 parkour：他们的 `_reward_sync_legs_cond` / `_reward_sync_all_legs_cond` 也是同一模式——
-    **只在 engage `jump` 障碍时**才强制对称；但他们比较的是**左右腿的 action 并翻转肩关节符号**
-    （因此支持 bound/jump），而我们这里比较**对角腿的 joint_pos 且不翻转符号**（因此支持 trot）。
+    为什么沟壑要换成 bound 而不是单纯豁免：过沟需要的是**前腿一起／后腿一起**的 bound 式跃起，
+    只把 mirror 关掉等于不给任何结构先验；换上左右对等于**把罚项变成"bound 的形状先验"**，
+    与 parkour 的做法同源——他们的 `_reward_sync_all_legs_cond`（注释即 "force same actuation on
+    both front/rear legs when jump"）比较的正是**右侧两腿 vs 左侧两腿**，且**只在 engage `jump`
+    障碍时**生效；区别只是他们的 URDF 左右轴约定相反所以要翻转肩关节符号，本 URDF 四条腿轴完全相同，
+    因此同相对子直接取**同号**即可。
+
+    ⚠️ 边界：本项只做**对内相等**，不做**对间反相** ⇒ 它把沟壑上"对角同相（trot）"这一**错误**先验
+    换成"前对同相 + 后对同相"，与 bound **一致**，但**同样与 pronk（四足全同相）一致**；
+    真正的 front/rear 反相要靠 `feet_gait` 那类相位项或课程自行涌现。
     """
 
     def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes",)))
+        self.bound_terrain_names: tuple[str, ...] = tuple(cfg.params.get("bound_terrain_names", ("gap",)))
         self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+        # bound 与 free 同时命中时以 free 优先（free 更强：完全不计）
+        self._bound_mask = _terrain_type_mask(env, self.bound_terrain_names) & (~self._free_mask)
+        self._trot_pairs = None
+        self._bound_pairs = None
 
     def __call__(
         self,
         env: ManagerBasedRLEnv,
         asset_cfg: SceneEntityCfg,
         mirror_joints: list[list[str]],
-        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+        free_terrain_names: tuple[str, ...] = ("boxes",),
+        bound_terrain_names: tuple[str, ...] = ("gap",),
+        bound_mirror_joints: list[list[str]] = (),
     ) -> torch.Tensor:
-        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
-        reward = joint_mirror(env, asset_cfg, mirror_joints)
-        return reward * (~self._free_mask).float()
+        del free_terrain_names, bound_terrain_names  # 已在 __init__ 缓存为静态掩码
+        asset: Articulation = env.scene[asset_cfg.name]
+        active = ~(self._free_mask | self._bound_mask)
+        reward = _pairwise_joint_mirror(env, asset, mirror_joints, self, "_trot_pairs") * active.float()
+        if len(bound_mirror_joints) > 0:
+            reward = reward + _pairwise_joint_mirror(
+                env, asset, bound_mirror_joints, self, "_bound_pairs"
+            ) * self._bound_mask.float()
+        return reward
 
 
 class MaskedFeetHeightBody(ManagerTermBase):
