@@ -25,6 +25,8 @@
 #include <fstream>
 #include <stdexcept>
 #include <memory>
+#include <cmath>
+#include <initializer_list>
 
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
@@ -84,6 +86,9 @@ private:
     mjData *mj_data;
     mjModel *mj_model;
     std::string scene_name;
+    double cart_mass_kg = 10.0;
+    bool towing_scene = false;
+    void ConfigureCartMass();
 
     // joystick
     std::unique_ptr<Joystick> sys_js;

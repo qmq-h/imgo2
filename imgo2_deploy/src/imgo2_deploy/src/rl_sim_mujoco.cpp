@@ -22,6 +22,22 @@ RL_Sim::RL_Sim(int argc, char **argv)
         this->robot_name = argv[1];
         this->scene_name = argv[2];
     }
+    this->towing_scene = this->scene_name == "scene_tow_compliant" ||
+                         this->scene_name == "scene_tow_inextensible";
+    if (argc != 3 && (argc != 5 || std::string(argv[3]) != "--cart-mass" || !this->towing_scene))
+    {
+        throw std::runtime_error("Usage: rl_sim_mujoco imgo2 <scene> [--cart-mass 5..15]");
+    }
+    if (argc == 5)
+    {
+        std::size_t consumed = 0;
+        this->cart_mass_kg = std::stod(argv[4], &consumed);
+        if (consumed != std::string(argv[4]).size() || !std::isfinite(this->cart_mass_kg) ||
+            this->cart_mass_kg < 5.0 || this->cart_mass_kg > 15.0)
+        {
+            throw std::runtime_error("--cart-mass must be between 5 and 15 kg");
+        }
+    }
 
     this->ang_vel_axis = "body";
 
@@ -81,6 +97,10 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     this->mj_model = m;
     this->mj_data = d;
+    if (this->towing_scene)
+    {
+        this->ConfigureCartMass();
+    }
     this->SetupSysJoystick("/dev/input/js0", 16); // 16 bits joystick
 
     // read params from yaml
@@ -136,6 +156,30 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     // start simulation UI loop (blocking call)
     sim->RenderLoop();
+}
+
+void RL_Sim::ConfigureCartMass()
+{
+    const std::lock_guard<std::recursive_mutex> lock(sim->mtx);
+    // All masses and principal inertias scale together from the 10 kg URDF model.
+    const double scale = this->cart_mass_kg / 10.0;
+    for (const char* name : {"cart_base", "cart_wheel_fl", "cart_wheel_fr",
+                             "cart_wheel_rl", "cart_wheel_rr"})
+    {
+        const int id = mj_name2id(this->mj_model, mjOBJ_BODY, name);
+        if (id < 0)
+        {
+            throw std::runtime_error(std::string("Towing scene missing cart body: ") + name);
+        }
+        this->mj_model->body_mass[id] *= scale;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            this->mj_model->body_inertia[3 * id + axis] *= scale;
+        }
+    }
+    mj_setConst(this->mj_model, this->mj_data);
+    mj_forward(this->mj_model, this->mj_data);
+    std::cout << LOGGER::INFO << "[MuJoCo] Cart total mass: " << this->cart_mass_kg << " kg" << std::endl;
 }
 
 RL_Sim::~RL_Sim()

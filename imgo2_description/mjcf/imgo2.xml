@@ -23,6 +23,8 @@
     <body name="base" pos="0 0 0.5">
           <freejoint name="root" />
           <site name="imu" size="0.005" />
+          <!-- Engineering tow point; matches towing_env_cfg.ROBOT_ATTACHMENT_OFFSET_M. -->
+          <site name="tow_robot" pos="-0.16 0 0" size="0.006" rgba="1 0.7 0 1" />
           <inertial pos="-0.00002223 -0.00136579 0.00287896" mass="5.53394020" fullinertia="0.03866860 0.10411461 0.12554111 0.00001502 0.00000229 -0.00009602" />
           <geom pos="0 0 0.0" euler="0 0 0" type="mesh" mesh="mesh_0" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
           <geom pos="0 0 0" euler="0 0 0" type="box" size="0.1575 0.1215 0.0735" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="1 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" />
