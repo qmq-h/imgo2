@@ -30,6 +30,13 @@ parser.add_argument(
     default=False,
     help="Replay a checkpoint trained with the legacy 187-D height scan (17x11 @ 1.6x1.0 m).",
 )
+parser.add_argument(
+    "--terrain_level",
+    type=int,
+    default=None,
+    help="把回放环境的**课程等级**钉死在 N（0–9）并冻结课程升降级，用于检查指定难度下的地形。"
+         "默认 None＝沿用 play 配置（`max_init_terrain_level=5`，即随机落在 0–5 级）。",
+)
 cli_args.add_cmoe_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -100,6 +107,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
         cfg=env_cfg,
         render_mode="rgb_array" if args_cli.video else None,
     )
+    if args_cli.terrain_level is not None:
+        # 2026-09-24：play 默认只从 0–5 级起步（`max_init_terrain_level=5`），单环境又几乎不会晋级，
+        # 于是**永远看不到配置区间的上端**（台阶 15 cm / boxes 30 cm 要 level≈9）。这个开关把等级钉死。
+        # ⚠️ 本机无 GPU、此路径**未经运行验证**；因此全程 fail-soft：失败只打印告警，回放照常进行。
+        try:
+            terrain = env.unwrapped.scene.terrain
+            origins = getattr(terrain, "terrain_origins", None)
+            if origins is None or getattr(terrain, "terrain_levels", None) is None:
+                print("[WARN] --terrain_level: 该任务不是课程地形（terrain_type != generator），忽略")
+            else:
+                level = int(args_cli.terrain_level)
+                terrain.terrain_levels[:] = level
+                terrain.env_origins[:] = origins[terrain.terrain_levels, terrain.terrain_types]
+                # 冻结课程：否则回合结束仍会按判据升降级（一局之内就飘走）
+                try:
+                    manager = env.unwrapped.curriculum_manager
+                    for index, name in enumerate(manager.active_terms):
+                        if name == "terrain_levels":
+                            manager._term_cfgs[index].func = lambda *args, **kwargs: {}
+                    print("[INFO] --terrain_level: 已冻结课程（terrain_levels → no-op）")
+                except Exception as exc:  # noqa: BLE001 - 调试开关，失败不影响回放
+                    print(f"[WARN] --terrain_level: 课程未冻结（{exc}），等级可能在一局内变化")
+                env.unwrapped.reset()  # 让机器人按新的 env_origins 重新出生
+                print(f"[INFO] --terrain_level={level}: 已把全部环境的地形等级钉死在 {level}")
+        except Exception as exc:  # noqa: BLE001 - 调试开关，失败不影响回放
+            print(f"[WARN] --terrain_level 失败（忽略，继续按默认等级回放）：{exc}")
     if args_cli.video:
         video_kwargs = {
             "video_folder": os.path.join(log_dir, "videos", "play"),

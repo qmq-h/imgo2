@@ -1795,3 +1795,108 @@ track_avg = _episode_sums[name][env_ids] / weight / (episode_length_buf[env_ids]
 * 相关离线测试 **41 项全通过**；`py_compile`、`git diff --check` 通过。
 * **未运行**（需训练机）：真实 `_episode_sums` 读取（时机由源码顺序保证，但没有真跑过）、
   阈值 0.80/0.35 是否合适、以及 `move_up_frac` 的实际下降幅度。
+
+### 29.21 开 `feet_gait`（相位项），掩码与其余四项一致（2026-09-24 用户决定）
+
+用户：「那就开 feet gait，同样加掩码」。
+
+#### 29.21.1 改动
+
+* `mdp/rewards.py::TrotWithoutGapReward` **改成纯地形掩码版**：掩码就是
+  `_terrain_type_mask(free_terrain_names)`，与 `MaskedJointMirror`／`MaskedFeetHeightBody`／
+  `MaskedFeetAirTime`／`MaskedFeetAirTimeVariance` **同一套**（默认豁免 `("boxes", "gap")`）。
+  旧的复合掩码（地形类型 ＋ `height_scanner` 最前几列任一射线落空 ＋ 任一脚端扫描器整束落空）
+  **已移除**（要回退看提交 `a30b25d`）。
+* `CMoE_env_cfg.py`：`feet_gait.func = mdp.TrotWithoutGapReward`、`weight = 1.0`、
+  `synced_feet_pair_names = (("FL_FOOT","RR_FOOT"), ("FR_FOOT","RL_FOOT"))`（trot 对角对，
+  **必须给全**，空字符串会在 `GaitReward.__init__` 直接抛 ValueError）、
+  `free_terrain_names = ("boxes", "gap")`。
+* **生效奖励 19 → 20 项**。
+
+#### 29.21.2 为什么它才是"能不能出 trot"的决定性一项
+
+五个步态相关项（**全部**豁免 `boxes`/`gap` 共 7/20 列）：
+
+| 项 | 权重 | trot | bound | pace | **pronk** |
+|---|---:|---|---|---|---|
+| `joint_mirror`（对角对内相等） | −1.0 | ✓ | ✗ | ✗ | **✓** |
+| `feet_air_time`（滞空越长越好） | +1.0 | ✓ | ✓（还偏袒） | ~ | ✓（还偏袒） |
+| `feet_height_body`（抬脚高度） | −5.0 | 中立 | 中立 | 中立 | 中立 |
+| `feet_air_time_variance`（四足时长方差） | −8.0 | ✓ | ✗ | ✗ | **✓** |
+| **`feet_gait`（对角对反相）** | **+1.0** | **✓** | ✗ | ✗ | **✗** |
+
+⇒ **只有 `feet_gait` 的 4 个 async 核显式要求"对角对之间反相"**，因而能排除 pronk。
+这也是 §29.19.2 里那个"`joint_mirror` 加大权重可能反而推向 pronk"的结论的直接对策。
+
+**代价（要盯）**：6 核相乘是**很窄的脊** —— 随机策略早期诸核都≈0 ⇒ 乘积≈0 ⇒ **梯度≈0**，学得慢。
+所以它与 `joint_mirror`（稠密二次先验、第一步就有梯度）**并用**才互补：mirror 提供早期方向，
+`feet_gait` 提供最终相位约束。日志里应看到 `Episode_Reward/feet_gait` 从 0 慢慢爬升。
+
+#### 29.21.3 验证
+
+* 新增 `tests/test_feet_gait_mask.py` **5 项**：豁免列（`gap`/`boxes`）严格为 0、非豁免列保留基类值
+  （桩基类返回 1.0 ⇒ 证明是**乘法掩码**不是替换）、不传 `free_terrain_names` 时默认 `("boxes","gap")`
+  ⇒ 输出 `[1,0,0,1]`、以及 2 项配置断言（func/weight/free 名单、对角对给全＝`FL_FOOT`/`RR_FOOT`/
+  `FR_FOOT`/`RL_FOOT`）。写法：AST 抽真实类源码 + 桩 `GaitReward`/`_terrain_type_mask` exec。
+* `tests/test_check_reward_overrides.py` 更新：生效 **20 项**、`feet_gait` 从"必须禁用"改为
+  "已启用且挂 `TrotWithoutGapReward`"。
+* `check_terrain_columns.py` 把 `feet_gait.free_terrain_names` 纳入"掩码引用的地形名必须 ≥1 列"校验。
+* 相关离线测试 **46 项全通过**；`py_compile`、`git diff --check` 通过。
+* **未运行**（需训练机）：`feet_gait` 的实际量级与爬升速度、是否真的把步态拉回 trot。
+  建议配合 `eval_gait.py` 的 CMoE 适配（量 FL-FR 相位：≈180°＝trot、≈0°＝bound/pronk）来判读。
+
+### 29.22 「play 里看到的地形好像和配置不一致」——是**起点等级与列分配**的差异，不是配置没生效
+
+用户反馈：表格里的台阶/`boxes` 高度是 `(0.05,0.15)` / `(0.08,0.30)`，但刚 play 时看到的"好像不是"。
+
+#### 29.22.1 配置确实生效（三重核对）
+
+1. 工作区源码：`pyramid_stairs`/`pyramid_stairs_inv` = `step_height_range=(0.05,0.15)`、`num_steps=6`；
+   `boxes` = `step_height_range=(0.08,0.30)`、`num_steps=4`、`proportion=0.05`。
+2. **在跑的 run 的训练快照**（`logs/.../2026-09-24_17-25-50_cmoe_B_77dim_ppogait/params/env.yaml`）：
+   `pyramid_stairs 0.05/0.15 num_steps 6`、`pyramid_stairs_inv 0.05/0.15 num_steps 6`、`boxes 0.08/0.3`。
+3. **用真实地形函数离线算出每个等级的几何**（下表），与解析式逐字吻合。
+
+#### 29.22.2 为什么 play 里看起来"矮"：只从 0–5 级起步
+
+* `Imgo2CMoERoughPlayEnvCfg` 里 **`max_init_terrain_level = 5`** ⇒ 初始等级在 **0–5 里随机抽**；
+  单环境一局内几乎不会晋级 ⇒ **看到的基本是 0–5 级**：台阶单级 **5.5–10.5 cm**、`boxes` **9.1–18.9 cm**。
+  配置区间的**上端（15 cm / 30 cm）要 level≈9** 才出现 —— 训练也是同样从 0–5 起步、靠课程涨上去的。
+* play 用 **`num_cols = 10`**（训练 20）⇒ 列分配不同，且 **`hf_pyramid_slope_inv` 拿到 0 列**
+  （play 里根本没有这一类地形）；默认 `--num_envs=1` 只落在 **第 0 列＝上行楼梯**，
+  5–10 cm 的台阶在侧视下确实像缓坡（这也是早先"没看见上行台阶"的同一原因）。
+* `--num_envs=10` 时的列：0-1 上行楼梯、2 下行楼梯、3 `boxes`、4 粗糙、5 斜坡、6-8 沟、9 **平地**
+  —— 其中 col4/col9 **本来就没有障碍**（＝用户前一次看到的"平地和粗糙确实在正常走"）。
+* `--scan187` 只改高度扫描器的几何，**不改地形**。
+
+#### 29.22.3 真实几何（离线用 `track_stairs_terrain` / `track_step_terrain` 算的）
+
+| level | difficulty | 台阶单级 | 台阶累计升高 | `boxes` 单块高 |
+|---:|---:|---:|---:|---:|
+| 0 | 0.05 | **5.5 cm** | 33 cm | **9.1 cm** |
+| 1 | 0.15 | 6.5 cm | 39 cm | 11.3 cm |
+| 2 | 0.25 | 7.5 cm | 45 cm | 13.5 cm |
+| 3 | 0.35 | 8.5 cm | 51 cm | 15.7 cm |
+| 4 | 0.45 | 9.5 cm | 57 cm | 17.9 cm |
+| 5 | 0.55 | 10.5 cm | 63 cm | 20.1 cm |
+| 6 | 0.65 | 11.5 cm | 69 cm | 22.3 cm |
+| 7 | 0.75 | 12.5 cm | 75 cm | 24.5 cm |
+| 8 | 0.85 | 13.5 cm | 81 cm | 26.7 cm |
+| 9 | 0.95 | **14.5 cm** | 87 cm | **28.9 cm** |
+
+（`difficulty = (row + U(0,1)) / num_rows`、`num_rows=10` ⇒ level k 的名义难度是 `(k+0.5)/10`，
+所以**区间端点 0.05/0.15 与 0.08/0.30 是"连续扫描的上下界"，不是 level 0/9 的精确值**。）
+
+#### 29.22.4 新增 `play.py --terrain_level=N`（钉死等级，用于检查指定难度）
+
+`play.py` 新增开关：把全部环境的 `terrain_levels` 设为 N、按 `terrain_origins[level, type]` 重算
+`env_origins`、**把 `terrain_levels` 课程项换成 no-op**（否则一局内仍会升降级），然后
+`env.unwrapped.reset()` 让机器人按新原点重新出生。
+
+```bash
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/cmoe/play.py \
+  --task=Imgo2-basemove-rough-cmoe-play --checkpoint=<...> --scan187 \
+  --num_envs=10 --terrain_level=9 --livestream 2
+```
+
+⚠️ **未经运行验证**（本机无 GPU）：全程 fail-soft —— 任一步失败只打印 `[WARN]`，回放照常按默认等级进行。

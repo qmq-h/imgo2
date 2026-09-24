@@ -32,7 +32,8 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
 
     def test_effective_term_count(self):
         # 2026-09-24：16 → 18（parkour 式"全球速度"约束）→ 19（加回 feet_air_time_variance −8.0）
-        self.assertEqual(len(self.effective), 19, f"生效项数变了：{sorted(self.effective)}")
+        #            → 20（开 feet_gait，掩码版）
+        self.assertEqual(len(self.effective), 20, f"生效项数变了：{sorted(self.effective)}")
 
     def test_world_vel_replaces_body_vel(self):
         self.assertEqual(self.effective["track_world_vel_xy_exp"], 5.0)
@@ -55,9 +56,10 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         self.assertEqual(self.effective["feet_air_time_variance"], -8.0)
         self.assertIn("MaskedFeetAirTimeVariance", self.funcs["feet_air_time_variance"])
 
-    def test_feet_gait_disabled(self):
-        self.assertNotIn("feet_gait", self.effective)
-        self.assertNotIn("feet_gait", self.funcs, "feet_gait 不应再被赋 func（已决定不用）")
+    def test_feet_gait_enabled_with_masked_class(self):
+        """2026-09-24 晚用户："那就开 feet gait，同样加掩码"。"""
+        self.assertEqual(self.effective["feet_gait"], 1.0)
+        self.assertIn("TrotWithoutGapReward", self.funcs["feet_gait"])
 
     def test_not_restored_terms(self):
         # `feet_slide` 仍未恢复（用户未要求）；若日后恢复，请同步更新本测试与 docs。

@@ -381,57 +381,30 @@ def _ray_count(span: float, resolution: float) -> int:
 
 
 class TrotWithoutGapReward(GaitReward):
-    """`GaitReward`（trot 相位塑形）的**带空洞掩码**版本。
+    """`GaitReward`（trot 相位塑形）的**按地形豁免**版本。
 
-    目标（用户 2026-09-24 决定）：**沟壑以外的地形用 trot，沟壑处放开相位**（那里通常是 bound／跃起）。
-    不做掩码就会在沟前也强行指定 trot，正好与跃起冲突。
+    掩码与另外四项步态 shaping **完全同一套**：`free_terrain_names`（默认 `("boxes", "gap")`）那一类
+    地形整列放开相位（那里通常是 bound/跃起），其余列保留 `GaitReward` 的 **6 核乘积**
+    （2 个"同步"核 × 4 个"反相"核）。
 
-    掩码（`no_trot_mask`）＝ 任一为真即**关闭 trot 塑形**：
+    为什么需要它（2026-09-24 用户："那就开 feet gait，同样加掩码"）：这是全配方里**唯一**能区分
+    trot 与另外两种对称步态的项 ——
+    * `joint_mirror` 只做"对角对内相等" ⇒ trot ✓、bound ✗、**pronk ✓**；
+    * `feet_air_time_variance` 罚"四足时长方差" ⇒ bound ✗、**pronk ✓**；
+    * 只有 `GaitReward` 的 4 个 async 核显式要求**对角对之间反相** ⇒ 排除 bound/pace/**pronk**。
+    代价：6 核相乘是个很窄的脊，随机策略早期诸核≈0 ⇒ 乘积≈0、梯度≈0，学得慢
+    ⇒ 所以它与 `joint_mirror`（稠密二次先验）**并用**才是互补的组合。
 
-    1. **地形类型**（`no_trot_terrain_names`，默认 `("boxes", "gap")`）：用户 2026-09-24 决定
-       「除障碍块（`boxes`）与沟槽（`gap`）外都尽量按 trot 走」⇒ 这两类**整列**放开相位，
-       让策略自行选择（那里通常是 bound/跃起）。地形列是**逐环境固定**的，故该掩码在 `__init__`
-       里算一次并缓存（`terrain.terrain_types` 不随课程变化）。
-    2. **局部空洞**：观测用的 `height_scanner`（77 条、前移 0.25 m 的 11×7）**最前 `front_columns` 列**
-       出现**任一**射线落空 ⇒ 前方 0.75 m 内无地面。判据必须是「任一」而不是「全部」：
-       沟是横向条带，只会让某一列（7 条）落空，其余列会打到沟后面的平台。
-    3. 任一足端扫描器整束落空 ⇒ 该足已悬在洞口。
+    历史：本类曾用过"地形类型 + 前方空洞（`height_scanner` 最前几列任一射线落空）+ 足下整束落空"
+    的复合掩码；2026-09-24 晚按用户要求**统一成地形类型掩码**（与 `MaskedJointMirror` /
+    `MaskedFeetHeightBody` / `MaskedFeetAirTime` / `MaskedFeetAirTimeVariance` 同一套
+    `_terrain_type_mask`）。若要恢复"前方有空洞就放开相位"，实现见提交 `a30b25d`。
     """
 
     def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.lookahead_sensor_name: str = cfg.params.get("lookahead_sensor", "height_scanner")
-        self.front_columns: int = int(cfg.params.get("front_columns", 3))
-        self.edge_sensor_names: tuple[str, ...] = tuple(cfg.params.get("edge_sensor_names", ()))
-        self.no_trot_terrain_names: tuple[str, ...] = tuple(
-            cfg.params.get("no_trot_terrain_names", ("boxes", "gap"))
-        )
-        # 地形列逐环境固定 ⇒ 静态掩码只算一次
-        self._static_no_trot_mask = _terrain_type_mask(env, self.no_trot_terrain_names)
-        sensor = env.scene.sensors[self.lookahead_sensor_name]
-        pattern = sensor.cfg.pattern_cfg
-        # 必须镜像 `grid_pattern` 的 `arange(start, end + 1e-9, step)` 语义：写成
-        # `int(size/resolution)+1` 会被浮点截断骗到（0.6/0.1 = 5.999999999999999 ⇒ 6 而不是 7），
-        # 从而把射线索引算错、掩码指到错误的位置。CMoE_env_cfg 里的 77 断言用的是同一写法。
-        num_x = _ray_count(pattern.size[0], pattern.resolution)
-        num_y = _ray_count(pattern.size[1], pattern.resolution)
-        front_ix = range(max(0, num_x - self.front_columns), num_x)
-        # `grid_pattern` 是 meshgrid(x, y, indexing="xy") 之后 flatten ⇒ 索引 = iy * num_x + ix
-        self.front_ray_ids = torch.tensor(
-            [iy * num_x + ix for iy in range(num_y) for ix in front_ix],
-            device=env.device,
-            dtype=torch.long,
-        )
-
-    def no_trot_mask(self, env: ManagerBasedRLEnv) -> torch.Tensor:
-        """(N,) bool：该环境不应被 trot 塑形（地形类型属于放开名单，或前方/足下有空洞）。"""
-        mask = self._static_no_trot_mask
-        hits_z = env.scene.sensors[self.lookahead_sensor_name].data.ray_hits_w[..., 2]
-        mask = mask | (~torch.isfinite(hits_z[:, self.front_ray_ids])).any(dim=1)
-        for sensor_name in self.edge_sensor_names:
-            feet_z = env.scene.sensors[sensor_name].data.ray_hits_w[..., 2]
-            mask = mask | (~torch.isfinite(feet_z)).all(dim=1)
-        return mask
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ("boxes", "gap")))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
 
     def __call__(
         self,
@@ -444,12 +417,9 @@ class TrotWithoutGapReward(GaitReward):
         synced_feet_pair_names,
         asset_cfg: SceneEntityCfg,
         sensor_cfg: SceneEntityCfg,
-        lookahead_sensor: str = "height_scanner",
-        front_columns: int = 3,
-        edge_sensor_names: tuple[str, ...] = (),
-        no_trot_terrain_names: tuple[str, ...] = ("boxes", "gap"),
+        free_terrain_names: tuple[str, ...] = ("boxes", "gap"),
     ) -> torch.Tensor:
-        del lookahead_sensor, front_columns, edge_sensor_names, no_trot_terrain_names  # 已在 __init__ 缓存
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
         trot = super().__call__(
             env,
             std,
@@ -461,7 +431,7 @@ class TrotWithoutGapReward(GaitReward):
             asset_cfg,
             sensor_cfg,
         )
-        return trot * (~self.no_trot_mask(env)).float()
+        return trot * (~self._free_mask).float()
 
 
 def _pairwise_joint_mirror(

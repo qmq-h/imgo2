@@ -314,12 +314,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 2026-09-24（② 步态修复。起因：回放发现**所有地形**都塌缩到同一个 bound，见 docs §26）。
         # 现配方里没有任何项区分 trot 与 bound（五项 shaping 已清零，parkour 权重又关掉了
         # action_rate/ang_vel_xy/lin_vel_z）⇒ 对称弹跳步是免费的最优解。
-        # 曾上过 `feet_gait`（`TrotWithoutGapReward`，显式指定对角相位的 6 核乘积，权重 1.0），
-        # **2026-09-24 用户决定不使用 feet_gait**，改为照搬那次「trot 还行」的 PPO 用的
-        # 三项固定步态 shaping（复盘见 docs §29.8），见下方 ③。`mdp.TrotWithoutGapReward`
-        # 与 `mdp.GaitReward` 保留在 mdp 里未启用（要回退只需重新赋值，注意 `synced_feet_pair_names`
-        # 必须给全，空字符串会直接抛 ValueError）。`feet_gait.weight` 保持继承的 0.0 ⇒
-        # `disable_zero_weight_rewards()` 会把它整个移除，**不会被实例化**。
+        # `feet_gait`：2026-09-24 早先按用户决定**不用**（改用 PPO 那三项 shaping）；当晚用户改定
+        # **"那就开 feet gait，同样加掩码"** ⇒ 已开启，见下方 ④（`TrotWithoutGapReward`，权重 1.0，
+        # 掩码与其余四项步态 shaping 同一套）。注意 `synced_feet_pair_names` **必须给全**，
+        # 给空字符串会在 `GaitReward.__init__` 直接抛 ValueError。
         # ② 恢复 PPO rough 原值 action_rate/ang_vel_xy，弱化弹跳的抖动与冲击（顺带抑制
         #    §23.3 里 mean_noise_std 涨到 1.5+ 的趋势）。
         # 刻意**不**恢复 lin_vel_z_l2：它直接惩罚竖直速度，会与过沟所需的爆发式跃起对抗。
@@ -331,11 +329,9 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         #   `feet_air_time +1.0`（**阈值 0.5**＝PPO 原值）
         # 掩码：`feet_air_time`／`feet_height_body` 在障碍块（boxes）与沟槽（gap）上豁免，
         # 其余 13/20 列保留 trot 塑形；`joint_mirror` 的按地形行为见下方「分地形换对子」。
-        # ⚠️ 已知代价：`joint_mirror` 的对角对能排除 **bound／pace**，但**排除不了 pronk**
-        #    （四足同时跳时对角腿同样同相）；去掉 `feet_gait` 后没有任何项区分 trot 与 pronk。
-        #    依据：PPO 同样没有 `feet_gait`，这套组合仍收敛到 trot（部署侧实测周期强度 0.95、
-        #    FL–FR 相位 +175°），故先按用户决定执行。若回放看到对称弹跳：
-        #    第一顺位恢复 `feet_gait`，第二顺位恢复 `feet_air_time_variance`。
+        # 相位问题现已由下方 ④ 的 `feet_gait` 负责（它显式要求对角反相 ⇒ 排除 pronk）。
+        # 本段三项仍是"稠密先验 + 抬脚 + 时序均匀"，与相位项互补：`joint_mirror` 从第一步就有梯度，
+        # 而 `feet_gait` 的 6 核乘积早期梯度≈0。
         self.rewards.joint_mirror.func = mdp.MaskedJointMirror
         self.rewards.joint_mirror.weight = -1.0
         # 分地形换对子（2026-09-24，用户要求「让 mirror 在沟壑变成 bound」）：
@@ -392,6 +388,18 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.feet_air_time_variance.func = mdp.MaskedFeetAirTimeVariance
         self.rewards.feet_air_time_variance.weight = -8.0
         self.rewards.feet_air_time_variance.params["free_terrain_names"] = ("boxes", "gap")
+        # ④ 相位项 `feet_gait`（2026-09-24 用户："那就开 feet gait，同样加掩码"）。
+        # 这是全配方里**唯一**显式要求"**对角对之间反相**"的项 ⇒ 排除 bound／pace／**pronk**
+        # （`joint_mirror` 只压"对角对内相等"，pronk 满足它；`feet_air_time_variance` 罚四足时长方差，
+        # pronk 也满足）。对角腿对＝trot 相位（`FL↔RR`、`FR↔RL`），权重 1.0（约占 `track_world_vel`
+        # 5.0×~0.88≈4.4/s 的 20% 上限，属"温和但明确"的偏好）。掩码与其余四项一致：豁免 `boxes`/`gap`。
+        self.rewards.feet_gait.func = mdp.TrotWithoutGapReward
+        self.rewards.feet_gait.weight = 1.0
+        self.rewards.feet_gait.params["synced_feet_pair_names"] = (
+            ("FL_FOOT", "RR_FOOT"),
+            ("FR_FOOT", "RL_FOOT"),
+        )
+        self.rewards.feet_gait.params["free_terrain_names"] = ("boxes", "gap")
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
