@@ -472,6 +472,28 @@ class UpperLogicTests(unittest.TestCase):
         # 同朝向时误差必须精确为 0
         self.assertAlmostEqual(wrap(yaw_of(0.3) - yaw_of(0.3)), 0.0, places=10)
 
+    def test_reference_tracking_and_action_magnitude_rewards(self):
+        """两项新奖励：上层指令跟随（|ref−user|²）与动作幅值抑制（|a|²）。
+
+        2026-09-23 用户要求「肯定要跟随实际输入的指令」+「抖动还是要抑制动作幅度」。
+        - `reference_tracking_l2` 比的是**上层自己的 speed 指令 ref** 与命令期望 user，
+          只落在上层责任边界内；平方形式全域有梯度（不像 exp 在误差 >1 m/s 后归零）。
+        - `action_magnitude_l2` 压动作幅值，与 `action_rate_l2`（压变化量）互补；
+          策略长期 ±1 饱和抖动时两项都会变大。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def reference_tracking_l2(", mdp)
+        self.assertIn("def action_magnitude_l2(", mdp)
+        # 必须是 ref 与 user 的差，而不是实际速度与 user 的差（后者已有 tracking_velocity）
+        self.assertIn("term.reference_command[:, :2] - term.user_command[:, :2]", mdp)
+        self.assertIn("return _term(env).processed_actions.square().sum(dim=1)", mdp)
+        # 注册项与权重
+        self.assertIn("reference_tracking = RewTerm(func=mdp.reference_tracking_l2, weight=-5.0)", cfg)
+        self.assertIn("action_magnitude = RewTerm(func=mdp.action_magnitude_l2, weight=-0.05)", cfg)
+        # action_rate 已提权（原 -0.02 量级太小，被跟踪项压住）
+        self.assertIn("action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)", cfg)
+
     def test_reset_event_contract_has_all_v0_work_condition_axes(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")

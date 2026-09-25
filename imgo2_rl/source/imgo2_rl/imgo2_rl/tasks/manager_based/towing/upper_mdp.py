@@ -519,7 +519,7 @@ def cart_collision(env):
 def cart_collision_cost(env): return cart_collision(env).float()
 def velocity_tracking_exp(env, linear_std, yaw_std):
     term = _term(env)
-    linear_error = (term._asset.data.root_lin_vel_b[:, :2] - term.user_command[:, :2]) / linear_std
+    linear_error = (term.reference_command[:, :2] - term.user_command[:, :2]) / linear_std
     yaw_error = (term._asset.data.root_ang_vel_b[:, 2] - term.user_command[:, 2]) / yaw_std
     return torch.exp(-(linear_error.square().sum(1) + yaw_error.square()))
 def clearance_barrier(env, warning_distance, scale):
@@ -567,6 +567,32 @@ def post_stop_distance(env):
     elapsed_s = env.episode_length_buf * env.step_dt
     post_stop = (elapsed_s >= term.stop_time_s).float()
     return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
+def reference_tracking_l2(env):
+    """上层速度指令 `reference_command` 相对命令期望 `user_command` 的偏差平方（m²/s²）。
+
+    2026-09-23 用户要求「跟随实际输入的指令」。与 `velocity_tracking_exp` 的分工：
+    - `velocity_tracking_exp` 比**实际速度 vs user**：穿过底层动力学，误差归因不清
+      （可能是上层没给对指令，也可能是底层跟不上）；
+    - 本项比**上层的 speed 指令 ref vs user**：**只落在上层的责任边界内**，且是平方形式
+      ——全域有梯度（`exp` 在误差 >1 m/s 后梯度归零，而牵引段起步瞬间正落在那个死区）。
+
+    实测背景：牵引段 `err_cmd = |ref − user|` 平均约 0.425 m/s，`ref` 只到目标的 17%；
+    上层动作长期饱和在 ±1 且符号随机翻转，积分后正负抵消，`ref` 上不去。本项直接惩罚该现象。
+    """
+    term = _term(env)
+    return (term.reference_command[:, :2] - term.user_command[:, :2]).square().sum(dim=1)
+
+
+def action_magnitude_l2(env):
+    """上层动作幅值平方（裁剪后），用于抑制动作抖动。
+
+    与 `action_rate_l2` 的区别：后者罚"动作变化量"（平滑性），本项罚"动作绝对值"
+    （幅值）。策略长期输出 ±1 饱和随机方波时，两项都会变大，但本项能直接压住幅值，
+    为 `reference_tracking_l2` 留出"用中间值稳定跟踪"的空间。
+    """
+    return _term(env).processed_actions.square().sum(dim=1)
+
+
 def heading_deviation(env):
     """机体系朝向偏离「初始朝向」的 yaw 误差（rad）。
 

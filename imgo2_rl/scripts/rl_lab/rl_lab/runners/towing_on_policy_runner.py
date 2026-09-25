@@ -233,6 +233,23 @@ class TowingOnPolicyRunner:
 
         ETA 分母用 `iteration - start_iter + 1`：resume 时 tot_time 只累计本次运行的时间。
         """
+        if getattr(self, "compact_log", False):
+            head = (f"[it {iteration:>5}/{total_iter}] "
+                    f"rew {statistics.mean(reward_buffer) if reward_buffer else float('nan'):>7.2f}  "
+                    f"len {statistics.mean(length_buffer) if reward_buffer else float('nan'):>6.1f}  "
+                    f"val {value_loss:>8.3f}  pol {surrogate_loss:>7.4f}  "
+                    f"dec {decoder_loss.item():>7.3f}  std {mean_std:>5.2f}  "
+                    f"coll {collection_time:>5.2f}s  lrn {learn_time:>5.2f}s  "
+                    f"{fps:>6.0f} sps")
+            # 分项只挑最需要观察的几项，避免又变长（完整分项在 TensorBoard 的 Episode_* 里）
+            picks = ("reference_tracking", "action_magnitude", "yaw_heading",
+                     "tracking_velocity", "min_clearance")
+            detail = "  ".join(
+                f"{k.replace('Episode_Reward/', '')[:9]}={episode_stats[k]:+.3f}"
+                for k in (f"Episode_Reward/{p}" for p in picks) if k in episode_stats)
+            eta = self.tot_time / (iteration - start_iter + 1) * (total_iter - iteration) / 3600
+            return f"{head}  ETA {eta:5.2f}h" + (f"\n        {detail}" if detail else "")
+
         width, pad = 80, 26
         lines = [
             "#" * width,

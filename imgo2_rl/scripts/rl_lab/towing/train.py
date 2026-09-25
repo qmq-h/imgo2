@@ -25,6 +25,10 @@ parser.add_argument("--max_iterations", type=int, default=None)
 # 覆盖 agent 配置里的 save_interval（默认 100）。长跑按时长/关机时间安排时，
 # 间隔过大意味着最后不足一个间隔的进度全部丢失。
 parser.add_argument("--save_interval", type=int, default=None)
+# 控制台日志紧凑模式：每轮一行摘要（分项仍完整写进 TensorBoard）。
+# 默认的详细模式每轮约 25 行，2000 轮会产出约 5 万行。
+parser.add_argument("--compact-log", action="store_true", default=False,
+                    help="Print one summary line per iteration instead of the full block.")
 cli_args.add_towing_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
@@ -86,6 +90,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
         clip_actions=agent_cfg.clip_actions,
     )
     runner = TowingOnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+    runner.compact_log = bool(args_cli.compact_log)
     if resume_path is not None:
         runner.load(resume_path)
 

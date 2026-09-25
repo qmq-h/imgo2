@@ -144,37 +144,104 @@ class UpperObservationsCfg:
 
 @configclass
 class UpperRewardsCfg:
-    # Minimal v0 reward. Keep additional diagnostics out of the return until an observed failure
-    # justifies adding a term.
+    """上层拖曳策略的奖励。
+
+    **单位约定**：`RewardManager.compute()` 计算的是
+    `value = func() × weight × step_dt`（`step_dt = sim.dt × decimation = 0.005 × 10 = 0.05 s`），
+    所以下面每个 `weight` 都被乘了 0.05。备注里的"每步"已含该系数。
+
+    **记录口径**：TensorBoard 的 `Episode_Reward/<项>` = 该回合的加权和 ÷ `max_episode_length_s`，
+    量级比"每步值"小约 5~10 倍，不要直接与每步值比较。
+
+    **设计取向（截至 2026-09-23）**：跟踪类先有 `tracking_velocity`（正向驱动），
+    另外两项 `reference_tracking`/`action_magnitude` 用于修「上层动作 ±1 饱和抖动、
+    `ref` 追不上 `cmd`」这一具体失败。
+    """
+
+    # ============================ 跟踪（任务主目标）============================
+
+    # 【实际速度 vs 命令期望】唯一的正奖励，是策略的主要驱动。
+    # exp(−(Δlin/0.5)² − (Δyaw/1.0)²)：完全跟上给 1.0，误差到 0.5 m/s 掉到 0.37、到 1.0 掉到 0.018。
+    # 全程生效（settle 与 STOP 段 `user_command` 为 0，即"保持零速"）。
+    # ⚠ 已知缺陷：误差 >1 m/s 后梯度趋零（exp 的尾部），而牵引段起步瞬间正落在该区，
+    #   属"探索与奖励脱钩"的来源之一，尚未修改。
     tracking_velocity = RewTerm(func=mdp.velocity_tracking_exp, weight=1.0,
                                 params={"linear_std": 0.5, "yaw_std": 1.0})
+
+    # 【上层指令 vs 命令期望】惩罚 ‖ref − user‖²（m²/s²），单位是"速度误差平方"。
+    # 与 tracking_velocity 的关键区别：比的是**上层自己产生的 speed 指令**，不穿过底层动力学，
+    # 因此误差归因清晰（是"上层没给对指令"还是"底层跟不上"一目了然）。
+    # 平方形式**全域有梯度**（不像 exp 有死区），牵引段起步即有效。
+    # 量级：牵引段实测 err_cmd≈0.425 m/s ⇒ −0.90/步，是当前量级最大的惩罚之一。
+    # 若发现策略为压低它而不敢动，降到 −2.0 左右。
+    reference_tracking = RewTerm(func=mdp.reference_tracking_l2, weight=-5.0)
+
+    # ============================ 终止级（稀疏、致命）============================
+
+    # 【撞车】车斗／四轮与机器人任一刚体的过滤接触力 > 1 N 时置 1，同时是终止条件。
+    # 权重虽大（−50 ⇒ 每步 −2.5），但只在真撞上时才给，属稀疏信号。
+    # 背景：修复 filter 通配前该判据恒假（碰撞完全不生效），详见 docs/towing_observability_2026-09-22.md。
     collision = RewTerm(func=mdp.cart_collision_cost, weight=-50.0)
+
+    # 【跌倒】base 高度 < 0.18 m 时置 1，同时是终止条件。实测从未触发。
     fall = RewTerm(func=mdp.robot_fall_cost, weight=-50.0,
                    params={"minimum_height": 0.18})
+
+    # ============================ 几何／安全约束 ============================
+
+    # 【软间隙障碍】softplus((0.20 − 间隙)/0.05)，间隙趋向 0 时加大。
+    # 0.20 m 是**绝对**警戒线，线性区在警戒线**下方**；间隙 0.2 时约 −0.69/步、0 时约 −0.2/步。
+    # 无小车环境用 cart_present 屏蔽。
     clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
-    # 最小间距：间隙不得低于绳长的 ratio 倍（2026-09-23 用户要求新增）。
-    # 与上面的 clearance 互补：clearance 是 0.20 m 处的软障碍，本项是按绳长比例的硬铰链。
-    # 单位是米，故 weight 直接是「每米缺口扣多少奖励」。
-    # **ratio=0.40 ⇒ 阈值 0.32 m**：初始间隙 0.349 m 高于它，故 **spawn 时不触发**
-    # （用户 2026-09-23 明确要求初始不生效）。若取 0.6（=0.48 m）则开局即满额惩罚。
+
+    # 【硬最小间距】间隙低于 `ratio × rope_length` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
+    # 与上面 clearance 的分工：clearance 是"近了要缓"的软障碍；本项是"不得拉太近"的硬约束，
+    # 且按**绳长比例**给出阈值（不是绝对量）。weight 的单位是"每米缺口扣多少"。
+    # ratio=0.40 ⇒ 阈值 0.32 m；初始间隙 0.349 m 高于它，故 **spawn 时精确为 0**
+    # （用户 2026-09-23 要求初始不生效）。铰链已减掉 softplus 偏置以免阈值上方被误扣分。
     min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
                             params={"rope_length": 0.8, "ratio": 0.40, "softness": 0.02})
-    stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
-                                params={"force_scale": 10.0})
-    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
-    # 朝向保持：惩罚偏离初始 yaw（2026-09-23 用户报告「开始就在自转」）。
-    # 原奖励只惩罚 yaw 角速度误差，匀速自转在 settle 段几乎不受罚。平方形式 τ=1。
+
+    # 【朝向】惩罚偏离**初始 yaw** 的角度平方（rad²）。取相对值而非世界系 0：
+    # 初始朝向含 ±0.03 rad 随机化，用绝对基准会把该偏移当成初始误差。
+    # 存在原因：原奖励只惩罚 yaw **角速度**误差，匀速自转在 settle 段几乎不受罚
+    # （角速度也≈0），导致"转着不动"成了不受罚的局部最优（用户报告"开始就在自转"）。
+    # 量级：偏 11° ⇒ −0.074/步、29° ⇒ −0.51、90° ⇒ −4.9（刻意强于其余惩罚）。
     yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)
 
-    # --- 诊断项：只为进 TensorBoard，不用于塑造策略 ---
-    # 不能用 weight=0：`RewardManager.compute()` 对 `weight == 0.0` 的项直接 `continue`，
-    # 既不调用函数也不更新 `_episode_sums`，于是连日志都不会产生（2026-09-22 查源码确认）。
-    # 这里用 1e-6 的极小权重：每步贡献 1e-6，重项（tracking 1.0、collision −50）相对它
-    # 完全占优，对总回报与策略梯度的影响可忽略。
-    # 其余分项（tracking_velocity/collision/fall/clearance/stop_towing_force/
-    # extra_distance/action_rate）由 RewardManager 自动记录为 Episode_* 统计。
+    # ============================ 停止阶段（仅 t ≥ t_stop 生效）============================
+
+    # 【停车后卸力】‖F_tow‖/(‖F_tow‖+10)，有界归一化。表达"停车后应松绳"，
+    # 与 extra_distance 配对，防止"为卸载拉力而继续前冲"或"停死后被追尾"两种极端。
+    # 只在正式 STOP 之后计算；无小车环境屏蔽。实测每步约 −0.0045（绳力本就很小的必然结果）。
+    stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
+                                params={"force_scale": 10.0})
+
+    # 【停车后额外位移】relu(x − x_stop)：越过停车点的距离。惩罚"停不住继续滑"。
+    # 实测每步约 −0.003。
+    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
+
+    # ============================ 动作平滑／幅值（治抖动）============================
+
+    # 【动作变化率】‖a_t − a_{t−1}‖²，鼓励平滑。2026-09-23 由 −0.02 提到 −0.1：
+    # 原值实测每步仅 −0.026，被跟踪项压住、基本没起作用。±1 抖动时现约 −0.24/步。
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)
+
+    # 【动作幅值】‖a‖²（裁剪后，≤3）。与 action_rate 互补：一个压"变化量"、一个压"绝对值"。
+    # 目的：策略长期输出 ±1 饱和随机方波时把它压回中间值，为 reference_tracking 留出
+    # "用中等动作稳定跟踪"的空间。饱和时每步约 −0.15。
+    # ⚠ 与"必须用饱和正向动作长时间加速"存在张力（+x 上限仅 0.5 m/s²，到 1.0 m/s 需 40 步饱和），
+    #   若发现策略加速不足应下调。
+    action_magnitude = RewTerm(func=mdp.action_magnitude_l2, weight=-0.05)
+
+    # ============================ 诊断项（不塑造策略）============================
+
+    # 只为把"验收时答不出的量"写进 TensorBoard，不参与策略优化。
+    # **不能用 weight=0**：`RewardManager.compute()` 对 `weight == 0.0` 的项直接 `continue`，
+    # 既不调用函数也不更新 `_episode_sums`，连日志都不会产生（2026-09-22 查源码确认）。
+    # 用 1e-6 的极小权重：每步贡献 1e-6，重项（tracking 1.0、collision −50）完全占优。
+    # ⚠ 因此这些项在 TensorBoard 里的值需要 ÷1e-6 才是物理量。
     obs_cart_present = RewTerm(func=mdp.cart_present_flag, weight=1.0e-6)
     obs_towing_force = RewTerm(func=mdp.towing_force_norm, weight=1.0e-6)
     obs_towing_force_active = RewTerm(func=mdp.towing_force_norm_active, weight=1.0e-6)
