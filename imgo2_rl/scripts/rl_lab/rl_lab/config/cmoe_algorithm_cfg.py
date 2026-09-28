@@ -87,6 +87,10 @@ class CMoEOnPolicyRunnerCfg(RLLabBaseRunnerCfg):
     init_gate_bias_shrink: float = 0.0       # >0 ⇒ 同时把门控末层权重缩小该倍数（让偏置初始更占主导）
     anchor_terrain_names: tuple = ("flat",)  # 只在哪些地形上锚（默认只 flat）
     anchor_expert: int = 0                   # 锚哪个专家（默认专家 0 ＝装先验的那个）
+    # 锚"谁"的输出（2026-09-28 用户拍定）：`expert`＝只锚某专家；`mixture`＝锚**最终混合输出**
+    # （"平地上整体必须像 AMP"）；`both`＝两者都锚。实测依据：只锚专家时，专家 0 完好
+    # （Loss/anchor_prior 0.0074）但平地在蹭（gait_airtime_flat 0.018 vs 先验 0.084）⇒ 必须锚输出。
+    anchor_target: str = "expert"
     anchor_coef: float = 0.0                 # 初始锚定权重（0 ⇒ 关闭本功能）；典型 0.2~0.3
     anchor_coef_final: float = 0.0           # 衰减到的最终权重（典型 0.05~0.1）
     anchor_decay_iters: int = 1000           # 线性衰减到 final 所需轮数

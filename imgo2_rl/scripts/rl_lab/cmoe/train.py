@@ -84,6 +84,12 @@ parser.add_argument(
 parser.add_argument(
     "--anchor_expert", type=int, default=None, help="锚哪个专家（默认 0＝装先验的那个）。",
 )
+parser.add_argument(
+    "--anchor_target", type=str, default=None, choices=("expert", "mixture", "both"),
+    help="锚**谁**的输出：expert＝只锚某个专家；mixture＝锚**最终混合输出**（推荐："
+         "「平地上整体必须像 AMP」——只锚专家时门控会绕过它，实测平地滞空从 0.084 掉到 0.018）；"
+         "both＝两者都锚（默认 expert）。",
+)
 # append CMoE CLI arguments
 cli_args.add_cmoe_args(parser)
 # append AppLauncher cli args
@@ -159,6 +165,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
         agent_cfg.anchor_decay_iters = args_cli.anchor_decay_iters
     if args_cli.anchor_expert is not None:
         agent_cfg.anchor_expert = args_cli.anchor_expert
+    if args_cli.anchor_target is not None:
+        agent_cfg.anchor_target = args_cli.anchor_target
     if args_cli.anchor_terrain_names is not None:
         agent_cfg.anchor_terrain_names = tuple(
             name.strip() for name in args_cli.anchor_terrain_names.split(",") if name.strip()

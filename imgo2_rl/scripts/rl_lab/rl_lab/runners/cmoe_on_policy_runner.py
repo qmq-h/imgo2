@@ -145,6 +145,9 @@ class CMoEOnPolicyRunner:
             self.alg.teacher_policy = self.prior_teacher
             self.alg.teacher_obs_dim = int(self.env.num_one_step_obs)
             self.alg.anchor_expert = int(self.cfg.get("anchor_expert", 0))
+            self.alg.anchor_target = str(self.cfg.get("anchor_target", "expert"))
+            from ..utils.anchor import resolve_targets as _resolve_anchor_targets
+            _resolve_anchor_targets(self.alg.anchor_target)   # 非法取值启动即报错
             self._anchor_columns = self._terrain_columns_for_anchor()
             self._anchor_weight_mean = None
             if float(self.cfg.get("anchor_coef", 0.0) or 0.0) > 0.0:
@@ -152,7 +155,8 @@ class CMoEOnPolicyRunner:
                       f"{tuple(self.cfg.get('anchor_terrain_names', ('flat',)))}"
                       f"（{len(self._anchor_columns)} 列）；权重 "
                       f"{self.cfg.get('anchor_coef')} → {self.cfg.get('anchor_coef_final')}"
-                      f"（{self.cfg.get('anchor_decay_iters')} 轮线性衰减）")
+                      f"（{self.cfg.get('anchor_decay_iters')} 轮线性衰减）；锚的对象："
+                      f"{self.alg.anchor_target}")
             # 参数空间漂移的基准（与观测分布无关，见 log() 里的说明）
             self._prior_actor_snapshot = {
                 name: parameter.detach().clone()

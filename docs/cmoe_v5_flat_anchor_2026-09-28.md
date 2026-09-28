@@ -110,3 +110,73 @@ PYTHONUNBUFFERED=1 setsid nohup bash scripts/run_isaaclab.sh scripts/rl_lab/cmoe
 | `flat` 的 `gait_report.py` 判定 | **trot**（FL-FR ≈ 0.5、对角 ≈ 0） |
 | 障碍地形的步态 | **不作要求**（允许 bound/lockstep，由专家 1–4 自由演化） |
 | `illegal_contact`／速度跟踪 | 不劣于同配方无锚的对照 |
+
+## 6. v5.1（2026-09-28 当晚追加）：锚"最终输出"，不只锚专家
+
+### 6.1 实测暴露的问题（同一条 run 内的时间序列）
+
+| 轮次 | `gate_entropy` | 反解专家 0 权重 w₀ | `gait_airtime_flat`（v5，mode=first） | 同一项（旧 run，mode=all＝5 个专家全是先验） |
+|---|---|---|---|---|
+| 5 | 0.274 | ≈0.95 | 0.0013（热身，两者都不可信） | 0.0148 |
+| **20** | 0.362 | **≈0.93** | **0.0059** | **0.0837** |
+| 60 | 0.349 | ≈0.94 | 0.0128 | 0.0886 |
+| 120 | 0.388 | ≈0.93 | 0.0147 | 0.0634 |
+| 200 | 0.458 | ≈0.91 | 0.0192 | 0.0652 |
+| 258 | 0.478 | **≈0.90** | 0.0175 | 0.0677（@250） |
+
+**关键一行是 @20**：门控那时还有 **93% 的权重在专家 0**，而 v5 的平地滞空已经只有 **0.006 s**，
+旧 run（混合≙纯先验）是 **0.084 s** ⇒ **差 14 倍**。
+
+结论（两条，都重要）：
+
+1. **只锚"专家"不够**：专家 0 完好（`Loss/anchor_prior` = 0.0074）不等于平地在 trot —— 门控可以绕过它。
+2. **随机专家的污染阈值极低**：只要门控给出 **5~7%** 的权重给随机初始化的专家，trot 就被毁掉
+   （脚不离地、拖行）。所以 `mode="first"`（4 个随机专家）从一开始就注定守不住平地，
+   与门控是否漂移无关。
+
+### 6.2 修法
+
+| # | 改动 | 说明 |
+|---|---|---|
+| ① | 初始化换成 `--init_experts_mode=all --init_experts_jitter=0.05` | 5 个专家都起自 AMP（专家 0 纯净、其余只抖动"地形/估计器"那 112 列）⇒ 消掉污染悬崖；专家之间靠**怎么用地形信息**分化（这才是 MoE 该分化的地方） |
+| ② | 新增 `anchor_target`：`expert` / **`mixture`** / `both` | **`mixture` 锚的是最终混合输出**（"平地上整体必须像 AMP"）。梯度会同时进到**门控**与全部专家 ⇒ 门控自己学会"平地该把权重给谁"；而专家 0 本来就满足教师，网络满足约束最省力的方式就是把平地路由给它，所以**其它专家在 flat 上几乎收不到锚梯度**，分化不受损 |
+| ③ | 保留 `expert` 锚（`both`） | 随时留一个纯净的 trot 专家可回放对照 |
+
+实现要点（都已在代码里）：
+* 算式抽到 `scripts/rl_lab/rl_lab/utils/anchor.py`（纯 torch ⇒ 可离线单测）：`weighted_mse` / `resolve_targets` / `mix_experts`；
+* 混合输出**用 detach 过的 `build_actor_input` 重算**，不用更新循环里的 `mu_batch`（后者的图里带状态/地形**估计器**，会把它们也拉走 ⇒ 与估计器自己的损失打架）；多一次小前向可忽略；
+* 非法 `anchor_target` 在算法构造时与 runner 启动时**都**报错（防静默退化）；
+* 默认 `expert` 保持向后兼容（旧的 `--anchor_coef` 配方行为不变）。
+
+### 6.3 用这条 run 就能白拿的验收指标
+
+`anchor_target=mixture`（或 `both`）且掩码为 flat 时，**`Loss/anchor_prior` 就是"平地上混合动作与 AMP 的 MSE"**
+⇒ 直接当验收线：
+
+| 读数 | 期望 |
+|---|---|
+| `Loss/anchor_prior` | **< 0.01** 并随训练下降（现在 0.0074 是"专家 0 vs AMP"，换了模式后这个数才有真实含义） |
+| `Policy/anchor_weight_mean` | 与 `退火系数 × flat 环境占比` 吻合（本例 0.25→0.08 × 7.5%） |
+| `gait_report.py` 在 `flat` | **trot**（FL-FR≈0.5、对角≈0）；`--force_expert 0` 与正常混合的平地步态应接近 |
+| `gait_airtime_flat` | 回到先验量级 **0.06~0.09 s**（现在 0.018） |
+
+### 6.4 v5.1 启动命令（替代 §4 的 A 版）
+
+```bash
+cd <repo>/imgo2_rl
+PRIOR="$(pwd)/logs/amp_rsl_rl/base_move_amp/2026-09-17_21-25-57/model_24500.pt"
+LOG="logs/run_v5_1_$(date +%m%d_%H%M).log"
+
+PYTHONUNBUFFERED=1 setsid nohup bash scripts/run_isaaclab.sh scripts/rl_lab/cmoe/train.py \
+  --task=Imgo2-basemove-rough-cmoe-gaitfree \
+  --num_envs=4096 --headless --max_iterations=2000 --seed 1 \
+  --init_experts_from="$PRIOR" --init_experts_mode=all --init_experts_jitter=0.05 \
+  --init_experts_critic=false --init_gate_bias=0 --init_gate_bias_margin=4.0 \
+  --anchor_target=both --anchor_coef=0.25 --anchor_coef_final=0.08 --anchor_decay_iters=1000 \
+  --anchor_terrain_names=flat --anchor_expert=0 \
+  --run_name=cmoe_v5_1_outanchor </dev/null > "$LOG" 2>&1 &
+```
+启动时应多出一行 `…；锚的对象：both`。
+
+**待决定（未实施）**：掩码是否扩到 `random_rough`（AMP 是平面策略，0.01–0.06 m 噪声下"对齐 AMP"的语义存疑）；
+退火终值是否降到 0（现在是 0.08 的永久弱约束）。

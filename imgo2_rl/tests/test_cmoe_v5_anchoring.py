@@ -46,10 +46,11 @@ def _private_package():
         importlib.import_module("v5rl.utils.pretrained_prior"),
         importlib.import_module("v5rl.utils.terrain_masks"),
         importlib.import_module("v5rl.storage.cmoe_rollout_storage"),
+        importlib.import_module("v5rl.utils.anchor"),
     )
 
 
-prior_mod, masks_mod, storage_mod = _private_package()
+prior_mod, masks_mod, storage_mod, anchor_mod = _private_package()
 
 
 class _ToyExpert(torch.nn.Module):
@@ -265,6 +266,134 @@ class TestAnchorLossSemantics(unittest.TestCase):
         loss, expert_actions = self._loss(ac, obs, weight, lambda x: teacher_actions)
         masked_mse = torch.square(expert_actions[:3] - teacher_actions[:3]).mean(dim=-1).mean()
         self.assertAlmostEqual(float(loss), float(masked_mse), places=6)
+
+
+class TestAnchorLossFormula(unittest.TestCase):
+    """`utils/anchor.py` 的**真实算式**（算法里就是调它，不是测试里另写一份）。"""
+
+    def test_masking_and_normalization(self):
+        pred = torch.tensor([[1.0, 1.0], [3.0, 3.0], [5.0, 5.0]])
+        teacher = torch.zeros(3, 2)
+        weights = torch.tensor([1.0, 0.0, 1.0])          # 中间那条**完全不参与**
+        loss = anchor_mod.weighted_mse(pred, teacher, weights)
+        # 逐样本 MSE 是**对动作维取均值**：(1²+1²)/2=1、(5²+5²)/2=25 ⇒ (1+25)/2 = 13
+        self.assertAlmostEqual(float(loss), 13.0, places=6)
+
+    def test_zero_weight_or_empty_predictions(self):
+        pred = torch.ones(4, 2)
+        self.assertEqual(float(anchor_mod.weighted_mse(pred, torch.zeros(4, 2), torch.zeros(4))), 0.0)
+        with self.assertRaises(ValueError):
+            anchor_mod.weighted_mse([], torch.zeros(4, 2), torch.ones(4))
+
+    def test_both_targets_are_averaged(self):
+        teacher = torch.zeros(2, 1)
+        expert = torch.full((2, 1), 2.0)                 # MSE 4
+        mixture = torch.full((2, 1), 1.0)                # MSE 1
+        weights = torch.ones(2)
+        self.assertAlmostEqual(float(anchor_mod.weighted_mse([expert, mixture], teacher, weights)),
+                               2.5, places=6)
+
+    def test_shape_errors_raise(self):
+        with self.assertRaises(ValueError):
+            anchor_mod.weighted_mse(torch.ones(3, 2), torch.zeros(3, 2), torch.ones(2))
+        with self.assertRaises(ValueError):      # 权重条数对不上批大小
+            anchor_mod.weighted_mse(torch.ones(3, 2), torch.zeros(3, 2), torch.ones(4))
+        with self.assertRaises(ValueError):      # 预测与教师形状不一致
+            anchor_mod.weighted_mse(torch.ones(3, 5), torch.zeros(3, 2), torch.ones(3))
+
+    def test_resolve_targets(self):
+        self.assertEqual(anchor_mod.resolve_targets("expert"), (True, False))
+        self.assertEqual(anchor_mod.resolve_targets("mixture"), (False, True))
+        self.assertEqual(anchor_mod.resolve_targets("both"), (True, True))
+        with self.assertRaises(ValueError):
+            anchor_mod.resolve_targets("everything")
+
+    def test_mix_experts_matches_weighted_sum(self):
+        means = [torch.tensor([[1.0, 1.0]]), torch.tensor([[3.0, 3.0]])]
+        gate = torch.tensor([[0.25, 0.75]])
+        mixed = anchor_mod.mix_experts(means, gate)
+        self.assertTrue(torch.allclose(mixed, torch.tensor([[2.5, 2.5]])))
+
+
+class TestAnchorTargetGradientRouting(unittest.TestCase):
+    """`anchor_target` 的三种模式：梯度该进谁、不该进谁（对应算法里那段选择逻辑）。"""
+
+    def _predictions(self, ac, obs, target, expert=1):
+        actor_input = ac.build_actor_input(obs).detach()          # 与算法一致：不穿过估计器
+        expert_flag, mixture_flag = anchor_mod.resolve_targets(target)
+        out = []
+        if expert_flag:
+            out.append(ac.experts[expert].act_inference(actor_input))
+        if mixture_flag:
+            gate = ac.gating_network(actor_input)
+            means = [e.act_inference(actor_input) for e in ac.experts]
+            out.append(anchor_mod.mix_experts(means, gate))
+        return out
+
+    def _grads(self, target):
+        torch.manual_seed(0)
+        ac = _ToyActorCritic()
+        obs = torch.randn(8, 6)
+        teacher = torch.zeros(8, 2)
+        loss = anchor_mod.weighted_mse(self._predictions(ac, obs, target), teacher, torch.ones(8))
+        ac.zero_grad()
+        loss.backward()
+        def g(module):
+            return float(module.linear.weight.grad.abs().sum()) if module.linear.weight.grad is not None else 0.0
+        return (
+            [g(e) for e in ac.experts],
+            ac.gating_network[0].weight.grad is not None,
+            ac.encoder.weight.grad is not None,
+        )
+
+    def test_expert_mode_only_touches_that_expert(self):
+        grads, gate_touched, encoder_touched = self._grads("expert")
+        self.assertGreater(grads[1], 0.0)
+        self.assertEqual(grads[0], 0.0)
+        self.assertEqual(grads[2], 0.0)
+        self.assertFalse(gate_touched, "expert 模式不应触碰门控")
+        self.assertFalse(encoder_touched, "任何模式都不应穿过 build_actor_input")
+
+    def test_mixture_mode_touches_gate_and_all_experts(self):
+        grads, gate_touched, encoder_touched = self._grads("mixture")
+        self.assertTrue(gate_touched, "输出层锚必须能训练门控（这正是它的目的）")
+        self.assertTrue(all(g > 0.0 for g in grads), "混合输出对所有专家都有梯度（按门控权重）")
+        self.assertFalse(encoder_touched)
+
+    def test_both_mode_is_the_union(self):
+        grads, gate_touched, _ = self._grads("both")
+        self.assertTrue(gate_touched)
+        self.assertTrue(all(g > 0.0 for g in grads))
+
+
+class TestAlgorithmWiring(unittest.TestCase):
+    """源码级锁定：算法确实用同一套算式与三种模式，且默认仍是 `expert`（向后兼容）。"""
+
+    def setUp(self):
+        self.src = (RL_LAB / "algorithms" / "cmoe_ppo.py").read_text(encoding="utf-8")
+        self.cfg = (RL_LAB / "config" / "cmoe_algorithm_cfg.py").read_text(encoding="utf-8")
+
+    def test_algorithm_uses_shared_formula_and_resolves_targets(self):
+        for needle in ("from ..utils.anchor import mix_experts, resolve_targets, weighted_mse",
+                       "resolve_targets(self.anchor_target)",
+                       "weighted_mse(predictions, teacher_actions, anchor_weight_batch)",
+                       "mix_experts(expert_means, gate_weights)"):
+            self.assertIn(needle, self.src, needle)
+
+    def test_default_target_is_expert_for_backward_compat(self):
+        self.assertIn('anchor_target: str = "expert"', self.cfg)
+        self.assertIn('self.anchor_target = str(anchor_target)', self.src)
+
+    def test_gate_weights_in_anchor_are_recomputed_from_detached_input(self):
+        """混合锚必须用 detach 过的输入重算（不能用 mu_batch，它的图里带估计器）。"""
+        block = self.src.split("# 先验锚定（v5）", 1)[1].split("# Surrogate loss", 1)[0]
+        self.assertIn(".detach()", block)
+        # 只看**代码行**：注释里会提到 mu_batch（说明"为什么不用它"），那不算使用
+        code = "\n".join(
+            line for line in block.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        )
+        self.assertNotIn("mu_batch", code, "混合锚不要复用 mu_batch（它的图里带估计器）")
 
 
 if __name__ == "__main__":

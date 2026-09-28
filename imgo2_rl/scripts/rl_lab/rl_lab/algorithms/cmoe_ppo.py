@@ -9,6 +9,7 @@ import torch.optim as optim
 
 from ..modules.cmoe_actor_critic import CMoEActorCritic
 from ..storage.cmoe_rollout_storage import CMoERolloutStorage
+from ..utils.anchor import mix_experts, resolve_targets, weighted_mse
 
 class CMoEPPO:
     actor_critic: CMoEActorCritic
@@ -31,6 +32,7 @@ class CMoEPPO:
                  teacher_policy=None,
                  teacher_obs_dim: int = 45,
                  anchor_expert: int = 0,
+                 anchor_target: str = "expert",
                  ):
 
         self.device = device
@@ -63,6 +65,10 @@ class CMoEPPO:
         self.teacher_policy = teacher_policy
         self.teacher_obs_dim = int(teacher_obs_dim)
         self.anchor_expert = int(anchor_expert)
+        # 锚"谁"的输出（2026-09-28 用户拍定）：`expert`＝只锚某个专家（v5 初版）；
+        # `mixture`＝锚**最终混合输出**（"平地上整体必须像 AMP"）；`both`＝两者都锚。
+        self.anchor_target = str(anchor_target)
+        resolve_targets(self.anchor_target)      # 非法取值在构造时就报错
         self.last_anchor_loss = None
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
@@ -157,19 +163,32 @@ class CMoEPPO:
                 
                 contrastive_loss = self.actor_critic.compute_contrastive_loss(obs_batch)
 
-                # 先验锚定（v5）：只对 `anchor_expert` **一个专家**的输出做加权 MSE；权重来自 storage
-                # （runner 按地形掩码 × 衰减曲线算好，不在目标地形上就是 0）⇒ 未启用时恒为 0。
+                # 先验锚定（v5）：把被锚对象的动作拉向教师。权重来自 storage（runner 按
+                # `地形掩码 × 衰减曲线` 逐样本算好；不在目标地形上就是 0）⇒ 未启用时恒为 0。
+                # `anchor_target`：`expert`＝只锚某个专家；`mixture`＝锚**最终混合输出**（平地上
+                # 整体必须像 AMP，用户 2026-09-28 拍定）；`both`＝两者都锚。算式在 `utils/anchor.py`。
                 anchor_loss = torch.zeros((), device=self.device)
                 weight_sum = anchor_weight_batch.sum()
                 if self.teacher_policy is not None and float(weight_sum) > 0.0:
                     with torch.inference_mode():
                         teacher_actions = self.teacher_policy(obs_batch[:, : self.teacher_obs_dim])
-                    # ⚠️ `detach()`：锚**只**应当更新被锚那个专家的参数。若让它穿过 `build_actor_input`，
-                    # 状态/地形估计器也会被这个损失拉走（它们有自己的损失）⇒ 会互相打架。
+                    # ⚠️ `detach()`：锚不应当穿过 `build_actor_input`，否则状态/地形**估计器**也会被
+                    # 这个损失拉走（它们有自己的损失）⇒ 互相打架。混合输出因此在这里重算一遍（不用
+                    # `mu_batch`，它的图里带着估计器；多一次小前向可忽略）。
                     actor_input = self.actor_critic.build_actor_input(obs_batch).detach()
-                    expert_actions = self.actor_critic.experts[self.anchor_expert].act_inference(actor_input)
-                    mse = torch.square(expert_actions - teacher_actions).mean(dim=-1)
-                    anchor_loss = (anchor_weight_batch.squeeze(-1) * mse).sum() / weight_sum.clamp_min(1e-6)
+                    anchor_expert_flag, anchor_mixture_flag = resolve_targets(self.anchor_target)
+                    predictions = []
+                    if anchor_expert_flag:
+                        predictions.append(
+                            self.actor_critic.experts[self.anchor_expert].act_inference(actor_input)
+                        )
+                    if anchor_mixture_flag:
+                        gate_weights = self.actor_critic.gating_network(actor_input)
+                        expert_means = [
+                            expert.act_inference(actor_input) for expert in self.actor_critic.experts
+                        ]
+                        predictions.append(mix_experts(expert_means, gate_weights))
+                    anchor_loss = weighted_mse(predictions, teacher_actions, anchor_weight_batch)
                     # 只在**真的生效**时记录 ⇒ 未启用（没有教师/权重全 0）不会写出恒 0 的日志项
                     self.last_anchor_loss = float(anchor_loss.detach())
 
