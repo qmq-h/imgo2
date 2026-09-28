@@ -268,7 +268,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
     # run training
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
-    # close the simulator
+    # ⚠️ 2026-09-29 实测问题：训练跑完后进程**不退出**（2000/2000、`model_2000.pt` 已落盘，
+    # 但日志与 tfevents 在完成那一刻起再无写入）。卡的是 Isaac Sim 的收尾：
+    # `env.close()` / `simulation_app.close()` 在无头模式下会挂住不返回，于是进程一直
+    # **占着 GPU 显存**（我们已实测：两个 Isaac 实例并存会把彼此拖慢 1.66×，4.44 → 7.64 s/轮）。
+    # 训练产物（`model_<iter>.pt`、TB、`params/`）此时都已落盘 ⇒ 直接硬退出是安全的，
+    # 且能保证显存归还（跳过 atexit/finalizer 是有意的）。
+    import os as _os
+    _os._exit(0)
+
+    # close the simulator（下面两行在正常环境下不会被执行；保留以便阅读与未来恢复）
     env.close()
 
 
