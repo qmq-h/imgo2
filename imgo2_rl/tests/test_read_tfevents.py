@@ -142,6 +142,87 @@ class ReadTfeventsTests(unittest.TestCase):
         self.assertIn("iterations=80", out)
         self.assertIn("墙钟秒", out)                                       # 明确提示时钟轴 tag
 
+    def test_resolve_columns_prefers_plain_tag_over_clock_axis(self):
+        """`mean_reward` 必须命中 `Train/mean_reward`，**不能**命中 `Train/mean_reward/time`。
+
+        2026-09-25 实测踩过：`*/time` 的 step 是墙钟秒，混进来会打出"没有数据的假轮次"。
+        """
+        series = {
+            "Train/mean_reward/time": [(0, 1.0)],
+            "Train/mean_reward": [(0, 2.0), (1, 3.0)],
+            "Policy/gate_entropy": [(0, 1.5)],
+        }
+        resolved = rt.resolve_columns(series, ("mean_reward", "gate_entropy", "not_there"))
+        self.assertEqual(resolved[0], "Train/mean_reward")
+        self.assertEqual(resolved[1], "Policy/gate_entropy")
+        self.assertEqual(resolved[2], "not_there", "找不到的列原样保留（打印显示 -，不整体错位）")
+
+    def test_format_follow_line(self):
+        series = {"Train/mean_reward": [(7, -5.2367)], "Policy/gate_entropy": [(7, 1.5864)]}
+        line = rt.format_follow_line(7, ("Train/mean_reward", "Policy/gate_entropy", "Policy/none"), series)
+        self.assertIn("iter      7", line)
+        self.assertIn("mean_reward -5.2367", line)
+        self.assertIn("gate_entropy 1.5864", line)
+        self.assertIn("none -", line)
+        # 该步没有记录的列显示 `-`（而不是拿别的步顶替）
+        self.assertIn("mean_reward -", rt.format_follow_line(9, ("Train/mean_reward",), series))
+
+    def test_follow_skips_history_and_prints_new_steps(self):
+        """`--follow` 从**当前最新轮次**开始（不重放历史），新轮次逐行打印，Ctrl-C 返回 0。"""
+        import contextlib
+        import io
+
+        base = {"Train/mean_reward": [(0, 1.0), (1, 2.0)], "Policy/gate_entropy": [(0, 1.0), (1, 1.1)]}
+        later = {"Train/mean_reward": base["Train/mean_reward"] + [(2, 3.0)],
+                 "Policy/gate_entropy": base["Policy/gate_entropy"] + [(2, 1.2)]}
+        calls = {"n": 0}
+
+        def fake_read(_path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return base
+            if calls["n"] == 2:
+                return later
+            raise KeyboardInterrupt
+
+        saved = rt.read_scalars
+        rt.read_scalars = fake_read
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                rc = rt.follow("unused", ("mean_reward", "gate_entropy"), every=0.0, total=None)
+        finally:
+            rt.read_scalars = saved
+        out = buffer.getvalue()
+        self.assertEqual(rc, 0, "Ctrl-C 应当正常返回 0")
+        self.assertIn("从 iter 1 开始盯", out)
+        self.assertNotIn("iter      0", out, "历史轮次不应被重放")
+        self.assertIn("iter      2", out)
+        self.assertIn("mean_reward 3.0000", out)
+
+    def test_last_prints_recent_iterations_only(self):
+        """`--last N`：按轮次打印**最近 N 轮**的逐行日志（用户 2026-09-28："我想要 log，有 iter 数据"）。
+
+        合成 3 轮，取最近 2 轮 ⇒ 不应出现最早那一轮；列用 `--columns` 选。
+        """
+        import contextlib
+        import io
+
+        path = os.path.join(self.tmp.name, "events.out.tfevents.last")
+        _write(path, [_event(0, {"Train/mean_reward": 1.0, "Policy/gate_entropy": 1.5}),
+                      _event(1, {"Train/mean_reward": 2.0, "Policy/gate_entropy": 1.4}),
+                      _event(2, {"Train/mean_reward": 3.0, "Policy/gate_entropy": 1.3})])
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            rc = rt.main([path, "--last", "2", "--columns", "mean_reward,gate_entropy"])
+        out = buffer.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertNotIn("iter      0", out, "只应打印最近 2 轮")
+        self.assertIn("iter      1", out)
+        self.assertIn("mean_reward 2.0000", out)
+        self.assertIn("iter      2", out)
+        self.assertIn("gate_entropy 1.3000", out)
+
     def test_main_cli_prints_table_and_tags(self):
         path = os.path.join(self.tmp.name, "events.out.tfevents.3")
         _write(path, [_event(0, {"AMP/mean_root_height_m": 0.25, "Custom/metric": 9.0,

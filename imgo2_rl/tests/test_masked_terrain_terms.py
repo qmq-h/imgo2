@@ -151,7 +151,16 @@ class TestCmoeCfgWiring(unittest.TestCase):
         self.assertIn("self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ", self.src)
         self.assertIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
         self.assertIn('self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")', self.src)
-        self.assertIn("self.rewards.feet_air_time.weight = 0.3", self.src)
+        self.assertIn("self.rewards.feet_air_time.weight = 1.0", self.src)
+        # 2026-09-28：机身水平罚对齐 PPO 的 −5.0，但障碍地形豁免（新的掩码类）
+        self.assertIn("self.rewards.flat_orientation_l2.func = mdp.MaskedFlatOrientationL2", self.src)
+        self.assertIn("self.rewards.flat_orientation_l2.weight = -5.0", self.src)
+        # 2026-09-28 用户："斜坡和台阶都不需要保持水平" ⇒ 豁免表改为"全部地形键 − 要求水平的地形"现算
+        self.assertIn("LEVEL_ORIENTATION_TERRAIN_NAMES", self.src)
+        self.assertIn('self.rewards.flat_orientation_l2.params["free_terrain_names"] = tuple(', self.src)
+        # 相位核去掉、feet_slide 恢复
+        self.assertIn("self.rewards.feet_gait.weight = 0.0", self.src)
+        self.assertIn("self.rewards.feet_slide.weight = -0.05", self.src)
 
     def test_pairs_are_diagonal_trot(self):
         block = re.search(r'self\.rewards\.feet_gait\.params\["synced_feet_pair_names"\] = \((.*?)\)\n',

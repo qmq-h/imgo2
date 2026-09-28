@@ -185,6 +185,12 @@ def terrain_levels_vel_logged(
             if track_avg is not None and has_sample:
                 # 逐列跟踪均值：用来判断"某一列卡住"到底是跟踪不达标还是真的过不去
                 out[f"tracking_{name}"] = torch.mean(track_avg[inner])
+                # 逐列**过门比例**（2026-09-25 加）：门槛是**按回合**判的，列均值会掩盖分布 ——
+                # run H 的 `gap` 列在均值只有 0.62–0.78（低于 0.8 门）时照样从 level 0.017 涨到 6.49，
+                # 说明"均值不过门"≠"没有回合过门"。只有这条读数能回答"某列卡在 0 到底是
+                # 大部分回合过不了门、还是能过但被别的条件挡住"。纯记录，不参与任何判据。
+                out[f"tracking_pass_frac_{name}"] = (track_avg[inner] > up_threshold[inner]).float().mean()
+                out[f"tracking_fail_frac_{name}"] = (track_avg[inner] < tracking_move_down).float().mean()
             if has_sample:
                 for label, value in metric_avg.items():
                     out[f"gait_{label}_{name}"] = torch.mean(value[inner])

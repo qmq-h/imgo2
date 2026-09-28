@@ -87,8 +87,9 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。"""
         self.assertEqual(self.effective["lin_vel_z_l2"], -2.0)
         self.assertIn("MaskedLinVelZ", self.funcs["lin_vel_z_l2"])
-        # feet_air_time 降权（削弱"奖励腾空"的分量）
-        self.assertEqual(self.effective["feet_air_time"], 0.3)
+        # 2026-09-28：feet_air_time 从 0.3 改回 **1.0**（对齐 PPO）；弹跳改由 −2 的竖直速度罚 +
+        # −5.0 的机身水平罚管。
+        self.assertEqual(self.effective["feet_air_time"], 1.0)
 
     def test_bounce_metric_is_diagnostic_only(self):
         self.assertIn("diag_bounce", self.effective)
@@ -139,8 +140,10 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         # 三项照搬 PPO 的固定步态 shaping，都挂 masked 类。
         self.assertEqual(self.effective["joint_mirror"], -1.0)
         self.assertEqual(self.effective["feet_height_body"], -5.0)
-        # 2026-09-24 晚：1.0 → 0.3（该式对"滞空更久"的梯度恒为 +1 ⇒ 降权以削弱"奖励腾空/弹跳"）
-        self.assertEqual(self.effective["feet_air_time"], 0.3)
+        # 2026-09-28（用户："feet_air_time 对齐 PPO"）：0.3 → **1.0**（PPO rough 原值）。
+        # 当年降到 0.3 是为了削弱"奖励腾空/弹跳"；现在改为**对齐 PPO 的配平**（shaping/task ≈7:1），
+        # 弹跳问题交给 `lin_vel_z_l2 −2`（掩码）与 50× 强的 `flat_orientation_l2` 管。
+        self.assertEqual(self.effective["feet_air_time"], 1.0)
         self.assertIn("MaskedJointMirror", self.funcs["joint_mirror"])
         self.assertIn("MaskedFeetHeightBody", self.funcs["feet_height_body"])
         self.assertIn("MaskedFeetAirTime", self.funcs["feet_air_time"])
@@ -148,17 +151,29 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         self.assertEqual(self.effective["feet_air_time_variance"], -8.0)
         self.assertIn("MaskedFeetAirTimeVariance", self.funcs["feet_air_time_variance"])
 
-    def test_feet_gait_enabled_with_masked_class(self):
-        """2026-09-24 晚用户："那就开 feet gait，同样加掩码"。"""
-        self.assertEqual(self.effective["feet_gait"], 1.0)
-        self.assertIn("TrotWithoutGapReward", self.funcs["feet_gait"])
+    def test_phase_kernel_removed_by_design(self):
+        """2026-09-28（用户："相位核去掉"）：`feet_gait` 归零、从生效表移除。
 
-    def test_not_restored_terms(self):
-        # `feet_slide` 仍未恢复（用户未要求）；若日后恢复，请同步更新本测试与 docs。
-        self.assertNotIn("feet_slide", self.effective)
+        依据：相位核在这份高频步态上**本身饱和**（实测溢价 0.116/s = 跟踪项的 2.3%），而 PPO
+        不用相位核也能练出干净 trot ⇒ 保留它只是多一个调不动的旋钮。三项分类器探针（1e-6）保留。
+        """
+        self.assertNotIn("feet_gait", self.effective)
+        for probe in ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace"):
+            self.assertIn(probe, self.effective)
+
+    def test_feet_slide_restored_to_align_ppo(self):
+        """2026-09-28（用户："feet_slide 对齐 PPO"）：−0.05（PPO rough 原值）。
+
+        这一项是"支撑脚不许打滑"，正对着实测的拖行形态（level 6：FL duty 0.80 / RR 0.57）。
+        """
+        self.assertEqual(self.effective["feet_slide"], -0.05)
 
     def test_no_masked_func_is_dead(self):
+        """带自定义 func 的项必须权重非零 —— 例外见 `INTENTIONALLY_DEAD_MASKED`。"""
+        intentionally_dead = {"feet_gait"}      # 2026-09-28 用户决定去掉相位核（保留探针读数）
         for term in self.funcs:
+            if term in intentionally_dead:
+                continue
             self.assertIn(term, self.effective,
                           f"{term} 的 func 被换成了自定义类但权重为 0 ⇒ 死代码")
 
@@ -197,6 +212,62 @@ class TestZeroingWarning(unittest.TestCase):
                         f"没有报出 alpha 被清零：{notes}")
         self.assertFalse(any("beta" in n and "清零" in n for n in notes),
                          f"不该报 beta：{notes}")
+
+
+class TestGaitFreeEffectiveRewards(unittest.TestCase):
+    """`cmoe-gaitfree`（2026-09-25：步态交给 45 维先验）的生效集。
+
+    与 `cmoe` 的关系是**严格子集**：只少那五项手工步态 shaping，其余一项不动 ——
+    这条不变量比逐个断言更抗漂移。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.weights, cls.funcs, cls.notes = chk.run_chain(chk.CHAINS["cmoe-gaitfree"][0][1])
+        cls.effective = {t: v for t, v in cls.weights.items() if isinstance(v, (int, float)) and v != 0}
+        cls.shaping_weights, _f, _n = chk.run_chain(chk.CHAINS["cmoe"][0][1])
+        cls.shaping_effective = {t: v for t, v in cls.shaping_weights.items()
+                                 if isinstance(v, (int, float)) and v != 0}
+
+    def test_five_gait_shaping_terms_are_zero(self):
+        for term in ("joint_mirror", "feet_air_time", "feet_height_body",
+                     "feet_air_time_variance", "feet_gait"):
+            self.assertNotIn(term, self.effective, f"{term} 应已归零（步态交给先验）")
+            self.assertEqual(self.weights.get(term), 0.0, f"{term} 的最终权重应为 0.0")
+
+    def test_is_a_strict_subset_of_the_shaping_recipe(self):
+        removed = set(self.shaping_effective) - set(self.effective)
+        # 2026-09-28 起 `feet_gait` 在**两条链上都是 0**（用户："相位核去掉"）⇒ gaitfree 相对 cmoe
+        # 只再少**四项**（手工步态 shaping），生效项数 27 → **23**。
+        self.assertEqual(removed, {"joint_mirror", "feet_air_time", "feet_height_body",
+                                   "feet_air_time_variance"},
+                         f"gaitfree 相对 cmoe 只应少这四项，实际少了 {sorted(removed)}")
+        self.assertEqual(len(self.effective), len(self.shaping_effective) - 4)
+        self.assertEqual(len(self.effective), 23, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-09-28 新增/恢复的两项**在 gaitfree 里也要有**（它们是"步态质量/姿态"，不是手工步态风格）：
+        # `feet_slide −0.05`（治拖行）与 `flat_orientation_l2 −5.0`（掩码）。
+        self.assertEqual(self.effective["feet_slide"], -0.05)
+        self.assertEqual(self.effective["flat_orientation_l2"], -5.0)
+
+    def test_classifiers_and_diagnostics_are_kept(self):
+        """分类器/诊断项必须留着 —— 否则再也看不见"先验漂没漂"。"""
+        for name in ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace",
+                     "diag_air_time", "diag_bounce", "diag_pair_mismatch"):
+            self.assertIn(name, self.effective, f"{name} 是度量项，不能跟着归零")
+            self.assertLessEqual(abs(float(self.effective[name])), 1e-5)
+
+    def test_task_level_terms_are_untouched(self):
+        for name, value in (("track_world_vel_xy_exp", 5.0), ("base_height_l2", -10.0),
+                            ("lin_vel_z_l2", -2.0), ("lin_pos_y", -0.4), ("yaw_abs", -0.2)):
+            self.assertEqual(self.effective[name], value, f"{name} 不该被这条链改动")
+        self.assertIn("MaskedLinVelZ", self.funcs["lin_vel_z_l2"])
+
+    def test_zeroing_is_reported_not_silent(self):
+        """归零必须出现在"被清零"提示里（每一项归零都是一次有意识的选择）。"""
+        for term in ("joint_mirror", "feet_air_time", "feet_height_body",
+                     "feet_air_time_variance", "feet_gait"):
+            self.assertTrue(any(term in note and "清零" in note for note in self.notes),
+                            f"{term} 的归零没有被报出来：{self.notes}")
 
 
 if __name__ == "__main__":

@@ -112,7 +112,8 @@ class TestCMoERunnerLogging(unittest.TestCase):
     def setUpClass(cls):
         cls.runner_cls = _load_runner_class()
 
-    def _log(self, ep_infos, it=7):
+    def _log(self, ep_infos, it=7, console_mode="gait"):
+        """跑一次 `log()`，返回 (写进 writer 的 Episode 标量, 控制台文本)。"""
         runner = self.runner_cls.__new__(self.runner_cls)
         runner.device = "cpu"
         runner.tot_timesteps = 0
@@ -122,6 +123,10 @@ class TestCMoERunnerLogging(unittest.TestCase):
         runner.env = _Env()
         runner.alg = _Alg()
         runner.writer = _Writer()
+        # `__init__` 里"从先验起步"用的两个属性（2026-09-25 新增）；这里没装先验 ⇒ 漂移日志分支不活跃。
+        runner.prior_teacher = None
+        runner._prior_action_rmse = None
+        runner.cfg = {"log_prior_rmse": True, "console_skip_columns": console_mode}
         locs = {
             "ep_infos": ep_infos,
             "it": it,
@@ -133,18 +138,19 @@ class TestCMoERunnerLogging(unittest.TestCase):
             "lenbuffer": [],
             "num_learning_iterations": 10,
         }
-        with contextlib.redirect_stdout(io.StringIO()):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
             self.runner_cls.log(runner, locs, *[torch.tensor(0.0)] * 9)
         logged = {
             tag[len("Episode/"):]: value
             for tag, value, _step in runner.writer.scalars
             if tag.startswith("Episode/")
         }
-        return logged
+        return logged, buffer.getvalue()
 
     def test_keys_missing_from_first_entry_are_not_dropped(self):
         """第一条缺、后面有的键不能被整轮丢掉（旧代码 `ep_infos[0]` 驱动会丢）。"""
-        logged = self._log([
+        logged, _printed = self._log([
             {"Curriculum/terrain_levels/level_flat": 1.0},
             {"Curriculum/terrain_levels/level_flat": 2.0,
              "Curriculum/terrain_levels/tracking_boxes": 0.70},
@@ -155,7 +161,7 @@ class TestCMoERunnerLogging(unittest.TestCase):
 
     def test_keys_missing_from_later_entries_do_not_raise(self):
         """第一条有、后面缺的键不许 KeyError（旧代码会直接打断训练）。"""
-        logged = self._log([
+        logged, _printed = self._log([
             {"Curriculum/terrain_levels/tracking_gap": 0.30,
              "Curriculum/terrain_levels/level_flat": 1.0},
             {"Curriculum/terrain_levels/level_flat": 3.0},
@@ -164,9 +170,49 @@ class TestCMoERunnerLogging(unittest.TestCase):
         self.assertAlmostEqual(logged["Curriculum/terrain_levels/tracking_gap"], 0.30, places=6)
         self.assertAlmostEqual(logged["Curriculum/terrain_levels/level_flat"], 3.0, places=6)
 
+    def test_gait_columns_are_logged_but_not_printed(self):
+        """2026-09-25 用户要求「log 中一堆 gait 不打印」：逐列 `gait_*_<地形>` 只写 TB，汇总量仍打印。"""
+        ep_info = {
+            "Curriculum/terrain_levels/gait_trot_flat": 0.62,
+            "Curriculum/terrain_levels/gait_airtime_gap": 0.14,
+            "Curriculum/terrain_levels/gait_trot_mean": 0.60,
+            "Curriculum/terrain_levels/level_mean": 1.58,
+        }
+        logged, printed = self._log([ep_info], console_mode="gait")
+        # 写 TensorBoard：一个都不少
+        for key in ep_info:
+            self.assertIn("Curriculum/terrain_levels/" + key.split("/")[-1], logged)
+        # 控制台：逐列 gait 不打印，`gait_*_mean` 与全局量照旧
+        self.assertNotIn("gait_trot_flat", printed)
+        self.assertNotIn("gait_airtime_gap", printed)
+        self.assertIn("gait_trot_mean", printed)
+        self.assertIn("level_mean", printed)
+
+    def test_console_mode_all_silences_every_column(self):
+        """`all` 模式：`Curriculum/terrain_levels/` 下所有逐列指标都不打印（含 level_/tracking_）。"""
+        ep_info = {
+            "Curriculum/terrain_levels/level_flat": 3.9,
+            "Curriculum/terrain_levels/tracking_gap": 0.49,
+            "Curriculum/terrain_levels/tracking_pass_frac_gap": 0.1,
+            "Curriculum/terrain_levels/level_mean": 1.58,
+            "Curriculum/terrain_levels/tracking_pass_frac": 0.52,
+        }
+        logged, printed = self._log([ep_info], console_mode="all")
+        self.assertEqual(len(logged), 5, "写 TB 的键不能因为静音而减少")
+        for silent in ("level_flat", "tracking_gap", "tracking_pass_frac_gap"):
+            self.assertNotIn(silent, printed)
+        for kept in ("level_mean", "tracking_pass_frac"):
+            self.assertIn(kept, printed)
+
+    def test_console_mode_none_keeps_old_behaviour(self):
+        """`none` 模式＝旧行为：逐列也打印（可回退）。"""
+        _logged, printed = self._log(
+            [{"Curriculum/terrain_levels/gait_trot_flat": 0.62}], console_mode="none")
+        self.assertIn("gait_trot_flat", printed)
+
     def test_no_nan_in_logged_scalars(self):
         """逐列指标缺样本时**不该出现键**（由 curriculums.py 保证），这里守住"写出去的不含 NaN"。"""
-        logged = self._log([
+        logged, _printed = self._log([
             {"Curriculum/terrain_levels/level_gap": 2.0},
             {"Curriculum/terrain_levels/tracking_gap": 0.4},
         ])

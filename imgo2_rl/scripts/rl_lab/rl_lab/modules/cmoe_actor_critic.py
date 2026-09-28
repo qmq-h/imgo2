@@ -132,14 +132,33 @@ class CMoEActorCritic(nn.Module):
             dim=-1,
         )
 
+    # 回放/诊断用：非 None 时门控被强制 one-hot（`cmoe/play.py --force_expert`）
+    forced_expert: int | None = None
+
+    def _apply_forced_expert(self) -> None:
+        """`forced_expert` 非 None 时把门控**强制 one-hot** 到该专家（回放/诊断用）。
+
+        `cmoe/play.py --force_expert k` 会把 `actor_critic.forced_expert = k`，于是混合输出
+        **严格等于**专家 k 的输出 ⇒ 可以逐专家回放，判断"5 个专家到底有没有功能分工"。
+        训练时保持 None（默认），不影响任何原有行为。
+        """
+        forced = getattr(self, "forced_expert", None)
+        if forced is None or self.gate_weights is None:
+            return
+        one_hot = torch.zeros_like(self.gate_weights)
+        one_hot[:, int(forced)] = 1.0
+        self.gate_weights = one_hot
+
     def compute_gate_weights(self, observations: torch.Tensor) -> torch.Tensor:
         actor_input = self.build_actor_input(observations)
         self.gate_weights = self.gating_network(actor_input)
+        self._apply_forced_expert()
         return self.gate_weights
 
     def update_distribution(self, observations: torch.Tensor) -> None:
         actor_input = self.build_actor_input(observations)
         self.gate_weights = self.gating_network(actor_input)
+        self._apply_forced_expert()
         expert_means = torch.stack([expert.act(actor_input) for expert in self.experts], dim=1)
         weighted_mean = (expert_means * self.gate_weights.unsqueeze(-1)).sum(dim=1)
         self.distribution = Normal(weighted_mean, weighted_mean * 0.0 + self.std)
@@ -153,6 +172,7 @@ class CMoEActorCritic(nn.Module):
         del observations_extra
         actor_input = self.build_actor_input(observations)
         self.gate_weights = self.gating_network(actor_input)
+        self._apply_forced_expert()
         expert_means = torch.stack([expert.act_inference(actor_input) for expert in self.experts], dim=1)
         return (expert_means * self.gate_weights.unsqueeze(-1)).sum(dim=1)
 

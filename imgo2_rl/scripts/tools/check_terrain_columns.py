@@ -14,7 +14,7 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 
 用法::
 
-    python3 imgo2_rl/scripts/tools/check_terrain_columns.py            # 训练/play 两套列数
+    python3 imgo2_rl/scripts/tools/check_terrain_columns.py            # 训练／play 当前的 num_cols=40 列数
     python3 imgo2_rl/scripts/tools/check_terrain_columns.py --cols 20 40
 
 比例来源：基类顺序与默认比例读**已安装的 Isaac Lab** `isaaclab/terrains/config/rough.py`
@@ -142,7 +142,7 @@ def report(sub_terrains: list[tuple[str, float]], num_cols: int, label: str) -> 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cols", nargs="*", type=int, default=None,
-                        help="要算的 num_cols（默认 20＝训练默认、10＝CMoE play）")
+                        help="要算的 num_cols（默认＝CMoE_env_cfg 里配置的值，2026-09-28 起为 40）")
     args = parser.parse_args(argv)
 
     base = base_sub_terrains()
@@ -159,10 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         mark = "  ←覆盖" if name in props else ""
         print(f"  {name:22s} {value:.4f}{mark}")
 
-    train_cols = args.cols if args.cols else [20, 10]
+    default_cols = [int(col_over["num_cols"])] if col_over.get("num_cols") else [40]
+    cols_to_check = args.cols if args.cols else default_cols
     counts_by_cols = {}
-    for num_cols in train_cols:
-        label = "训练" if num_cols == 20 else ("play" if num_cols == 10 else f"num_cols={num_cols}")
+    for num_cols in cols_to_check:
+        label = "训练／play 当前值" if num_cols in default_cols else f"num_cols={num_cols}（手动指定）"
         counts_by_cols[num_cols] = report(merged, num_cols, label)
 
     problems = 0
@@ -176,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"\n❌ 掩码 {key} 引用的 '{name}' 在 num_cols={num_cols} 时只有 0 列 ⇒ 静默失效")
                     problems += 1
     if col_over:
-        print(f"\n提示：配置里显式覆盖过 num_cols = {col_over['num_cols']}（play 用）")
+        print(f"\n提示：配置里显式覆盖过 num_cols = {col_over['num_cols']}（训练与 play 都是）")
 
     # 2026-09-24 用户决定「所有场景都只给超前的速度」⇒ `forward_only_terrain_names` 必须覆盖
     # **全部** sub_terrains（漏一项，那一列就会静默退回全向命令）。

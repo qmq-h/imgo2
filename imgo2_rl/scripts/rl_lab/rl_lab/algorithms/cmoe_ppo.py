@@ -28,6 +28,9 @@ class CMoEPPO:
                  desired_kl=0.01,
                  contrastive_loss_coef=1.0,
                  device='cpu',
+                 teacher_policy=None,
+                 teacher_obs_dim: int = 45,
+                 anchor_expert: int = 0,
                  ):
 
         self.device = device
@@ -54,6 +57,13 @@ class CMoEPPO:
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
         self.contrastive_loss_coef = contrastive_loss_coef
+        # 先验锚定（v5，2026-09-28）：把**某一个专家**的输出拉向一份固定的教师策略。
+        # 强度不在这里，而在 storage 的逐样本 `anchor_weight`（由 runner 按地形掩码 + 衰减曲线算好）⇒
+        # 算法侧保持通用：只负责"对哪些样本、用哪个专家、锚到谁"。
+        self.teacher_policy = teacher_policy
+        self.teacher_obs_dim = int(teacher_obs_dim)
+        self.anchor_expert = int(anchor_expert)
+        self.last_anchor_loss = None
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
         self.storage = CMoERolloutStorage(
@@ -83,8 +93,9 @@ class CMoEPPO:
         self.transition.critic_observations = critic_obs
         return self.transition.actions
     
-    def process_env_step(self, rewards, dones, infos, next_critic_obs):
+    def process_env_step(self, rewards, dones, infos, next_critic_obs, anchor_weight=None):
         self.transition.next_critic_observations = next_critic_obs.clone()
+        self.transition.anchor_weight = anchor_weight
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
         # Bootstrapping on time outs
@@ -117,7 +128,7 @@ class CMoEPPO:
         generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
 
         for obs_batch, critic_obs_batch, actions_batch, next_critic_obs_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
-            old_mu_batch, old_sigma_batch in generator:
+            old_mu_batch, old_sigma_batch, anchor_weight_batch in generator:
                 
                 self.actor_critic.act(obs_batch)
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
@@ -146,6 +157,22 @@ class CMoEPPO:
                 
                 contrastive_loss = self.actor_critic.compute_contrastive_loss(obs_batch)
 
+                # 先验锚定（v5）：只对 `anchor_expert` **一个专家**的输出做加权 MSE；权重来自 storage
+                # （runner 按地形掩码 × 衰减曲线算好，不在目标地形上就是 0）⇒ 未启用时恒为 0。
+                anchor_loss = torch.zeros((), device=self.device)
+                weight_sum = anchor_weight_batch.sum()
+                if self.teacher_policy is not None and float(weight_sum) > 0.0:
+                    with torch.inference_mode():
+                        teacher_actions = self.teacher_policy(obs_batch[:, : self.teacher_obs_dim])
+                    # ⚠️ `detach()`：锚**只**应当更新被锚那个专家的参数。若让它穿过 `build_actor_input`，
+                    # 状态/地形估计器也会被这个损失拉走（它们有自己的损失）⇒ 会互相打架。
+                    actor_input = self.actor_critic.build_actor_input(obs_batch).detach()
+                    expert_actions = self.actor_critic.experts[self.anchor_expert].act_inference(actor_input)
+                    mse = torch.square(expert_actions - teacher_actions).mean(dim=-1)
+                    anchor_loss = (anchor_weight_batch.squeeze(-1) * mse).sum() / weight_sum.clamp_min(1e-6)
+                    # 只在**真的生效**时记录 ⇒ 未启用（没有教师/权重全 0）不会写出恒 0 的日志项
+                    self.last_anchor_loss = float(anchor_loss.detach())
+
                 # Surrogate loss
                 ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
                 surrogate = -torch.squeeze(advantages_batch) * ratio
@@ -168,6 +195,7 @@ class CMoEPPO:
                     + self.value_loss_coef * value_loss
                     - self.entropy_coef * entropy_batch.mean()
                     + self.contrastive_loss_coef * contrastive_loss
+                    + anchor_loss
                 )
 
                 # Gradient step

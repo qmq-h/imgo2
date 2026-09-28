@@ -188,8 +188,10 @@ class TestCmoeCfgWiring(unittest.TestCase):
         )
         self.assertIsNotNone(block, "配置里没有设置 forward_only_terrain_names")
         listed = set(re.findall(r'"([a-z_0-9]+)"', block.group(1)))
+        # 2026-09-28 地形结构对齐后新增 hurdle／mix／narrow_stairs ⇒ 共 11 类
         expected = {"pyramid_stairs", "pyramid_stairs_inv", "boxes", "random_rough",
-                    "hf_pyramid_slope", "hf_pyramid_slope_inv", "gap", "flat"}
+                    "hf_pyramid_slope", "hf_pyramid_slope_inv", "gap",
+                    "hurdle", "mix", "narrow_stairs", "flat"}
         self.assertEqual(listed, expected,
                          f"forward_only 名单缺 {sorted(expected - listed)}／多 {sorted(listed - expected)}")
 

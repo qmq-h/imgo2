@@ -14,6 +14,18 @@ gym.register(
 )
 
 gym.register(
+    id="Imgo2-basemove-rough-cmoe-gaitfree",
+    entry_point="rl_lab.envs:CMoEManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        # 步态交给 45 维先验（训练时用 `--init_experts_from=<AMP checkpoint>`），
+        # 五项手工步态 shaping 归零；agent cfg 与普通 cmoe 相同。见 CMOE-04。
+        "env_cfg_entry_point": f"{__name__}.CMoE_env_cfg:Imgo2CMoEGaitFreeEnvCfg",
+        "cmoe_rsl_rl_cfg": f"{agents.__name__}.CMoE_rsl_rl_cfg:Imgo2CMoERoughRunnerCfg",
+    },
+)
+
+gym.register(
     id="Imgo2-basemove-rough-cmoe-play",
     entry_point="rl_lab.envs:CMoEManagerBasedRLEnv",
     disable_env_checker=True,

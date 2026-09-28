@@ -620,6 +620,30 @@ class MaskedLinVelZ(ManagerTermBase):
         return lin_vel_z_l2(env, asset_cfg) * (~self._free_mask).float()
 
 
+class MaskedFlatOrientationL2(ManagerTermBase):
+    """`flat_orientation_l2`（机身水平罚）的**按地形豁免**版本（2026-09-28 用户决定）。
+
+    用户决策：**权重对齐 PPO rough 的 −5.0**（我们之前只有 −0.1，相差 50 倍），但**不在障碍地形生效**——
+    过沟/上箱/混合地形时允许必要的俯仰/侧倾，不该被"机身必须水平"按住。
+
+    PPO 侧是把 −5.0 **全地形**生效（它的地形里也有台阶），所以这里比 PPO 更宽松；两者都是有意选择。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.free_terrain_names: tuple[str, ...] = tuple(cfg.params.get("free_terrain_names", ()))
+        self._free_mask = _terrain_type_mask(env, self.free_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        free_terrain_names: tuple[str, ...] = (),
+    ) -> torch.Tensor:
+        del free_terrain_names  # 已在 __init__ 缓存为静态掩码
+        return flat_orientation_l2(env, asset_cfg) * (~self._free_mask).float()
+
+
 class MaskedFeetHeightBody(ManagerTermBase):
     """`feet_height_body` 的**按地形豁免**版本（2026-09-24）。
 

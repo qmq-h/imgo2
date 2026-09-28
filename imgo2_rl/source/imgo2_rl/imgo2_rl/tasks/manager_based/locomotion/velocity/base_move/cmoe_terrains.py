@@ -1,4 +1,18 @@
-"""Longitudinal CMoE obstacle courses scaled for the Imgo2 quadruped."""
+"""Longitudinal CMoE obstacle courses scaled for the Imgo2 quadruped.
+
+2026-09-28（用户：「我看了一下 cmoe 的地形设置，我们四足这个地形还是差点，感觉可以对齐一下」）：
+本文件的结构与参考实现对齐。参考＝`Hoshi-No-Ai/CMoE`（ICRA 2026）@ `4575d6ae`：
+
+* 比例／行列数／初始等级：`legged_gym/legged_gym/envs/g1/g1_cmoe_config.py` 的 `class terrain`；
+* 每种地形的**难度律**：`legged_gym/legged_gym/utils/humanoid_terrain.py::Terrain.make_terrain`；
+* 纵向障碍（gap／hurdle／step／narrow stairs／mix）的图案：
+  `legged_gym/legged_gym/utils/parkour_terrain_utils.py`。
+
+参考是骨盆高 0.75 m 的 G1，我们是站高 0.30 m 的四足 ⇒ **只对齐结构**（地形种类、比例、行列数、
+难度律形式、初始等级），已有类型的米制难度区间沿用我们已验证的四足值；参考里没有现成四足对应值
+的三个新增类型（`hurdle`／`mix`／`narrow_stairs`）按参考米制 × :data:`REFERENCE_SCALE` 落地。
+逐项对应、已知偏离与验证方式见 `docs/cmoe_terrain_alignment_2026-09-28.md`。
+"""
 
 from __future__ import annotations
 
@@ -11,6 +25,11 @@ from isaaclab.utils import configclass
 
 _BASE_DEPTH = 1.0
 
+# 站高比：参考 G1 的 base_height_target = 0.75 m（`g1_cmoe_config.py::rewards.base_height_target`），
+# 我们 Imgo2 站立高度 0.30 m ⇒ 0.30/0.75 = 0.4。**只用于参考里没有四足对应值的新增类型**
+# （hurdle／mix／narrow_stairs）；已有类型的难度区间是我们自己验证过的四足值，不参与缩放。
+REFERENCE_SCALE = 0.4
+
 
 def _platform(x0: float, x1: float, width: float, top_height: float = 0.0) -> trimesh.Trimesh:
     """Create one full-width platform segment whose top is at ``top_height``."""
@@ -19,6 +38,23 @@ def _platform(x0: float, x1: float, width: float, top_height: float = 0.0) -> tr
     center = (0.5 * (x0 + x1), 0.5 * width, 0.5 * (top_height - _BASE_DEPTH))
     return trimesh.creation.box(
         (length, width, height), trimesh.transformations.translation_matrix(center)
+    )
+
+
+def _corridor(
+    x0: float, x1: float, tile_width: float, corridor_width: float, top_height: float = 0.0
+) -> trimesh.Trimesh:
+    """Create one **partial-width** platform segment centred in ``y``（窄走廊／独木桥用）。
+
+    参考 `parkour_terrain_utils.mix_obstacles_terrain` / `narrow_stairs_terrain` 的做法是
+    「走廊内抬升、走廊外下沉」：本函数负责抬升的那一半，下沉由调用方铺一块 ``top_height<0``
+    的整宽平台当坑底。
+    """
+    length = x1 - x0
+    height = _BASE_DEPTH + top_height
+    center = (0.5 * (x0 + x1), 0.5 * tile_width, 0.5 * (top_height - _BASE_DEPTH))
+    return trimesh.creation.box(
+        (length, corridor_width, height), trimesh.transformations.translation_matrix(center)
     )
 
 
@@ -133,3 +169,210 @@ class CMoETrackStairsTerrainCfg(SubTerrainBaseCfg):
     stairs_start_x: float = 2.0
     spawn_x: float = 0.75
     ascending: bool = True
+
+
+# ======================================================================================
+# 2026-09-28 结构对齐新增：参考 CMoE 有、我们缺的三类障碍地形。
+# 参考是 `Hoshi-No-Ai/CMoE` @ `4575d6ae`，逐项来源见文件头 docstring；米制 = 参考 × REFERENCE_SCALE。
+# 比例（`g1_cmoe_config.py::terrain.terrain_dict`）里这三类各占 0.1，与 `gap`(0.3) 一起构成
+# 参考的 parkour 列（`non_parkour_terrain = 0.5` 之后的部分）。
+# ======================================================================================
+
+
+def track_hurdle_terrain(difficulty: float, cfg: CMoETrackHurdleTerrainCfg):
+    """一串**薄而高**的整宽横栏（参考 `parkour_hurdle_terrain` 的缩比版）。
+
+    参考调用（`humanoid_terrain.py:230`）::
+
+        parkour_hurdle_terrain(num_stones=4, stone_len=0.1+0.2*d,
+                               hurdle_height_range=[0.2*d, 0.15+0.25*d],
+                               x_range=[1.2, 2], half_valid_width=[4, 4.5])
+
+    ``half_valid_width`` 取 4–4.5 m 远大于瓦片半宽 ⇒ 参考里横栏也是**整宽**的（没有侧向空隙）。
+    ×0.4 后：厚 0.04–0.12 m、栏高 ``[0.08*d, 0.06+0.10*d]`` m、间距 0.48–0.80 m。
+    与我们已有的 `boxes`（0.18–0.30 m 厚、0.08–0.30 m 高的矮块）区别正是"更薄更高" ⇒ 跨栏而非踩台阶。
+    """
+    hurdle_len = cfg.stone_len_range[0] + difficulty * (cfg.stone_len_range[1] - cfg.stone_len_range[0])
+    height_min = cfg.hurdle_height_min_slope * difficulty
+    height_max = cfg.hurdle_height_max_base + cfg.hurdle_height_max_slope * difficulty
+
+    meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1])]
+    cursor = cfg.platform_length
+    for _ in range(cfg.num_hurdles):
+        cursor += float(np.random.uniform(*cfg.spacing_range))
+        x0, x1 = cursor - 0.5 * hurdle_len, cursor + 0.5 * hurdle_len
+        if x1 >= cfg.size[0]:
+            break
+        meshes.append(
+            _platform(x0, x1, cfg.size[1], float(np.random.uniform(height_min, height_max)))
+        )
+
+    origin = np.array([cfg.spawn_x, 0.5 * cfg.size[1], 0.0])
+    return meshes, origin
+
+
+@configclass
+class CMoETrackHurdleTerrainCfg(SubTerrainBaseCfg):
+    """整宽薄横栏（跨栏）。米制常量＝参考 `parkour_hurdle_terrain` × ``REFERENCE_SCALE``。"""
+
+    function = track_hurdle_terrain
+    num_hurdles: int = 4
+    # 参考 stone_len = 0.1 + 0.2*d（m）⇒ ×0.4 = 0.04 + 0.08*d
+    stone_len_range: tuple[float, float] = (0.04, 0.12)
+    # 参考 hurdle_height_range = [0.2*d, 0.15 + 0.25*d]（m）⇒ ×0.4 = [0.08*d, 0.06 + 0.10*d]
+    hurdle_height_min_slope: float = 0.08
+    hurdle_height_max_base: float = 0.06
+    hurdle_height_max_slope: float = 0.10
+    # 参考 x_range = [1.2, 2.0]（m，相邻横栏间距）⇒ ×0.4 = [0.48, 0.80]
+    spacing_range: tuple[float, float] = (0.48, 0.80)
+    # 参考 platform_len = 2.0 m（起跳前的平地）⇒ ×0.4 = 0.80 m（仍覆盖 0.75 m 出生点）
+    platform_length: float = 0.80
+    spawn_x: float = 0.75
+
+
+# 参考 `mix_obstacles_terrain` 是**硬编码固定图案**（不是按参数生成的），单位为
+# 「水平索引 × 0.05 m、高度索引 × 0.005 m」，走廊半宽 20 索引（= 1.0 m），走廊外下沉。
+# 下面逐段照抄该图案（段以索引表示），再整体 × REFERENCE_SCALE。
+_MIX_X_UNIT = 0.05 * REFERENCE_SCALE   # 0.02 m
+_MIX_Z_UNIT = 0.005 * REFERENCE_SCALE  # 0.002 m
+
+
+def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
+    """参考 `mix_obstacles_terrain`：窄走廊上的「台阶上行 → 深坑 → 高台 → 高栏 → 深坑 → 平台」。
+
+    参考图案（索引段 → 高度索引，高度再乘 ``diff = 1.1*d``）：:
+
+        0:30 → 0        30:36 → 30      36:42 → 60      42:48 → 90      48:60 → 120
+        60:(72-k) → 深坑                  (72-k):84 → 120  84:86 → 0（参考里未被赋值，照抄）
+        86:96 → 96      96:99 → 170      99:111 → 120    111:(123-k) → 深坑
+        (123-k):140 → 120                140:160 → 60      160:以后 → 0
+
+    其中 ``k = round(10 - 10*d)``；走廊外（|y| > 0.4 m）整体下沉。
+    **已知偏离**：参考的起步平台缩比后只有 0.60 m，装不下我们 0.75 m 的出生点 ⇒ 图案整体平移
+    ``pattern_start_x = 0.30``（起步平台变 0.90 m），其余形状逐段一致；坑深取固定 0.50 m
+    （参考为 0.5–1.5 m 随机，缩比区间 0.02–0.60 m）。
+    """
+    diff = cfg.height_scale * difficulty
+    gap_shrink = round(cfg.gap_shrink_units * (1.0 - difficulty))
+    offset = cfg.pattern_start_x
+    x_unit, z_unit = cfg.x_unit, cfg.z_unit
+
+    # 坑底：整宽、顶面在 -pit_depth
+    meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1], -cfg.pit_depth)]
+    # 图案之前的起步走廊（到 pattern_start_x）
+    meshes.append(_corridor(0.0, offset, cfg.size[1], cfg.corridor_width, 0.0))
+
+    segments = (
+        (0.0, 30.0, 0.0),
+        (30.0, 36.0, 30.0),
+        (36.0, 42.0, 60.0),
+        (42.0, 48.0, 90.0),
+        (48.0, 60.0, 120.0),
+        (72.0 - gap_shrink, 84.0, 120.0),
+        (84.0, 86.0, 0.0),
+        (86.0, 96.0, 96.0),
+        (96.0, 99.0, 170.0),
+        (99.0, 111.0, 120.0),
+        (123.0 - gap_shrink, 140.0, 120.0),
+        (140.0, 160.0, 60.0),
+    )
+    for start_units, end_units, height_units in segments:
+        if end_units <= start_units:
+            continue
+        x0 = offset + start_units * x_unit
+        x1 = min(offset + end_units * x_unit, cfg.size[0])
+        if x1 <= x0:
+            continue
+        meshes.append(
+            _corridor(
+                x0, x1, cfg.size[1], cfg.corridor_width, height_units * z_unit * diff
+            )
+        )
+
+    # 图案结束（索引 160）之后走廊回到 0 高度，直铺到瓦片末端
+    tail_x0 = min(offset + 160.0 * x_unit, cfg.size[0])
+    if tail_x0 < cfg.size[0]:
+        meshes.append(_corridor(tail_x0, cfg.size[0], cfg.size[1], cfg.corridor_width, 0.0))
+
+    origin = np.array([cfg.spawn_x, 0.5 * cfg.size[1], 0.0])
+    return meshes, origin
+
+
+@configclass
+class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
+    """参考 `mix_obstacles_terrain` 的缩比版（窄走廊 + 台阶/深坑/高台/高栏混合）。"""
+
+    function = track_mix_terrain
+    x_unit: float = _MIX_X_UNIT
+    z_unit: float = _MIX_Z_UNIT
+    # 参考 diff = hurdle_height_range[0] * 1.1 = 1.1 * d
+    height_scale: float = 1.1
+    # 参考 round(10 - 10*d)（索引单位）
+    gap_shrink_units: float = 10.0
+    # 参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4 = 0.40 m（全宽 0.80 m）
+    corridor_width: float = 0.80
+    # 参考坑深 -100..-300 索引 = 0.5–1.5 m ⇒ ×0.4 = 0.02–0.60 m，取固定值
+    pit_depth: float = 0.50
+    # 见函数 docstring 的「已知偏离」：图案整体平移，保证 0.75 m 出生点落在起步平台上
+    pattern_start_x: float = 0.30
+    spawn_x: float = 0.75
+
+
+def track_narrow_stairs_terrain(difficulty: float, cfg: CMoETrackNarrowStairsTerrainCfg):
+    """窄走廊楼梯（参考 `narrow_stairs_terrain` 的缩比版）：上行 → 平台 → 下行，两侧是深坑。
+
+    参考调用（`humanoid_terrain.py:241`）::
+
+        narrow_stairs_terrain(num_stones=24, step_height=0.25*d, x_range=[0.30, 1.5],
+                              half_valid_width=[1 - 0.5*d, 1.5 - 0.5*d])
+
+    参考里步深固定取 ``x_range[0] = 0.30 m``、走廊半宽固定取 ``half_valid_width[0] = 1 - 0.5*d`` m，
+    前 10 级上行、第 10–14 级保持、其后 9 级下行（净升高 ≈ 一个步高）。×0.4 后：步深 0.12 m、
+    步高 0.10*d（d=1 → 0.09 m）、走廊全宽 0.80 - 0.40*d（0.44–0.80 m）、起步平台 1.00 m。
+    **已知偏离**：参考的坑深是 0.05–1.5 m 随机（缩比 0.02–0.60 m），这里取固定 0.50 m。
+    """
+    step_height = cfg.step_height_max * difficulty
+    corridor_width = 2.0 * (cfg.corridor_half_width_start - cfg.corridor_half_width_slope * difficulty)
+
+    meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1], -cfg.pit_depth)]
+    # 参考的起步平台是**整宽**的（[0:platform_len, :] = 0）
+    meshes.append(_platform(0.0, cfg.platform_length, cfg.size[1]))
+
+    x = cfg.platform_length
+    height = 0.0
+    for index in range(cfg.num_steps):
+        if index < cfg.num_steps // 2 - 2:
+            height += step_height
+        elif index > cfg.num_steps // 2 + 2:
+            height -= step_height
+        x1 = x + cfg.step_depth
+        if x1 > cfg.size[0]:
+            break
+        meshes.append(_corridor(x, x1, cfg.size[1], corridor_width, height))
+        x = x1
+    # 参考在楼梯之后没有被赋值的区域 ⇒ 回到 0 高度的整宽平地
+    if x < cfg.size[0]:
+        meshes.append(_platform(x, cfg.size[0], cfg.size[1]))
+
+    origin = np.array([cfg.spawn_x, 0.5 * cfg.size[1], 0.0])
+    return meshes, origin
+
+
+@configclass
+class CMoETrackNarrowStairsTerrainCfg(SubTerrainBaseCfg):
+    """窄走廊楼梯。米制常量＝参考 `narrow_stairs_terrain` × ``REFERENCE_SCALE``。"""
+
+    function = track_narrow_stairs_terrain
+    num_steps: int = 24
+    # 参考步深 = x_range[0] = 0.30 m ⇒ ×0.4
+    step_depth: float = 0.12
+    # 参考 step_height = 0.25*d（m）⇒ ×0.4 = 0.10*d
+    step_height_max: float = 0.10
+    # 参考 platform_len = 2.5 m ⇒ ×0.4 = 1.00 m（覆盖 0.75 m 出生点）
+    platform_length: float = 1.00
+    # 参考半宽 half_valid_width[0] = 1 - 0.5*d（m）⇒ ×0.4 = 0.40 - 0.20*d
+    corridor_half_width_start: float = 0.40
+    corridor_half_width_slope: float = 0.20
+    # 参考坑深随机 0.05–1.5 m ⇒ 缩比 0.02–0.60 m，取固定值
+    pit_depth: float = 0.50
+    spawn_x: float = 0.75

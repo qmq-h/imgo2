@@ -18,6 +18,7 @@ class CMoERolloutStorage:
             self.action_mean = None
             self.action_sigma = None
             self.next_critic_observations = None
+            self.anchor_weight = None      # [N] float：该步每环境的"先验锚定权重"（0=不锚）
         
         def clear(self):
             self.__init__()
@@ -49,6 +50,8 @@ class CMoERolloutStorage:
         self.advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.mu = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
+        # 先验锚定的逐样本权重（v5：只在 flat 上非零）。默认 0 ⇒ 不锚（与旧行为完全一致）。
+        self.anchor_weight = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
 
         self.num_transitions_per_env = num_transitions_per_env
         self.num_envs = num_envs
@@ -68,6 +71,9 @@ class CMoERolloutStorage:
         self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
         self.mu[self.step].copy_(transition.action_mean)
         self.sigma[self.step].copy_(transition.action_sigma)
+        weight = getattr(transition, "anchor_weight", None)
+        self.anchor_weight[self.step].copy_(
+            torch.zeros_like(self.anchor_weight[self.step]) if weight is None else weight.view(-1, 1))
         self.step += 1
 
     def clear(self):
@@ -117,6 +123,7 @@ class CMoERolloutStorage:
         advantages = self.advantages.flatten(0, 1)
         old_mu = self.mu.flatten(0, 1)
         old_sigma = self.sigma.flatten(0, 1)
+        anchor_weight = self.anchor_weight.flatten(0, 1)
 
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
@@ -135,5 +142,6 @@ class CMoERolloutStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
+                anchor_weight_batch = anchor_weight[batch_idx]
                 yield obs_batch, critic_observations_batch, actions_batch, next_critic_observations_batch, target_values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch
+                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, anchor_weight_batch

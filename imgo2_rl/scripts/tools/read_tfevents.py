@@ -137,6 +137,100 @@ def read_scalars(path: str) -> dict[str, list[tuple[int, float]]]:
     return series
 
 
+DEFAULT_FOLLOW_COLUMNS = (
+    "mean_reward", "mean_episode_length", "illegal_contact",
+    "level_mean", "gate_entropy", "prior_weight_rel_drift",
+)
+
+
+def resolve_columns(series: dict[str, list[tuple[int, float]]], wanted) -> list[str]:
+    """把用户给的子串列表解析成实际 tag：精确命中优先，否则取第一个包含该子串的 tag。
+
+    找不到的项原样保留（打印时会显示 `-`），这样列不会因为某个 tag 还没出现（例如新加的
+    `prior_weight_rel_drift` 在旧 run 里不存在）而整体错位。
+    """
+    resolved: list[str] = []
+    for want in wanted:
+        if want in series:
+            resolved.append(want)
+            continue
+        candidates = [tag for tag in series if want in tag]
+        # ⚠️ 必须排除 `*/time`（它的 x 轴是墙钟秒），否则 `mean_reward` 会命中 `Train/mean_reward/time`。
+        # 优先"以 want 结尾"的短 tag（＝同名主量），其次非 clock 的候选，最后才退回原名。
+        suffix_hits = sorted((tag for tag in candidates
+                              if tag.endswith(want) and not tag.endswith(CLOCK_AXIS_SUFFIX)), key=len)
+        if suffix_hits:
+            resolved.append(suffix_hits[0])
+            continue
+        non_clock = sorted((tag for tag in candidates if not tag.endswith(CLOCK_AXIS_SUFFIX)), key=len)
+        resolved.append((non_clock or candidates or [want])[0])
+    return resolved
+
+
+def format_follow_line(step: int, columns, series: dict[str, list[tuple[int, float]]]) -> str:
+    """一行：`iter  140 | mean_reward  -5.2367 | ...`（缺该步的列显示 `-`）。"""
+    parts = [f"iter {step:>6d}"]
+    for tag in columns:
+        value = None
+        for point_step, point_value in series.get(tag, []):
+            if point_step == step:
+                value = point_value
+        short = tag.split("/")[-1]
+        parts.append(f"{short} {'-' if value is None else f'{value:.4f}'}")
+    return " | ".join(parts)
+
+
+def follow(event_file: str, columns_in, every: float, total: int | None) -> int:
+    """像 `tail -f` 一样盯着 event 文件：每出现一个**新轮次**就打一行选定列。Ctrl-C 退出。
+
+    默认**从当前最新轮次开始**（不重放历史；要看历史用 `--steps`）。若监控期间训练已停，
+    会一直安静地轮询（不会报错）。
+    """
+    import time
+
+    series0 = read_scalars(event_file)
+    start_step, _ = iteration_step(series0)
+    print(f"# 从 iter {start_step} 开始盯（历史用 --steps 查）", flush=True)
+    started = time.time()
+    samples: list[tuple[float, int]] = []      # (本地时钟, iter) 滑窗，用于速率/ETA
+    last_progress = 0.0
+    printed: set[int] = set(range(0, start_step + 1))
+    try:
+        while True:
+            series = read_scalars(event_file)
+            step_now, axis_tag = iteration_step(series)
+            columns = resolve_columns(series, columns_in)
+            # ⚠️ 只用**迭代轴**取新轮次：`*/time` 那两个 tag 的 step 是墙钟秒，
+            # 混进来会打出"没有对应数据"的假轮次（实测过：265/273/280… 全是秒）。
+            high_water = max(printed) if printed else -1
+            new_steps = [s for s in sorted({st for st, _v in series.get(axis_tag, [])}) if s > high_water]
+            if new_steps:
+                for step in new_steps[:40]:      # 一次最多打 40 行，避免长时间暂停后刷屏
+                    print(format_follow_line(step, columns, series), flush=True)
+                if len(new_steps) > 40:
+                    print(f"...（另有 {len(new_steps) - 40} 个新轮次未逐行打印）", flush=True)
+                printed.update(new_steps)
+            if total and step_now > 0:
+                now = time.time()
+                samples.append((now, step_now))
+                samples = [s for s in samples if now - s[0] <= 240][-30:]
+                span = samples[-1][0] - samples[0][0]
+                if now - last_progress >= 30:                   # 限频，每 30 s 最多一条
+                    last_progress = now
+                    if span >= 60 and samples[-1][1] > samples[0][1]:
+                        rate = (samples[-1][1] - samples[0][1]) / span     # 轮/秒（滑动窗口）
+                        eta = (total - step_now) / rate / 60
+                        print(f"[progress] {step_now}/{total} 轮（{100.0 * step_now / total:.1f}%），"
+                              f"{rate * 60:.1f} 轮/分钟，ETA ≈ {eta:.1f} 分钟", flush=True)
+                    else:
+                        print(f"[progress] {step_now}/{total} 轮（{100.0 * step_now / total:.1f}%），"
+                              f"速率估算中（需 ≥60 s 样本）", flush=True)
+            time.sleep(every)
+    except KeyboardInterrupt:
+        print("\n[follower] 已停止（训练不受影响）")
+        return 0
+
+
 def resolve_event_file(run: str | None, root: str) -> str:
     """把 `--run` 解析成一个具体的 event 文件；为空时取 `root` 下最新的那个。
 
@@ -204,6 +298,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--match", default="", help="逗号分隔的 tag 子串（默认一组常用量；--all 看全部）")
     parser.add_argument("--tags", action="store_true", help="只列出全部 tag 名")
     parser.add_argument("--all", action="store_true", help="打印所有 tag（配合 --steps）")
+    parser.add_argument("--follow", nargs="?", const=10.0, type=float, default=None,
+                        metavar="SECONDS",
+                        help="像 tail -f 一样实时盯盘：每出现一个新轮次就打一行（默认每 10 s 轮询一次）。"
+                             "配合 --columns 选列、--total 打印进度与 ETA；Ctrl-C 退出且不影响训练。")
+    parser.add_argument("--columns", default=",".join(DEFAULT_FOLLOW_COLUMNS),
+                        help="--follow 的列（逗号分隔的 tag 子串；默认一组常用量）")
+    parser.add_argument("--total", type=int, default=None, help="--follow 时用于算进度/ETA 的总轮数")
+    parser.add_argument("--last", type=int, default=None,
+                        help="按轮次打印**最近 N 轮**的逐行日志（每轮一行；列用 --columns 选）")
     args = parser.parse_args(argv)
 
     path = resolve_event_file(args.run or args.event_file, args.root)
@@ -219,6 +322,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.tags:
         for tag in sorted(series):
             print(tag)
+        return 0
+
+    if args.follow is not None:
+        columns_in = tuple(x.strip() for x in args.columns.split(",") if x.strip())
+        print(f"# 实时盯盘：{path}")
+        print(f"# 列：{' | '.join(columns_in)}（Ctrl-C 退出，训练不受影响）")
+        return follow(path, columns_in, float(args.follow), args.total)
+
+    if args.last:
+        columns = resolve_columns(series, tuple(x.strip() for x in args.columns.split(",") if x.strip()))
+        axis_steps = [s for s, _value in series.get(axis_tag, [])][-int(args.last):]
+        for step in axis_steps:
+            print(format_follow_line(step, columns, series))
         return 0
 
     steps = [int(x) for x in args.steps.split(",") if x.strip()] or [last_step]

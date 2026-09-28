@@ -17,8 +17,37 @@ import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
 from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import MySceneCfg, ObservationsCfg, RewardsCfg
 
 from .rough_env_cfg import Imgo2RoughEnvCfg
-from .cmoe_terrains import CMoETrackGapTerrainCfg, CMoETrackStairsTerrainCfg, CMoETrackStepTerrainCfg
+from .cmoe_terrains import (
+    CMoETrackGapTerrainCfg,
+    CMoETrackHurdleTerrainCfg,
+    CMoETrackMixTerrainCfg,
+    CMoETrackNarrowStairsTerrainCfg,
+    CMoETrackStairsTerrainCfg,
+    CMoETrackStepTerrainCfg,
+)
 
+
+# 2026-09-28（用户决定）：**步态/姿态 shaping 的地形分区**。
+# * `EASY_TERRAIN_NAMES`（无障碍）：平地、两种斜坡、普通粗糙 —— trot 与"机身水平"在这里既自然又省力；
+# * `OBSTACLE_TERRAIN_NAMES`（障碍）：其余 7 类 —— 允许策略按地形自由选择步态与姿态（过沟/上箱需要俯仰）。
+# ⚠️ 两张表必须**互斥且并集 = 全部 `sub_terrains` 键**；`tests/test_reward_terrain_partition.py` 会锁住这一点，
+# 以后新增地形忘了归类就会红（历史上 `forward_only_terrain_names` 漏项曾静默退回全向命令）。
+# `flat_orientation_l2`（机身水平罚）**只在这些地形上要求"机身保持水平"**（2026-09-28 用户：
+# "斜坡和台阶都不需要保持水平"）：坡面要**贴坡**、台阶要**抬头/低头**、障碍要**俯仰** ⇒ 都不该被水平罚按住。
+# 其余地形（含两种斜坡、两种台阶、boxes/gap/hurdle/mix/narrow_stairs）**自动豁免** —— 用"全部地形键减去本表"
+# 算出来（见 `__post_init__`），这样以后新增地形默认**不受**水平约束（安全默认：不赌"新地形是平的"）。
+LEVEL_ORIENTATION_TERRAIN_NAMES = ("flat", "random_rough")
+
+EASY_TERRAIN_NAMES = ("flat", "hf_pyramid_slope", "hf_pyramid_slope_inv", "random_rough")
+OBSTACLE_TERRAIN_NAMES = (
+    "pyramid_stairs",
+    "pyramid_stairs_inv",
+    "boxes",
+    "gap",
+    "hurdle",
+    "mix",
+    "narrow_stairs",
+)
 
 FOOT_EDGE_SENSOR_NAMES = (
     "foot_edge_scanner_fl",
@@ -244,73 +273,76 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                 f"(size={tuple(scan.size)}, resolution={scan.resolution})"
             )
 
-        # Reproduce the original +x obstacle-course layout at quadruped scale.
+        # ---------------------------------------------------------------------------------
+        # 地形集：2026-09-28 与参考实现对齐（用户："我看了一下 cmoe 的地形设置，我们四足这个地形
+        # 还是差点，感觉可以对齐一下"）。参考 = `Hoshi-No-Ai/CMoE` @ `4575d6ae`：
+        #   * 比例／行列数／初始等级 → `legged_gym/legged_gym/envs/g1/g1_cmoe_config.py::terrain`
+        #   * 每类难度律           → `legged_gym/legged_gym/utils/humanoid_terrain.py::make_terrain`
+        #   * 纵向障碍图案         → `legged_gym/legged_gym/utils/parkour_terrain_utils.py`
+        # **只对齐结构**（种类／比例／行列数／难度律形式／初始等级）；米制难度区间沿用我们已验证的
+        # 四足值（台阶 0.05–0.15、块 0.08–0.30、沟 0.126–0.315、坡 0–0.4、噪声 0.01–0.06）；
+        # 参考里没有四足对应值的三类（hurdle／mix／narrow_stairs）按参考米制 × 站高比 0.4
+        # （`cmoe_terrains.REFERENCE_SCALE`）落地。逐项对照、已知偏离（粗糙度叠加未移植、
+        # mix 图案平移 0.30 m）见 docs/cmoe_terrain_alignment_2026-09-28.md。
+        #
+        # 参考比例（G1 CMoE `terrain_dict`）：plane 0.0／rough slope 0.1／stairs up 0.1／
+        # stairs down 0.1／discrete 0.1／parkour_gap 0.3／hurdle 0.1／mix 0.1／narrow_stairs 0.1。
+        # 键名沿用我们的 + 只新增（2026-09-28 用户决定），所以：rough slope 的 0.10 拆给
+        # `hf_pyramid_slope`（上坡）＋`hf_pyramid_slope_inv`（下坡）各 0.05；`random_rough` 0.05
+        # 与 `flat` 0.10 是我们自己保留的两类（参考 plane 比例是 0.0）。合计 1.15，Isaac Lab
+        # 会先按总和归一化再切列（见 `scripts/tools/check_terrain_columns.py`）。
+        # ---------------------------------------------------------------------------------
         self.scene.terrain.terrain_generator.size = (8.0, 4.0)
+        # 参考 num_rows=10（行＝难度 level）、num_cols=40（列＝地形类型）；初始等级 5 与本任务原值一致。
+        self.scene.terrain.terrain_generator.num_cols = 40
         sub_terrains = self.scene.terrain.terrain_generator.sub_terrains
-        # 2026-09-24（用户要求）：上行台阶**单独占更大的列**，并做成不可能看错的台阶。
-        # 原来 proportion=0.15（num_cols=20 时 3 列）且单级只有 2.5–8 cm，低等级下视觉上像缓坡
-        # （用户回放时"没看见上行台阶"，只看到整段塌下去的下行）。现在：
-        #   * proportion 0.15 → 0.20（num_cols=20 时 3 → 4 列；num_cols=10 时 2 列），
-        #     多出来的一份从 random_rough 的 0.20 → 0.15 扣；
-        #   * num_steps 4 → 6、step_height_range (0.025,0.08) → (0.03,0.10) ⇒ 单级 3–10 cm、
-        #     总升高 18–60 cm、跨度 1.8 m（从 x=2.0 到 3.8，8 m tile 内）。
-        # 2026-09-24（用户要求）：单级台阶提高到 10–20 cm 量级。
-        # 取 (0.05, 0.20) 而非 (0.10, 0.20)——课程**下限必须是可学的**：level 0 就是 10 cm 的话，
-        # 全新策略很可能直接卡死在台阶列（课程只会把它降级到 level 0，那里仍太难）。
-        # 用户随后把上限改回 **0.15**（`step_height_range=(0.05, 0.15)`）：d=0.5 → 10.0 cm、
-        # d=0.62 → 11.2 cm、d=1.0 → 15.0 cm ⇒ 课程中上段落在 10–15 cm，等效倾角 ≤25.8°。
-        # 腿部可行性：大腿 0.22 + 小腿 0.206 = 最大伸展 0.426 m，站立 0.30 m；踏上 20 cm 时该腿收缩到
-        # 0.10 m（伸展率 23%），几何可达，但 20 cm 更接近"跃上"（关节上限 23.7 N·m、抬身 20 cm ≈ 25 J）；
-        # 参考 parkour 的 jump 障碍是 height (0.2, 0.46) m。
-        # 台阶跨度仍是 6 级 × step_depth 0.30 = 1.8 m（x 2.0→3.8）；难度 1.0 时总升高 1.2 m（≈34°）。
+        # 上行台阶（参考 `stairs up` 0.1）。单级台阶 0.05–0.15 m 是我们 2026-09-24 定的四足区间：
+        # 取 (0.05, 0.15) 而非更高——课程**下限必须可学**（level 0 就 10 cm 会直接卡死）；
+        # 6 级 × step_depth 0.30 m = 1.8 m 跨度（x 2.0→3.8），难度 1.0 时总升高 0.9 m。
+        # 腿部可行性：大腿 0.22 + 小腿 0.206 = 最大伸展 0.426 m、站立 0.30 m。
         sub_terrains["pyramid_stairs"] = CMoETrackStairsTerrainCfg(
-            proportion=0.20,
+            proportion=0.10,
             step_height_range=(0.05, 0.15),
             num_steps=6,
             ascending=True,
         )
+        # 下行台阶（参考 `stairs down` 0.1），参数与上行对称。
         sub_terrains["pyramid_stairs_inv"] = CMoETrackStairsTerrainCfg(
             proportion=0.10,
             step_height_range=(0.05, 0.15),
             num_steps=6,
             ascending=False,
         )
-        # 2026-09-24（用户要求）：独立障碍块（`boxes`，横贯赛道的整宽矮块，侧面像一排栏杆）
-        # 高度提高到 0.1–0.3 m 量级。与台阶（0.05–0.20）、沟（0.126–0.315）同一量级。
-        # 取 (0.08, 0.30) 而非 (0.10, 0.30)：理由同 §28.1——课程下限必须可学（level 0 就 10 cm 易卡死）。
-        # 0.30 m ≈ 0.95 体长（躯干 0.315 m），接近腿部最大伸展 0.426 m 的可跃范围；
-        # 参考 parkour 的 jump 障碍 height (0.2, 0.46) m。长度与间距维持 step_length (0.18,0.30)、spacing 0.85。
-        # 2026-09-24（用户要求）：「boxes 只给一个」⇒ proportion 0.15 → **0.05**
-        # （num_cols=20 时 **3 列 → 1 列**；num_cols=10 时 2 列 → 1 列；仍 >0，所以
-        # `free_terrain_names=("boxes",)` 的掩码在训练与 play 上都还有命中对象）。空出的 0.10 给 `gap`
-        # （见下），其余各列数量不变（离线核对：`scripts/tools/check_terrain_columns.py`）。
+        # 独立障碍块（参考 `discrete` 0.1）。整宽矮块，高 0.08–0.30 m（0.30 ≈ 0.95 体长 0.315 m，
+        # 接近腿部最大伸展的可跃范围；下限同样为了 level 0 可学）；长 0.18–0.30、间距 0.85。
         sub_terrains["boxes"] = CMoETrackStepTerrainCfg(
-            proportion=0.05,
+            proportion=0.10,
             step_height_range=(0.08, 0.30),
         )
-        # 2026-09-24：让出份额给上行台阶（0.05）与新增的平地（0.05）——总比例仍为 1.0。
-        sub_terrains["random_rough"].proportion = 0.10
-        sub_terrains["hf_pyramid_slope"].proportion = 0.10
-        sub_terrains["hf_pyramid_slope_inv"].proportion = 0.05  # 让出 0.05 给平地
+        # 参考 `rough slope` 的 0.10 由我们的上/下坡各 0.05 承担（参考同一类里按列随机翻符号）。
+        sub_terrains["hf_pyramid_slope"].proportion = 0.05
+        sub_terrains["hf_pyramid_slope_inv"].proportion = 0.05
+        # `random_rough`（纯噪声面 0.01–0.06 m）是我们保留的额外一类（2026-09-24 起的既有列）。
+        sub_terrains["random_rough"].proportion = 0.05
+        # 沟壑（参考 `parkour_gap` 0.30，比例完全一致）。沟宽按体长 0.4–1.0 L（躯干 0.315 m）
+        # ＝0.126–0.315 m 是我们 2026-09-24 决定的四足区间；4 条沟、平台 0.65–0.95 m、首沟 x=1.8。
         sub_terrains["gap"] = CMoETrackGapTerrainCfg(
-            # 2026-09-24（用户要求）：`boxes` 砍到 1 列后空出的 0.10 给沟壑 ⇒ 0.20 → **0.30**
-            # （num_cols=20 时 **4 → 6 列**；num_cols=10 时 2 → 3 列）。理由：沟壑是历史上唯一
-            # 持续降级、也是最吃"课时"的一列；其余列数量保持不变。
             proportion=0.30,
-            # 2026-09-24（用户决定）：沟宽按**身体长度**给。躯干 0.315 m ⇒ 0.4 L–1.0 L = 0.126–0.315 m。
-            # 旧值 (0.08, 0.16) 只有 0.25–0.5 L，属"地板缝"（不需要跃起）；现在最宽的沟等于一个躯干长。
-            # 课程仍在区间内插值：level 0 ≈ 0.126 m（≈ 旧配方学到的 0.13 m），level 9 ≈ 0.306 m。
-            # platform_length_range 保持 (0.65, 0.95)：4 条 0.315 m 沟 + 最长平台在 8 m tile 内末沟止于 x≈5.91 m。
             gap_width_range=(0.126, 0.315),
             platform_length_range=(0.65, 0.95),
             first_gap_x=1.8,
             num_gaps=4,
         )
+        # 2026-09-28 新增三类（参考有、我们缺）：横栏／混合障碍／窄楼梯。
+        # 米制 = 参考 `parkour_hurdle_terrain` / `mix_obstacles_terrain` / `narrow_stairs_terrain`
+        # × 0.4；各项常量与来源见 `cmoe_terrains.py` 对应配置类的注释。
+        sub_terrains["hurdle"] = CMoETrackHurdleTerrainCfg(proportion=0.10)
+        sub_terrains["mix"] = CMoETrackMixTerrainCfg(proportion=0.10)
+        sub_terrains["narrow_stairs"] = CMoETrackNarrowStairsTerrainCfg(proportion=0.10)
 
-        # 2026-09-24（用户指出"似乎没有平地"）：加入一列纯平地。
-        # 原地形集里最缓的只有 random_rough（1–6 cm 噪声），没有真正的平地；
-        # 平地既是 trot 的"标称步态"学习面（真机录制基线也是在平地上），也方便部署/ sim2sim 对照。
-        # MeshPlaneTerrainCfg 的 origin 是瓦片中心，±1 m 的 reset 不会出界。
+        # 平地（2026-09-24 用户指出"似乎没有平地"后加入，2026-09-28 决定保留）。
+        # 参考 plane 比例是 0.0；这块平地既是 trot 的"标称步态"学习面（真机录制基线也在平地），
+        # 也方便部署／sim2sim 对照。MeshPlaneTerrainCfg 的 origin 是瓦片中心。
         sub_terrains["flat"] = terrain_gen.MeshPlaneTerrainCfg(proportion=0.10)
 
         # Match the original CMoE command split: easy terrain keeps small
@@ -326,9 +358,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 2026-09-24（用户）：**所有地形列都只给"超前"的速度**——不再分"简单地形全向命令／障碍地形
         # 前向命令"，全场景统一为"沿世界 +x 前进 0.3–1.0 m/s、朝向锁 0"。
         # 起因：回放发现策略**横移绕开障碍**（§29.15/§29.16）。下面 `forward_only_terrain_names`
-        # 因此列全 8 类地形；`lin_pos_y`／`yaw_abs` 也改成**全局**（不再只作用于障碍列）。
+        # 因此列全**全部**地形键；`lin_pos_y`／`yaw_abs` 也改成**全局**（不再只作用于障碍列）。
         # 注意：本列表必须覆盖 `sub_terrains` 的**全部键**（漏项会静默退回全向命令）；
         # `scripts/tools/check_terrain_columns.py` 会做覆盖率校验。
+        # 2026-09-28：新增 hurdle／mix／narrow_stairs 后同步补齐（11 类）。
         self.commands.base_velocity.forward_only_terrain_names = (
             "pyramid_stairs",
             "pyramid_stairs_inv",
@@ -337,6 +370,9 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
             "hf_pyramid_slope",
             "hf_pyramid_slope_inv",
             "gap",
+            "hurdle",
+            "mix",
+            "narrow_stairs",
             "flat",
         )
         self.commands.base_velocity.forward_speed_range = (0.3, 1.0)
@@ -383,7 +419,19 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.lin_pos_y.params["terrain_names"] = ()
         self.rewards.yaw_abs.weight = -0.2
         self.rewards.yaw_abs.params["terrain_names"] = ()
-        self.rewards.flat_orientation_l2.weight = -0.1
+        # 2026-09-28（用户）：**机身水平罚对齐 PPO rough 的 −5.0**（原 −0.1，相差 50×），
+        # 但**不在障碍地形生效** —— 过沟/上箱/混合地形允许必要俯仰。PPO 是全地形 −5.0（它也有台阶），
+        # 这里比 PPO 更宽松，属有意选择。实测依据：level 6 上 CMoE 的形态是"拖行/歪身"
+        # （FL duty 0.80 / RR 0.57、速度 0.127 vs 指令 0.633），而 PPO 有 50× 强的水平罚把它按住。
+        self.rewards.flat_orientation_l2.func = mdp.MaskedFlatOrientationL2
+        self.rewards.flat_orientation_l2.weight = -5.0
+        # 2026-09-28（用户："斜坡和台阶都不需要保持水平"）：豁免表 = **全部地形键 − 要求水平的地形**。
+        # 于是在 `flat`/`random_rough` 上机身被显著压平（−5.0），而在两种斜坡（贴坡）、两种台阶与
+        # 5 类障碍（俯仰）上完全不罚 ⇒ 让姿态跟着地形走。用现有地形键现算，避免两处硬写漂移。
+        _terrain_keys = tuple(self.scene.terrain.terrain_generator.sub_terrains.keys())
+        self.rewards.flat_orientation_l2.params["free_terrain_names"] = tuple(
+            name for name in _terrain_keys if name not in LEVEL_ORIENTATION_TERRAIN_NAMES
+        )
         # 2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：**按地形豁免地恢复竖直速度罚**。
         # 形状：trot 列上恢复（压弹跳），`boxes`/`gap` 豁免（那里需要爆发式跃起，原清零理由是
         # "会与跃起对抗"——掩码后这个理由不再成立）。权重先取 **−2.0**（＝PPO rough 原值；探针
@@ -457,7 +505,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.feet_air_time.func = mdp.MaskedFeetAirTime
         # 2026-09-24 晚：1.0 → **0.3**。该式展开是 `4(1−d) − 2·N落地/T` ⇒ 对"滞空更久"的梯度恒为 +1
         # ⇒ 权重越大越奖励腾空/弹跳。降权后仍保留"别踩碎步"的作用（阈值仍 0.5 s），但不再主导步态。
-        self.rewards.feet_air_time.weight = 0.3
+        # 2026-09-28（用户）：**对齐 PPO rough 的 1.0**（原 0.3，只有 30% 的滞空/步幅压力）。
+        # PPO 的"步态 shaping / 速度跟踪"比约 **7:1**，我们原配方只有 2.6:1（且 37.5% 环境被掩码豁免）
+        # ⇒ 这是 CMoE 压不住步态的主因之一。掩码保持 `("boxes","gap")`（那两类允许爆发式跃起）。
+        self.rewards.feet_air_time.weight = 1.0
         self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_air_time.params["free_terrain_names"] = ("boxes", "gap")
 
@@ -499,12 +550,26 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # （否则分类器读数不再代表奖励）。详见 docs §29.31.2 与 §29.32。
         self.rewards.feet_gait.params["std"] = 0.2
         self.rewards.feet_gait.params["max_err"] = 0.5
+        # 2026-09-28（用户："相位核去掉"）：**步态不再靠相位核**，改为靠 PPO 的四项
+        # （`joint_mirror`／`feet_air_time` 1.0／`feet_height_body` −5／`feet_air_time_variance` −8）
+        # ＋ `feet_slide` −0.05 与 50× 强的 `flat_orientation_l2`。依据：相位核在这份高频步态上
+        # **本身饱和**（实测溢价仅 0.116/s = 跟踪项的 2.3%，见 docs/cmoe_trot_warmstart §17），
+        # 而 PPO 根本不用相位核也能练出干净 trot ⇒ 保留它只会多一个调不动的旋钮。
+        # 三个 `gait_metric_*` 探针（1e-6）**保留**：它们是逐列步态的唯一读数来源。
+        self.rewards.feet_gait.weight = 0.0
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
         self.rewards.feet_height.weight = 0.0
         # `feet_height_body` 同理不清零——已在上方设为 −5.0（MaskedFeetHeightBody）。
-        self.rewards.feet_slide.weight = 0.0
+        # 2026-09-28（用户："feet_slide 对齐 PPO"）：PPO rough 是 **−0.05**，我们之前清零了。
+        # 这一项是"**支撑脚不许打滑**"，正对着我们实测的拖行形态；PPO 的干净步态有它一份。
+        # 足端 body 与 PPO 一致用 `.*_FOOT`（PPO 的 `foot_link_name` 就是这个正则）。
+        # 注意：这是**全地形**生效（与 PPO 一致）；若发现 gap 上（落脚在对面边缘、滑动不可避免）
+        # 惩罚过重，把 `("gap",)` 填进 `free_terrain_names` 即可（该 term 已支持掩码参数）。
+        self.rewards.feet_slide.weight = -0.05
+        self.rewards.feet_slide.params["sensor_cfg"].body_names = ".*_FOOT"
+        self.rewards.feet_slide.params["asset_cfg"].body_names = ".*_FOOT"
         # `feet_air_time_variance` 不在这里清零——已在上方设为 −8.0（MaskedFeetAirTimeVariance，掩码）。
         # 注意：`joint_mirror` 不在这里清零——它在本函数上方被设为 −1.0（MaskedJointMirror，
         # 障碍块/沟槽豁免）。2026-09-24 曾因这一行在下方、晚赋值把它覆盖成 0，导致 mirror 静默失效。
@@ -532,7 +597,23 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                 "tracking_move_down": 0.35,
                 # 2026-09-24 晚（用户反馈"反楼梯不是很好"）：这三类只能**慢慢过**的地形在 0.80 下
                 # 长期卡在 frozen 带（反楼梯 0.12、boxes 0.10，而 flat/slope 已 4–6 级）⇒ 单独放宽。
-                "relaxed_terrain_names": ("pyramid_stairs", "pyramid_stairs_inv", "boxes"),
+                # **2026-09-25 修**：`gap` 也纳入。依据 `2026-09-25_14-35-18_cmoe_gaitfree_amp24500_init`
+                # 的实测：`level_gap` 从第 200 轮起**严格 0.000**（140+ 轮不动），同期 `tracking_gap`
+                # = 0.486，而 gap 不在放宽名单里 ⇒ 需要 >0.80 ⇒ 落在 [0.35, 0.80) 的**冻结带**，
+                # 既不上也不下 ⇒ 沟壑列永远停在最窄的 0.126 m，过沟能力根本测不到。
+                # （`boxes` 虽在名单里但 `tracking_boxes`=0.467 < 0.50 同样被冻住 ⇒ 阈值一起下调。）
+                # **2026-09-28 补**：新增的 hurdle／mix／narrow_stairs 同属"只能慢慢过"的障碍列
+                # （窄走廊上速度跟踪天然偏低），不纳入同样会落进 [0.35, 0.80) 的冻结带 ⇒ 一并列入。
+                # 这是**地形集扩张的连带修正**，不是重新设计课程判据（判据本身未改）。
+                "relaxed_terrain_names": (
+                    "pyramid_stairs",
+                    "pyramid_stairs_inv",
+                    "boxes",
+                    "gap",
+                    "hurdle",
+                    "mix",
+                    "narrow_stairs",
+                ),
                 # 逐列步态度量（三成对方式＝分类器）：日志会出 `gait_trot_<地形>` / `gait_bound_<地形>`
                 # / `gait_pace_<地形>`，以及全局 `gait_<标签>_mean`。用来验证"除 boxes/gap 外倾向 trot"。
                 "gait_metric_terms": (
@@ -550,7 +631,12 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                 # ⇒ 没有任何回合会低于 0.50）⇒ 它们回到"只看前进进度（走够 4 m）"的旧判据。
                 # 依据：旧判据在这三类上曾把 A 跑推到 level 6（反楼梯 6.06／boxes 5.99），而"能不能过障碍"
                 # 本来就该由进度管；跟踪门控更适合容易地形（那里"糊弄过去"才是失败模式）。
-                "tracking_move_up_relaxed": 0.50,
+                # **2026-09-25 修**：0.50 → **0.40**，并把 `gap` 纳入放宽名单。原因：`_init` run 里
+                # `tracking_gap`=0.486、`tracking_boxes`=0.467，都在 [0.35, 0.50) 的冻结带里出不来；
+                # 0.40 让这两列**都过门**（冻结带缩到 [0.35, 0.40)，即障碍列基本回到"只看进度"），
+                # 而容易地形仍保持 0.80 的跟踪门控。逐列 `tracking_pass_frac_<地形>` 会显示实际过门比例，
+                # 若发现障碍列"进度够但跟踪很差"仍被放行，回调到 0.45–0.50 即可。
+                "tracking_move_up_relaxed": 0.40,
             },
         )
 
@@ -568,7 +654,9 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 1
-        self.scene.terrain.terrain_generator.num_cols = 10
+        # 2026-09-28：num_cols 10 → 40。参考实现训练/回放共用一套 40 列地形；我们原来是"训练 20／
+        # play 10"，10 列时 `hf_pyramid_slope_inv` 只有 0 列（离线工具会报 ⚠️）⇒ 对齐后两套都是 40。
+        self.scene.terrain.terrain_generator.num_cols = 40
         self.scene.terrain.max_init_terrain_level = 5
         self.observations.policy.enable_corruption = False
         self.observations.terrain.enable_corruption = False
@@ -593,3 +681,43 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
         self.events.randomize_reset_joints = None
         self.events.randomize_actuator_gains = None
         self.events.randomize_push_robot = None
+
+
+@configclass
+class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
+    """**步态交给先验**的配方：五项手工步态 shaping 全部归零，其余奖励一项不动。
+
+    用户 2026-09-25 决定（依据：`e6a1155` 把相位核变陡后，run H 1849 轮的三态步态读数仍是
+    `trot 0.768 / bound 0.782 / pace 0.765`，离线反演（`scripts/tools/gait_kernel_probe.py`）
+    显示该形态最接近**四足锁相**，即调核这条路已经走尽 —— 详见
+    `docs/cmoe_trot_warmstart_2026-09-25.md` §12）。
+
+    * 归零的五项＝`joint_mirror`／`feet_air_time`／`feet_height_body`／`feet_air_time_variance`／
+      `feet_gait`。它们是"从零学 trot"的手工代理；步态改由 **45 维先验**（AMP 24500，
+      `--init_experts_from`）提供后继续留着反而会与先验打架 —— 尤其 `feet_air_time` 的展开
+      `4(1−d) − 2·N落地/T` 对"滞空更久"的梯度恒为 +1，是在**奖励腾空/弹跳**。
+    * **刻意保留、不要跟着一起归零**：
+      - 三个 `gait_metric_{trot,bound,pace}`（1e-6）＝步态分类器。权重 0 会被
+        `disable_zero_weight_rewards()` 整个移除，就再也看不见"先验漂没漂"；
+      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`（1e-6）＝接触时序与弹跳诊断；
+      - `lin_vel_z_l2`（`MaskedLinVelZ`，−2）：这是**物理平滑惩罚**（压竖直速度/弹跳），
+        不是步态形状先验，先验的腾空很短，留作"别蹦"的兜底。若也要归零，删掉下面注释掉的那行即可。
+    * 本类**只用于训练**：回放/判读用现有 `Imgo2-basemove-rough-cmoe-play`（奖励不参与回放行为）。
+    * `check_reward_overrides.py` 的 `cmoe-gaitfree` 链会把这五项报成"func 是自定义类但权重 0 ⇒
+      死代码"——这是**有意保留**：配方离"重新开 shaping"只差一个权重数字。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.rewards.joint_mirror.weight = 0.0
+        self.rewards.feet_air_time.weight = 0.0
+        self.rewards.feet_height_body.weight = 0.0
+        self.rewards.feet_air_time_variance.weight = 0.0
+        self.rewards.feet_gait.weight = 0.0
+        # self.rewards.lin_vel_z_l2.weight = 0.0  # ← 若连"别蹦"的兜底也要去掉，取消注释这一行
+
+        # 上面这些归零发生在 `super().__post_init__()` 的 `disable_zero_weight_rewards()` **之后**，
+        # 所以必须再跑一次：否则这五项会以 0 权重留在奖励管理器里参与计算与分项日志，
+        # 与"归零即移除"的既有约定不一致（也会让 `Episode_Reward/*` 多出一堆恒 0 的键）。
+        self.disable_zero_weight_rewards()

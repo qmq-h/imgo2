@@ -31,7 +31,16 @@ CASES = (
     ("step", "CMoETrackStepTerrainCfg", "track_step_terrain"),
     ("stairs_up", "CMoETrackStairsTerrainCfg", "track_stairs_terrain"),
     ("stairs_down", "CMoETrackStairsTerrainCfg", "track_stairs_terrain"),
+    # 2026-09-28 结构对齐新增的三类（参考 CMoE 有、我们原来缺；米制 = 参考 ×0.4）
+    ("hurdle", "CMoETrackHurdleTerrainCfg", "track_hurdle_terrain"),
+    ("mix", "CMoETrackMixTerrainCfg", "track_mix_terrain"),
+    ("narrow_stairs", "CMoETrackNarrowStairsTerrainCfg", "track_narrow_stairs_terrain"),
 )
+
+# 整宽赛道类（每个平台都横贯 4 m）：新增的 hurdle 也是整宽横栏。
+FULL_WIDTH_CASES = ("gap", "step", "stairs_up", "stairs_down", "hurdle")
+# 窄走廊类（走廊内抬升 + 走廊外深坑）：mix 与 narrow_stairs。
+CORRIDOR_CASES = ("mix", "narrow_stairs")
 
 
 def _load_module():
@@ -119,11 +128,61 @@ class TestTrackGeometry(unittest.TestCase):
         self.assertEqual(len(_platforms(stairs_meshes)), 1 + stairs_cfg.num_steps + 1)
 
     def test_track_tiles_are_full_width(self):
-        """每个平台都必须横贯整个 tile 宽度（4 m）—— 障碍在赛道内不可绕过。"""
+        """整宽赛道的每个平台都必须横贯整个 tile 宽度（4 m）—— 障碍在赛道内不可绕过。"""
         for name, _cfg, meshes, _origin in self._cases(0.5):
+            if name not in FULL_WIDTH_CASES:
+                continue
             for m in _platforms(meshes):
                 self.assertAlmostEqual(float(m.extents[1]), 4.0, places=6,
                                        msg=f"{name} 有平台没有横贯赛道宽度")
+
+    def test_corridor_types_have_pit_and_narrow_walkway(self):
+        """窄走廊类：必须有整宽坑底（顶面 < 0），走廊宽度按各自的难度律收窄。"""
+        for difficulty in (0.0, 0.5, 1.0):
+            cases = {name: (cfg, meshes) for name, cfg, meshes, _o in self._cases(difficulty)}
+            for name in CORRIDOR_CASES:
+                cfg, meshes = cases[name]
+                floors = [m for m in meshes if float(m.extents[1]) == 4.0]
+                # narrow_stairs 按参考还保留**整宽**的起步平台与结束后的平地（高度 0），
+                # 所以这里只要求"存在整宽坑底"，不要求整宽面全是坑。
+                self.assertTrue(
+                    [m for m in floors if float(m.bounds[1][2]) < 0.0],
+                    f"{name}@d={difficulty} 没有下沉的整宽坑底",
+                )
+                corridors = [m for m in meshes if float(m.extents[1]) < 4.0]
+                self.assertTrue(corridors, f"{name}@d={difficulty} 没有窄走廊")
+                expected = (cfg.corridor_width if name == "mix"
+                            else 2.0 * (cfg.corridor_half_width_start
+                                        - cfg.corridor_half_width_slope * difficulty))
+                for m in corridors:
+                    self.assertAlmostEqual(float(m.extents[1]), expected, places=6,
+                                           msg=f"{name}@d={difficulty} 走廊宽度不等于难度律")
+
+    def test_hurdle_is_thin_and_tall(self):
+        """hurdle 与 boxes 的区别就是「更薄更高」：墙厚 ≤ 0.12 m、随难度升高、且是整宽墙。"""
+        for difficulty in (0.0, 0.5, 1.0):
+            cases = {name: (cfg, meshes) for name, cfg, meshes, _o in self._cases(difficulty)}
+            cfg, meshes = cases["hurdle"]
+            walls = [m for m in meshes if float(m.extents[0]) < 0.2]
+            self.assertTrue(walls, f"hurdle@d={difficulty} 没有薄墙")
+            self.assertLessEqual(len(walls), cfg.num_hurdles)
+            height_max = cfg.hurdle_height_max_base + cfg.hurdle_height_max_slope * difficulty
+            for m in walls:
+                self.assertLessEqual(float(m.extents[0]),
+                                     cfg.stone_len_range[0] + difficulty * (cfg.stone_len_range[1] - cfg.stone_len_range[0]) + 1e-9,
+                                     "横栏厚度超出难度律")
+                self.assertLessEqual(float(m.bounds[1][2]), height_max + 1e-9, "横栏高度超出难度律")
+                self.assertAlmostEqual(float(m.extents[1]), 4.0, places=6, msg="横栏不是整宽")
+
+    def test_new_types_stay_inside_the_tile(self):
+        for name in CORRIDOR_CASES + ("hurdle",):
+            for difficulty in (0.0, 0.5, 1.0):
+                cases = {n: m for n, _c, m, _o in self._cases(difficulty)}
+                for m in cases[name]:
+                    self.assertGreaterEqual(float(m.bounds[0][0]), -1e-6, f"{name} 越出 tile 左侧")
+                    self.assertLessEqual(float(m.bounds[1][0]), 8.0 + 1e-6, f"{name} 越出 tile 右侧")
+                    self.assertGreaterEqual(float(m.bounds[0][1]), -1e-6, f"{name} 越出 tile y 下界")
+                    self.assertLessEqual(float(m.bounds[1][1]), 4.0 + 1e-6, f"{name} 越出 tile y 上界")
 
     def test_spawn_point_is_unchanged(self):
         for name, _cfg, _meshes, origin in self._cases(0.5):

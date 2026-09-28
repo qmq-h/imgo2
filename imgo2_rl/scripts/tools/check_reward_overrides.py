@@ -56,6 +56,15 @@ CHAINS = {
                         (BASE_MOVE / "rough_env_cfg.py", "Imgo2RoughEnvCfg"),
                         (BASE_MOVE / "CMoE_env_cfg.py", "Imgo2CMoERoughEnvCfg")]),
     ],
+    # 2026-09-25：步态交给 45 维先验 ⇒ 五项手工步态 shaping 归零（其余不动）。
+    # 这一链会把那五项报成"func 是自定义类但权重 0 ⇒ 死代码"，属**有意保留**（离重开 shaping 只差一个数字）。
+    "cmoe-gaitfree": [
+        ("cmoe gaitfree（先验供步态）", [(PKG / "velocity_env_cfg.py", "RewardsCfg"),
+                                       (BASE_MOVE / "CMoE_env_cfg.py", "CMoERewardsCfg"),
+                                       (BASE_MOVE / "rough_env_cfg.py", "Imgo2RoughEnvCfg"),
+                                       (BASE_MOVE / "CMoE_env_cfg.py", "Imgo2CMoERoughEnvCfg"),
+                                       (BASE_MOVE / "CMoE_env_cfg.py", "Imgo2CMoEGaitFreeEnvCfg")]),
+    ],
 }
 
 

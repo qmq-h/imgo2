@@ -229,6 +229,46 @@ class TestTerrainCurriculum(unittest.TestCase):
         self.assertAlmostEqual(float(out["tracking_boxes"]), 0.70, places=6)
         self.assertAlmostEqual(float(out["tracking_flat"]), 0.70, places=6)
 
+    def test_cmoe_cfg_relaxes_obstacle_columns_from_source(self):
+        """配置层（2026-09-25 修）：`gap` 必须在放宽名单里，阈值 0.40。
+
+        实锤依据：`_init` run 的 `level_gap` 从第 200 轮起严格 0.000，而 `tracking_gap`=0.486 ——
+        gap 未放宽（需 >0.80）⇒ 落在 [0.35, 0.80) 冻结带；`boxes`(0.467) 虽在名单里但低于原 0.50。
+        从源码读，避免"改了配置、测试还在测旧值"。
+        """
+        import re
+        from pathlib import Path as _Path
+        cfg = (_Path(__file__).resolve().parents[1]
+               / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/CMoE_env_cfg.py")
+        text = cfg.read_text(encoding="utf-8")
+        relaxed = re.search(r'"relaxed_terrain_names":\s*\(([^)]*)\)', text)
+        self.assertIsNotNone(relaxed, "CMoE_env_cfg 里找不到 relaxed_terrain_names")
+        names = re.findall(r'"([a-z_]+)"', relaxed.group(1))
+        # 2026-09-28：地形集扩张到 11 类，新增的三个障碍列一并纳入（判据本身未改）
+        for expected in ("pyramid_stairs", "pyramid_stairs_inv", "boxes", "gap",
+                         "hurdle", "mix", "narrow_stairs"):
+            self.assertIn(expected, names, f"{expected} 应在放宽名单里（否则会被冻结带钉住）")
+        threshold = re.search(r'"tracking_move_up_relaxed":\s*([0-9.]+)', text)
+        self.assertIsNotNone(threshold)
+        self.assertAlmostEqual(float(threshold.group(1)), 0.40, places=6,
+                               msg="放宽阈值应为 0.40（实测 tracking_gap 0.486／tracking_boxes 0.467 都要过门）")
+
+    def test_per_column_pass_fraction_is_logged(self):
+        """逐列**过门比例**（2026-09-25 加）：门槛按回合判，列均值会掩盖分布。
+
+        动机：run H 的 `gap` 列在 tracking 均值只有 0.62–0.78（低于 0.8 门）时照样从 level 0.017
+        涨到 6.49 ⇒ "均值不过门"≠"没有回合过门"。只有这条读数能回答"某列卡在 0 是大部分回合
+        过不了门，还是能过却被别的条件挡住"。断言在放宽阈值取 0.50 或 0.65 时都成立。
+        """
+        rows = [(5.0, 0.0, 0.90), (5.0, 0.0, 0.50), (5.0, 0.0, 0.70)]
+        _up, _down, out = self._run(self.ns, rows, terrains=["boxes", "boxes", "flat"])
+        # boxes 是放宽列：0.90 过门、0.50 不过 ⇒ 1/2（放宽阈值 0.50 或 0.65 都如此）
+        self.assertAlmostEqual(float(out["tracking_pass_frac_boxes"]), 0.5, places=6)
+        self.assertAlmostEqual(float(out["tracking_fail_frac_boxes"]), 0.0, places=6)
+        # flat 用默认 0.80 门：0.70 不过 ⇒ 0/1
+        self.assertAlmostEqual(float(out["tracking_pass_frac_flat"]), 0.0, places=6)
+        self.assertAlmostEqual(float(out["tracking_fail_frac_flat"]), 0.0, places=6)
+
     def test_per_column_gait_metrics_are_logged(self):
         """逐列步态度量（用户要求）：三成对方式的 GaitReward 度量按列取"本回合平均"。
 

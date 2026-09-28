@@ -30,6 +30,60 @@ parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy 
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
+parser.add_argument(
+    "--init_experts_from",
+    type=str,
+    default=None,
+    help="把一份 45 维先验（AMP 训练 checkpoint，或 cmoe/play.py 导出的 TorchScript）零填充装进 CMoE 专家"
+         "再开始训练 —— 「步态交给先验」。配合 --task=Imgo2-basemove-rough-cmoe-gaitfree 使用"
+         "（那项把手工业步态 shaping 归零）。详见 docs/cmoe_trot_warmstart_2026-09-25.md。",
+)
+parser.add_argument(
+    "--init_experts_mode", type=str, default=None, choices=("all", "first"),
+    help="先验装进全部专家（默认 all；初始混合恒等于先验）还是只装第 0 个。",
+)
+parser.add_argument(
+    "--init_experts_std", type=str, default=None, choices=("true", "false"),
+    help="是否连先验的噪声 std 一起装（默认 true）。CMoE 默认 1.0 的噪声会盖过先验动作均值。",
+)
+parser.add_argument(
+    "--init_experts_jitter", type=float, default=None,
+    help="给专家新增的 112 列（地形/估计器）加 N(0, sigma) 扰动以打破 5 专家对称；默认 0。"
+         "实测 sigma=0.01 ⇒ 混合仍≈先验（RMSE 0.028）但专家已分化。",
+)
+parser.add_argument(
+    "--init_experts_critic", type=str, default=None, choices=("true", "false"),
+    help="是否连先验的 **critic** 一起装（默认 true）。先验 critic 来自另一套奖励尺度，"
+         "搬过来可能让早期 advantage 错配、迅速改写 actor ⇒ 只想要步态时给 false。",
+)
+parser.add_argument(
+    "--init_gate_bias", type=int, default=None, metavar="K",
+    help="**v5**：把门控初始偏置到第 K 个专家（配合 --init_experts_mode=first ⇒ 第 0 步的混合动作"
+         "≈ 先验，而 5 个专家彼此不同）。不设则用配置默认（None＝不偏置）。",
+)
+parser.add_argument(
+    "--init_gate_bias_margin", type=float, default=None,
+    help="门控偏置的 margin（默认 4.0）；越大初始 softmax 越接近 one-hot。",
+)
+parser.add_argument(
+    "--anchor_coef", type=float, default=None,
+    help="**v5**：先验锚定的初始权重（0＝关闭）。只对 `--anchor_expert` 一个专家的输出做加权 MSE，"
+         "权重＝地形掩码 × 线性衰减。典型 0.2~0.3。",
+)
+parser.add_argument(
+    "--anchor_coef_final", type=float, default=None, help="锚定权重衰减到的终值（典型 0.05~0.1）。",
+)
+parser.add_argument(
+    "--anchor_decay_iters", type=int, default=None, help="锚定权重线性衰减到终值所需轮数（默认 1000）。",
+)
+parser.add_argument(
+    "--anchor_terrain_names", type=str, default=None,
+    help="逗号分隔：**只在哪些地形上锚定**（默认 flat）。依据：AMP 先验是平地+地形盲策略，"
+         "锚在斜坡/台阶上等于强迫策略忽略地形。",
+)
+parser.add_argument(
+    "--anchor_expert", type=int, default=None, help="锚哪个专家（默认 0＝装先验的那个）。",
+)
 # append CMoE CLI arguments
 cli_args.add_cmoe_args(parser)
 # append AppLauncher cli args
@@ -74,6 +128,52 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
     """Train a CMoE agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_cmoe_cfg(agent_cfg, args_cli)
+    # 「从已有步态策略起步」：先验路径只走 CLI（logs/ 被 .gitignore 忽略，不能写进配置默认值）。
+    # ⚠️ 空串必须报错：`init_experts_from: ''` 在 runner 里判假 ⇒ 会**静默地不装先验**
+    # （2026-09-25 `cmoe_gaitfree_amp24500` 实跑就是这么发生的，训练照跑、没人发现）。
+    if args_cli.init_experts_from is not None:
+        from rl_lab.utils.pretrained_prior import normalize_prior_path
+
+        normalized = normalize_prior_path(args_cli.init_experts_from)
+        if normalized is None:
+            parser.error("--init_experts_from 传了空串/空白：要么给真实的先验路径，要么不要给这个参数")
+        agent_cfg.init_experts_from = normalized
+    if args_cli.init_experts_mode is not None:
+        agent_cfg.init_experts_mode = args_cli.init_experts_mode
+    if args_cli.init_experts_critic is not None:
+        agent_cfg.init_experts_critic = args_cli.init_experts_critic == "true"
+    if args_cli.init_experts_std is not None:
+        agent_cfg.init_experts_std = args_cli.init_experts_std == "true"
+    if args_cli.init_experts_jitter is not None:
+        agent_cfg.init_experts_jitter = args_cli.init_experts_jitter
+    # ---------------- v5：门控偏置 + 先验锚定（只在指定地形上） ----------------
+    if args_cli.init_gate_bias is not None:
+        agent_cfg.init_gate_bias = args_cli.init_gate_bias
+    if args_cli.init_gate_bias_margin is not None:
+        agent_cfg.init_gate_bias_margin = args_cli.init_gate_bias_margin
+    if args_cli.anchor_coef is not None:
+        agent_cfg.anchor_coef = args_cli.anchor_coef
+    if args_cli.anchor_coef_final is not None:
+        agent_cfg.anchor_coef_final = args_cli.anchor_coef_final
+    if args_cli.anchor_decay_iters is not None:
+        agent_cfg.anchor_decay_iters = args_cli.anchor_decay_iters
+    if args_cli.anchor_expert is not None:
+        agent_cfg.anchor_expert = args_cli.anchor_expert
+    if args_cli.anchor_terrain_names is not None:
+        agent_cfg.anchor_terrain_names = tuple(
+            name.strip() for name in args_cli.anchor_terrain_names.split(",") if name.strip()
+        )
+    if agent_cfg.anchor_coef and not agent_cfg.init_experts_from:
+        print("[WARN] 给了 --anchor_coef 但没有 --init_experts_from ⇒ 没有教师可锚，锚损失恒为 0")
+    if agent_cfg.init_gate_bias is not None and agent_cfg.init_experts_mode != "first":
+        print(f"[WARN] --init_gate_bias={agent_cfg.init_gate_bias} 通常配合 --init_experts_mode=first"
+              f"（当前 mode={agent_cfg.init_experts_mode}）：mode=all 时 5 个专家都是先验，"
+              "偏置只是让门控初始偏向某一个，效果等价但意义不大")
+    if "gaitfree" in (args_cli.task or "") and not agent_cfg.init_experts_from:
+        print(
+            "[WARN] 任务名带 gaitfree（手工步态项已归零）但**没有**给 --init_experts_from ⇒ "
+            "步态目前没有任何约束，策略会自行演化（若这是有意的对照实验，忽略本行）"
+        )
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
