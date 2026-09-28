@@ -105,6 +105,25 @@ class TestMaskedFlatOrientationWiring(unittest.TestCase):
         self.assertIn("flat_orientation_l2(env, asset_cfg)", body)
         self.assertIn("(~self._free_mask)", body)
 
+    def test_gaitfree_zeroing_is_none_safe(self):
+        """`Imgo2CMoEGaitFreeEnvCfg` 归零五项时必须加 None 守卫。
+
+        2026-09-28 冒烟测试实测：v3 起 `feet_gait` 在**父类**就被归零，父类的
+        `disable_zero_weight_rewards()` 会把它 `setattr(..., None)`（`velocity_env_cfg.py:738-744`）
+        ⇒ 子类裸写 `self.rewards.feet_gait.weight = 0.0` 让训练**启动即崩**
+        （`AttributeError: 'NoneType' object has no attribute 'weight'`）。
+        """
+        src = _cfg_source()
+        block = re.search(r"class Imgo2CMoEGaitFreeEnvCfg(.*)", src, re.S)
+        self.assertIsNotNone(block, "配置里没有 Imgo2CMoEGaitFreeEnvCfg")
+        body = block.group(1)
+        for term in ("joint_mirror", "feet_air_time", "feet_height_body",
+                     "feet_air_time_variance", "feet_gait"):
+            self.assertIn(f"if self.rewards.{term} is not None:", body,
+                          f"{term} 的归零缺少 None 守卫（父类可能已把它移除成 None）")
+            self.assertNotIn(f"\n        self.rewards.{term}.weight = 0.0", body,
+                             f"{term} 不能裸赋值")
+
     def test_phase_kernel_is_off_and_probes_stay(self):
         src = _cfg_source()
         self.assertIn("self.rewards.feet_gait.weight = 0.0", src, "相位核应按用户决定去掉")

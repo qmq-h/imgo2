@@ -54,6 +54,26 @@
 全仓离线 **494 通过 / 8 跳过**；`py_compile`、`check_reward_overrides`、`git diff --check` 干净。
 **未验证**：没有起训练（本机无 GPU）——门控偏置/锚定在真实 Isaac 环境里的行为需要训练机确认。
 
+## 3.5 冒烟测试抓到的启动 bug（已修）
+
+第一次冒烟（`--num_envs=64 --max_iterations=2`）**启动即崩**：
+
+```
+File ".../CMoE_env_cfg.py", line 717, in __post_init__
+    self.rewards.feet_gait.weight = 0.0
+AttributeError: 'NoneType' object has no attribute 'weight'
+```
+
+* **根因**：v3 起 `feet_gait` 在**父类** `Imgo2CMoERoughEnvCfg` 就已归零，父类的
+  `disable_zero_weight_rewards()` 会把 0 权重项 `setattr(..., None)`
+  （实现 `velocity_env_cfg.py:738-744`："If the weight of rewards is 0, set rewards to None"）
+  ⇒ 子类 `Imgo2CMoEGaitFreeEnvCfg` 再裸赋值就撞 `None`。
+* **修法**：五项归零统一加 **None 守卫**；审计工具用 `ast.walk` 收集赋值，`if` 包裹后仍能正确识别
+  （复核：`cmoe-gaitfree` 仍是 23 项、五项都在"权重 0 ⇒ 移除"列表）。
+* **回归测试**：`tests/test_reward_terrain_partition.py::test_gaitfree_zeroing_is_none_safe`。
+* **教训**：改奖励权重会让父类把项从配置里**移除**，任何子类的后续赋值都必须容 `None`；
+  这类错误只在**真实构造 cfg** 时暴露（离线 AST 审计看不到）⇒ 每次改奖励后**先跑 2 轮冒烟**。
+
 ## 4. 训练机命令（A＝用户决定的版本；B＝更保守的变体）
 
 ```bash

@@ -710,11 +710,21 @@ class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.rewards.joint_mirror.weight = 0.0
-        self.rewards.feet_air_time.weight = 0.0
-        self.rewards.feet_height_body.weight = 0.0
-        self.rewards.feet_air_time_variance.weight = 0.0
-        self.rewards.feet_gait.weight = 0.0
+        # ⚠️ 2026-09-28 冒烟测试抓到的真 bug：v3 起 `feet_gait` 在**父类**就已归零，于是父类的
+        # `disable_zero_weight_rewards()` 会把它 `setattr(..., None)`（实现见 `velocity_env_cfg.py:738-744`：
+        # "If the weight of rewards is 0, set rewards to None"）⇒ 子类再写
+        # `self.rewards.feet_gait.weight = 0.0` 就是 `AttributeError: 'NoneType' object has no attribute 'weight'`
+        # （训练**启动即崩**，不是跑起来才出问题）。五项统一加 None 守卫：父类已移除的跳过、未移除的归零。
+        if self.rewards.joint_mirror is not None:
+            self.rewards.joint_mirror.weight = 0.0
+        if self.rewards.feet_air_time is not None:
+            self.rewards.feet_air_time.weight = 0.0
+        if self.rewards.feet_height_body is not None:
+            self.rewards.feet_height_body.weight = 0.0
+        if self.rewards.feet_air_time_variance is not None:
+            self.rewards.feet_air_time_variance.weight = 0.0
+        if self.rewards.feet_gait is not None:
+            self.rewards.feet_gait.weight = 0.0
         # self.rewards.lin_vel_z_l2.weight = 0.0  # ← 若连"别蹦"的兜底也要去掉，取消注释这一行
 
         # 上面这些归零发生在 `super().__post_init__()` 的 `disable_zero_weight_rewards()` **之后**，
