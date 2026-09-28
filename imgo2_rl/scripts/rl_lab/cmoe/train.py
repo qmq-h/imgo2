@@ -67,11 +67,12 @@ parser.add_argument(
 )
 parser.add_argument(
     "--anchor_coef", type=float, default=None,
-    help="**v5**：先验锚定的初始权重（0＝关闭）。只对 `--anchor_expert` 一个专家的输出做加权 MSE，"
-         "权重＝地形掩码 × 线性衰减。典型 0.2~0.3。",
+    help="**v5.1**：先验锚定的权重（默认 0.2；0＝关闭）。锚的是**最终混合输出**、只在 `flat` 列上"
+         "（见 --anchor_target / --anchor_terrain_names）；默认**常数不退火**。",
 )
 parser.add_argument(
-    "--anchor_coef_final", type=float, default=None, help="锚定权重衰减到的终值（典型 0.05~0.1）。",
+    "--anchor_coef_final", type=float, default=None,
+    help="锚定权重衰减到的终值（默认与 --anchor_coef 相同 ⇒ 常数，即不退火）。",
 )
 parser.add_argument(
     "--anchor_decay_iters", type=int, default=None, help="锚定权重线性衰减到终值所需轮数（默认 1000）。",
@@ -86,9 +87,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--anchor_target", type=str, default=None, choices=("expert", "mixture", "both"),
-    help="锚**谁**的输出：expert＝只锚某个专家；mixture＝锚**最终混合输出**（推荐："
-         "「平地上整体必须像 AMP」——只锚专家时门控会绕过它，实测平地滞空从 0.084 掉到 0.018）；"
-         "both＝两者都锚（默认 expert）。",
+    help="锚**谁**的输出（默认 mixture）：mixture＝锚**最终混合输出**（用户 2026-09-28 拍定："
+         "「在平地的那几列添加 amp 教师，针对最终输出」）；expert＝只锚某个专家（旧行为，"
+         "实测会被门控绕过：专家完好但平地滞空从 0.084 掉到 0.018）；both＝两者都锚。",
 )
 # append CMoE CLI arguments
 cli_args.add_cmoe_args(parser)
@@ -171,7 +172,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: CMoEOnPolicyRunnerCfg):
         agent_cfg.anchor_terrain_names = tuple(
             name.strip() for name in args_cli.anchor_terrain_names.split(",") if name.strip()
         )
-    if agent_cfg.anchor_coef and not agent_cfg.init_experts_from:
+    # 只有**显式**要求锚定却又没给先验时才告警（anchor_coef 现在有默认值 0.2 ⇒ 不能按配置值判）
+    if args_cli.anchor_coef and not agent_cfg.init_experts_from:
         print("[WARN] 给了 --anchor_coef 但没有 --init_experts_from ⇒ 没有教师可锚，锚损失恒为 0")
     if agent_cfg.init_gate_bias is not None and agent_cfg.init_experts_mode != "first":
         print(f"[WARN] --init_gate_bias={agent_cfg.init_gate_bias} 通常配合 --init_experts_mode=first"

@@ -77,20 +77,29 @@ class CMoEOnPolicyRunnerCfg(RLLabBaseRunnerCfg):
     init_experts_jitter: float = 0.0
     log_prior_rmse: bool = True  # 有先验时记录 Policy/prior_action_rmse＝混合策略与先验的动作 RMSE（漂移度量）
 
-    # ---------------- v5（2026-09-28 用户决定）：只用一个专家装先验 + 只在 flat 上锚定 ----------------
-    # 原话："5 个专家只有一个用 amp 预训练结果初始化"、"只在 flat 上锚定"。
-    # 依据：AMP 是**平地 + 地形盲**（45 维本体，连 height_scan 都没有）⇒ 把锚放在斜坡/台阶上等于
-    # 强迫策略忽略地形（实测先验在极端地形上 OOD，RMSE 放大到 15+）；放在 flat 上则正好是
-    # "平地始终 trot"。门控初始偏向专家 0（它=先验）⇒ 第 0 步行为仍是先验，同时 5 个专家彼此不同。
-    init_gate_bias: int | None = None        # 非 None ⇒ 门控初始偏置到第 k 个专家（配合 mode="first"）
+    # ---------------- v5.1（2026-09-28 用户决定）：只在 flat 那几列、针对**最终输出**加 AMP 教师 ----------------
+    # 决定的原话链："只在 flat 上锚定" → "让最终的输出对齐 amp，在平地上的时候" →
+    # "就只设置，在平地的那几列添加 amp 教师，是针对最终输出的" →
+    # "这样似乎 amp 初始化都不是很需要了，但是还是先初始化一下，加速训练"。
+    # 依据（都是实测）：
+    #   ① AMP 是**平地 + 地形盲**（45 维本体、连 height_scan 都没有）⇒ 锚在斜坡/台阶上等于强迫
+    #      策略忽略地形（先验在极端地形上 OOD，RMSE 放大到 15+）；
+    #   ② **只锚"专家"不够**：专家 0 完好时（Loss/anchor_prior 0.0074）平地仍在蹭
+    #      （gait_airtime_flat 0.018 vs 先验 0.084）—— 门控可以绕过被锚的专家；
+    #   ③ 门控只要给**随机初始化**的专家 5~7% 权重就足以毁掉 trot（@20 轮门控 93% 在专家 0、
+    #      平地滞空已从 0.084 掉到 0.006）⇒ 初始化要让 5 个专家都起自先验，消掉这个悬崖。
+    # 语义：锚的是**最终混合输出**（`mixture`）—— 平地上整体必须像 AMP；梯度同时进到门控与全部
+    # 专家（门控因此自己学会"平地走专家 0"），而其它专家在 flat 上几乎收不到锚梯度 ⇒ 障碍地形上的
+    # 分化不受损。**不退火**（常数）：锚是"平地行为约束"不是课程；flat 列占比全程恒定；且我们的
+    # 任务项对偷懒步态几乎免费（action_rate −0.01、碰撞 −0.5、无 lazy_stop）⇒ 地板太低会滑回拖行。
+    # **AMP 初始化的角色因此降级为"热启动"**：正确性由锚保证，先验只负责起步快
+    # （没有 --init_experts_from 也照样能跑，只是慢）。
+    init_gate_bias: int | None = None        # 可选：把门控初始偏置到第 k 个专家（mode=all 时非必需）
     init_gate_bias_margin: float = 4.0       # 偏置 margin（softmax 初始 ≈ one-hot(该专家)）
-    init_gate_bias_shrink: float = 0.0       # >0 ⇒ 同时把门控末层权重缩小该倍数（让偏置初始更占主导）
-    anchor_terrain_names: tuple = ("flat",)  # 只在哪些地形上锚（默认只 flat）
-    anchor_expert: int = 0                   # 锚哪个专家（默认专家 0 ＝装先验的那个）
-    # 锚"谁"的输出（2026-09-28 用户拍定）：`expert`＝只锚某专家；`mixture`＝锚**最终混合输出**
-    # （"平地上整体必须像 AMP"）；`both`＝两者都锚。实测依据：只锚专家时，专家 0 完好
-    # （Loss/anchor_prior 0.0074）但平地在蹭（gait_airtime_flat 0.018 vs 先验 0.084）⇒ 必须锚输出。
-    anchor_target: str = "expert"
-    anchor_coef: float = 0.0                 # 初始锚定权重（0 ⇒ 关闭本功能）；典型 0.2~0.3
-    anchor_coef_final: float = 0.0           # 衰减到的最终权重（典型 0.05~0.1）
-    anchor_decay_iters: int = 1000           # 线性衰减到 final 所需轮数
+    init_gate_bias_shrink: float = 0.0       # >0 ⇒ 同时缩小门控末层权重（让初始门控不随输入变化）
+    anchor_terrain_names: tuple = ("flat",)  # 只在 flat（40 列里的 3~4 列）上锚
+    anchor_target: str = "mixture"           # 锚**最终混合输出**（不是某个专家）
+    anchor_expert: int = 0                   # 仅当 anchor_target 含 expert 时使用
+    anchor_coef: float = 0.2                 # 常数权重；0 ⇒ 关闭本功能（没有教师时恒为 0）
+    anchor_coef_final: float = 0.2           # 与 anchor_coef 相同 ⇒ 常数；要退火就把它改小
+    anchor_decay_iters: int = 1              # 1 ⇒ 立刻取 final（即常数）

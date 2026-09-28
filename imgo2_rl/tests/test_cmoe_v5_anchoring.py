@@ -380,9 +380,25 @@ class TestAlgorithmWiring(unittest.TestCase):
                        "mix_experts(expert_means, gate_weights)"):
             self.assertIn(needle, self.src, needle)
 
-    def test_default_target_is_expert_for_backward_compat(self):
-        self.assertIn('anchor_target: str = "expert"', self.cfg)
+    def test_defaults_encode_the_flat_mixture_decision(self):
+        """用户 2026-09-28 的决定写成**配置默认值**：只在 flat、锚最终输出、常数不退火。"""
+        self.assertIn('anchor_target: str = "mixture"', self.cfg)
+        self.assertIn('anchor_terrain_names: tuple = ("flat",)', self.cfg)
+        self.assertIn("anchor_coef: float = 0.2", self.cfg)
+        self.assertIn("anchor_coef_final: float = 0.2", self.cfg)   # 与 coef 相同 ⇒ 常数
+        self.assertIn("anchor_decay_iters: int = 1", self.cfg)
         self.assertIn('self.anchor_target = str(anchor_target)', self.src)
+
+    def test_no_prior_means_no_anchor_even_with_default_coef(self):
+        """默认 `anchor_coef=0.2` 之后仍必须"没有先验就不锚"（否则无先验的 CMoE run 会崩/乱锚）。"""
+        runner = (RL_LAB / "runners" / "cmoe_on_policy_runner.py").read_text(encoding="utf-8")
+        self.assertIn("self.prior_teacher = None", runner)
+        # 每步的权重函数必须同时守住三个条件：系数>0、有教师、有可用地形列
+        guard = runner.split("def _anchor_weight_now", 1)[1].split("def ", 1)[0]
+        self.assertIn("coef0 <= 0.0", guard)
+        self.assertIn("self.prior_teacher is None", guard)
+        self.assertIn('getattr(self, "_anchor_columns", None)', guard)
+        self.assertIn("return None", guard)
 
     def test_gate_weights_in_anchor_are_recomputed_from_detached_input(self):
         """混合锚必须用 detach 过的输入重算（不能用 mu_batch，它的图里带估计器）。"""

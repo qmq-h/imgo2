@@ -180,3 +180,28 @@ PYTHONUNBUFFERED=1 setsid nohup bash scripts/run_isaaclab.sh scripts/rl_lab/cmoe
 
 **待决定（未实施）**：掩码是否扩到 `random_rough`（AMP 是平面策略，0.01–0.06 m 噪声下"对齐 AMP"的语义存疑）；
 退火终值是否降到 0（现在是 0.08 的永久弱约束）。
+
+### 6.5 最终定稿（2026-09-28 用户拍定，已写进配置默认值）
+
+用户原话链："只在 flat 上锚定" → "让最终的输出对齐 amp，在平地上的时候" →
+"就只设置，在平地的那几列添加 amp 教师，是针对最终输出的" →
+"这样似乎 amp 初始化都不是很需要了，但是还是先初始化一下，加速训练"。
+
+| 项 | 定稿 | 写在哪 |
+|---|---|---|
+| 掩码 | **只 `flat`**（40 列里的 3~4 列），`random_rough` 暂不纳入 | `anchor_terrain_names: tuple = ("flat",)` |
+| 锚的对象 | **最终混合输出**（`mixture`），不是某个专家 | `anchor_target: str = "mixture"` |
+| 权重 | **常数 0.2，不退火** | `anchor_coef = 0.2`、`anchor_coef_final = 0.2`、`anchor_decay_iters = 1` |
+| AMP 初始化 | **保留，但角色降级为"热启动"**：正确性由锚保证，先验只负责起步快 | `--init_experts_mode=all --init_experts_jitter=0.05` |
+
+**"不退火"的理由**：锚是"平地行为约束"而非课程；flat 列占比全程恒定；且我们的任务项对偷懒步态
+几乎免费（`action_rate −0.01`、碰撞 −0.5、无 `lazy_stop`）⇒ 地板太低会重新滑回拖行。
+
+**"初始化不再是必需"的含义**：现在即使不给 `--init_experts_from`，平地也会被锚拉向 AMP 的行为
+（只是没有热启动、收敛更慢）；反过来，**没有先验时锚恒为 0**（代码里 `_anchor_weight_now` 同时
+守住"系数>0 / 有教师 / 有可用地形列"三个条件，已有测试锁定）⇒ 默认值不会让无先验的 run 出错。
+
+**判据**（`mixture` 模式下 `Loss/anchor_prior` **就是**"平地混合动作 vs AMP 的 MSE"）：
+- 稳在 **< 0.01** ⇒ 约束在起作用；训练中爬升 >0.02 ⇒ 把常数提到 0.3；
+- 一路 < 0.002 ⇒ 压得过死，可降到 0.15；
+- 回放：`gait_report.py` 在 flat 判 **trot**、`gait_airtime_flat` 回到 **0.06~0.09 s**（v5 首跑只有 0.018）。
