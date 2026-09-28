@@ -240,3 +240,31 @@ v5 那条 run 跑到 @500/@506 时：
 **逐地形等级@500**：`flat 6.01`／`slope 5.09`／`slope_inv 4.89`／`stairs_inv 4.71` ≫ `hurdle 1.97`／
 `stairs 1.80`／`narrow 1.18`／`mix 0.32`／`boxes 0.056`／**`gap 0.002`** ⇒ 简单地形已爬到顶，
 障碍类仍压在底部，**gap 是瓶颈**（与旧 run @5001 的分布同型）。
+
+### 6.7 复审修正（用户 2026-09-28 指出）：**λ 被归一化约掉了**
+
+**现象（数值实证）**：原实现把 `anchor_coef` 乘进逐样本权重，损失算式是归一化加权均值
+
+```
+L = Σ_i (c·m_i)·MSE_i / Σ_i (c·m_i)  ≡  Σ_i m_i·MSE_i / Σ_i m_i        ← c 被约掉
+```
+同一批数据上 `c=0.2` 与 `c=0.3` 得到**完全相同**的损失（实测 `0.972105` vs `0.972105`，
+差 `0.00e+00`），梯度也不变 ⇒ **`anchor_coef` 是个假旋钮**：地形筛选有效，但"调强度"完全无效，
+退火同样无效（只要 c>0）。
+
+**修法**（已实施）：
+
+| 位置 | 改法 |
+|---|---|
+| `utils/anchor.py` | 参数改名 `weights → mask`，**只接受 0/1**，非 0/1 直接 `ValueError`（并在报错里写明原因，防止再犯）；docstring 记录本次 bug |
+| 算法 `cmoe_ppo.py` | 新增 `self.anchor_coef`（每轮由 runner 写入）；损失改为 **`anchor_loss = self.anchor_coef * anchor_mse`**（λ 在外面）；`anchor_coef <= 0` 时连教师前向都不做 |
+| runner | 拆成 `_anchor_coef_now(iteration)`（返回标量 λ(t)）与 `_anchor_mask_now()`（返回**纯 0/1 掩码**，`scale=1.0`，复用已单测的 `terrain_masks.anchor_weights`）；每轮 `self.alg.anchor_coef = λ(t)` |
+| 日志 | `Loss/anchor_prior` = **λ·MSE**（与其它损失同尺度，可比）；新增 **`Policy/anchor_mse_flat`** = 动作 MSE 本身（**这才是验收读数**，与 λ 无关）；`Policy/anchor_flat_share` = 参与锚定的样本占比；`Policy/anchor_coef` = 当前 λ |
+
+**验收口径随之修正**：
+* 强度看 `Policy/anchor_coef`（现在真的有用：0.2→0.3 会把压力提到 1.5×）；
+* 行为看 **`Policy/anchor_mse_flat` < 0.01**（动作 MSE，与 λ 无关）；爬升 >0.02 ⇒ 调大 λ；
+* 仍受 `--dump_gait` 相位判定约束（MSE 只在均值动作上，不含探索噪声）。
+
+**用户同时确认的其余判断（与我方一致）**：梯度同时进门控与专家 actor（专家按门控权重拿梯度）；
+障碍样本不直接受约束但**共享参数**仍可能被影响；约束的是**动作均值**、属软约束，不约束探索噪声。

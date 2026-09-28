@@ -33,6 +33,7 @@ class CMoEPPO:
                  teacher_obs_dim: int = 45,
                  anchor_expert: int = 0,
                  anchor_target: str = "expert",
+                 anchor_coef: float = 0.0,
                  ):
 
         self.device = device
@@ -69,7 +70,12 @@ class CMoEPPO:
         # `mixture`＝锚**最终混合输出**（"平地上整体必须像 AMP"）；`both`＝两者都锚。
         self.anchor_target = str(anchor_target)
         resolve_targets(self.anchor_target)      # 非法取值在构造时就报错
+        # ⚠️ λ **必须**乘在损失外面：`weighted_mse` 是 Σ(m·MSE)/Σm 的归一化均值，
+        # 把公共系数乘进掩码会被约掉（2026-09-28 复查抓到的真 bug：0.2 与 0.3 得到同一损失，
+        # 实测 0.972105 vs 0.972105）。runner 每轮把当前 λ 写进这里。
+        self.anchor_coef = float(anchor_coef)
         self.last_anchor_loss = None
+        self.last_anchor_mse = None
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
         self.storage = CMoERolloutStorage(
@@ -169,7 +175,8 @@ class CMoEPPO:
                 # 整体必须像 AMP，用户 2026-09-28 拍定）；`both`＝两者都锚。算式在 `utils/anchor.py`。
                 anchor_loss = torch.zeros((), device=self.device)
                 weight_sum = anchor_weight_batch.sum()
-                if self.teacher_policy is not None and float(weight_sum) > 0.0:
+                if (self.teacher_policy is not None and self.anchor_coef > 0.0
+                        and float(weight_sum) > 0.0):
                     with torch.inference_mode():
                         teacher_actions = self.teacher_policy(obs_batch[:, : self.teacher_obs_dim])
                     # ⚠️ `detach()`：锚不应当穿过 `build_actor_input`，否则状态/地形**估计器**也会被
@@ -188,8 +195,11 @@ class CMoEPPO:
                             expert.act_inference(actor_input) for expert in self.actor_critic.experts
                         ]
                         predictions.append(mix_experts(expert_means, gate_weights))
-                    anchor_loss = weighted_mse(predictions, teacher_actions, anchor_weight_batch)
-                    # 只在**真的生效**时记录 ⇒ 未启用（没有教师/权重全 0）不会写出恒 0 的日志项
+                    # 归一化加权均值（掩码为 0/1 时＝目标地形样本上的 MSE）；**λ 乘在外面**
+                    anchor_mse = weighted_mse(predictions, teacher_actions, anchor_weight_batch)
+                    anchor_loss = self.anchor_coef * anchor_mse
+                    # 只在**真的生效**时记录 ⇒ 未启用（没有教师/λ=0/掩码全 0）不会写出恒 0 的日志项
+                    self.last_anchor_mse = float(anchor_mse.detach())
                     self.last_anchor_loss = float(anchor_loss.detach())
 
                 # Surrogate loss

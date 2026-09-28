@@ -44,21 +44,24 @@ def terrain_columns(
 def anchor_weights(
     terrain_types: torch.Tensor,
     *,
-    keys: Sequence[str],
-    proportions: Iterable[float],
-    num_cols: int,
+    keys: Sequence[str] | None = None,
+    proportions: Iterable[float] | None = None,
+    num_cols: int | None = None,
     names: Iterable[str] = ("flat",),
     scale: float = 1.0,
     columns: Sequence[int] | None = None,
 ) -> torch.Tensor:
     """逐环境的锚定权重：`terrain_types` 落在目标地形列上 ⇒ `scale`，否则 0。
 
-    `columns` 可以预先算好并复用（每个控制步都算一遍列分配是浪费）。返回 `[N]` float32，
+    `columns` 可以预先算好并复用（每个控制步都算一遍列分配是浪费；给了它就不需要 keys/proportions/
+    num_cols）。返回 `[N]` float32，
     **形状与 `terrain_types` 一致（都是一维、长度 = 环境数）**。
     """
     if terrain_types.ndim != 1:
         raise ValueError(f"terrain_types 应为一维 [N]，收到 {tuple(terrain_types.shape)}")
     if columns is None:
+        if keys is None or proportions is None or num_cols is None:
+            raise ValueError("要么给 columns，要么给 keys + proportions + num_cols")
         columns = terrain_columns(keys, proportions, num_cols, names)
     if not columns:
         return torch.zeros_like(terrain_types, dtype=torch.float32)

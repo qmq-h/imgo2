@@ -274,7 +274,7 @@ class TestAnchorLossFormula(unittest.TestCase):
     def test_masking_and_normalization(self):
         pred = torch.tensor([[1.0, 1.0], [3.0, 3.0], [5.0, 5.0]])
         teacher = torch.zeros(3, 2)
-        weights = torch.tensor([1.0, 0.0, 1.0])          # 中间那条**完全不参与**
+        weights = torch.tensor([1.0, 0.0, 1.0])          # 0/1 掩码：中间那条**完全不参与**
         loss = anchor_mod.weighted_mse(pred, teacher, weights)
         # 逐样本 MSE 是**对动作维取均值**：(1²+1²)/2=1、(5²+5²)/2=25 ⇒ (1+25)/2 = 13
         self.assertAlmostEqual(float(loss), 13.0, places=6)
@@ -300,6 +300,37 @@ class TestAnchorLossFormula(unittest.TestCase):
             anchor_mod.weighted_mse(torch.ones(3, 2), torch.zeros(3, 2), torch.ones(4))
         with self.assertRaises(ValueError):      # 预测与教师形状不一致
             anchor_mod.weighted_mse(torch.ones(3, 5), torch.zeros(3, 2), torch.ones(3))
+
+    def test_non_binary_mask_is_rejected(self):
+        """⚠️ 回归测试（2026-09-28 复查抓到的真 bug）：公共系数**不能**乘进掩码。
+
+        `Σ(c·m·MSE)/Σ(c·m) ≡ Σ(m·MSE)/Σ(m)` ⇒ 系数被归一化约掉，`anchor_coef` 0.2→0.3
+        实测得到**同一个**损失（0.972105 vs 0.972105，差 0.00e+00）。所以这里直接拒绝非 0/1。
+        """
+        pred = torch.randn(4, 3)
+        teacher = torch.zeros(4, 3)
+        with self.assertRaises(ValueError):
+            anchor_mod.weighted_mse(pred, teacher, torch.full((4,), 0.2))     # 系数乘进来
+        # 0/1 掩码下"乘 0.2 / 乘 0.3"本来就应当相等 —— 这正是必须把 λ 放到外面的原因
+        mask = torch.tensor([1.0, 1.0, 0.0, 1.0])
+        self.assertAlmostEqual(
+            float(anchor_mod.weighted_mse(pred, teacher, mask)),
+            float(anchor_mod.weighted_mse(pred, teacher, mask.clone())), places=7)
+
+    def test_lambda_outside_scales_loss_and_gradient(self):
+        """修复后的正确用法：`λ · weighted_mse(...)` ⇒ 损失与梯度都随 λ 线性变化。"""
+        torch.manual_seed(0)
+        base = torch.randn(6, 3)
+        teacher = torch.zeros(6, 3)
+        mask = torch.tensor([1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
+        pred_low = base.clone().requires_grad_(True)
+        pred_high = base.clone().requires_grad_(True)
+        loss_low = 0.2 * anchor_mod.weighted_mse(pred_low, teacher, mask)
+        loss_high = 0.3 * anchor_mod.weighted_mse(pred_high, teacher, mask)
+        self.assertAlmostEqual(float(loss_high) / float(loss_low), 1.5, places=6)
+        grad_low = torch.autograd.grad(loss_low, pred_low)[0]
+        grad_high = torch.autograd.grad(loss_high, pred_high)[0]
+        self.assertAlmostEqual(float(grad_high.norm()) / float(grad_low.norm()), 1.5, places=5)
 
     def test_resolve_targets(self):
         self.assertEqual(anchor_mod.resolve_targets("expert"), (True, False))
@@ -376,9 +407,22 @@ class TestAlgorithmWiring(unittest.TestCase):
     def test_algorithm_uses_shared_formula_and_resolves_targets(self):
         for needle in ("from ..utils.anchor import mix_experts, resolve_targets, weighted_mse",
                        "resolve_targets(self.anchor_target)",
-                       "weighted_mse(predictions, teacher_actions, anchor_weight_batch)",
+                       "anchor_mse = weighted_mse(predictions, teacher_actions, anchor_weight_batch)",
+                       "anchor_loss = self.anchor_coef * anchor_mse",
                        "mix_experts(expert_means, gate_weights)"):
             self.assertIn(needle, self.src, needle)
+
+    def test_lambda_is_applied_outside_the_normalized_mean(self):
+        """源码级锁定：λ 只出现在乘法位置，绝不能出现在掩码里（否则被归一化约掉）。"""
+        self.assertIn("self.anchor_coef = float(anchor_coef)", self.src)
+        self.assertIn("self.anchor_coef > 0.0", self.src)
+        runner = (RL_LAB / "runners" / "cmoe_on_policy_runner.py").read_text(encoding="utf-8")
+        self.assertIn("self.alg.anchor_coef = self._anchor_coef_now(it)", runner)
+        # runner 写进 storage 的必须是纯掩码（scale=1.0），不能带系数
+        self.assertIn("anchor_weights(terrain.terrain_types, columns=self._anchor_columns, scale=1.0)",
+                      runner)
+        self.assertNotIn("* coef", runner.split("def _anchor_mask_now", 1)[1].split("def ", 2)[1]
+                         if runner.count("def ") > 1 else "")
 
     def test_defaults_encode_the_flat_mixture_decision(self):
         """用户 2026-09-28 的决定写成**配置默认值**：只在 flat、锚最终输出、常数不退火。"""
@@ -394,7 +438,7 @@ class TestAlgorithmWiring(unittest.TestCase):
         runner = (RL_LAB / "runners" / "cmoe_on_policy_runner.py").read_text(encoding="utf-8")
         self.assertIn("self.prior_teacher = None", runner)
         # 每步的权重函数必须同时守住三个条件：系数>0、有教师、有可用地形列
-        guard = runner.split("def _anchor_weight_now", 1)[1].split("def ", 1)[0]
+        guard = runner.split("def _anchor_mask_now", 1)[1].split("def ", 1)[0]
         self.assertIn("coef0 <= 0.0", guard)
         self.assertIn("self.prior_teacher is None", guard)
         self.assertIn('getattr(self, "_anchor_columns", None)', guard)

@@ -149,14 +149,15 @@ class CMoEOnPolicyRunner:
             from ..utils.anchor import resolve_targets as _resolve_anchor_targets
             _resolve_anchor_targets(self.alg.anchor_target)   # 非法取值启动即报错
             self._anchor_columns = self._terrain_columns_for_anchor()
-            self._anchor_weight_mean = None
+            self._anchor_flat_share = None
+            self._anchor_coef_now_value = 0.0
             if float(self.cfg.get("anchor_coef", 0.0) or 0.0) > 0.0:
                 print(f"[INFO]   先验锚定：专家 {self.alg.anchor_expert}；地形 "
                       f"{tuple(self.cfg.get('anchor_terrain_names', ('flat',)))}"
                       f"（{len(self._anchor_columns)} 列）；权重 "
                       f"{self.cfg.get('anchor_coef')} → {self.cfg.get('anchor_coef_final')}"
                       f"（{self.cfg.get('anchor_decay_iters')} 轮线性衰减）；锚的对象："
-                      f"{self.alg.anchor_target}")
+                      f"{self.alg.anchor_target}；λ 乘在损失外面，掩码只决定\"哪些样本\"")
             # 参数空间漂移的基准（与观测分布无关，见 log() 里的说明）
             self._prior_actor_snapshot = {
                 name: parameter.detach().clone()
@@ -199,24 +200,33 @@ class CMoEOnPolicyRunner:
             print(f"[WARN] 取不到锚定地形列（{exc}）⇒ 本次不锚定")
             return []
 
-    def _anchor_weight_now(self, iteration: int):
-        """当前控制步的逐环境锚定权重（[N] float32）：地形掩码 × 线性衰减系数。
+    def _anchor_coef_now(self, iteration: int) -> float:
+        """当前的锚定强度 λ(t)（线性衰减）。0 ⇒ 关闭。
 
-        未启用（`anchor_coef<=0`）、没有教师、或没有可用列时返回 `None` ⇒ storage 写 0 ⇒ 锚损失恒 0
-        （与旧行为完全一致）。
+        ⚠️ λ **不能**乘进掩码：`weighted_mse` 是归一化均值 `Σ(m·MSE)/Σm`，公共系数会被约掉
+        （2026-09-28 复查抓到的真 bug：0.2 与 0.3 得到同一损失 0.972105）。所以这里只算标量，
+        由算法乘在损失外面。
+        """
+        coef0 = float(self.cfg.get("anchor_coef", 0.0) or 0.0)
+        if coef0 <= 0.0 or self.prior_teacher is None or not getattr(self, "_anchor_columns", None):
+            return 0.0
+        coef1 = float(self.cfg.get("anchor_coef_final", 0.0) or 0.0)
+        decay = max(1, int(self.cfg.get("anchor_decay_iters", 1000) or 1000))
+        frac = min(1.0, max(0.0, float(iteration) / float(decay)))
+        return coef0 + (coef1 - coef0) * frac
+
+    def _anchor_mask_now(self):
+        """当前控制步的**0/1 地形掩码**（[N] float32）：哪些环境属于被锚定的地形。
+
+        未启用、没有教师、或没有可用列时返回 `None` ⇒ storage 写 0 ⇒ 锚损失恒 0（与旧行为一致）。
         """
         coef0 = float(self.cfg.get("anchor_coef", 0.0) or 0.0)
         if coef0 <= 0.0 or self.prior_teacher is None or not getattr(self, "_anchor_columns", None):
             return None
-        coef1 = float(self.cfg.get("anchor_coef_final", 0.0) or 0.0)
-        decay = max(1, int(self.cfg.get("anchor_decay_iters", 1000) or 1000))
-        frac = min(1.0, max(0.0, float(iteration) / float(decay)))
-        coef = coef0 + (coef1 - coef0) * frac
+        from ..utils.terrain_masks import anchor_weights
+
         terrain = self.env.unwrapped.scene.terrain
-        columns = torch.as_tensor(self._anchor_columns, device=terrain.terrain_types.device,
-                                  dtype=terrain.terrain_types.dtype)
-        hit = (terrain.terrain_types.unsqueeze(-1) == columns.unsqueeze(0)).any(dim=-1)
-        return hit.to(torch.float32) * coef
+        return anchor_weights(terrain.terrain_types, columns=self._anchor_columns, scale=1.0)
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
@@ -253,6 +263,9 @@ class CMoEOnPolicyRunner:
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
+            # λ(t)：锚定强度；算法把它乘在锚损失**外面**（乘进掩码会被归一化约掉）
+            self.alg.anchor_coef = self._anchor_coef_now(it)
+            self._anchor_coef_now_value = self.alg.anchor_coef
             start = time.time()
             # Rollout
             with torch.inference_mode():
@@ -266,11 +279,11 @@ class CMoEOnPolicyRunner:
                     next_critic_obs = critic_obs.clone().detach()
                     next_critic_obs[termination_ids] = termination_privileged_obs.clone().detach()
 
-                    anchor_weight = self._anchor_weight_now(it)
+                    anchor_mask = self._anchor_mask_now()
                     self.alg.process_env_step(rewards, dones, infos, next_critic_obs,
-                                              anchor_weight=anchor_weight)
-                    if anchor_weight is not None:
-                        self._anchor_weight_mean = float(anchor_weight.mean())
+                                              anchor_weight=anchor_mask)
+                    if anchor_mask is not None:
+                        self._anchor_flat_share = float(anchor_mask.mean())
                     if self.log_dir is not None:
                         # Book keeping
                         if 'log' in infos and infos['log']:
@@ -349,8 +362,13 @@ class CMoEOnPolicyRunner:
         self.writer.add_scalar('Loss/contrastive', contrastive_loss, locs['it'])
         if getattr(self.alg, 'last_anchor_loss', None) is not None:
             self.writer.add_scalar('Loss/anchor_prior', self.alg.last_anchor_loss, locs['it'])
-        if getattr(self, '_anchor_weight_mean', None) is not None:
-            self.writer.add_scalar('Policy/anchor_weight_mean', self._anchor_weight_mean, locs['it'])
+        if getattr(self.alg, 'last_anchor_mse', None) is not None:
+            # MSE 本身单独记一条（**可验收**：这是"平地混合 vs AMP"的动作 MSE，与 λ 无关）
+            self.writer.add_scalar('Policy/anchor_mse_flat', self.alg.last_anchor_mse, locs['it'])
+        if getattr(self, '_anchor_flat_share', None) is not None:
+            self.writer.add_scalar('Policy/anchor_flat_share', self._anchor_flat_share, locs['it'])
+        if getattr(self, '_anchor_coef_now_value', 0.0):
+            self.writer.add_scalar('Policy/anchor_coef', self._anchor_coef_now_value, locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         if self.prior_teacher is not None and self.cfg.get("log_prior_rmse", True):
