@@ -626,7 +626,6 @@ def build_group_report(arrays: dict, group: dict, min_steps: int = 200, vx_min: 
 def build_report(arrays: dict, min_steps: int = 200, vx_min: float = 0.3, by_level: bool = False, by_name: bool = False,
                  period_source: str = "foot0", min_peak: float = 0.2, min_lag: int = 2) -> dict:
     """整个 npz → 报告 dict（含 metadata 与逐组结果），可直接 json.dump。"""
-    groups = group_environments(arrays["terrain_index"], arrays["terrain_level"], by_level)
     if by_name:
         # 2026-09-28：`sub_terrains` 是"每类占连续若干列"（如 gap 占 10 列）⇒ 逐列输出会有几十行、
         # 名字还重复。`--by-name` 把 terrain_index 重映射成"按名字去重后的 id"，于是每个**地形类型**一行。
@@ -644,6 +643,10 @@ def build_report(arrays: dict, min_steps: int = 200, vx_min: float = 0.3, by_lev
             arrays["terrain_names"] = _np.asarray(unique, dtype="U")
             if arrays.get("terrain_level") is not None:
                 pass          # 等级不受影响
+    # ⚠️ 2026-09-28 修 bug：`groups` 必须在 `by_name` 重映射**之后**再算。
+    # 原来算在重映射之前 ⇒ 分组仍按原始 40 个列索引 ⇒ `--by-name` 形同虚设（仍然 40 行），
+    # 而且行标签会因为"名字数组已经换成 11 个去重名"而整体错位（实测："flat" 那一行其实是 column 10）。
+    groups = group_environments(arrays["terrain_index"], arrays["terrain_level"], by_level)
     reports = [build_group_report(arrays, group, min_steps, vx_min, period_source, min_peak, min_lag)
                for group in groups]
     return {

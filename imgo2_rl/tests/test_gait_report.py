@@ -525,5 +525,37 @@ class TestPeriodFallbackAndByName(unittest.TestCase):
                 if line.strip() and not line.startswith(("#", "-")) and line.split()[0] in ("flat", "gap")]
         self.assertEqual(sorted(rows), ["flat", "gap"], "同名的列应合并（每类一行）")
 
+    def test_by_name_actually_aggregates_multi_column_types(self):
+        """回归测试（2026-09-28 修的 bug）：`--by-name` 必须**真的聚合**，不只是换个标签。
+
+        原实现的 `groups` 算在 `terrain_index` 重映射**之前** ⇒ 分组仍是原始列索引（40 行），
+        而标签已经换成"去重后的 11 个名字" ⇒ 整体错位。实测后果：真实 dump 里那一行 "flat"
+        其实是 **column 10**（一个 boxes 列），据此判"平地=trot"会得到错误结论。
+        """
+        steps, dt = 400, 0.02
+        names = ["flat", "flat", "boxes", "boxes", "boxes", "gap"]
+        contact = np.zeros((steps, len(names), 4), dtype=bool)
+        for env in range(len(names)):
+            for foot in range(4):
+                offset = 0.5 if foot in (0, 3) else 0.0
+                for step in range(steps):
+                    contact[step, env, foot] = ((step * dt) / 0.6 + offset) % 1.0 < 0.5
+        path = self._npz("agg.npz", contact, list(range(len(names))), names)
+
+        def groups(extra):
+            out = self.dir / f"r{len(extra)}.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                report_mod.main(["--npz", str(path), "--min-steps", "50", "--json", str(out)] + extra)
+            import json as _json
+            return _json.loads(out.read_text(encoding="utf-8"))["groups"]
+
+        per_column = groups([])
+        self.assertEqual(len(per_column), 6, "不加 --by-name 时逐列一行")
+        by_name = groups(["--by-name"])
+        self.assertEqual(len(by_name), 3, "加了 --by-name 应当只剩 3 类")
+        got = {g["terrain"]: g["envs"] for g in by_name}
+        self.assertEqual(got, {"flat": 2, "boxes": 3, "gap": 1},
+                         "同名列的环境数必须合并（这正是原 bug 丢掉的信息）")
+
 if __name__ == "__main__":
     unittest.main()

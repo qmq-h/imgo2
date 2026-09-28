@@ -268,3 +268,24 @@ L = Σ_i (c·m_i)·MSE_i / Σ_i (c·m_i)  ≡  Σ_i m_i·MSE_i / Σ_i m_i       
 
 **用户同时确认的其余判断（与我方一致）**：梯度同时进门控与专家 actor（专家按门控权重拿梯度）；
 障碍样本不直接受约束但**共享参数**仍可能被影响；约束的是**动作均值**、属软约束，不约束探索噪声。
+
+### 6.8 `gait_report.py --by-name` 的分组 bug（已修）+ 强制等级回放的适用边界
+
+**bug**：`build_report()` 里 `groups = group_environments(...)` 算在 `by_name` 重映射**之前** ⇒
+分组仍是原始 40 个列索引（输出 40 行），而"名字数组"已换成去重后的 11 个名字 ⇒ **标签整体错位**。
+实测后果：`model_500` 那份 dump 里，输出中的一行 **"flat" 其实是 column 10**（一个 boxes 列），
+真 flat 是 **columns 37–39**。若据此判"平地 = trot"，证据就是错的。
+（`expert_report.py` 无此问题：它在分组**前**做重映射。）
+
+**修法**：把 `groups = ...` 移到 `by_name` 重映射之后；新增回归测试
+`test_by_name_actually_aggregates_multi_column_types`（6 列 = flat×2 / boxes×3 / gap×1 ⇒ `--by-name`
+必须得到 **3 组**、环境数 2/3/1）。已实测：**旧代码上该测试红（6 != 3）**，修复后绿。
+
+**强制等级（`--terrain_level=6`）回放的适用边界**（用户 2026-09-28 指出）：
+只有在"课程真爬到该等级"的地形上，强制回放才有意义。本例 `model_500` 的逐地形等级是
+`flat 6.0 / slope 5.1 / slope_inv 4.9 / stairs_inv 4.7 / hurdle 2.0 / stairs 1.8 / narrow 1.2 /
+mix 0.32 / boxes 0.056 / gap 0.002` ⇒ **boxes / gap / mix 的"等级 6"结果是 OOD，不可采信**。
+⇒ 以后判读固定用两条：
+1. 只对**课程等级已到位**的地形下结论（其余标"OOD，不作判据"）；
+2. 想按"各环境当前等级"回放（而不是统一强推 6 级），需要给 `play.py` 加一个
+   `--terrain_level=auto`（读该 run 的 `level_<地形>` 逐类设定）——**待实现**。
