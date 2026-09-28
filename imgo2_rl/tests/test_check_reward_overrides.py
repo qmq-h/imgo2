@@ -81,7 +81,10 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         #            → 20（开 feet_gait，掩码版）→ 23（＋3 个"步态度量"项，权重 1e-6，只为记录）
         #            → 25（＋掩码版 lin_vel_z_l2 −2.0、＋diag_bounce 度量）
         #            → 27（＋diag_air_time、diag_pair_mismatch 两个接触时序诊断，权重 1e-6）
-        self.assertEqual(len(self.effective), 27, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-09-28（抬脚高度）：`feet_height_body` −5.0 → **0**（机体系可被"压身体"满足）、
+        #   ＋`feet_swing_clearance` **0.5**（相对支撑面）、＋`diag_clearance_mean`／
+        #   `diag_base_height` 两个 1e-6 诊断 ⇒ 27 − 1 + 1 + 2 = **29**。
+        self.assertEqual(len(self.effective), 29, f"生效项数变了：{sorted(self.effective)}")
 
     def test_vertical_velocity_penalty_restored(self):
         """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。"""
@@ -137,19 +140,41 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         self.assertEqual(self.effective["yaw_abs"], -0.2)
 
     def test_gaitshaping_values(self):
-        # 三项照搬 PPO 的固定步态 shaping，都挂 masked 类。
+        # 照搬 PPO 的固定步态 shaping，都挂 masked 类。
         self.assertEqual(self.effective["joint_mirror"], -1.0)
-        self.assertEqual(self.effective["feet_height_body"], -5.0)
+        # 2026-09-28（用户定稿）：`feet_height_body` −5.0 → **0**。它用**机体系** z ⇒ 可以被
+        # "压低基座"而不是"抬脚"满足（压 5 cm 净赚 +0.02/步），且与俯仰耦合；抬脚改由
+        # `feet_swing_clearance`（相对支撑面）负责。
+        self.assertNotIn("feet_height_body", self.effective)
+        self.assertEqual(self.weights["feet_height_body"], 0.0)
+        self.assertIn("MaskedFeetHeightBody", self.funcs["feet_height_body"])
         # 2026-09-28（用户："feet_air_time 对齐 PPO"）：0.3 → **1.0**（PPO rough 原值）。
         # 当年降到 0.3 是为了削弱"奖励腾空/弹跳"；现在改为**对齐 PPO 的配平**（shaping/task ≈7:1），
         # 弹跳问题交给 `lin_vel_z_l2 −2`（掩码）与 50× 强的 `flat_orientation_l2` 管。
         self.assertEqual(self.effective["feet_air_time"], 1.0)
         self.assertIn("MaskedJointMirror", self.funcs["joint_mirror"])
-        self.assertIn("MaskedFeetHeightBody", self.funcs["feet_height_body"])
         self.assertIn("MaskedFeetAirTime", self.funcs["feet_air_time"])
         # PPO 那套里量级最大的步态项，2026-09-24 晚加回（掩码版）
         self.assertEqual(self.effective["feet_air_time_variance"], -8.0)
         self.assertIn("MaskedFeetAirTimeVariance", self.funcs["feet_air_time_variance"])
+
+    def test_swing_clearance_replaces_the_legacy_foot_height(self):
+        """2026-09-28 新增：`feet_swing_clearance` +0.5 生效，两个旧的高度项仍为 0。
+
+        旧两项的缺陷（见 `mdp/rewards.py` 顶部块注释与 docs/cmoe_foot_clearance_2026-09-28.md）：
+        `feet_height_body` 机体系（可压身体满足）、`feet_height` 世界系但 target 是**固定绝对高度**
+        （高差瓦片会误罚）。**必须保持它们为 0，不要启用。**
+        """
+        self.assertEqual(self.effective["feet_swing_clearance"], 0.5)
+        self.assertEqual(self.weights["feet_height"], 0.0)
+        self.assertEqual(self.weights["feet_height_body"], 0.0)
+
+    def test_clearance_probes_are_diagnostic_only(self):
+        """两个新诊断项（摆动足 h_i 均值、基座相对局部地面的有符号高度误差）只写 TB。"""
+        for name in ("diag_clearance_mean", "diag_base_height"):
+            self.assertIn(name, self.effective)
+            self.assertLessEqual(abs(float(self.effective[name])), 1e-5,
+                                 f"{name} 应是诊断项（权重 ≤1e-5），不能真的有奖励量级")
 
     def test_phase_kernel_removed_by_design(self):
         """2026-09-28（用户："相位核去掉"）：`feet_gait` 归零、从生效表移除。
@@ -170,7 +195,10 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
 
     def test_no_masked_func_is_dead(self):
         """带自定义 func 的项必须权重非零 —— 例外见 `INTENTIONALLY_DEAD_MASKED`。"""
-        intentionally_dead = {"feet_gait"}      # 2026-09-28 用户决定去掉相位核（保留探针读数）
+        intentionally_dead = {
+            "feet_gait",        # 2026-09-28 用户决定去掉相位核（保留探针读数）
+            "feet_height_body",  # 2026-09-28 用户定稿：机体系可被"压身体"满足 ⇒ 归零，接线留着
+        }
         for term in self.funcs:
             if term in intentionally_dead:
                 continue
@@ -237,22 +265,27 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
 
     def test_is_a_strict_subset_of_the_shaping_recipe(self):
         removed = set(self.shaping_effective) - set(self.effective)
-        # 2026-09-28 起 `feet_gait` 在**两条链上都是 0**（用户："相位核去掉"）⇒ gaitfree 相对 cmoe
-        # 只再少**四项**（手工步态 shaping），生效项数 27 → **23**。
-        self.assertEqual(removed, {"joint_mirror", "feet_air_time", "feet_height_body",
-                                   "feet_air_time_variance"},
-                         f"gaitfree 相对 cmoe 只应少这四项，实际少了 {sorted(removed)}")
-        self.assertEqual(len(self.effective), len(self.shaping_effective) - 4)
-        self.assertEqual(len(self.effective), 23, f"生效项数变了：{sorted(self.effective)}")
-        # 2026-09-28 新增/恢复的两项**在 gaitfree 里也要有**（它们是"步态质量/姿态"，不是手工步态风格）：
-        # `feet_slide −0.05`（治拖行）与 `flat_orientation_l2 −5.0`（掩码）。
+        # 2026-09-28 起 `feet_gait` 在**两条链上都是 0**（用户："相位核去掉"），
+        # `feet_height_body` 也已在两条链上都是 0（用户定稿：改由 `feet_swing_clearance` 负责）
+        # ⇒ gaitfree 相对 cmoe 只再少**三项**手工步态 shaping，生效项数 29 → **26**。
+        self.assertEqual(removed, {"joint_mirror", "feet_air_time", "feet_air_time_variance"},
+                         f"gaitfree 相对 cmoe 只应少这三项，实际少了 {sorted(removed)}")
+        self.assertEqual(len(self.effective), len(self.shaping_effective) - 3)
+        self.assertEqual(len(self.effective), 26, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-09-28 新增/恢复的三项**在 gaitfree 里也要有**（它们是"步态质量/姿态/抬脚高度"，
+        # 不是手工步态风格）：`feet_slide −0.05`（治拖行）、`flat_orientation_l2 −5.0`（掩码）、
+        # `feet_swing_clearance +0.5`（抬脚高度 —— gaitfree 的平地滞空掉到 0.015 s 正是缺它）。
         self.assertEqual(self.effective["feet_slide"], -0.05)
         self.assertEqual(self.effective["flat_orientation_l2"], -5.0)
+        self.assertEqual(self.effective["feet_swing_clearance"], 0.5)
+        self.assertEqual(self.weights["feet_height"], 0.0)
+        self.assertEqual(self.weights["feet_height_body"], 0.0)
 
     def test_classifiers_and_diagnostics_are_kept(self):
         """分类器/诊断项必须留着 —— 否则再也看不见"先验漂没漂"。"""
         for name in ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace",
-                     "diag_air_time", "diag_bounce", "diag_pair_mismatch"):
+                     "diag_air_time", "diag_bounce", "diag_pair_mismatch",
+                     "diag_clearance_mean", "diag_base_height"):
             self.assertIn(name, self.effective, f"{name} 是度量项，不能跟着归零")
             self.assertLessEqual(abs(float(self.effective[name])), 1e-5)
 

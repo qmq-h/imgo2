@@ -16,6 +16,8 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
+from .clearance_math import stance_reference, swing_clearance_reward
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from rl_lab.envs import HimlocoManagerBasedRLEnv
@@ -375,6 +377,20 @@ def _terrain_type_mask(env: ManagerBasedRLEnv, terrain_names: tuple[str, ...]) -
     return mask
 
 
+def _foot_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float = 1.0) -> torch.Tensor:
+    """(N, F) bool：逐足**是否接触**。
+
+    口径与 `feet_slide`（本文件下方）和 `scripts/rl_lab/cmoe/play.py` 的步态 dump **逐字一致**：
+    取 `net_forces_w_history` 的力范数、在历史维上取最大，再与 **1.0 N** 比较。
+    ⚠️ 取历史最大意味着接触判定会"粘"住最近 `history_length` 个物理步（本任务 `history_length=3`、
+    `sim.dt=0.005` ⇒ 15 ms），`z_ref` 因此也可能短暂把刚抬起的脚算作支撑（偏置 ≈ 半个脚高的
+    1/(F−1) 量级）；这是"与仓库既有接触口径一致"的有意取舍，真实影响待训练机标定。
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+    return forces.norm(dim=-1).max(dim=1)[0] > threshold
+
+
 def _ray_count(span: float, resolution: float) -> int:
     """某个轴上的射线数，镜像 `patterns.grid_pattern` 的 `arange(start, end + 1e-9, step)`。"""
     return math.floor(span / resolution + 1.0e-9) + 1
@@ -476,6 +492,62 @@ def diag_pair_mismatch(
             total = total + torch.abs(air[:, i] - air[:, j]) + torch.abs(contact[:, i] - contact[:, j])
             n_pairs += 1
     return total / max(n_pairs, 1)
+
+
+def diag_clearance_mean(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：当前**摆动足**相对支撑面的离地高度 `h_i` 的均值，单位 m。
+
+    这是"是否在用压身体换抬脚"的判据的一半 —— 另一半是新加的 `diag_base_height`（基座相对
+    局部地面的高度误差）。两者**必须逐地形一起看**：`h_i` 涨、基座高度误差也涨 ⇒ 是"抬高身体
+    再抬脚"（可能是被 `base_height_l2 −10` 按住的那个方向）；`h_i` 涨、基座反而更低 ⇒ 才是
+    "压低身体，脚相对更高"（旧 `feet_height_body` 的刷分路径）。配合 `gait_metric_terms`
+    ⇒ 逐列 `gait_clearance_<地形>`。
+
+    ⚠️ 与奖励项 `feet_swing_clearance` 的两处**有意不同**（诊断要的是"当下这一刻的几何"）：
+    ① **不带 `z_ref` 缓冲**：只有当步有脚接触时才给值，飞行相读数是 0（奖励那边允许沿用 3 步）；
+    ② **不做命令门/直立门/地形掩码**，也不带形（`clamp`）—— 它就是原始 `h_i`。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    foot_z = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    contacts = _foot_contacts(env, sensor_cfg)
+    any_contact = contacts.any(dim=1)
+    contact_count = contacts.sum(dim=1).clamp_min(1)
+    reference = torch.where(contacts, foot_z, torch.zeros_like(foot_z)).sum(dim=1) / contact_count
+    height = foot_z - reference.unsqueeze(1)
+    swing = (~contacts).to(dtype=foot_z.dtype)
+    swing_count = swing.sum(dim=1)
+    mean_height = (height * swing).sum(dim=1) / swing_count.clamp_min(1.0)
+    return torch.where(any_contact & (swing_count > 0), mean_height, torch.zeros_like(mean_height))
+
+
+def diag_base_height(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：基座相对**本环境局部地面**的高度误差（m，正=偏高）。
+
+    算式与 `base_height_l2` **同一套射线逻辑**（逐环境只用有效射线求局部地面高度；全部落空
+    ⇒ 退回"误差 0"），区别只有两点：① 不平方、不乘权重 −10 ⇒ 读数就是**有符号**的高度误差，
+    这样"压低基座"（负）与"抬高身体"（正）在日志里可分辨；② 不乘直立门（诊断不做门控）。
+    逐列读数 `gait_base_height_<地形>` 与 `gait_clearance_<地形>` 联立即可判断抬脚是不是换了基座高度。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        ray_hits = sensor.data.ray_hits_w[..., 2]
+        valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
+        valid_count = valid.sum(dim=1).clamp_min(1)
+        mean_hits = torch.where(valid, ray_hits, torch.zeros_like(ray_hits)).sum(dim=1) / valid_count
+        ground = torch.where(valid.any(dim=1), target_height + mean_hits, asset.data.root_link_pos_w[:, 2])
+    else:
+        ground = torch.as_tensor(target_height, device=asset.data.root_pos_w.device, dtype=asset.data.root_pos_w.dtype)
+    return asset.data.root_pos_w[:, 2] - ground
 
 
 def _pairwise_joint_mirror(
@@ -706,6 +778,263 @@ class MaskedFeetAirTime(ManagerTermBase):
         del free_terrain_names  # 已在 __init__ 缓存为静态掩码
         reward = feet_air_time(env, command_name, sensor_cfg, threshold)
         return reward * (~self._free_mask).float()
+
+
+# ---------------------------------------------------------------------------------------------
+# 抬脚高度 `feet_swing_clearance`（2026-09-28 新增，用户定稿；纯数学在 `mdp/clearance_math.py`）
+#
+# 要解决的问题：`-gaitfree` 链路里 `feet_height_body` 与 `feet_height` 都被归零 ⇒ 训练对
+# "脚离地多高"**完全没有压力**（实测平地足端滞空从先验的 0.084 s 掉到 0.015 s，在蹭地拖行）。
+#
+# 已有的两项为什么都不能用（**必须保持它们为 0**，见 `CMoE_env_cfg.py` 的接线注释）：
+#   * `feet_height_body`（本文件上方）：用**机体系** z（`body_pos_w − root_pos_w` 再旋到机体系）
+#     ⇒ 可以被"压低基座"而不是"抬脚"满足（数值上：压 5 cm 净赚 +0.02/步 reward），且与机体
+#     俯仰/脚的先后位置耦合（`z_body ≈ −sinθ·Δx + cosθ·Δz`）；
+#   * `feet_height`：用**世界系** z（好，不受基座高度影响），但 `target_height` 是**固定绝对世界
+#     高度**（基类默认 0.05）⇒ 只在"地面在 z≈0"的瓦片上成立；台阶/箱块/横栏/混合/窄梯瓦片内
+#     高差 0~0.9 m、斜坡瓦片内升到 ~0.4 m ⇒ 会误罚。掩码解决不了（同一瓦片内部就有高差）。
+#
+# 本项的语义（严格按用户定稿）：
+#     z_ref   = mean(世界 z of 接触中的足)     # 支撑面参考，只用 contact 传感器判定
+#     h_i     = z_foot_i_world − z_ref         # 相对支撑面离地高度
+#     swing_i = 1{第 i 只脚不在接触}
+#     r       = k · Σ_i swing_i · clamp(1 − |h_i − h*|/band, 0, 1)
+# 好处：`h_i` 是**足相对支撑面**的量 ⇒ 基座整体抬/压同一个量时 `h_i` 逐元素不变（"压身体刷分"
+# 在数学上不可能），且天然随地形起伏（参考面是实测的接触足高度，不是固定世界高度）。
+#
+# 逐地形 `h*`/`band` 的机制复用 `Masked*` 家族（`_terrain_type_mask` 现算并缓存到实例上）。
+# 沟壑/飞行相处理见 `FeetSwingClearance.__call__` 与 `diag_*` 的注释。
+# ---------------------------------------------------------------------------------------------
+
+# 逐地形参数表里**没列到的地形名**退回这一档（与"平地/粗糙"同值）。CMoE 在 `__post_init__`
+# 里会显式校验"表覆盖全部 `sub_terrains`"，所以正常训练**不会**走到这个兜底；它只是让
+# `velocity_env_cfg.py` 里的默认 RewTerm（权重 0，参数为空表）保持自洽。
+SWING_CLEARANCE_DEFAULT_TARGET = 0.07
+SWING_CLEARANCE_DEFAULT_BAND = 0.05
+
+
+class _SwingClearanceTermCfg:
+    """给 `FeetSwingClearance` 的最小 cfg 替身（模块级函数懒建实例时用）。
+
+    `ManagerTermBase.__init__` 只把 cfg 存下来（`self._cfg`），这里照做即可。
+    """
+
+    __slots__ = ("params",)
+
+    def __init__(self, params: dict) -> None:
+        self.params = params
+
+
+class FeetSwingClearance(ManagerTermBase):
+    """`feet_swing_clearance` 的**有状态**实现：类内缓存逐环境地形掩码、逐地形参数与 `z_ref` 缓冲。
+
+    状态只有两件（其余都是静态缓存）：
+
+    * `self._reference`：每个环境最近一次**有效**的 `z_ref`（没有历史时 NaN）；
+    * `self._hold`：每个环境"已经连续没有脚接触"的步数（有接触就清零）。
+
+    于是"飞行相"的处理是：**没有任何脚接触**时沿用最近一次有效 `z_ref` 最多 `max_hold_steps`
+    步（默认 3 步 = 60 ms 控制步，用来躲开起跳瞬间的抖动/参考面跳变）；超过之后参考无效
+    ⇒ `swing_clearance_reward` 对该环境输出 **0**（长滞空不再给分，防止"腾空收腿"刷分）。
+    回合重置（本回合第一步，`episode_length_buf <= 1`）时缓冲清零，避免拿上一个回合/上一块
+    瓦片的参考面。
+
+    另一个坑是**悬空/沟壑**：基座下方整束射线落空时（`base_height_l2` 那套"射线有效性"判定）
+    本项对该环境输出 0 —— 此时"支撑面参考"根本不存在，不该按任何 `h*` 付钱。判定用
+    `env.scene["height_scanner_base"].data.ray_hits_w`（与 `base_height_l2` 同一个传感器）。
+    """
+
+    # 模块级入口 `feet_swing_clearance()` 把实例缓存在 env 的这个属性上（按参数签名分桶）
+    ENV_CACHE_ATTR = "_cmoe_feet_swing_clearance_terms"
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._masks: dict[tuple[str, ...], torch.Tensor] = {}
+        self._params_key: tuple | None = None
+        self._params: tuple[torch.Tensor, torch.Tensor] | None = None
+        self._reference = torch.full((env.num_envs,), float("nan"), device=env.device)
+        self._hold = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    # ------------------------------------------------------------------ 缓存
+    def _terrain_mask(self, env: ManagerBasedRLEnv, names: tuple[str, ...]) -> torch.Tensor:
+        """(N,) bool 地形列掩码；按名单缓存（地形列逐环境固定，不随课程变化）。"""
+        mask = self._masks.get(names)
+        if mask is None:
+            mask = _terrain_type_mask(env, names)
+            self._masks[names] = mask
+        return mask
+
+    def _resolve_params(
+        self,
+        env: ManagerBasedRLEnv,
+        target_by_terrain: dict[str, float],
+        band_by_terrain: dict[str, float],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """把"地形名 → `h*`/`band`"的字典摊成逐环境张量 `[N]`（按字典内容缓存）。"""
+        key = (
+            tuple(sorted((str(name), float(value)) for name, value in target_by_terrain.items())),
+            tuple(sorted((str(name), float(value)) for name, value in band_by_terrain.items())),
+        )
+        if key != self._params_key:
+            target = torch.full((env.num_envs,), float(SWING_CLEARANCE_DEFAULT_TARGET), device=env.device)
+            band = torch.full((env.num_envs,), float(SWING_CLEARANCE_DEFAULT_BAND), device=env.device)
+            for name, value in target_by_terrain.items():
+                target[self._terrain_mask(env, (str(name),))] = float(value)
+            for name, value in band_by_terrain.items():
+                band[self._terrain_mask(env, (str(name),))] = float(value)
+            self._params_key, self._params = key, (target, band)
+        return self._params
+
+    def _clear_respawned(self, env: ManagerBasedRLEnv) -> None:
+        """回合重置后清掉缓冲（避免拿上一回合/上一块瓦片的支撑面继续付钱）。
+
+        ⚠️ 判据是 `episode_length_buf <= 1` 而**不是** `== 0`：Isaac Lab 的
+        `manager_based_rl_env.py` 在**算奖励之前**就 `episode_length_buf += 1`（:201），而把计数器
+        清 0 的 `_reset_idx` 发生在**算完奖励之后**（:221/:396）⇒ 回合第一步算奖励时该值是 **1**
+        （刚构造、还没步进过时是 0）。用 `== 0` 会一次也命中不了，缓冲永远不清。
+        """
+        episode_length = getattr(env, "episode_length_buf", None)
+        if episode_length is None:
+            return
+        fresh = episode_length <= 1
+        if bool(fresh.any()):
+            nan = torch.full_like(self._reference, float("nan"))
+            self._reference = torch.where(fresh, nan, self._reference)
+            self._hold = torch.where(fresh, torch.zeros_like(self._hold), self._hold)
+
+    # ------------------------------------------------------------------ 前向
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        command_name: str,
+        asset_cfg: SceneEntityCfg,
+        sensor_cfg: SceneEntityCfg,
+        target_height_by_terrain: dict[str, float],
+        band_by_terrain: dict[str, float],
+        free_terrain_names: tuple[str, ...] = (),
+        k: float = 1.0,
+        tanh_mult: float | None = None,
+        max_hold_steps: int = 3,
+    ) -> torch.Tensor:
+        asset: RigidObject = env.scene[asset_cfg.name]
+        foot_z = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+        contacts = _foot_contacts(env, sensor_cfg)
+        self._clear_respawned(env)
+        target, band = self._resolve_params(env, dict(target_height_by_terrain), dict(band_by_terrain))
+
+        # ① 支撑面参考：有接触 ⇒ 接触足均值；无接触 ⇒ 最多沿用 max_hold_steps 步
+        reference, valid = stance_reference(foot_z, contacts, self._reference, int(max_hold_steps), self._hold)
+        any_contact = contacts.any(dim=1)
+        self._reference = torch.where(valid, reference, self._reference)
+        self._hold = torch.where(any_contact, torch.zeros_like(self._hold), self._hold + 1)
+
+        # ② 悬空/沟壑：基座下方整束射线落空 ⇒ 该环境没有"支撑面"可言 ⇒ 该项为 0
+        #    （判定与 `base_height_l2` 的逐环境射线有效性一致）
+        standing = _base_rays_valid(env)
+
+        speed = None
+        if tanh_mult is not None:
+            speed = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2]
+        reward = swing_clearance_reward(
+            foot_z,
+            contacts,
+            target=target,
+            band=band,
+            reference=reference,
+            foot_lin_vel_xy=speed,
+            tanh_mult=tanh_mult,
+        ) * float(k)
+        reward = reward * standing.float()
+        if free_terrain_names:
+            reward = reward * (~self._terrain_mask(env, tuple(free_terrain_names))).float()
+        # 有命令门（与 `feet_height` 一致：|cmd| ≤ 0.1 时不给抬脚分）；直立门与其它 locomotion 项一致
+        command = torch.linalg.norm(env.command_manager.get_command(command_name), dim=1)
+        reward = torch.where(command > 0.1, reward, torch.zeros_like(reward))
+        reward = reward * (torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7)
+        return reward
+
+
+def _base_rays_valid(env: ManagerBasedRLEnv, sensor_name: str = "height_scanner_base") -> torch.Tensor:
+    """(N,) bool：该环境在基座下方的射线是否有**至少一条**命中（`base_height_l2` 同一口径）。
+
+    射线全落空 = 基座悬在沟壑/坑洞上方 ⇒ 没有支撑面 ⇒ 抬脚奖励必须为 0（否则会给一个
+    "相对错误参考面"的正分）。没有该传感器（例如平地任务被置 `None`）时视为"总是有效"，
+    与 `base_height_l2` 不带 `sensor_cfg` 时的行为一致。
+    """
+    sensor = getattr(env.scene, "sensors", {}).get(sensor_name, None) if hasattr(env.scene, "sensors") else None
+    if sensor is None:
+        return torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    ray_hits = sensor.data.ray_hits_w[..., 2]
+    valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
+    return valid.any(dim=1)
+
+
+def feet_swing_clearance(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    sensor_cfg: SceneEntityCfg,
+    target_height_by_terrain: dict[str, float],
+    band_by_terrain: dict[str, float],
+    free_terrain_names: tuple[str, ...] = (),
+    k: float = 1.0,
+    tanh_mult: float | None = None,
+    max_hold_steps: int = 3,
+) -> torch.Tensor:
+    """`FeetSwingClearance` 的**模块级入口**（`RewTerm(func=mdp.feet_swing_clearance, ...)`）。
+
+    为什么用普通函数而不是直接把类挂成 `func`：本项需要一个长期存在的实例（`z_ref` 缓冲
+    是逐环境状态），而 `RewTerm.func` 用函数时**配置面更干净**（与 `feet_height` 等并列，
+    参数表一目了然）。实例按"参数签名"懒建并缓存在 env 上，同一次运行里只会建一次。
+
+    ⚠️ 参数表（`params`）的键必须**逐字**等于本函数的关键字参数名 —— Isaac Lab
+    `manager_base.py::_resolve_common_term_cfg` 会对"签名 ↔ params 集合"做**集合相等**校验；
+    `tests/test_feet_swing_clearance.py` 里有一条离线测试守住这一点。
+    """
+    cache = getattr(env, FeetSwingClearance.ENV_CACHE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(env, FeetSwingClearance.ENV_CACHE_ATTR, cache)
+    target_map = dict(target_height_by_terrain or {})
+    band_map = dict(band_by_terrain or {})
+    key = (
+        str(command_name),
+        str(getattr(asset_cfg, "name", asset_cfg)),
+        str(getattr(sensor_cfg, "name", sensor_cfg)),
+        tuple(sorted((str(name), float(value)) for name, value in target_map.items())),
+        tuple(sorted((str(name), float(value)) for name, value in band_map.items())),
+        tuple(free_terrain_names),
+        float(k),
+        None if tanh_mult is None else float(tanh_mult),
+        int(max_hold_steps),
+    )
+    term = cache.get(key)
+    if term is None:
+        params = {
+            "command_name": command_name,
+            "asset_cfg": asset_cfg,
+            "sensor_cfg": sensor_cfg,
+            "target_height_by_terrain": target_map,
+            "band_by_terrain": band_map,
+            "free_terrain_names": free_terrain_names,
+            "k": k,
+            "tanh_mult": tanh_mult,
+            "max_hold_steps": max_hold_steps,
+        }
+        term = FeetSwingClearance(_SwingClearanceTermCfg(params), env)
+        cache[key] = term
+    return term(
+        env,
+        command_name,
+        asset_cfg,
+        sensor_cfg,
+        target_height_by_terrain,
+        band_by_terrain,
+        free_terrain_names,
+        k,
+        tanh_mult,
+        max_hold_steps,
+    )
 
 
 def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joints: list[list[str]]) -> torch.Tensor:

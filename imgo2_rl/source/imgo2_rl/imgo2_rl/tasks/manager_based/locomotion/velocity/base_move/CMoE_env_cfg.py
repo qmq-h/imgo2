@@ -56,6 +56,50 @@ FOOT_EDGE_SENSOR_NAMES = (
     "foot_edge_scanner_rr",
 )
 
+# 2026-09-28（用户定稿）：`feet_swing_clearance` 的**逐地形 `h*`/`band` 表**。
+# 语义（`mdp/clearance_math.py` 逐字实现）：`h_i = z_foot_i_world − mean(接触足世界 z)`，
+# `r = k·Σ_摆动足 clamp(1 − |h_i − h*|/band, 0, 1)`。
+# **为什么按地形给不同档**（用户定稿的数值）：
+#   * 平地/粗糙、斜坡：`h*=0.07, band=0.05` —— 与真机录制基线（足端 z 峰峰值中位 0.090 m）同量级，
+#     也接近 PPO 那套 `feet_height` 的 0.08；斜坡与平地同档（支撑面参考已经跟着坡面走，
+#     不需要额外抬高，抬更高只会多耗功）；
+#   * 台阶/窄梯：`h*=0.09, band=0.06` —— 单级台阶 0.05–0.15 m，脚要抬过台阶边缘；
+#   * 障碍类（`boxes`/`gap`/`hurdle`/`mix`）：`h*=0.12, band=0.10` —— 更宽是**有意**的：
+#     大跨步/跃起不该被罚（带外不加分 ⇒ 也不会靠"高抬腿"刷分；`band` 宽 ⇒ 0.02~0.22 m 之间
+#     都有分，0.12 是满分点）。
+# ⚠️ 两张表由本常量**同时**生成（`target_height_by_terrain` / `band_by_terrain`），
+# `__post_init__` 会校验"这些地形名恰好覆盖全部 `sub_terrains` 键"（写错/漏项直接 raise，
+# 不会像掩码那样静默失效）；`tests/test_feet_swing_clearance.py` 另有离线断言。
+# ⚠️ 不写死列数（旧的 11/20 已过时）：这里只有**名字**，列数由地形比例现算。
+SWING_CLEARANCE_TERRAIN_GROUPS = (
+    (("flat", "random_rough"), 0.07, 0.05),
+    (("hf_pyramid_slope", "hf_pyramid_slope_inv"), 0.07, 0.05),
+    (("pyramid_stairs", "pyramid_stairs_inv", "narrow_stairs"), 0.09, 0.06),
+    (("boxes", "gap", "hurdle", "mix"), 0.12, 0.10),
+)
+
+
+def clearance_terrain_params(terrain_keys) -> tuple[dict[str, float], dict[str, float]]:
+    """把 `SWING_CLEARANCE_TERRAIN_GROUPS` 摊成 `target_height_by_terrain`／`band_by_terrain` 两张表。
+
+    **同时校验**：表里的地形名必须与 `terrain_keys`（调用方传 `sub_terrains.keys()`）**完全一致**
+    —— 少一个（写错名字或新增地形忘了归类）或多一个都直接 `RuntimeError`。这是有意的 fail-fast：
+    奖励掩码写错名字只会**静默失效**（历史教训），而"按地形给不同 `h*`"要是静默退回默认档，
+    就会在台阶/障碍上给出错的抬脚目标，训练却照跑。
+
+    `tests/test_feet_swing_clearance.py` 会用真实地形键调用本函数，并注入一张打错名字的表
+    做负向对照（这条必须能"吵"）。
+    """
+    target = {name: float(t) for names, t, _band in SWING_CLEARANCE_TERRAIN_GROUPS for name in names}
+    band = {name: float(b) for names, _t, b in SWING_CLEARANCE_TERRAIN_GROUPS for name in names}
+    mapped, keys = sorted(target), sorted(terrain_keys)
+    if mapped != keys:
+        raise RuntimeError(
+            "feet_swing_clearance 的逐地形参数没覆盖全部 sub_terrains："
+            f"未覆盖 {sorted(set(keys) - set(mapped))}／多余 {sorted(set(mapped) - set(keys))}"
+        )
+    return target, band
+
 
 def _foot_edge_scanner(foot_name: str) -> RayCasterCfg:
     """Create a compact downward ray grid centered on one foot."""
@@ -161,6 +205,29 @@ class CMoERewardsCfg(RewardsCfg):
         func=mdp.diag_pair_mismatch,
         weight=1e-6,
         params={"sensor_cfg": SceneEntityCfg("contact_forces")},
+    )
+    # 2026-09-28（新增 `feet_swing_clearance` 时一并加的两个 1e-6 纯记录项）：
+    # `gait_clearance_<地形>` ＝该列**摆动足**相对支撑面的离地高度 `h_i` 均值（m）；
+    # `gait_base_height_<地形>` ＝该列基座相对**局部地面**的**有符号**高度误差（m，正=偏高）。
+    # 两者必须一起看：h_i 与基座误差**同涨** ⇒ 抬脚靠"抬高身体"（被 `base_height_l2 −10` 按住）；
+    # h_i 涨而基座更低 ⇒ 才是"压低身体换抬脚"（旧 `feet_height_body` 的刷分路径）。
+    # 与已有的 `gait_height_<地形>`（`base_height_l2` 的 `(误差)²` 反解）互补：这里给的是**符号**。
+    diag_clearance_mean = RewTerm(
+        func=mdp.diag_clearance_mean,
+        weight=1e-6,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces"),
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+    diag_base_height = RewTerm(
+        func=mdp.diag_base_height,
+        weight=1e-6,
+        params={
+            "target_height": 0.30,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+        },
     )
     gait_metric_pace = RewTerm(
         func=mdp.GaitReward,
@@ -457,9 +524,11 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 刻意**不**恢复 lin_vel_z_l2：它直接惩罚竖直速度，会与过沟所需的爆发式跃起对抗。
 
         # 2026-09-24（③ 用户最终决定）：**照搬 PPO rough 的三项固定步态 shaping，都用地形掩码**。
+        # ⚠️ **2026-09-28 起其中"抬脚"那一项已换人**：`feet_height_body −5.0` 归零，改由
+        # `feet_swing_clearance`（下方 ③ 之五，**相对支撑面**）负责 —— 本段其余内容仍是当期依据。
         # 三项原值来自那次「trot 步态还行」的 PPO（复盘 docs §29.8）：
         #   `joint_mirror −1.0`（对角姿态一致，**含 hip**＝PPO 原配置）
-        #   `feet_height_body −5.0`（强制抬脚，目标 −0.20 m ≈ 离地 0.10 m）
+        #   `feet_height_body −5.0`（强制抬脚，目标 −0.20 m ≈ 离地 0.10 m）→ 见 ③ 之三的归零说明
         #   `feet_air_time +1.0`（**阈值 0.5**＝PPO 原值）
         # 掩码：`feet_air_time`／`feet_height_body` 在障碍块（boxes）与沟槽（gap）上豁免，
         # 其余 13/20 列保留 trot 塑形；`joint_mirror` 的按地形行为见下方「分地形换对子」。
@@ -512,12 +581,19 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_air_time.params["free_terrain_names"] = ("boxes", "gap")
 
-        # ③ 之三：足端抬升塑形 `feet_height_body`（摆动足机体系高度误差，目标 −0.20 m ≈ 离地 0.10 m）
-        #    按地形豁免地恢复（障碍块/沟槽上放开）。依据：用户明确"我们从零训，需要 feet 相关奖励"
-        #    （parkour 可以不要，因为它在已训好的行走策略上 fine-tune）；参考基线足端 z 峰峰中位 0.090 m。
-        #    权重沿用 PPO rough 原值 −5.0；`target_height`/`tanh_mult`/link 过滤沿用 rough_env_cfg 的配置。
+        # ③ 之三：足端抬升塑形 `feet_height_body`（摆动足机体系高度误差，目标 −0.20 m ≈ 离地 0.10 m）。
+        #    **2026-09-28（用户定稿）：归零、不再启用。** 它不是"错得离谱"，而是有两条硬伤：
+        #     ① 用的是**机体系** z（`body_pos_w − root_pos_w` 再旋到机体系）⇒ 可以被"**压低基座**"
+        #        而不是"抬脚"满足：数值上把基座压 5 cm 就能净赚约 +0.02/步 reward；
+        #     ② 与机体俯仰/脚的先后位置耦合（`z_body ≈ −sinθ·Δx + cosθ·Δz`），台阶/坡上量到的
+        #        不是"离地高度"。
+        #    抬脚改由**相对支撑面**的新项 `feet_swing_clearance`（下方 ③ 之五）负责 —— 它的
+        #    `h_i` 对"基座整体抬/压同一个量"逐元素不变（数学上排除压身体刷分），且参考面随地形。
+        #    这里保留 `func = MaskedFeetHeightBody` 的接线（明确是"有意关掉"而不是删掉）：
+        #    权重 0 ⇒ 会被末尾的 `disable_zero_weight_rewards()` 移除成 `None`，
+        #    `Imgo2CMoEGaitFreeEnvCfg` 里对它的归零已经带了 None 守卫。
         self.rewards.feet_height_body.func = mdp.MaskedFeetHeightBody
-        self.rewards.feet_height_body.weight = -5.0
+        self.rewards.feet_height_body.weight = 0.0
         self.rewards.feet_height_body.params["free_terrain_names"] = ("boxes", "gap")
         # ③ 之四（2026-09-24 晚，用户："没看到在平坦地形的 trot 步态"）：把 PPO 那套里
         # **量级最大的步态项** `feet_air_time_variance` 加回来（−8.0＝PPO 原值），但按地形豁免。
@@ -561,7 +637,40 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
         self.rewards.feet_height.weight = 0.0
-        # `feet_height_body` 同理不清零——已在上方设为 −5.0（MaskedFeetHeightBody）。
+        # `feet_height_body` **也已在上方归零**（2026-09-28，用户定稿：机体系可被"压身体"满足）。
+        # 抬脚改由下一段的新项负责，见 docs/cmoe_foot_clearance_2026-09-28.md。
+
+        # ③ 之五（**2026-09-28 新增，用户定稿**）：相对支撑面的抬脚高度奖励 `feet_swing_clearance`。
+        # 起因：`-gaitfree` 链路里 `feet_height_body`／`feet_height` 都是 0 ⇒ 训练对"脚离地多高"
+        # **完全没有压力**；实测平地足端滞空从先验的 0.084 s 掉到 **0.015 s**（在蹭地拖行）。
+        # 语义：`h_i = z_foot_i_world − mean(接触足世界 z)`、`r = k·Σ_摆动足 clamp(1−|h_i−h*|/band,0,1)`，
+        # `h*`/`band` 按地形（见文件顶部的 `SWING_CLEARANCE_TERRAIN_GROUPS`）。
+        # 三条必须显式处理的情形（实现见 `mdp/rewards.py::FeetSwingClearance`）：
+        #   ① **飞行相**（没有任何脚接触）：沿用最近一次有效 `z_ref` 最多 `max_hold_steps=3` 步
+        #      （=60 ms 控制步，躲开起跳瞬间的参考面抖动），超过 ⇒ 该项为 0（长滞空不再给分，
+        #      防止"腾空收腿"刷分）；
+        #   ② **悬空/沟壑**（基座下方 `height_scanner_base` 整束射线落空，与 `base_height_l2`
+        #      同一套有效性判定）⇒ 没有支撑面 ⇒ 该项为 0，不给"错误参考面"付钱；
+        #   ③ 只对**非接触**足计分（用 contact 传感器，不用速度门）。
+        # 权重取 **+0.5**（用户建议值）：量级参照 `feet_air_time +1.0`（它只奖励滞空时长、
+        # 不约束高度），比 `track_world_vel_xy_exp 5.0` 低一个量级 ⇒ 是"明确的偏好"而非主导项。
+        self.rewards.feet_swing_clearance.weight = 0.5
+        self.rewards.feet_swing_clearance.params["asset_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_swing_clearance.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.feet_swing_clearance.params["k"] = 1.0
+        self.rewards.feet_swing_clearance.params["tanh_mult"] = None  # 严格按定稿算式，不加速度门
+        self.rewards.feet_swing_clearance.params["max_hold_steps"] = 3  # 飞行相最多沿用 3 步（60 ms）
+        self.rewards.feet_swing_clearance.params["free_terrain_names"] = ()  # 全地形生效
+        # 逐地形参数由 `clearance_terrain_params()` 生成 + **校验覆盖全部 `sub_terrains`**：
+        # 写错名字/新增地形忘了归类都会直接 raise（否则未覆盖的列会静默退回默认档 0.07/0.05）。
+        _clearance_target, _clearance_band = clearance_terrain_params(
+            tuple(self.scene.terrain.terrain_generator.sub_terrains.keys())
+        )
+        self.rewards.feet_swing_clearance.params["target_height_by_terrain"] = _clearance_target
+        self.rewards.feet_swing_clearance.params["band_by_terrain"] = _clearance_band
+        # `feet_height` 亦已在上方归零（世界系 z + **固定绝对** target 0.05/0.08 ⇒ 只在"地面在
+        # z≈0"的瓦片上成立，台阶/箱块/横栏/混合/窄梯/斜坡的高差会误罚，掩码救不了）。
+
         # 2026-09-28（用户："feet_slide 对齐 PPO"）：PPO rough 是 **−0.05**，我们之前清零了。
         # 这一项是"**支撑脚不许打滑**"，正对着我们实测的拖行形态；PPO 的干净步态有它一份。
         # 足端 body 与 PPO 一致用 `.*_FOOT`（PPO 的 `foot_link_name` 就是这个正则）。
@@ -625,6 +734,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                     # 2026-09-24 夜新增：把"步子长短"与"相位差尺度"直接读出来
                     ("airtime", "diag_air_time"),     # 逐列四足 last_air_time 均值（s）
                     ("mismatch", "diag_pair_mismatch"),  # 逐列六对 |Δair|+|Δcon| 均值（s）
+                    # 2026-09-28（随 `feet_swing_clearance` 新增）：抬脚高度与基座高度**一起**看，
+                    # 才能回答"抬脚是不是靠压/抬身体换来的"（见 `diag_clearance_mean` 的注释）。
+                    ("clearance", "diag_clearance_mean"),   # 逐列摆动足 h_i 均值（m）
+                    ("base_height", "diag_base_height"),    # 逐列基座相对局部地面的**有符号**高度误差（m）
                 ),
                 # 2026-09-24（用户）：**台阶与 boxes 用 0.50、其余仍 0.80**。
                 # ⚠️ 0.50 在这三类上**等价于取消跟踪门控**（整回合平均跟踪核实测 mean≈0.78、min≈0.69
@@ -699,9 +812,16 @@ class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
     * **刻意保留、不要跟着一起归零**：
       - 三个 `gait_metric_{trot,bound,pace}`（1e-6）＝步态分类器。权重 0 会被
         `disable_zero_weight_rewards()` 整个移除，就再也看不见"先验漂没漂"；
-      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`（1e-6）＝接触时序与弹跳诊断；
+      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`／`diag_clearance_mean`／
+        `diag_base_height`（1e-6）＝接触时序、弹跳、抬脚高度与基座高度诊断；
       - `lin_vel_z_l2`（`MaskedLinVelZ`，−2）：这是**物理平滑惩罚**（压竖直速度/弹跳），
         不是步态形状先验，先验的腾空很短，留作"别蹦"的兜底。若也要归零，删掉下面注释掉的那行即可。
+      - **`feet_swing_clearance`（+0.5，2026-09-28 新增）也不归零**：它不是"手工步态风格"
+        （相位/对角同步那一类），而是**抬脚高度**——本任务链里 `feet_height`／`feet_height_body`
+        都被归零后，训练对"脚离地多高"完全没有压力（实测平地滞空 0.084 s → **0.015 s**，
+        在蹭地拖行），这一项正是补这个洞。它奖励的是"摆动足相对支撑面达到 h*"，与"由先验提供
+        的相位/步频"不冲突（先验只提供步态形状，不保证抬脚高度）。理由与数值见
+        `docs/cmoe_foot_clearance_2026-09-28.md`。
     * 本类**只用于训练**：回放/判读用现有 `Imgo2-basemove-rough-cmoe-play`（奖励不参与回放行为）。
     * `check_reward_overrides.py` 的 `cmoe-gaitfree` 链会把这五项报成"func 是自定义类但权重 0 ⇒
       死代码"——这是**有意保留**：配方离"重新开 shaping"只差一个权重数字。
@@ -726,6 +846,8 @@ class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
         if self.rewards.feet_gait is not None:
             self.rewards.feet_gait.weight = 0.0
         # self.rewards.lin_vel_z_l2.weight = 0.0  # ← 若连"别蹦"的兜底也要去掉，取消注释这一行
+        # ⚠️ **不要**在这里动 `feet_swing_clearance`（+0.5）：它是本类要**保留**的抬脚高度项，
+        # 不是手工步态风格项（用户 2026-09-28 定稿）。它由父类启用、在两条链上都生效。
 
         # 上面这些归零发生在 `super().__post_init__()` 的 `disable_zero_weight_rewards()` **之后**，
         # 所以必须再跑一次：否则这五项会以 0 权重留在奖励管理器里参与计算与分项日志，
