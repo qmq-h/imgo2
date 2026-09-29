@@ -557,5 +557,35 @@ class TestPeriodFallbackAndByName(unittest.TestCase):
         self.assertEqual(got, {"flat": 2, "boxes": 3, "gap": 1},
                          "同名列的环境数必须合并（这正是原 bug 丢掉的信息）")
 
+class TestDutyValidityGate(unittest.TestCase):
+    """2026-09-29 事故教训：某条腿几乎不触地时，相位能凑出任何模式 ⇒ 不许给步态标签。
+
+    实测（v5.2 @5000/@8000 的 flat）：dutyFL=0.029/0.007、dutyRR=0.010/0.010（两条对角腿离地、
+    跪着走），而工具当时给出的是 "trot"（FL-FR 0.479~0.759、残差最小）。
+    """
+
+    def _phases(self):
+        # 一个"看起来像 trot"的相位表
+        return {(0, 1): (0.5, 0.9), (0, 2): (0.5, 0.9), (0, 3): (0.0, 0.9),
+                (1, 2): (0.0, 0.9), (1, 3): (0.5, 0.9), (2, 3): (0.5, 0.9)}
+
+    def test_low_duty_any_foot_invalidates_the_verdict(self):
+        label, reason, _ = report_mod.verdict(self._phases(), duty=[0.007, 0.664, 0.455, 0.010])
+        self.assertEqual(label, "invalid")
+        self.assertIn("几乎不触地", reason)
+        self.assertIn("FL", reason)          # 必须点名是哪只脚
+        self.assertIn("RR", reason)
+
+    def test_healthy_duty_still_gives_trot(self):
+        label, _reason, _ = report_mod.verdict(self._phases(), duty=[0.5, 0.52, 0.48, 0.5])
+        self.assertEqual(label, "trot")
+
+    def test_gate_is_opt_in_and_skips_nan(self):
+        # 不传 duty ⇒ 与旧行为一致（向后兼容）
+        self.assertEqual(report_mod.verdict(self._phases())[0], "trot")
+        # NaN（足缺失）不算违规
+        self.assertEqual(report_mod.verdict(self._phases(), duty=[0.5, 0.5, 0.5, float("nan")])[0], "trot")
+
+
 if __name__ == "__main__":
     unittest.main()

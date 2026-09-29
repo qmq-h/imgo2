@@ -84,6 +84,9 @@ PAIRS: tuple[tuple[int, int], ...] = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2
 # 「同相」是循环意义上的：0.95 与 0.05 同相，所以残差一律用圆周距离。
 REFERENCE_GAITS: tuple[str, ...] = ("trot", "bound", "pace", "lockstep")
 
+# 占空比有效性闸（2026-09-29）：任一只足 duty 低于它 ⇒ 判定为 `invalid`，不给步态标签。
+DUTY_VALID_MIN = 0.15
+
 # 判定阈值：最小残差都大于它 ⇒ `无明确模式`。
 # 0.25 ≈ 相位平均差 1/4 周期；合成 trot/bound/pace 的残差是 0，2% 观测噪声下约 0.05，
 # 随机乱走的相位差 RMS 约 0.35~0.4，所以它能分开「有明确模式」与「乱走」。
@@ -462,9 +465,15 @@ def _residuals(phases: dict[tuple[int, int], tuple[float, float]],
 
 def verdict(phases: dict[tuple[int, int], tuple[float, float]],
             references: dict[str, dict[tuple[int, int], float]] | None = None,
-            threshold: float = VERDICT_RESIDUAL_MAX) -> tuple[str, str, dict[str, float]]:
+            threshold: float = VERDICT_RESIDUAL_MAX,
+            duty: dict[int, float] | list[float] | None = None,
+            duty_valid_min: float = DUTY_VALID_MIN) -> tuple[str, str, dict[str, float]]:
     """按「最接近哪个参考模式」给判定 → ``(标签, 中文说明, 残差 dict)``。
 
+    * **`duty` 给定时先过"占空比有效性闸"**（2026-09-29 事故教训）：只要有**任一只足的
+      占空比 < `duty_valid_min`**（默认 0.15），就判 ``invalid`` 并写明是哪只脚 —— 因为
+      "某条腿几乎不触地"时，它那几次接触的时刻纯属偶然，**相位可以凑出任何模式**
+      （实测 v5.2 在 flat 上 FL/RR duty 只有 0.007/0.010，工具却给出 "trot"）；
     * 相位全 NaN（周期无效 / 某足整段不触地）⇒ ``无法判定``；
     * 最小残差 > ``threshold`` ⇒ ``无明确模式``（乱走或相位不规整，不硬套一个模式）；
     * 否则取最小残差的模式；lockstep 另给「四足近同时」的说明。
@@ -475,6 +484,15 @@ def verdict(phases: dict[tuple[int, int], tuple[float, float]],
     references = references if references is not None else reference_phase_deg()
     scores = _residuals(phases, references)
     finite = {name: value for name, value in scores.items() if np.isfinite(value)}
+    if duty is not None and len(duty) > 0:
+        items = duty.items() if isinstance(duty, dict) else enumerate(duty)
+        bad = {foot: float(value) for foot, value in items
+               if np.isfinite(value) and float(value) < duty_valid_min}
+        if bad:
+            detail = "、".join(f"{FEET[foot]} duty={value:.3f}" for foot, value in sorted(bad.items()))
+            return ("invalid",
+                    f"有脚几乎不触地（{detail} < {duty_valid_min:.2f}）⇒ 相位不可信，不判步态",
+                    scores)
     if not finite:
         return "无法判定", "相位不可算（周期无效，或某只足整段不触地）", scores
     best = min(finite, key=lambda name: finite[name])
@@ -586,7 +604,7 @@ def build_group_report(arrays: dict, group: dict, min_steps: int = 200, vx_min: 
     if not period_valid:
         report["notes"].append("周期无效 ⇒ 相位未计算")
 
-    label, reason, scores = verdict(phase)
+    label, reason, scores = verdict(phase, duty=duty)
     if not period_valid:
         label, reason = "无法判定", "周期无效 ⇒ 相位未计算"
 
