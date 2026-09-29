@@ -21,7 +21,7 @@ trot 也只领先 0.002–0.006）。所以"平地是不是 trot、箱/沟有没
 cd <repo>/imgo2_rl
 
 # ① 回放并 dump（需要 GPU；--terrain_level 可把课程等级钉死，便于逐个难度看）
-python3 scripts/rl_lab/cmoe/play.py \
+bash scripts/run_isaaclab.sh scripts/rl_lab/cmoe/play.py \
   --task=Imgo2-basemove-rough-cmoe-gaitfree-play \
   --checkpoint=<run>/model_XXXX.pt \
   --num_envs=16 --headless --terrain_level=6 \
@@ -166,7 +166,7 @@ FL-FR ≈0.5）；③ `gap`/`boxes` 上与平地的相位**显著不同**（这�
 
 ```bash
 cd <repo>/imgo2_rl
-python3 scripts/rl_lab/cmoe/play.py --task=Imgo2-basemove-rough-cmoe-play \
+bash scripts/run_isaaclab.sh scripts/rl_lab/cmoe/play.py --task=Imgo2-basemove-rough-cmoe-play \
   --checkpoint=<run>/model_5000.pt --num_envs=128 --headless --terrain_level=6 \
   --dump_gait=logs/gait_5000_l6.npz --dump_steps=1200
 python3 scripts/tools/expert_report.py --npz logs/gait_5000_l6.npz
