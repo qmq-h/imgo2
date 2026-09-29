@@ -449,16 +449,16 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # `gait_bounce_<地形>` 会给出逐列的 vz RMS，可按实测再调）。
         self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ
         self.rewards.lin_vel_z_l2.weight = -2.0
-        # 2026-09-29（用户决定）：**取消 boxes/gap 的豁免** —— 沟壑上"雷霆大跳"的成因之一就是
-        # 那里竖直速度不受罚（豁免是 09-24 为"过沟必须爆发式跃起"留的）。现在改成**全地形生效**。
-        # ⚠️ 已知风险（09-24 的实测教训）：当年正是因为"罚 vz ⇒ 策略选择停在沟前"，才做的豁免。
-        #    ⇒ **监控判据**：若 `level_gap` / `tracking_pass_frac_gap` 在几百轮内明显下滑、或
-        #    `gait_airtime_gap` 掉到很低（不敢跳了），**立刻回退**：把本行换回
-        #    `= ("boxes", "gap")` 即可（`MaskedLinVelZ` 的掩码就是唯一开关）。
-        #    观察用读数：`gait_bounce_gap`（逐列 vz 均方，已有 1e-6 探针 `diag_bounce`）。
-        # 注意：`lin_vel_z_l2` 自带重力门 `clamp(-g_z,0,0.7)/0.7` ⇒ 跃起时身体俯仰会自动削弱惩罚，
-        #    所以"全地形 −2.0"未必像 09-24 那样直接掐死跃起，需以实测为准。
-        self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ()
+        # 2026-09-29（用户："先退回到雷霆大跳版本"）：**恢复 boxes/gap 豁免**。
+        # 依据（同日实测，见各档 dump `logs/gait_v54_L{1..4}.npz`）：
+        #   * L1/L2 的 gap 是"走过去"（四足 duty 0.74~0.80，无腾空）；到 L3/L4 依然没有飞行相
+        #     ⇒ 0.31 m 的宽沟（L6）**必须**短促腾空才过得去，而全地形 vz −2.0 让一次跃起
+        #     （vz≈1.5 m/s）要付 `2×1.5²≈4.5/步` ⇒ 策略干脆不跳 ⇒ 用户回放确认"gap/boxes 过不去"；
+        #   * 同时 boxes 在 L4 出现后腿 0.86~0.88 / 前腿 0.11 的"后腿蹬、前腿吊"姿态（占空比闸判 invalid）。
+        # ⇒ 这是 09-24 记录过的同一失效模式（"罚 vz ⇒ 停在沟前"），在高难度上复现。
+        # 真正的"压雷霆大跳"应该用**滞空上限**（只罚"长腾空"、不罚"短跃起"），
+        # 即 `foot_clearance` 分支上的 `feet_air_time_over`——**待做**，别再动 vz 掩码。
+        self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")
         self.rewards.ang_vel_xy_l2.weight = 0.0
         self.rewards.action_rate_l2.weight = 0.0
         # 未照搬（原因见 docs §21.3）：track_ang_vel_z_exp（我们命令里有 ±1.0 的 yaw，

@@ -150,12 +150,11 @@ class TestCmoeCfgWiring(unittest.TestCase):
         """2026-09-24 晚：竖直速度罚按地形豁免地恢复（治"蹦蹦跳跳"），并给 feet_air_time 降权。"""
         self.assertIn("self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ", self.src)
         self.assertIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
-        # 2026-09-29（用户决定）：**取消 boxes/gap 豁免** ⇒ 竖直速度罚全地形生效，
-        # 用来压沟壑上的"雷霆大跳"。历史理由（09-24 的"会与跃起对抗"）保留在配置注释里，
-        # 回退方式就是把这一行换回 ("boxes", "gap")。
-        self.assertIn('self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ()', self.src)
-        self.assertNotIn('free_terrain_names"] = ("boxes", "gap")\n        self.rewards.ang_vel_xy_l2',
-                         self.src, "豁免应已取消（若是有意恢复，请同步本测试）")
+        # 2026-09-29 二次决定：**恢复 boxes/gap 豁免**（全地形罚 vz 会把"必要的跃起"也掐掉，
+        # 实测 L1~L4 的 gap 全无飞行相、boxes L4 出现前腿不承重 ⇒ 用户回放"过不去"）。
+        # 要压"雷霆大跳"请用**滞空上限**（只罚长腾空），不要再动这里的掩码。
+        self.assertIn('self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")',
+                      self.src)
         self.assertIn("self.rewards.feet_air_time.weight = 1.0", self.src)
         # 2026-09-28：机身水平罚对齐 PPO 的 −5.0，但障碍地形豁免（新的掩码类）
         self.assertIn("self.rewards.flat_orientation_l2.func = mdp.MaskedFlatOrientationL2", self.src)
