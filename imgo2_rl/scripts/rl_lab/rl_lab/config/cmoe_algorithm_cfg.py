@@ -33,7 +33,12 @@ class CMoEPPOAlgorithmCfg:
     gamma: float = 0.998
     lam: float = 0.95
     value_loss_coef: float = 1.0
-    entropy_coef: float = 0.0
+    # 2026-09-29（用户："探索压力要给 0.01"）：0.0 → **0.01**。
+    # 依据：parkour 的 leap（跳跃）技能配方里就是 `entropy 0.01`（见其 run 名
+    # `..._Skills_jump_..._minStd0.21_entropy0.01_...`）；而"弹道式跃起"是难探索的技能，
+    # entropy=0 时策略只会用最省事的姿态糊过去（我们实测：gap 上要么不跳、要么大跳）。
+    # 若发现噪声长期偏大/动作抖（`Policy/mean_noise_std` 上行、`action_rate` 变差），回调到 0.005。
+    entropy_coef: float = 0.01
     learning_rate: float = 1.0e-3
     max_grad_norm: float = 1.0
     use_clipped_value_loss: bool = True
