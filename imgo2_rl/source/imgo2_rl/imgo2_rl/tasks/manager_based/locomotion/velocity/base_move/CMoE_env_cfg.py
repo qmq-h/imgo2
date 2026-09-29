@@ -674,9 +674,14 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 1
-        # 2026-09-28：num_cols 10 → 40。参考实现训练/回放共用一套 40 列地形；我们原来是"训练 20／
-        # play 10"，10 列时 `hf_pyramid_slope_inv` 只有 0 列（离线工具会报 ⚠️）⇒ 对齐后两套都是 40。
-        self.scene.terrain.terrain_generator.num_cols = 40
+        # 2026-09-29（用户："play 的地形改一下，不用那么多，只要每种地形一行"）：
+        # 回放网格缩到 **每类一列**：`num_cols = 11`（= sub_terrains 的 11 类）＋**等比例**（全 1.0，
+        # Isaac 会归一化）⇒ 每类恰好占 1 列（按训练的比例会变成 gap 3 列、rough/slope 0 列，不行）。
+        # 训练侧保持 40 列按比例（课程需要每类多列）；回放要的是"每类都看得到"。
+        # 注意：`--terrain_level=N` 仍可把这一列的难度钉在 N（num_rows 仍为 10）。
+        self.scene.terrain.terrain_generator.num_cols = 11
+        for _sub in self.scene.terrain.terrain_generator.sub_terrains.values():
+            _sub.proportion = 1.0
         self.scene.terrain.max_init_terrain_level = 5
         self.observations.policy.enable_corruption = False
         self.observations.terrain.enable_corruption = False

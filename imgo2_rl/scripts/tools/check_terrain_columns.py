@@ -128,6 +128,12 @@ def allocate(sub_terrains: list[tuple[str, float]], num_cols: int) -> list[str]:
 
 
 def report(sub_terrains: list[tuple[str, float]], num_cols: int, label: str) -> dict[str, int]:
+    # 2026-09-29：`num_cols == 类数` ⇒ 按**等比例**解释（每类恰好 1 列）。
+    # 回放配置（`Imgo2CMoERoughPlayEnvCfg`）就是这么设的：`num_cols = 11` + `sub.proportion = 1.0`
+    # （循环赋值，静态读不到）⇒ 若在这里仍按训练比例算，会误报 flat/slope 为 0 列。
+    if num_cols == len(sub_terrains):
+        sub_terrains = [(name, 1.0) for name, _ in sub_terrains]
+        label = f"{label}｜num_cols==类数 ⇒ 等比例（每类 1 列）"
     cols = allocate(sub_terrains, num_cols)
     counts = {name: cols.count(name) for name, _ in sub_terrains}
     print(f"\n=== {label}（num_cols={num_cols}，共 {len(cols)} 列）===")

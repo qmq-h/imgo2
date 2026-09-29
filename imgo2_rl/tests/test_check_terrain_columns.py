@@ -44,6 +44,9 @@ def _merged_proportions() -> dict[str, float]:
     return merged
 
 
+REPO = Path(__file__).resolve().parents[1]
+
+
 class TestTerrainColumns(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -104,9 +107,18 @@ class TestTerrainColumns(unittest.TestCase):
                                    f"{key} 引用的 {name} 是 0 列 ⇒ 掩码静默失效")
 
     def test_configured_num_cols_is_40_for_train_and_play(self):
-        """训练与 play 都显式写 40（对齐参考；旧配置 play 是 10 且会掉一列）。"""
-        _, col_over = chk.cmoe_overrides()
-        self.assertEqual(int(col_over.get("num_cols", -1)), NUM_COLS)
+        """训练 40（按比例，课程要每类多列）；**play 11**（2026-09-29 起改成"每类一列"、等比例）。
+
+        直接读两段类体、不依赖工具的合并语义（play 的 11 会覆盖合并结果）。
+        """
+        cfg_src = (REPO / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/"
+                   "base_move/CMoE_env_cfg.py").read_text(encoding="utf-8")
+        train = cfg_src.split("class Imgo2CMoERoughEnvCfg", 1)[1].split(
+            "class Imgo2CMoERoughPlayEnvCfg", 1)[0]
+        play = cfg_src.split("class Imgo2CMoERoughPlayEnvCfg", 1)[1].split("\n@configclass", 1)[0]
+        self.assertIn("num_cols = 40", train, "训练应为 40 列（按比例）")
+        self.assertIn("num_cols = 11", play, "play 应为每类一列（11）")
+        self.assertIn("_sub.proportion = 1.0", play, "play 应设等比例（否则会有 0 列的地形）")
 
 
 if __name__ == "__main__":
