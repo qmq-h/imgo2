@@ -438,7 +438,16 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # `gait_bounce_<地形>` 会给出逐列的 vz RMS，可按实测再调）。
         self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ
         self.rewards.lin_vel_z_l2.weight = -2.0
-        self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")
+        # 2026-09-29（用户决定）：**取消 boxes/gap 的豁免** —— 沟壑上"雷霆大跳"的成因之一就是
+        # 那里竖直速度不受罚（豁免是 09-24 为"过沟必须爆发式跃起"留的）。现在改成**全地形生效**。
+        # ⚠️ 已知风险（09-24 的实测教训）：当年正是因为"罚 vz ⇒ 策略选择停在沟前"，才做的豁免。
+        #    ⇒ **监控判据**：若 `level_gap` / `tracking_pass_frac_gap` 在几百轮内明显下滑、或
+        #    `gait_airtime_gap` 掉到很低（不敢跳了），**立刻回退**：把本行换回
+        #    `= ("boxes", "gap")` 即可（`MaskedLinVelZ` 的掩码就是唯一开关）。
+        #    观察用读数：`gait_bounce_gap`（逐列 vz 均方，已有 1e-6 探针 `diag_bounce`）。
+        # 注意：`lin_vel_z_l2` 自带重力门 `clamp(-g_z,0,0.7)/0.7` ⇒ 跃起时身体俯仰会自动削弱惩罚，
+        #    所以"全地形 −2.0"未必像 09-24 那样直接掐死跃起，需以实测为准。
+        self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ()
         self.rewards.ang_vel_xy_l2.weight = 0.0
         self.rewards.action_rate_l2.weight = 0.0
         # 未照搬（原因见 docs §21.3）：track_ang_vel_z_exp（我们命令里有 ±1.0 的 yaw，
