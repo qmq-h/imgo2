@@ -406,12 +406,16 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 配合 `heading_command`（yaw 指令由 heading 控制器按当前误差实时生成）时，机器人可以
         # "一边转身一边在机体系里前进"来拿满分（实测线速度核 0.88、偏航核仅 0.46）。parkour 用的是
         # **世界系** `tracking_world_vel`（`legged_robot_field.py:476`）⇒ 目标方向不随自身转动而变。
-        # 2026-09-29（用户："提高一点 yaw 角速度跟踪的权重"）：0.6（PPO rough 系的值）→ **0.8**。
+        # 2026-09-29（用户）：偏航角速度跟踪 0.6 → 0.8 → **2.0**（"转向直接给到 2.0"）。
         # 依据：命令里 `ang_vel_z ∈ (−1, 1)` 且 `heading_command=True`（航向由 0.5 刚度的控制器
-        # 实时生成）＋ 全局 `yaw_abs −0.2`（别转身）⇒ 该项同时管"转头指令跟踪"与"别歪着走"。
-        # 权衡：它相对 `track_world_vel_xy_exp=5.0` 是软项（0.8 只占 16%）⇒ 不会压过直线跟踪；
-        # 若发现"转向变钝/靠打滑转向"（`feet_slide` 变差、yaw 跟踪反而更差），回调到 0.6~0.7。
-        self.rewards.track_ang_vel_z_exp.weight = 0.8
+        # 实时生成）＋ 全局 `yaw_abs −0.2`（别转身）；用户希望转向跟得更准。
+        # ⚠️ 权衡（务必盯着看）：2.0 已是 `track_world_vel_xy_exp=5.0` 的 **40%**，不再是软项；
+        #   本仓库其它任务里最高只用过 1.5（handstand/height），legged_gym 默认 0.5 ⇒ 这是**激进值**。
+        #   风险：① 原地转向/蛇行时该项可能压过直线跟踪；② 强 yaw 率 + heading 控制器可能引起
+        #   来回摆（`yaw_abs` 与它方向相反地拉扯）；③ 转向增多 ⇒ `feet_slide`/`illegal_contact` 变差。
+        #   回退：一个数字（0.8~1.0）。监控读数：`Episode_Reward/track_ang_vel_z_exp`（应升）、
+        #   `Episode_Reward/track_world_vel_xy_exp`（不应明显降）、`yaw_abs` 分项、`illegal_contact`。
+        self.rewards.track_ang_vel_z_exp.weight = 2.0
 
         self.rewards.track_world_vel_xy_exp.weight = 5.0  # parkour 的 tracking_world_vel = 5.
         self.rewards.track_lin_vel_xy_exp.weight = 0.0  # 被世界系版本取代
