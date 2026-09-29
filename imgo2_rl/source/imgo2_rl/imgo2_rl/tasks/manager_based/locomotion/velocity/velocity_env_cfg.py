@@ -1,4 +1,4 @@
-
+﻿
 import inspect
 import math
 import sys
@@ -618,32 +618,6 @@ class RewardsCfg:
             "tanh_mult": 2.0,
             "target_height": -0.3,
             "command_name": "base_velocity",
-        },
-    )
-
-    # 抬脚高度（**相对支撑面**，2026-09-28 新增）。语义与实现见 `mdp/clearance_math.py` 与
-    # `mdp/rewards.py::FeetSwingClearance`：
-    #     z_ref = mean(世界 z of 接触中的足)；h_i = z_foot_i − z_ref；swing = 非接触足
-    #     r = k·Σ swing_i·clamp(1 − |h_i − h*|/band, 0, 1)
-    # **默认权重 0**（不改变任何现有任务的行为，只多一个可配置项）；CMoE rough 在自己的
-    # `__post_init__` 里按地形填 `target_height_by_terrain`/`band_by_terrain` 并启用（+0.5）。
-    # `body_names=""` 沿用本文件"基类留空、由具体任务填"的约定：权重 0 的项会被各任务的
-    # `disable_zero_weight_rewards()` 移除，因此不会去解析这个空的 body 正则。
-    feet_swing_clearance = RewTerm(
-        func=mdp.feet_swing_clearance,
-        weight=0.0,
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", body_names=""),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=""),
-            # 地形名 → h*（米） / 地形名 → band（米）；空表 ⇒ 全用
-            # `SWING_CLEARANCE_DEFAULT_TARGET/BAND`（0.07/0.05）兜底
-            "target_height_by_terrain": {},
-            "band_by_terrain": {},
-            "free_terrain_names": (),
-            "k": 1.0,
-            "tanh_mult": None,
-            "max_hold_steps": 3,
         },
     )
 
