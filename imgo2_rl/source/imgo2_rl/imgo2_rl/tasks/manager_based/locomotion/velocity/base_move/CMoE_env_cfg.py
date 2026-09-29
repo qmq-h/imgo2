@@ -294,7 +294,13 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # ---------------------------------------------------------------------------------
         self.scene.terrain.terrain_generator.size = (8.0, 4.0)
         # 参考 num_rows=10（行＝难度 level）、num_cols=40（列＝地形类型）；初始等级 5 与本任务原值一致。
+        # 2026-09-29（用户决定，重训前）：**抬高难度上限** —— gap 0.126~0.315 → **0.2~0.6 m**、
+        # boxes 0.08~0.30 → **0.1~0.5 m**、stairs(_inv) 0.05~0.15 → **0.05~0.25 m**（步深 0.30 ⇒ 上限 39.8°）。
+        # 同时 `num_rows 10 → 20`：难度按 `d = row/num_rows` 线性映射，只抬上限会让**中低难度一起变难**
+        # （旧 level 6 的沟 0.25 m 会变成 ~0.35 m）⇒ 分级加倍后低难度基本维持、只有顶端变宽。
+        # 未改动：hurdle（上限仍 ≈0.16 m）、narrow_stairs(0.10)、mix(1.1)、比例(gap 0.30)、初始等级 5。
         self.scene.terrain.terrain_generator.num_cols = 40
+        self.scene.terrain.terrain_generator.num_rows = 20
         sub_terrains = self.scene.terrain.terrain_generator.sub_terrains
         # 上行台阶（参考 `stairs up` 0.1）。单级台阶 0.05–0.15 m 是我们 2026-09-24 定的四足区间：
         # 取 (0.05, 0.15) 而非更高——课程**下限必须可学**（level 0 就 10 cm 会直接卡死）；
@@ -302,22 +308,26 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 腿部可行性：大腿 0.22 + 小腿 0.206 = 最大伸展 0.426 m、站立 0.30 m。
         sub_terrains["pyramid_stairs"] = CMoETrackStairsTerrainCfg(
             proportion=0.10,
-            step_height_range=(0.05, 0.15),
+            step_height_range=(0.05, 0.25),
             num_steps=6,
             ascending=True,
         )
         # 下行台阶（参考 `stairs down` 0.1），参数与上行对称。
         sub_terrains["pyramid_stairs_inv"] = CMoETrackStairsTerrainCfg(
             proportion=0.10,
-            step_height_range=(0.05, 0.15),
+            step_height_range=(0.05, 0.25),
             num_steps=6,
             ascending=False,
         )
         # 独立障碍块（参考 `discrete` 0.1）。整宽矮块，高 0.08–0.30 m（0.30 ≈ 0.95 体长 0.315 m，
         # 接近腿部最大伸展的可跃范围；下限同样为了 level 0 可学）；长 0.18–0.30、间距 0.85。
         sub_terrains["boxes"] = CMoETrackStepTerrainCfg(
+            first_step_x=1.6,
+            num_steps=2,
+            step_spacing=1.3,
+            step_length_range=(0.3, 0.5),
             proportion=0.10,
-            step_height_range=(0.08, 0.30),
+            step_height_range=(0.1, 0.5),
         )
         # 参考 `rough slope` 的 0.10 由我们的上/下坡各 0.05 承担（参考同一类里按列随机翻符号）。
         sub_terrains["hf_pyramid_slope"].proportion = 0.05
@@ -328,10 +338,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # ＝0.126–0.315 m 是我们 2026-09-24 决定的四足区间；4 条沟、平台 0.65–0.95 m、首沟 x=1.8。
         sub_terrains["gap"] = CMoETrackGapTerrainCfg(
             proportion=0.30,
-            gap_width_range=(0.126, 0.315),
-            platform_length_range=(0.65, 0.95),
-            first_gap_x=1.8,
-            num_gaps=4,
+            gap_width_range=(0.2, 0.6),
+            platform_length_range=(0.9, 1.4),
+            first_gap_x=1.6,
+            num_gaps=3,
         )
         # 2026-09-28 新增三类（参考有、我们缺）：横栏／混合障碍／窄楼梯。
         # 米制 = 参考 `parkour_hurdle_terrain` / `mix_obstacles_terrain` / `narrow_stairs_terrain`
@@ -678,7 +688,7 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
         # 回放网格缩到 **每类一列**：`num_cols = 11`（= sub_terrains 的 11 类）＋**等比例**（全 1.0，
         # Isaac 会归一化）⇒ 每类恰好占 1 列（按训练的比例会变成 gap 3 列、rough/slope 0 列，不行）。
         # 训练侧保持 40 列按比例（课程需要每类多列）；回放要的是"每类都看得到"。
-        # 注意：`--terrain_level=N` 仍可把这一列的难度钉在 N（num_rows 仍为 10）。
+        # 注意：`--terrain_level=N` 仍可把这一列的难度钉在 N（num_rows 现为 20 ⇒ 难度 = N/20）。
         self.scene.terrain.terrain_generator.num_cols = 11
         for _sub in self.scene.terrain.terrain_generator.sub_terrains.values():
             _sub.proportion = 1.0
