@@ -406,6 +406,13 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 配合 `heading_command`（yaw 指令由 heading 控制器按当前误差实时生成）时，机器人可以
         # "一边转身一边在机体系里前进"来拿满分（实测线速度核 0.88、偏航核仅 0.46）。parkour 用的是
         # **世界系** `tracking_world_vel`（`legged_robot_field.py:476`）⇒ 目标方向不随自身转动而变。
+        # 2026-09-29（用户："提高一点 yaw 角速度跟踪的权重"）：0.6（PPO rough 系的值）→ **0.8**。
+        # 依据：命令里 `ang_vel_z ∈ (−1, 1)` 且 `heading_command=True`（航向由 0.5 刚度的控制器
+        # 实时生成）＋ 全局 `yaw_abs −0.2`（别转身）⇒ 该项同时管"转头指令跟踪"与"别歪着走"。
+        # 权衡：它相对 `track_world_vel_xy_exp=5.0` 是软项（0.8 只占 16%）⇒ 不会压过直线跟踪；
+        # 若发现"转向变钝/靠打滑转向"（`feet_slide` 变差、yaw 跟踪反而更差），回调到 0.6~0.7。
+        self.rewards.track_ang_vel_z_exp.weight = 0.8
+
         self.rewards.track_world_vel_xy_exp.weight = 5.0  # parkour 的 tracking_world_vel = 5.
         self.rewards.track_lin_vel_xy_exp.weight = 0.0  # 被世界系版本取代
         # parkour 同配方里另外两项"别绕开"的软约束（`go1_leap_config.py`：`lin_pos_y=-0.4`、
