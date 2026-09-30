@@ -554,11 +554,16 @@ class TestPosturePenaltyWiring(unittest.TestCase):
         self.assertIn("SceneEntityCfg", params["raw"])
 
     def test_illegal_contact_body_has_a_one_line_switch(self):
-        self.assertIn("ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = True", self.src,
-                      "模块级开关必须存在且默认开")
+        """默认**关闭**（2026-09-30 实测：50 N 把 100% 回合都终止了）+ 保留一行开关与开启说明。
+
+        证据（run `cmoe_v5_8_posture`）：`Episode_Termination/illegal_contact_body = 1.0000`、
+        回合长度 6.3 步（0.13 s）、`mean_reward −0.058`、`level_mean 0` ⇒ 阈值 50 N 不可用。
+        若将来重启，阈值至少 150~250 N 且要求持续接触，并先离线标定接触力量级。
+        """
         self.assertIn("ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = False", self.src,
-                      '注释里必须给出"ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = False"的一行关法')
-        self.assertIn("if ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION:", self.src)
+                      "默认应为 False（50 N 实测不可用）")
+        self.assertIn("if ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION:", self.src,
+                      "开关必须包住 DoneTerm 的创建，才能一行关掉")
 
     def test_base_contact_termination_unchanged(self):
         """既有基座触地终止（1 N）不动 —— 新项是**追加**的，不是替换。"""

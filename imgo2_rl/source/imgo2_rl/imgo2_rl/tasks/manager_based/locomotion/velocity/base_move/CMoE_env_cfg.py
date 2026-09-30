@@ -63,7 +63,12 @@ FOOT_EDGE_SENSOR_NAMES = (
 # ⚠️ 这是四项改动里**最容易伤到 gap/stairs 的一项**：跨沟/上台阶时小腿/膝的**轻擦**是常见且必要的，
 # 只有"称重跪地"（瞬时接触力 ≥ 50 N）才该终止。阈值因此取 **50 N**（远高于既有的基座触地终止
 # 1 N，也高于 `undesired_contacts` 的判据阈值 1 N）——即"罚得动、但不到称重就不终止"。
-ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = True
+# 2026-09-30 实测（run `cmoe_v5_8_posture`）：**50 N 阈值不可用** —— `Episode_Termination/
+# illegal_contact_body = 1.0000`（100% 回合终止都是它）、回合长度掉到 **6.3 步（0.13 s）**、
+# `mean_reward −0.058`、`level_mean 0` ⇒ 策略完全学不动（静止时每足就承重 ~13.5 N，
+# 膝/小腿轻碰轻松超 50 N）。**默认关闭**；若将来重启该功能，阈值至少提到 150~250 N
+# 并要求"持续接触 N 步"，且必须先离线标定真实接触力量级。
+ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = False
 
 
 def _foot_edge_scanner(foot_name: str) -> RayCasterCfg:
