@@ -308,14 +308,14 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 腿部可行性：大腿 0.22 + 小腿 0.206 = 最大伸展 0.426 m、站立 0.30 m。
         sub_terrains["pyramid_stairs"] = CMoETrackStairsTerrainCfg(
             proportion=0.10,
-            step_height_range=(0.05, 0.25),
+            step_height_range=(0.05, 0.17),
             num_steps=6,
             ascending=True,
         )
         # 下行台阶（参考 `stairs down` 0.1），参数与上行对称。
         sub_terrains["pyramid_stairs_inv"] = CMoETrackStairsTerrainCfg(
             proportion=0.10,
-            step_height_range=(0.05, 0.25),
+            step_height_range=(0.05, 0.17),
             num_steps=6,
             ascending=False,
         )
@@ -327,7 +327,7 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
             step_spacing=1.3,
             step_length_range=(0.3, 0.5),
             proportion=0.10,
-            step_height_range=(0.1, 0.4),
+            step_height_range=(0.08, 0.28),
         )
         # 参考 `rough slope` 的 0.10 由我们的上/下坡各 0.05 承担（参考同一类里按列随机翻符号）。
         sub_terrains["hf_pyramid_slope"].proportion = 0.05
@@ -338,7 +338,7 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # ＝0.126–0.315 m 是我们 2026-09-24 决定的四足区间；4 条沟、平台 0.65–0.95 m、首沟 x=1.8。
         sub_terrains["gap"] = CMoETrackGapTerrainCfg(
             proportion=0.30,
-            gap_width_range=(0.2, 0.4),
+            gap_width_range=(0.126, 0.32),
             platform_length_range=(0.9, 1.4),
             first_gap_x=1.6,
             num_gaps=3,
