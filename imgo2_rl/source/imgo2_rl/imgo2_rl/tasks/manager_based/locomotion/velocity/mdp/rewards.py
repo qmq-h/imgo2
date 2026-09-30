@@ -478,6 +478,42 @@ def diag_pair_mismatch(
     return total / max(n_pairs, 1)
 
 
+def diag_base_height(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：基座相对**本环境局部地面**的高度误差（m，正=偏高）。
+
+    算式与 `base_height_l2` **同一套射线逻辑**（逐环境只用有效射线求局部地面高度；全部落空
+    ⇒ 退回"误差 0"），区别只有两点：① 不平方、不乘权重 −10 ⇒ 读数就是**有符号**的高度误差，
+    这样"压低基座"（负）与"抬高身体"（正）在日志里可分辨；② 不乘直立门（诊断不做门控）。
+    逐列读数 `gait_base_height_<地形>`（经 `terrain_levels_vel_logged` 的 `gait_metric_terms`
+    接线）与 `Episode_Reward/base_height_l2`（只有平方值、丢了符号）互补。
+
+    2026-09-30：本函数**逐字取自 `foot_clearance` 分支**（用户要求只挑这一项、不要重写），
+    只把 docstring 里对同批次未移植的 `diag_clearance_mean`／`gait_clearance_<地形>` 的交叉引用
+    删掉，函数体一字未改（因此它自带一份与 `_local_ground_target_height` 等价的内联射线逻辑，
+    这是**有意**保留的：与 `foot_clearance` 分支逐字一致，便于两边对照）。
+
+    用途（本次姿态修复的判据）：与 `Episode_Reward/base_height_l2` 联立可判断"高度没保持住"
+    到底是**压低**（本项为负、绝对值大）还是**抬高**（本项为正）；配合新加的
+    `base_height_flat_l2 −35`（flat-only、去重力门）用来看"站直"是否真的把读数拉回 0 附近。
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        ray_hits = sensor.data.ray_hits_w[..., 2]
+        valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
+        valid_count = valid.sum(dim=1).clamp_min(1)
+        mean_hits = torch.where(valid, ray_hits, torch.zeros_like(ray_hits)).sum(dim=1) / valid_count
+        ground = torch.where(valid.any(dim=1), target_height + mean_hits, asset.data.root_link_pos_w[:, 2])
+    else:
+        ground = torch.as_tensor(target_height, device=asset.data.root_pos_w.device, dtype=asset.data.root_pos_w.dtype)
+    return asset.data.root_pos_w[:, 2] - ground
+
+
 def _pairwise_joint_mirror(
     env: ManagerBasedRLEnv,
     asset: Articulation,
@@ -706,6 +742,47 @@ class MaskedFeetAirTime(ManagerTermBase):
         del free_terrain_names  # 已在 __init__ 缓存为静态掩码
         reward = feet_air_time(env, command_name, sensor_cfg, threshold)
         return reward * (~self._free_mask).float()
+
+
+class MaskedBaseHeightL2Strict(ManagerTermBase):
+    """`base_height_l2_strict`（**去重力门**的 L2 高度罚）的**只在 flat 生效**版本（2026-09-30）。
+
+    起因（用户实测证据，run `cmoe_v5_7_lv12cap` @8500）：平地上出现「蹲 7 cm + 膝盖蹭地 +
+    抬脚过高」的姿态退化。逐项 `Episode_Reward/*` 是**每步加权值**（真实每步贡献 × dt 0.02）：
+    `track_world_vel_xy_exp` **+3.71**、`track_ang_vel_z_exp` **+1.37**（任务主力）而
+    `base_height_l2` 只有 **−0.0484** ⇒ 反解高度误差 RMS = √(0.0484/10) = **0.070 m**，
+    代价仅占任务的 ≈1%；对照退化前的 @4000（−0.0030）是 **14×**。同一 run 的
+    `undesired_contacts` −0.1019（≠0 即膝/小腿蹭地）也是退化前的 127×。
+
+    与既有 `Masked*` 家族的**唯一区别在语义方向**：那些项的 `free_terrain_names` 是**豁免**名单
+    （默认 `("boxes", "gap")`），而本项的 `active_terrain_names` 是**白名单** —— 默认
+    `("flat",)`，即**只有平地生效**、其它地形恒 0。故参数名不叫 `free_terrain_names`，
+    免得"豁免 flat"与"只在 flat"被看反（看反了会静默变成全地形 −35，正是要避免的）。
+    用户明确要求"障碍地形只受 −10 约束（避免惩罚合法的越障姿态）"，所以白名单而非豁免名单。
+
+    为什么去重力门：`base_height_l2` 的 `clamp(−g_z, 0, 0.7)/0.7` 在机身倾斜时把惩罚**同比
+    缩小**，而"蹲 + 膝蹭"正是**俯仰/侧倾 + 压低**的组合 ⇒ 门控让退化姿态自己给自己打折。
+    flat 上机身本就该水平（`flat_orientation_l2 −5.0` 同列生效），去掉门控与那条约束一致。
+    权重 **−35.0**（`Imgo2CMoERoughEnvCfg.__post_init__` 启用），与全地形 `base_height_l2 −10`
+    叠加 ⇒ flat 上总强度 ≈ −45；障碍地形仍是 −10。
+    """
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.active_terrain_names: tuple[str, ...] = tuple(cfg.params.get("active_terrain_names", ("flat",)))
+        self._active_mask = _terrain_type_mask(env, self.active_terrain_names)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        target_height: float,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        sensor_cfg: SceneEntityCfg | None = None,
+        active_terrain_names: tuple[str, ...] = ("flat",),
+    ) -> torch.Tensor:
+        del active_terrain_names  # 已在 __init__ 缓存为静态掩码
+        reward = base_height_l2_strict(env, target_height, asset_cfg, sensor_cfg)
+        return reward * self._active_mask.float()
 
 
 def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joints: list[list[str]]) -> torch.Tensor:
@@ -1097,6 +1174,48 @@ def upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("r
     return reward
 
 
+def _local_ground_target_height(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset: RigidObject,
+    sensor_cfg: SceneEntityCfg | None,
+) -> torch.Tensor:
+    """`base_height_l2` 系列的**局部地面**目标高度（世界系 z，逐环境）。
+
+    2026-09-30 从 `base_height_l2` 原样抽出（**逐字保留**，无行为变化），只为让两个消费者共用
+    同一套射线逻辑、避免"两份实现漂移"：
+
+    * `base_height_l2`（−10，全地形，**带重力门**）；
+    * `base_height_l2_strict`（`MaskedBaseHeightL2Strict` 的内核，flat-only，**去重力门**）。
+
+    另有 `diag_base_height`（1e-6 诊断，有符号、不平方）按用户要求**逐字取自 `foot_clearance`
+    分支**，因此自带一份同样的内联射线逻辑、**未**改为调用本函数（有意保留逐字一致，便于两分支对照）。
+
+    2026-09-24 修复的**逐环境**判定（原实现是整批判定）：原版在 4096 个环境里只要有任意一个的
+    射线落空（例如它正悬在沟壑上方），**所有环境**都会退回 `adjusted = root_z`（误差恒 0），
+    于是 −10 的高度惩罚被整场关掉。后果两条：① 奖励依赖其它环境的状态（污染信用分配）；
+    ② 奖励随 num_envs 变化（256 环境与 4096 环境实际不是同一个任务）。
+    实测：旧 run（停在沟前）75/16717 个回合为 0；真跨沟的新 run 349/400 个回合恰好为 0。
+    现为逐环境判定：只用该环境自己的有效射线求局部地面高度，全部落空才退回 root_z
+    （与同文件 `him_base_height` 的 masked-nanmean 写法保持一致）。
+    """
+    if sensor_cfg is not None:
+        sensor: RayCaster = env.scene[sensor_cfg.name]
+        ray_hits = sensor.data.ray_hits_w[..., 2]  # (N, R)
+        valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
+        valid_count = valid.sum(dim=1).clamp_min(1)
+        mean_hits = torch.where(valid, ray_hits, torch.zeros_like(ray_hits)).sum(dim=1) / valid_count
+        return torch.where(
+            valid.any(dim=1),
+            target_height + mean_hits,
+            asset.data.root_link_pos_w[:, 2],
+        )
+    # Use the provided target height directly for flat terrain
+    return torch.as_tensor(
+        target_height, device=asset.data.root_pos_w.device, dtype=asset.data.root_pos_w.dtype
+    )
+
+
 def base_height_l2(
     env: ManagerBasedRLEnv,
     target_height: float,
@@ -1111,32 +1230,37 @@ def base_height_l2(
     """
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
-    if sensor_cfg is not None:
-        sensor: RayCaster = env.scene[sensor_cfg.name]
-        # Adjust the target height using the sensor data.
-        # 2026-09-24 修复：原实现是**整批**判定 —— 4096 个环境里只要有任意一个的射线落空
-        # （例如它正悬在沟壑上方），**所有环境**都会退回 `adjusted = root_z`（误差恒 0），
-        # 于是 −10 的高度惩罚被整场关掉。后果两条：① 奖励依赖其它环境的状态（污染信用分配）；
-        # ② 奖励随 num_envs 变化（256 环境与 4096 环境实际不是同一个任务）。
-        # 实测：旧 run（停在沟前）75/16717 个回合为 0；真跨沟的新 run 349/400 个回合恰好为 0。
-        # 现改为**逐环境**判定：只用该环境自己的有效射线求局部地面高度，全部落空才退回 root_z
-        # （与同文件 `him_base_height` 的 masked-nanmean 写法保持一致）。
-        ray_hits = sensor.data.ray_hits_w[..., 2]  # (N, R)
-        valid = ~torch.isnan(ray_hits) & ~torch.isinf(ray_hits) & (torch.abs(ray_hits) < 1e6)
-        valid_count = valid.sum(dim=1).clamp_min(1)
-        mean_hits = torch.where(valid, ray_hits, torch.zeros_like(ray_hits)).sum(dim=1) / valid_count
-        adjusted_target_height = torch.where(
-            valid.any(dim=1),
-            target_height + mean_hits,
-            asset.data.root_link_pos_w[:, 2],
-        )
-    else:
-        # Use the provided target height directly for flat terrain
-        adjusted_target_height = target_height
+    adjusted_target_height = _local_ground_target_height(env, target_height, asset, sensor_cfg)
     # Compute the L2 squared penalty
     reward = torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward
+
+
+def base_height_l2_strict(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """`base_height_l2` 的**去掉重力门**版本（2026-09-30，治"平地上蹲 7 cm"）。
+
+    与 `base_height_l2` 的差别**只有一处**：不乘直立门 `clamp(−g_z, 0, 0.7)/0.7`。算式、
+    `target_height`、`sensor_cfg`（`height_scanner_base`）、局部地面逻辑全部共用
+    `_local_ground_target_height` ⇒ 两者在**直立时数值完全相同**。
+
+    为什么需要去门控：`base_height_l2` 的门在机身倾斜时把惩罚**同比缩小**，而"蹲 7 cm +
+    膝盖蹭地"正是**俯仰/侧倾 + 压低**的组合姿态 —— 门控让该形态自己给自己打折。
+    实测（run `cmoe_v5_7_lv12cap` @8500）：`base_height_l2` −0.0484 ⇒ 高度误差 **0.070 m**，
+    但它只占该步任务奖励（`track_world_vel_xy_exp` +3.71、`track_ang_vel_z_exp` +1.37）的 ≈1%
+    ⇒ 策略没有理由站直。本项由 `MaskedBaseHeightL2Strict` 只在 **flat** 列生效（障碍地形允许
+    合法的越障姿态），权重 −35.0（见 `CMoE_env_cfg.py`），与全地形的 −10 项叠加 ⇒ flat 上
+    总强度约 −45。
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    adjusted_target_height = _local_ground_target_height(env, target_height, asset, sensor_cfg)
+    return torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
 
 
 def him_base_height(

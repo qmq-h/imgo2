@@ -147,9 +147,12 @@ class TestCmoeCfgWiring(unittest.TestCase):
         self.assertIn('self.rewards.feet_gait.params["free_terrain_names"] = ("boxes", "gap")', self.src)
 
     def test_vertical_penalty_restored_and_masked(self):
-        """2026-09-24 晚：竖直速度罚按地形豁免地恢复（治"蹦蹦跳跳"），并给 feet_air_time 降权。"""
+        """2026-09-24 晚：竖直速度罚按地形豁免地恢复（治"蹦蹦跳跳"），并给 feet_air_time 降权。
+
+        2026-09-30：权重 −2.0 → **−4.0**（治"抬脚过高/弹跳"），掩码不变。
+        """
         self.assertIn("self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ", self.src)
-        self.assertIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
+        self.assertIn("self.rewards.lin_vel_z_l2.weight = -4.0", self.src)
         # 2026-09-29 二次决定：**恢复 boxes/gap 豁免**（全地形罚 vz 会把"必要的跃起"也掐掉，
         # 实测 L1~L4 的 gap 全无飞行相、boxes L4 出现前腿不承重 ⇒ 用户回放"过不去"）。
         # 要压"雷霆大跳"请用**滞空上限**（只罚长腾空），不要再动这里的掩码。

@@ -56,6 +56,15 @@ FOOT_EDGE_SENSOR_NAMES = (
     "foot_edge_scanner_rr",
 )
 
+# 2026-09-30（姿态退化修复 ④）：非足端**高力接触**终止项的**一行开关**。
+# 关掉的方式（任选其一，都只影响本项）：
+#   ① `ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = False`
+#   ② 把 `__post_init__` 里那段 `if ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION:` 整段注释掉。
+# ⚠️ 这是四项改动里**最容易伤到 gap/stairs 的一项**：跨沟/上台阶时小腿/膝的**轻擦**是常见且必要的，
+# 只有"称重跪地"（瞬时接触力 ≥ 50 N）才该终止。阈值因此取 **50 N**（远高于既有的基座触地终止
+# 1 N，也高于 `undesired_contacts` 的判据阈值 1 N）——即"罚得动、但不到称重就不终止"。
+ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION = True
+
 
 def _foot_edge_scanner(foot_name: str) -> RayCasterCfg:
     """Create a compact downward ray grid centered on one foot."""
@@ -162,6 +171,21 @@ class CMoERewardsCfg(RewardsCfg):
         weight=1e-6,
         params={"sensor_cfg": SceneEntityCfg("contact_forces")},
     )
+    # 2026-09-30 新增（姿态退化排查的第一手读数，1e-6 纯记录）：`gait_base_height_<地形>`
+    # ＝该列基座相对**局部地面**的**有符号**高度误差（m，正=偏高、负=偏矮）。
+    # 为什么现有 `gait_height_<地形>`（`base_height_l2` 反解 √(Episode_Reward/10)）不够：
+    # 那个量是 `(误差)²` ⇒ **丢符号**，分不出"蹲矮"与"抬高"（两者都让 −10 项变负）。
+    # 本项不平方、不乘权重、不乘重力门 ⇒ 可直接读到 −0.070 m 这种"蹲 7 cm"。
+    # 代码**逐字取自 `foot_clearance` 分支**（用户 2026-09-30 要求只移植这一项）。
+    diag_base_height = RewTerm(
+        func=mdp.diag_base_height,
+        weight=1e-6,
+        params={
+            "target_height": 0.30,
+            "asset_cfg": SceneEntityCfg("robot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+        },
+    )
     gait_metric_pace = RewTerm(
         func=mdp.GaitReward,
         weight=1e-6,
@@ -205,6 +229,29 @@ class CMoERewardsCfg(RewardsCfg):
         params={
             "asset_cfg": SceneEntityCfg("robot"),
             "terrain_names": (),
+        },
+    )
+
+    # ---------------------------------------------------------------- ② 平地专用严格高度项
+    # 2026-09-30（治"高度没保持住"）：`base_height_l2`（−10）在平地上**不够**——实测
+    # run `cmoe_v5_7_lv12cap` @8500 反解高度误差 RMS **0.070 m**（蹲 7 cm），
+    # 而该项每步代价只有 −0.0484（× dt 0.02 ≈ −9.7e-4/步），占任务项（+3.71/+1.37）的 ≈1%。
+    # 本项 = `base_height_l2_strict`：**同一** `target_height`、**同一** `height_scanner_base`
+    # 局部地面逻辑（共用 `_local_ground_target_height`），但**去掉重力门** ——
+    # "蹲 + 膝蹭"本身是俯仰/侧倾姿态，门控 `clamp(−g_z,0,0.7)/0.7` 会让它自己给自己打折。
+    # 掩码是**白名单** `active_terrain_names`（不是 `free_terrain_names` 豁免名单）：
+    # **只在 flat 生效**，障碍地形恒 0（用户："避免惩罚合法的越障姿态"）。
+    # ⚠️ `CMoERewardsCfg` 里权重必须留 **0.0**（不影响其它任务）；由
+    # `Imgo2CMoERoughEnvCfg.__post_init__` 设成 **−35.0**。它**不是**步态形状项，因此
+    # `-gaitfree` 子类**不得**把它归零。
+    base_height_flat_l2 = RewTerm(
+        func=mdp.MaskedBaseHeightL2Strict,
+        weight=0.0,
+        params={
+            "target_height": 0.30,
+            "asset_cfg": SceneEntityCfg("robot", body_names=""),
+            "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+            "active_terrain_names": ("flat",),
         },
     )
 
@@ -404,7 +451,22 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 本次先降回 PPO rough 的量级做验证：feet_stumble 归零、undesired_contacts 回到 -0.5。
         self.rewards.feet_stumble.weight = 0.0
         self.rewards.feet_stumble.params["sensor_cfg"].body_names = [self.foot_link_name]
-        self.rewards.undesired_contacts.weight = -0.5
+        # 2026-09-30（姿态退化修复 ④之一）：−0.5 → **−5.0**（回到 `6220e43` 之前的量级）。
+        # 依据：run `cmoe_v5_7_lv12cap` @8500 的 `undesired_contacts` = **−0.1019**（反解 0.204 个
+        # 违规接触/步），而退化前的 @4000 只有 −0.0008 ⇒ **127×**，用户可视化确认"膝盖往地"。
+        # 2026-09-24 把它降回 −0.5 的理由是"跨沟时足蹬对岸边沿／小腿擦对岸是必要动作、惩罚会让策略
+        # 停在沟前"——那个理由仍然成立，所以本次**不换语义、只加量级 + 用终止项兜底**：
+        # 轻擦仍由 −5.0 罚（可承受），称重跪地由新增的 `illegal_contact_body`（50 N）终止。
+        # ⚠️ 回退：把这一行改回 −0.5（一个数字）。监控读数：`Episode_Reward/undesired_contacts`
+        # 应向 0 收敛，同时 `level_gap`/`level_pyramid_stairs*` 不得下滑、`illegal_contact_body`
+        # 的终止占比不得明显上升（若上升 ⇒ 阈值 50 N 太低或该终止项在误杀，见上面的开关）。
+        self.rewards.undesired_contacts.weight = -5.0
+        # 2026-09-30（姿态退化修复 ④之二）：`contact_forces` −0.02 → **−0.1**（×5）。
+        # 该项罚的是**足端**接触力超阈值（阈值 100 N，`sensor_cfg.body_names=[".*_FOOT"]` 由
+        # `rough_env_cfg` 设定），与 `undesired_contacts`（**非**足端）互补：一个管"脚跺得太重"
+        # （抬脚过高后的砸地），一个管"膝/小腿着地"。两者都与本次退化姿态直接相关。
+        # ⚠️ 回退：把这一行改回 −0.02（一个数字）。
+        self.rewards.contact_forces.weight = -0.1
 
         # 2026-09-24：照搬 ZiwenZhuang/parkour 的 leap（跃沟）配方里**可平移**的权重。
         # 他们的 leap 技能：tracking_world_vel=+5.0、orientation=-0.1，且**完全没有**
@@ -455,10 +517,19 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         )
         # 2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：**按地形豁免地恢复竖直速度罚**。
         # 形状：trot 列上恢复（压弹跳），`boxes`/`gap` 豁免（那里需要爆发式跃起，原清零理由是
-        # "会与跃起对抗"——掩码后这个理由不再成立）。权重先取 **−2.0**（＝PPO rough 原值；探针
-        # `gait_bounce_<地形>` 会给出逐列的 vz RMS，可按实测再调）。
+        # "会与跃起对抗"——掩码后这个理由不再成立）。
+        # 2026-09-30（姿态退化修复 ③）：权重 −2.0 → **−4.0**（治"抬脚过高/弹跳"）。
+        # 依据：run `cmoe_v5_7_lv12cap` @8500 的 `lin_vel_z_l2` = **−0.0585** ⇒ vz RMS = √0.0585
+        # ≈ **0.17 m/s**（退化前 @4000 更低），与用户看到的"足端抬高"一致。−4.0 是**翻倍的物理平滑**
+        # （不是形状先验），flat/斜坡/台阶/粗糙/窄梯上都会更强地压住"耸一下再落"。
+        # ⚠️ 掩码**保持 `("boxes", "gap")` 不变**：跃起仍必须免费。2026-09-29 曾取消豁免，实测
+        # L1~L4 的 gap 全无飞行相、boxes 出现前腿不承重 ⇒ 用户回放"gap/boxes 过不去" ⇒ 当日回退
+        # （commit `f7d1dc3`）。**别再动掩码**；要压"雷霆大跳"应该用**滞空上限**（只罚长腾空）。
+        # ⚠️ 回退：把下一行改回 −2.0（一个数字）。监控读数：`Episode_Reward/lin_vel_z_l2`、
+        # 逐列 `gait_bounce_<地形>`（vz RMS）应降，而 `level_gap`/`level_boxes` 与
+        # `tracking_pass_frac_*` 不得下滑。
         self.rewards.lin_vel_z_l2.func = mdp.MaskedLinVelZ
-        self.rewards.lin_vel_z_l2.weight = -2.0
+        self.rewards.lin_vel_z_l2.weight = -4.0
         # 2026-09-29（用户："先退回到雷霆大跳版本"）：**恢复 boxes/gap 豁免**。
         # 依据（同日实测，见各档 dump `logs/gait_v54_L{1..4}.npz`）：
         #   * L1/L2 的 gap 是"走过去"（四足 duty 0.74~0.80，无腾空）；到 L3/L4 依然没有飞行相
@@ -471,6 +542,34 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")
         self.rewards.ang_vel_xy_l2.weight = 0.0
         self.rewards.action_rate_l2.weight = 0.0
+
+        # ---------------------------------------------------------------------------------
+        # ①/② 2026-09-30 「平地上蹲 7 cm + 膝盖蹭地 + 抬脚过高」姿态退化修复
+        # 证据（run `cmoe_v5_7_lv12cap` @8500，`Episode_Reward/*` 是**每步加权值** ⇒ 真实每步贡献
+        # = 该值 × dt 0.02；对照 @4000 是同一 run 退化前）：
+        #   track_world_vel_xy_exp **+3.71**、track_ang_vel_z_exp **+1.37** ← 任务主力
+        #   base_height_l2 **−0.0484** ⇒ 高度误差 RMS = √(0.0484/10) = **0.070 m（蹲 7 cm）**，
+        #                              代价仅占任务的 ≈1%（@4000：−0.0030 ⇒ 退化 **14×**）
+        #   undesired_contacts **−0.1019**（非足端接触 = 膝/小腿蹭地，@4000 −0.0008 ⇒ **127×**）
+        #   lin_vel_z_l2 **−0.0585** ⇒ vz RMS ≈ **0.17 m/s**
+        # ② 平地上把高度约束从"−10 带门控"变成"−10 带门控 + −35 去门控"：
+        #    新增项只在 **flat** 列生效（白名单 `active_terrain_names`），障碍地形仍是 −10
+        #    （用户："避免惩罚合法的越障姿态"）。⚠️ 它**不是**步态形状项 ⇒ `-gaitfree` 不归零。
+        #    `target_height`/`sensor_cfg` 从既有 `base_height_l2` **现取**（不重写第二个 0.30 /
+        #    第二个扫描器名），避免两处漂移 —— `asset_cfg` 同理复用基座 body_names。
+        self.rewards.base_height_flat_l2.func = mdp.MaskedBaseHeightL2Strict
+        self.rewards.base_height_flat_l2.weight = -35.0
+        self.rewards.base_height_flat_l2.params["target_height"] = self.rewards.base_height_l2.params[
+            "target_height"
+        ]
+        self.rewards.base_height_flat_l2.params["sensor_cfg"] = SceneEntityCfg("height_scanner_base")
+        self.rewards.base_height_flat_l2.params["asset_cfg"] = SceneEntityCfg(
+            "robot", body_names=[self.base_link_name]
+        )
+        # 白名单语义：**只有 flat**（默认值也在 `CMoERewardsCfg` 里写了一遍，这里显式再写一次，
+        # 好让"只在这一个地形生效"在审计源码里一眼可见）。
+        self.rewards.base_height_flat_l2.params["active_terrain_names"] = ("flat",)
+
         # 未照搬（原因见 docs §21.3）：track_ang_vel_z_exp（我们命令里有 ±1.0 的 yaw，
         # 他们 leap 的 yaw 命令是 0，该项在其配方里近乎摆设）、base_height_l2（他们用
         # z_low 终止替代；直接删掉我们唯一的高度控制会重演 AMP 记录过的「贴地爬行」）、
@@ -612,6 +711,26 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                 "threshold": 1.0,
             },
         )
+        # ④之三 2026-09-30（姿态退化修复，「称重跪地」终止）：**非足端** body 的**高力**接触即终止。
+        # 与 `undesired_contacts −5.0` 是同一现象的"罚 vs 终止"两级：
+        #   * 轻擦（< 50 N）⇒ 只被 −5.0 罚，跨沟/上台阶的常见动作仍容忍；
+        #   * 称重跪地（瞬时接触力 ≥ 50 N）⇒ 直接终止（用户看到的"膝盖往地"就是这一档）。
+        # 阈值 50 N 是**故意取高**的：既有的基座触地终止用 1 N，若这里也用 1 N，任何小腿轻擦都会
+        # 立刻结束回合 —— 那正是 2026-09-24「罚太重 ⇒ 策略停在沟前」的同一个坑。
+        # ⚠️ **这是四项改动里最容易伤到 gap/stairs 的一项**：若 `illegal_contact_body` 的终止占比
+        # 明显上升（或 `level_gap`/`level_pyramid_stairs*` 下滑），优先怀疑它。回退方式：
+        # 把模块级 `ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION` 改成 `False`（**一行**，其余三项不受影响）。
+        # 注意 body_names 的正则是在**全量 body 名**上做否定前瞻：`.*_FOOT` 精确匹配四个足端 link，
+        # 故本项只匹配"非足端"（膝/小腿/大腿/髋/基座）。基座触地由上面的 `illegal_contact`（1 N）负责，
+        # 两者重叠部分（基座 ≥ 50 N）会被任一项终止，语义不冲突。
+        if ENABLE_ILLEGAL_CONTACT_BODY_TERMINATION:
+            self.terminations.illegal_contact_body = DoneTerm(
+                func=mdp.illegal_contact,
+                params={
+                    "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[r"^(?!.*_FOOT).*"]),
+                    "threshold": 50.0,
+                },
+            )
 
         # 用仓库本地的带诊断副本替下上游 `terrain_levels_vel`。**注意：判据自 2026-09-24 起
         # 与上游有两处有意偏离**（见 `mdp/curriculums.py` 的 docstring 与 docs §29.20）：
@@ -655,6 +774,10 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                     # 2026-09-24 夜新增：把"步子长短"与"相位差尺度"直接读出来
                     ("airtime", "diag_air_time"),     # 逐列四足 last_air_time 均值（s）
                     ("mismatch", "diag_pair_mismatch"),  # 逐列六对 |Δair|+|Δcon| 均值（s）
+                    # 2026-09-30 新增：逐列基座相对**局部地面**的**有符号**高度误差（m，
+                    # 正=偏高、负=偏矮）⇒ `gait_base_height_<地形>`。与 `("height", "base_height_l2")`
+                    # （只有平方值、丢符号）互补：蹲矮 ⇒ 负、抬高 ⇒ 正。
+                    ("base_height", "diag_base_height"),
                 ),
                 # 2026-09-24（用户）：**台阶与 boxes 用 0.50、其余仍 0.80**。
                 # ⚠️ 0.50 在这三类上**等价于取消跟踪门控**（整回合平均跟踪核实测 mean≈0.78、min≈0.69
@@ -734,8 +857,12 @@ class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
     * **刻意保留、不要跟着一起归零**：
       - 三个 `gait_metric_{trot,bound,pace}`（1e-6）＝步态分类器。权重 0 会被
         `disable_zero_weight_rewards()` 整个移除，就再也看不见"先验漂没漂"；
-      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`（1e-6）＝接触时序与弹跳诊断；
-      - `lin_vel_z_l2`（`MaskedLinVelZ`，−2）：这是**物理平滑惩罚**（压竖直速度/弹跳），
+      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`／`diag_base_height`（1e-6）＝接触时序、
+        弹跳与**有符号**基座高度误差诊断；
+      - `base_height_flat_l2`（`MaskedBaseHeightL2Strict`，−35，**flat-only**）：这是**姿态**项
+        （平地上别蹲），**不是**步态形状先验 ⇒ 与 `lin_vel_z_l2`／`flat_orientation_l2`／`feet_slide`
+        同类，**在本类里必须保持 −35**（不要加进上面的归零清单；用户 2026-09-30 明确要求）；
+      - `lin_vel_z_l2`（`MaskedLinVelZ`，**−4**）：这是**物理平滑惩罚**（压竖直速度/弹跳），
         不是步态形状先验，先验的腾空很短，留作"别蹦"的兜底。若也要归零，删掉下面注释掉的那行即可。
     * 本类**只用于训练**：回放/判读用现有 `Imgo2-basemove-rough-cmoe-play`（奖励不参与回放行为）。
     * `check_reward_overrides.py` 的 `cmoe-gaitfree` 链会把这五项报成"func 是自定义类但权重 0 ⇒

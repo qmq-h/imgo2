@@ -52,6 +52,10 @@ MASKED_NAMES = {
     "feet_height_body.free_terrain_names": ("boxes", "gap"),
     "feet_air_time_variance.free_terrain_names": ("boxes", "gap"),
     "feet_gait.free_terrain_names": ("boxes", "gap"),
+    # 2026-09-30：`base_height_flat_l2`（−35，去重力门的高度罚）用的是**白名单**
+    # `active_terrain_names=("flat",)` —— 只有平地上生效。同样是"名字写错 ⇒ 静默失效"
+    # （`is_env_assigned_to_terrain` 对未登记的名字返回全 False），所以一并纳入本表。
+    "base_height_flat_l2.active_terrain_names": ("flat",),
 }
 # 注意：`lin_pos_y` / `yaw_abs` 的 `terrain_names=()` 表示**全局生效**（2026-09-24 用户决定
 # "所有场景都给脱离中心的惩罚"），因此不在上面这张"必须 ≥1 列"的名单里。
