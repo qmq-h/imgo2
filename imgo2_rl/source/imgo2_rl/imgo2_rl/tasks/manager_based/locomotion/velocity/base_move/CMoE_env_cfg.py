@@ -191,6 +191,18 @@ class CMoERewardsCfg(RewardsCfg):
             "sensor_cfg": SceneEntityCfg("height_scanner_base"),
         },
     )
+    # 2026-10-01 新增（膝关节高度软地板的**读数**，1e-6 纯记录）：`gait_knee_height_<地形>`
+    # ＝该列 **4 条小腿里最低那条**的世界系 z（m，`*_SHANK` link 原点 = 膝关节）。
+    # 取 **min** 而不是 mean：地板项罚的是 `Σ_legs relu(knee_min − z_leg)`，只要一条腿低就已经受罚，
+    # 均值会被其余三条抬高；与 `diag_base_height` 同族（1e-6、只记录、不进梯度、不做门控、不平方）。
+    # ⚠️ label 不能复用：既有的是 `("height", "base_height_l2")` ⇒ `gait_height_*`（平方、丢符号）、
+    # `("base_height", "diag_base_height")` ⇒ `gait_base_height_*`（基座高度误差），
+    # 本项用 `("knee_height", ...)` ⇒ `gait_knee_height_*`，三者互不冲突。
+    diag_knee_height_min = RewTerm(
+        func=mdp.diag_knee_height_min,
+        weight=1e-6,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_SHANK")},
+    )
     gait_metric_pace = RewTerm(
         func=mdp.GaitReward,
         weight=1e-6,
@@ -256,6 +268,44 @@ class CMoERewardsCfg(RewardsCfg):
             "target_height": 0.30,
             "asset_cfg": SceneEntityCfg("robot", body_names=""),
             "sensor_cfg": SceneEntityCfg("height_scanner_base"),
+            "active_terrain_names": ("flat",),
+        },
+    )
+
+    # ---------------------------------------------------------------- ③ 平地膝关节高度软地板
+    # 2026-10-01（治"平地上膝关节位置太低"）。证据：run `cmoe_v5_8b_posture` @4527 的新探针
+    # `gait_base_height_flat = **−0.085 m**`（平地上基座仍比站姿低 8.5 cm），而 flat-only 的
+    # `base_height_flat_l2`（−35、去重力门）**没压住** —— 蹲姿代价只占任务 ~5%。用户观察：
+    # "膝只是**低**、并不是压在地上" ⇒ `undesired_contacts`（−5，非足端**接触**）与
+    # `illegal_contact_body`（50 N 终止，**已默认关闭**）两条接触口径都抓不到"低但不碰"的膝。
+    # 本项是**高度**口径。
+    #
+    # 语义（逐环境、不乘权重）：`Σ_{4 条小腿} relu(knee_min − z_knee)`，其中
+    # `z_knee = asset.data.body_pos_w[:, shank_body_ids, 2]`（**世界系 z**，m）。
+    # 高于阈值 ⇒ 0；低于阈值 ⇒ **线性**增长（4 条腿各自计一次，不是平方、不是二值接触）。
+    # 取 `*_SHANK` 的依据：link 序列 `*_HIP → *_THIGH → *_SHANK → *_FOOT`，
+    # 关节 `*_shank_joint`（**膝**）的 `<origin>` 即 `*_SHANK` link 原点（URDF 已核实存在
+    # `FL/FR/RL/RR_SHANK`）⇒ 该 link 原点的 z 就是膝关节高度，无需额外偏移。
+    #
+    # 阈值 `knee_min` **离线 FK 标定**（`imgo2_description/urdf/imgo2.urdf`，用仓库既有 FK 逐字复核）：
+    #   站姿膝高 knee_z_stand = 0.30 + (−0.141612) = **0.158388 m**
+    #   （FK：hip 0 / thigh 0.87 / shank −1.82、base z = 0.30；对照同一算式的足端 link 原点
+    #     0.038561 m ⇒ 膝比足踝高 0.120 m，量级自洽）
+    #   ⇒ knee_min = 0.70 × knee_z_stand = 0.110872 m ⇒ **四舍五入到 mm = 0.111 m**。
+    #   `tests/test_cmoe_posture_penalties.py` 用**同一套 FK** 复核（容差 5e-3），数字漂了就红。
+    # 一行可调：改下面的 `"min_height": 0.111`（例：要求完全站姿 100% ⇒ 0.158；放宽到 60% ⇒ 0.095）。
+    # 掩码是**白名单** `active_terrain_names`（默认 `("flat",)`）：只在平地生效、障碍地形恒 0
+    # —— 上箱/跨沟/上台阶需要屈膝缓冲，膝高天然低于站姿，在那里压膝高等于惩罚合法动作。
+    # 权重与回退：`CMoERewardsCfg` 里留 **0.0**（不影响其它任务），由
+    # `Imgo2CMoERoughEnvCfg.__post_init__` 设成 **−20.0**；**一行可关**＝把那行改成 `0.0`
+    # （或删掉那行，回到本类体的默认 0.0）。它**不是**步态形状先验（是姿态项）⇒
+    # `-gaitfree` 子类**不得**归零。
+    knee_height_flat = RewTerm(
+        func=mdp.MaskedKneeHeightFlat,
+        weight=0.0,
+        params={
+            "min_height": 0.111,
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_SHANK"),
             "active_terrain_names": ("flat",),
         },
     )
@@ -575,6 +625,18 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
         # 好让"只在这一个地形生效"在审计源码里一眼可见）。
         self.rewards.base_height_flat_l2.params["active_terrain_names"] = ("flat",)
 
+        # ③ 2026-10-01（治"平地上膝关节位置太低"）：膝关节**高度**软地板，只在 flat 列生效。
+        # 证据：run `cmoe_v5_8b_posture` @4527 的 `gait_base_height_flat = −0.085 m`（基座仍低 8.5 cm），
+        # 而 ② 的 flat-only −35 **没压住**（蹲姿代价只占任务 ~5%）。用户观察"膝只是**低**、不是压在地上"
+        # ⇒ 接触口径（`undesired_contacts` −5 / `illegal_contact_body` 50 N 终止且已默认关闭）抓不到，
+        # 必须用**高度**口径：`Σ_legs relu(knee_min − z_SHANK_leg)`，`knee_min = 0.111 m` 由 FK 标定
+        # （站姿膝高 0.158 m 的 70%；算式与出处写在 `CMoERewardsCfg.knee_height_flat` 的注释里）。
+        # **一行可关**：把下面这行改成 `= 0.0`（或整行删掉 ⇒ 用类体默认 0.0，不做任何其它改动）。
+        # **一行可调阈值**：改 `CMoERewardsCfg.knee_height_flat` 的 `params["min_height"]`（0.111）。
+        # ⚠️ 它**不是**步态形状先验（是姿态项，与 `base_height_flat_l2`／`lin_vel_z_l2`／`feet_slide`
+        # 同类）⇒ `-gaitfree` 子类**不得**把它归零（那边连一行赋值都不该有）。
+        self.rewards.knee_height_flat.weight = -20.0
+
         # 未照搬（原因见 docs §21.3）：track_ang_vel_z_exp（我们命令里有 ±1.0 的 yaw，
         # 他们 leap 的 yaw 命令是 0，该项在其配方里近乎摆设）、base_height_l2（他们用
         # z_low 终止替代；直接删掉我们唯一的高度控制会重演 AMP 记录过的「贴地爬行」）、
@@ -783,6 +845,11 @@ class Imgo2CMoERoughEnvCfg(Imgo2RoughEnvCfg):
                     # 正=偏高、负=偏矮）⇒ `gait_base_height_<地形>`。与 `("height", "base_height_l2")`
                     # （只有平方值、丢符号）互补：蹲矮 ⇒ 负、抬高 ⇒ 正。
                     ("base_height", "diag_base_height"),
+                    # 2026-10-01 新增：逐列 **4 条小腿里最低那条**的世界系 z（m）⇒ `gait_knee_height_<地形>`。
+                    # 这是膝关节高度软地板（`knee_height_flat`，−20、flat-only）的**读数**：站姿时约
+                    # 0.158 m，退化到"膝低"时会低于阈值 0.111 m。label 与既有的
+                    # `gait_height_*`（base 高度误差²）、`gait_base_height_*`（基座有符号高度误差）都不同。
+                    ("knee_height", "diag_knee_height_min"),
                 ),
                 # 2026-09-24（用户）：**台阶与 boxes 用 0.50、其余仍 0.80**。
                 # ⚠️ 0.50 在这三类上**等价于取消跟踪门控**（整回合平均跟踪核实测 mean≈0.78、min≈0.69
@@ -862,11 +929,13 @@ class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
     * **刻意保留、不要跟着一起归零**：
       - 三个 `gait_metric_{trot,bound,pace}`（1e-6）＝步态分类器。权重 0 会被
         `disable_zero_weight_rewards()` 整个移除，就再也看不见"先验漂没漂"；
-      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`／`diag_base_height`（1e-6）＝接触时序、
-        弹跳与**有符号**基座高度误差诊断；
+      - `diag_air_time`／`diag_bounce`／`diag_pair_mismatch`／`diag_base_height`／
+        `diag_knee_height_min`（1e-6）＝接触时序、弹跳、**有符号**基座高度误差与**最低膝高**诊断；
       - `base_height_flat_l2`（`MaskedBaseHeightL2Strict`，−35，**flat-only**）：这是**姿态**项
         （平地上别蹲），**不是**步态形状先验 ⇒ 与 `lin_vel_z_l2`／`flat_orientation_l2`／`feet_slide`
         同类，**在本类里必须保持 −35**（不要加进上面的归零清单；用户 2026-09-30 明确要求）；
+      - `knee_height_flat`（`MaskedKneeHeightFlat`，**−20**，flat-only）：同样是**姿态**项
+        （平地上膝别长期太低），不是步态形状先验 ⇒ **在本类里必须保持 −20**（用户 2026-10-01 要求）；
       - `lin_vel_z_l2`（`MaskedLinVelZ`，**−4**）：这是**物理平滑惩罚**（压竖直速度/弹跳），
         不是步态形状先验，先验的腾空很短，留作"别蹦"的兜底。若也要归零，删掉下面注释掉的那行即可。
     * 本类**只用于训练**：回放/判读用现有 `Imgo2-basemove-rough-cmoe-play`（奖励不参与回放行为）。

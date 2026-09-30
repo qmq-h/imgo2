@@ -1,7 +1,7 @@
 """`check_reward_overrides.py` 自身的回归测试（只用标准库，不需要 Isaac Lab）。
 
 守两件事：
-1. 它读出的 **CMoE 最终生效奖励集** 与当前定稿一致（`cmoe` **29 项** / `cmoe-gaitfree` **25 项**、
+1. 它读出的 **CMoE 最终生效奖励集** 与当前定稿一致（`cmoe` **31 项** / `cmoe-gaitfree` **27 项**、
    各 masked 类挂在正确的项上；逐项数值见本文件断言）。这套配方改过多次且被"晚赋值覆盖"坑过
    两次，值得钉住。
 2. 它**真的会报警**：把某个原本非零的项在后面赋成 0 时，必须给出 "被清零" 提示
@@ -84,7 +84,9 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         #            → 27（＋diag_air_time、diag_pair_mismatch 两个接触时序诊断，权重 1e-6）
         # 2026-09-30：27 → **29**（＋`base_height_flat_l2` −35 平地去重力门高度罚、
         #            ＋`diag_base_height` 1e-6 有符号高度误差诊断）。
-        self.assertEqual(len(self.effective), 29, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-10-01：29 → **31**（＋`knee_height_flat` −20 平地膝关节高度软地板、
+        #            ＋`diag_knee_height_min` 1e-6 最低膝高诊断）。
+        self.assertEqual(len(self.effective), 31, f"生效项数变了：{sorted(self.effective)}")
 
     def test_vertical_velocity_penalty_restored(self):
         """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。
@@ -112,6 +114,21 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         """2026-09-30：逐列 `gait_base_height_<地形>`（有符号高度误差）只是记录（1e-6）。"""
         self.assertEqual(self.effective["diag_base_height"], 1e-6)
         self.assertLessEqual(abs(float(self.effective["diag_base_height"])), 1e-5)
+
+    def test_flat_only_knee_height_floor_term(self):
+        """2026-10-01（治"平地上膝关节位置太低"）：新增 flat-only 的**膝关节高度软地板**。
+
+        证据：run `cmoe_v5_8b_posture` @4527 的 `gait_base_height_flat = −0.085 m`（平地上基座仍低
+        8.5 cm），而 flat-only 的 `base_height_flat_l2`（−35、去重力门）**没压住**（蹲姿代价只占任务
+        ~5%）；用户观察"膝只是**低**、并不是压在地上" ⇒ 接触口径（`undesired_contacts`／已默认关闭的
+        50 N 终止）抓不到，必须用高度口径 `Σ_{4 条小腿} relu(knee_min − z_SHANK)`。
+        白名单 `active_terrain_names=("flat",)` ⇒ 障碍地形（要屈膝）恒 0。
+        `min_height = 0.111 m` 由离线 FK 标定（站姿膝高 0.158 m 的 70%，见
+        `tests/test_cmoe_posture_penalties.py::TestKneeHeightThresholdFromFK`）。
+        """
+        self.assertEqual(self.effective["knee_height_flat"], -20.0)
+        self.assertEqual(self.effective["diag_knee_height_min"], 1e-6)
+        self.assertLessEqual(abs(float(self.effective["diag_knee_height_min"])), 1e-5)
 
     def test_contact_penalties_strengthened(self):
         """2026-09-30（治"膝盖往地"）：`undesired_contacts` −0.5 → **−5.0**、
@@ -266,13 +283,14 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
     def test_is_a_strict_subset_of_the_shaping_recipe(self):
         removed = set(self.shaping_effective) - set(self.effective)
         # 2026-09-28 起 `feet_gait` 在**两条链上都是 0**（用户："相位核去掉"）⇒ gaitfree 相对 cmoe
-        # 只再少**四项**（手工步态 shaping），生效项数 29 → **25**（2026-09-30 起两条链都多了
-        # `base_height_flat_l2` 与 `diag_base_height` —— 它们是**姿态/诊断**项，不跟着归零）。
+        # 只再少**四项**（手工步态 shaping），生效项数 31 → **27**（2026-09-30 起两条链都多了
+        # `base_height_flat_l2` 与 `diag_base_height`，2026-10-01 又都多了 `knee_height_flat` 与
+        # `diag_knee_height_min` —— 它们是**姿态/诊断**项，不跟着归零）。
         self.assertEqual(removed, {"joint_mirror", "feet_air_time", "feet_height_body",
                                    "feet_air_time_variance"},
                          f"gaitfree 相对 cmoe 只应少这四项，实际少了 {sorted(removed)}")
         self.assertEqual(len(self.effective), len(self.shaping_effective) - 4)
-        self.assertEqual(len(self.effective), 25, f"生效项数变了：{sorted(self.effective)}")
+        self.assertEqual(len(self.effective), 27, f"生效项数变了：{sorted(self.effective)}")
         # 2026-09-28 新增/恢复的两项**在 gaitfree 里也要有**（它们是"步态质量/姿态"，不是手工步态风格）：
         # `feet_slide −0.05`（治拖行）与 `flat_orientation_l2 −5.0`（掩码）。
         self.assertEqual(self.effective["feet_slide"], -0.05)
@@ -280,11 +298,15 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
         # 2026-09-30 同理：flat-only 严格高度项与有符号高度诊断在 gaitfree 里**保持原值**。
         self.assertEqual(self.effective["base_height_flat_l2"], -35.0)
         self.assertEqual(self.effective["diag_base_height"], 1e-6)
+        # 2026-10-01 同理：膝关节高度软地板（姿态项）与最低膝高诊断在 gaitfree 里也保持原值。
+        self.assertEqual(self.effective["knee_height_flat"], -20.0)
+        self.assertEqual(self.effective["diag_knee_height_min"], 1e-6)
 
     def test_classifiers_and_diagnostics_are_kept(self):
         """分类器/诊断项必须留着 —— 否则再也看不见"先验漂没漂"。"""
         for name in ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace",
-                     "diag_air_time", "diag_bounce", "diag_pair_mismatch", "diag_base_height"):
+                     "diag_air_time", "diag_bounce", "diag_pair_mismatch", "diag_base_height",
+                     "diag_knee_height_min"):
             self.assertIn(name, self.effective, f"{name} 是度量项，不能跟着归零")
             self.assertLessEqual(abs(float(self.effective[name])), 1e-5)
 

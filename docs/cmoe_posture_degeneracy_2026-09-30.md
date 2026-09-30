@@ -162,3 +162,116 @@
 | `imgo2_rl/tests/test_check_reward_overrides.py` | 生效项数 27→29 / 23→25；`lin_vel_z_l2` −4；新增 3 项断言 |
 | `imgo2_rl/tests/test_masked_terrain_terms.py` | `lin_vel_z_l2` 期望 −2.0 → −4.0 |
 | `README.md` | 维护记录一行 ＋ 问题表 `CMOE-14` 状态更新 |
+
+---
+
+# 追加（2026-10-01）：膝关节**高度**软地板 `knee_height_flat`
+
+状态：**已实现并离线验证；待训练机新 run 验证**（本容器无 GPU / 未构造环境）。
+
+## 8 为什么接触口径不够
+
+用户对 run `cmoe_v5_8b_posture` @4527 回放的判断："**对膝盖接触地面限制是没用的，他只是比较低**"。
+
+新探针 `gait_base_height_flat = **−0.085 m**`（平地上基座仍比站姿低 8.5 cm），而 2026-09-30 加的
+flat-only `base_height_flat_l2`（−35、去重力门）**没有压住**（蹲姿代价只占任务 ~5%）。
+既有的两条膝相关口径都是**接触**口径：
+
+* `undesired_contacts`（−5，非足端接触）—— 只有"碰到"才计数，"低但不碰"读数为 0；
+* `illegal_contact_body`（50 N 终止）—— 已因 50 N 把 **100% 回合在 6 步内终止**而**默认关闭**。
+
+⇒ 结论：必须补一条**高度**口径。
+
+## 9 阈值标定（离线 FK，不许拍脑袋）
+
+用仓库既有 FK（`imgo2_rl/scripts/tools/audit_amp_dataset.py` 的 `read_chain` / `forward_kinematics`，
+stdlib only，不引入 isaaclab），源 `imgo2_description/urdf/imgo2.urdf`，
+默认关节角 **hip 0 / thigh 0.87 / shank −1.82**（`assets/imgo2.py` 的 `init_state`），
+基座 z = **0.30**（`base_height_l2` 的 `target_height`）：
+
+| 量 | 值 |
+|---|---|
+| `FL/FR/RL/RR_SHANK` 原点相对基座的 z | **−0.141612 m** |
+| **站姿膝高 `knee_z_stand` = 0.30 + (−0.141612)** | **0.158388 m** |
+| `knee_min = 0.70 × knee_z_stand` | **0.110872 m** |
+| 四舍五入到 mm ⇒ **cfg 里的 `min_height`** | **0.111 m** |
+| 对照：同一算式的 `*_FOOT` 原点（踝）世界系 z | 0.038561 m |
+
+链路依据：模型是 `*_HIP → *_THIGH → *_SHANK → *_FOOT`，关节 `*_shank_joint`（**膝**）的
+`<origin xyz="0 0.0557 -0.22">` 就是 `*_SHANK` link 的原点 ⇒ 该 link 原点的世界系 z
+**就是**膝关节高度，不需要额外偏移。四条腿同高（站姿对称，实测差 < 1e-9）。
+
+`tests/test_cmoe_posture_penalties.py::TestKneeHeightThresholdFromFK` 用**同一套 FK** 复核
+（容差 5e-3 m），并有负向对照（`*_THIGH` 原点比膝高 0.14 m ⇒ 证明取的是膝而不是大腿根）。
+
+## 10 实现
+
+* **内核** `mdp.knee_height_soft_floor(env, min_height, asset_cfg)`：
+  `Σ_{4 条小腿} relu(min_height − body_pos_w[:, body_ids, 2])`（**世界系 z**，逐腿各自计一次，
+  线性、不平方、不取均值）。取不到 4 条即报错（防"body_names 打错 ⇒ 静默少算"）。
+* **掩码类** `mdp.MaskedKneeHeightFlat(ManagerTermBase)`：与 `MaskedBaseHeightL2Strict` 同一套家法
+  （`__init__` 用 `_terrain_type_mask` 缓存白名单 `active_terrain_names`，`__call__` 乘
+  `self._active_mask.float()`）。白名单而不是豁免名单：障碍地形（上箱/跨沟/上台阶）需要屈膝，
+  膝高天然低于站姿，在那里压膝高等于惩罚合法动作。
+* **权重**：`CMoERewardsCfg` 默认 **0.0**（不影响其它任务）；`Imgo2CMoERoughEnvCfg.__post_init__`
+  一行启用 **−20.0**。它是**姿态**项、不是步态形状先验 ⇒ `-gaitfree` 子类**不归零**。
+* **一行可关**：`self.rewards.knee_height_flat.weight = -20.0` ⇒ 改 `0.0`（或删掉该行 ⇒ 类体默认 0.0）。
+* **一行可调阈值**：`CMoERewardsCfg.knee_height_flat` 的 `"min_height": 0.111`（算式与出处写在
+  该 RewTerm 上方的注释里）。
+* **探针** `mdp.diag_knee_height_min(env, asset_cfg)`（权重 1e-6、只记录、不进门控、不平方）：
+  逐环境 **4 条小腿里最低那条**的 z（m，有符号）—— 地板项罚的就是最低那几条腿，取 mean 会被
+  其余腿抬高（退化形态常是单侧/对角两条腿低）。接线
+  `("knee_height", "diag_knee_height_min")` ⇒ 逐列 `gait_knee_height_<地形>`；
+  与既有 `gait_height_*`（`base_height_l2` 的平方值）、`gait_base_height_*`（基座有符号误差）
+  **label 不冲突**（有测试锁住 label 唯一）。
+
+## 11 验证（离线）
+
+* 新增/扩展 `tests/test_cmoe_posture_penalties.py`（**41 → 77 项**）：掩码（非 flat 严格 0、
+  混合地形逐环境各算各的）、语义（全高 ⇒ 0；一条低 3 cm ⇒ 恰 `3 cm × weight = −0.6`；
+  四条各低 2 cm ⇒ `4 × 2 cm × weight = −1.6`；线性 1:2；恰在阈值 ⇒ 0）、body_ids 生效、
+  膝数 ≠4 报错、探针取 **min**（0.16/0.16/0.16/0.09 ⇒ 0.09）且有符号、权重 1e-6、
+  FK 标定（站姿膝高 0.158388 m、四条腿对称、THIGH 负向对照、`min_height` == 0.70×FK 容差 5e-3、
+  四舍五入到 mm）、配置级（−20、白名单 `("flat",)`、`-gaitfree` 无赋值、`__call__` 签名覆盖 params、
+  注释含标定算式）。
+* `tests/test_check_reward_overrides.py`：生效项数 **29 → 31**（`cmoe`）／**25 → 27**（`cmoe-gaitfree`），
+  新增 `knee_height_flat −20` 与 `diag_knee_height_min 1e-6` 断言。
+* 全仓 `unittest discover -s tests` ⇒ **596 通过 / 10 跳过**（改前 **559 / 10**）。
+* `check_reward_overrides.py cmoe` = **31 项**（`knee_height_flat −20` 在列）、`cmoe-gaitfree` = **27 项**；
+  `check_terrain_columns.py` 末行"全部掩码引用的地形名都有 ≥1 列 ✅"（新白名单已进 `MASKED_NAMES`）。
+
+## 12 未验证 / 限制
+
+* **没有构造环境、没有起训练**（本容器无 GPU，`import isaaclab` 缺 `omni.log`）⇒ 以下全部**未测**：
+  * `SceneEntityCfg("robot", body_names=".*_SHANK")` 在真实 `InteractiveScene` 下的解析结果
+    （是否恰好 4 条小腿、顺序如何 —— 顺序不影响 `Σ` 与 `min`，数量不对会被新加的守卫报错）；
+  * `body_pos_w[:, SHANK, 2]` 的坐标约定（Isaac Lab 里确实是**世界系** `frame=world`）；
+  * `gait_knee_height_<地形>` 的实际读数（站姿应 ≈0.158 m）、−20 的强度是否够/是否过强；
+  * `knee_min = 0.111 m` 的**行为**含义：真实步态里支撑期膝会低于站姿多少（0.111 是
+    "站姿的 70%"，属**先验判断**，只有新 run 的曲线能校准）；
+  * 四条腿逐腿求和是否会让"单腿异常低"被别的腿的高值掩盖（不会掩盖 —— 求和只增不减，
+    但四条腿同时略低与一条腿极低可以给出相同的值，需要 `gait_knee_height_<地形>` 的 min 读数配合判读）。
+* 奖励改动**不能 resume**，必须起新 run。
+
+## 13 验收（训练机新 run）
+
+起新 run（`--task=Imgo2-basemove-rough-cmoe-gaitfree`），确认：
+
+1. TB 的 `Episode_Reward/` 里有 **`knee_height_flat`** 与 **`diag_knee_height_min`**，
+   并有逐列 **`gait_knee_height_flat`**（站姿应 ≈0.158 m）；
+2. `gait_knee_height_flat` 不再长期低于 **0.111 m**（若一直贴 0 ⇒ 强度不够，−20 → −30；
+   若平地上膝高被抬到明显超过 0.158 ⇒ 矫枉过正，−20 → −10）；
+3. `gait_base_height_flat` 同步向 0 收敛（膝高的改善**不该**靠另一种蹲姿换来）；
+4. `Episode_Reward/knee_height_flat` 的绝对值下降，且 **障碍列不受影响**
+   （`level_gap`/`level_boxes`/`level_pyramid_stairs*`/`tracking_pass_frac_*` 不得下滑）。
+
+## 14 改动文件（2026-10-01）
+
+| 文件 | 说明 |
+|---|---|
+| `imgo2_rl/source/.../mdp/rewards.py` | ＋`knee_height_soft_floor`、＋`MaskedKneeHeightFlat`（含 4 膝守卫）、＋`diag_knee_height_min` |
+| `imgo2_rl/source/.../base_move/CMoE_env_cfg.py` | ＋`knee_height_flat` RewTerm（默认 0、启用 −20，`min_height=0.111` 带 FK 标定注释）、＋`diag_knee_height_min` RewTerm、`gait_metric_terms` 加 `("knee_height","diag_knee_height_min")`、`-gaitfree` docstring 补"不得归零" |
+| `imgo2_rl/scripts/tools/check_terrain_columns.py` | `MASKED_NAMES` 加 `knee_height_flat.active_terrain_names` |
+| `imgo2_rl/tests/test_cmoe_posture_penalties.py` | **41 → 77 项**（＋36） |
+| `imgo2_rl/tests/test_check_reward_overrides.py` | 生效项数 29→31 / 25→27；新增膝高项断言（＋1） |
+| `README.md` | 维护记录一行 ＋ 问题表 `CMOE-14` 状态更新 |

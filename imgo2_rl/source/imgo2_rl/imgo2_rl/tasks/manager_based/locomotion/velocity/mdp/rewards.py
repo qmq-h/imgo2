@@ -514,6 +514,26 @@ def diag_base_height(
     return asset.data.root_pos_w[:, 2] - ground
 
 
+def diag_knee_height_min(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=".*_SHANK"),
+) -> torch.Tensor:
+    """诊断项（**只记录**，配 1e-6 权重）：逐环境 **4 条小腿里最低那条**的世界系 z（m）。
+
+    这是"膝关节高度软地板"（`knee_height_flat`）的**读数** —— 与 `diag_base_height` 同族：
+    1e-6、只记录、不进梯度、不做门控、不平方，所以读到的就是**带符号**的真实高度
+    （在平地上站姿约为 `knee_z_stand = 0.158 m`，退化到"膝低"时会明显低于 `knee_min = 0.111 m`）。
+
+    为什么取 **min** 而不是 mean：地板项罚的是 `Σ_legs relu(knee_min − z_leg)`，只要**一条**腿低
+    就已经产生惩罚；四条腿取均值会被其余三条抬高，读数就不再对应被罚的那个量
+    （退化形态常是单侧/对角两条腿低 —— 见维护记录里 v5.2 的 flat duty `0.007/0.664/0.455/0.010`）。
+    逐列读数 `gait_knee_height_<地形>` 经 `terrain_levels_vel_logged` 的 `gait_metric_terms` 接线，
+    与 `Episode_Reward/knee_height_flat`（只有加权和）互补。
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.body_pos_w[:, asset_cfg.body_ids, 2].min(dim=1).values
+
+
 def _pairwise_joint_mirror(
     env: ManagerBasedRLEnv,
     asset: Articulation,
@@ -782,6 +802,79 @@ class MaskedBaseHeightL2Strict(ManagerTermBase):
     ) -> torch.Tensor:
         del active_terrain_names  # 已在 __init__ 缓存为静态掩码
         reward = base_height_l2_strict(env, target_height, asset_cfg, sensor_cfg)
+        return reward * self._active_mask.float()
+
+
+def knee_height_soft_floor(
+    env: ManagerBasedRLEnv,
+    min_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=".*_SHANK"),
+) -> torch.Tensor:
+    """**膝关节高度**的软地板（`MaskedKneeHeightFlat` 的内核，2026-10-01）。
+
+    `Σ_{4 条小腿} relu(min_height − z_knee)`，`z_knee = asset.data.body_pos_w[:, body_ids, 2]`
+    —— **世界系 z**（m）。四条腿**各自**计一次：高于阈值的那条贡献 0，低于阈值的按缺口**线性**计
+    （不是平方、也不是二值接触）。
+
+    为什么按**高度**而不是**接触**：用户观察（run `cmoe_v5_8b_posture` @4527 回放）是
+    "膝只是**低**、并不是压在地上" ⇒ 既有的 `undesired_contacts`（−5，非足端接触）与
+    `illegal_contact_body`（50 N 终止，已因杀光 100% 回合而默认关闭）两条**接触**口径
+    抓不到"低但不碰"的膝。本项是唯一的高度口径。
+
+    为什么取 `*_SHANK` link 的原点：模型 link 序列是
+    `*_HIP → *_THIGH → *_SHANK → *_FOOT`（`imgo2_description/urdf/imgo2.urdf`），
+    关节 `*_shank_joint`（**膝**）的 `<origin>` 恰好就是 `*_SHANK` link 的原点 ⇒
+    `body_pos_w[:, SHANK, 2]` 即膝关节的世界系高度，不需要再加偏移。
+
+    阈值 `min_height` 由**离线 FK** 标定（见 `CMoE_env_cfg.py` 的 `knee_height_flat` 注释）：
+    站姿膝高 `knee_z_stand = 0.158 m` ⇒ `knee_min = 0.70 × knee_z_stand = 0.111 m`；
+    `tests/test_cmoe_posture_penalties.py` 用同一套 FK 复核该数字（容差 5e-3）。
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    knee_z = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    return torch.clamp(min_height - knee_z, min=0.0).sum(dim=1)
+
+
+class MaskedKneeHeightFlat(ManagerTermBase):
+    """`knee_height_soft_floor` 的**只在 flat 生效**版本（2026-10-01，"平地上膝关节位置太低"）。
+
+    与 `MaskedBaseHeightL2Strict` **同一套家法**：`__init__` 里用 `_terrain_type_mask` 把
+    `active_terrain_names`（**白名单**，默认 `("flat",)`）算成静态 bool 掩码（地形列逐环境固定、
+    不随课程变化），`__call__` 只把内核结果乘 `self._active_mask.float()`。
+
+    白名单而非豁免名单是**有意**的：障碍地形（上箱/跨沟/上台阶）需要屈膝缓冲，膝高天然低于站姿，
+    在那里压膝高等于惩罚合法动作。用户："对膝盖接触地面限制是没用的，他只是比较低" ⇒
+    约束只管"平地上不该长期低膝"，不回传到越障姿态。
+
+    权重 **−20.0**（`Imgo2CMoERoughEnvCfg.__post_init__` 启用；`CMoERewardsCfg` 默认 0.0
+    以免影响其它任务）。它是**姿态**项、**不是**步态形状先验 ⇒ `-gaitfree` 子类**不得**归零。
+    """
+
+    #: 期望的膝 link 数（4 条小腿，对角命名 FL/FR/RL/RR）。
+    EXPECTED_KNEE_COUNT = 4
+
+    def __init__(self, cfg: RewTerm, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.active_terrain_names: tuple[str, ...] = tuple(cfg.params.get("active_terrain_names", ("flat",)))
+        self._active_mask = _terrain_type_mask(env, self.active_terrain_names)
+        # 防"静默失效"：`body_names` 打错或写成能匹配更多 link 的正则时，Σ 会少算/多算而没有报错。
+        asset_cfg = cfg.params.get("asset_cfg")
+        body_ids = getattr(asset_cfg, "body_ids", None)
+        if isinstance(body_ids, (list, tuple)) and len(body_ids) != self.EXPECTED_KNEE_COUNT:
+            raise ValueError(
+                f"knee_height_flat expects exactly {self.EXPECTED_KNEE_COUNT} knee bodies (`.*_SHANK`), "
+                f"got {len(body_ids)} from asset_cfg={asset_cfg!r}"
+            )
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        min_height: float,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=".*_SHANK"),
+        active_terrain_names: tuple[str, ...] = ("flat",),
+    ) -> torch.Tensor:
+        del active_terrain_names  # 已在 __init__ 缓存为静态掩码
+        reward = knee_height_soft_floor(env, min_height, asset_cfg)
         return reward * self._active_mask.float()
 
 
