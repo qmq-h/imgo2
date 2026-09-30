@@ -1,9 +1,12 @@
 """`check_reward_overrides.py` 自身的回归测试（只用标准库，不需要 Isaac Lab）。
 
 守两件事：
-1. 它读出的 **CMoE 最终生效奖励集** 与当前定稿一致（`cmoe` **29 项** / `cmoe-gaitfree` **25 项**、
+1. 它读出的 **CMoE 最终生效奖励集** 与当前定稿一致（`cmoe` **28 项** / `cmoe-gaitfree` **24 项**、
    各 masked 类挂在正确的项上；逐项数值见本文件断言）。这套配方改过多次且被"晚赋值覆盖"坑过
    两次，值得钉住。
+   **2026-10-01**：只还原「奖励/权重」四项到 4000 轮存档口径（`lin_vel_z_l2 −2`、
+   `undesired_contacts −0.5`、`contact_forces −0.02`、`base_height_flat_l2 0.0 禁用`），
+   生效项数 29 → **28**、25 → **24**。
 2. 它**真的会报警**：把某个原本非零的项在后面赋成 0 时，必须给出 "被清零" 提示
    （自检用一次性临时文件，不动仓库里的配置）。
 """
@@ -84,40 +87,48 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         #            → 27（＋diag_air_time、diag_pair_mismatch 两个接触时序诊断，权重 1e-6）
         # 2026-09-30：27 → **29**（＋`base_height_flat_l2` −35 平地去重力门高度罚、
         #            ＋`diag_base_height` 1e-6 有符号高度误差诊断）。
-        self.assertEqual(len(self.effective), 29, f"生效项数变了：{sorted(self.effective)}")
+        # 2026-10-01：29 → **28**（只还原「奖励/权重」四项到 4000 轮存档口径：
+        #            `base_height_flat_l2` −35 → **0.0（禁用）** ⇒ 移出生效表；
+        #            `lin_vel_z_l2` −4 → −2、`undesired_contacts` −5 → −0.5、
+        #            `contact_forces` −0.1 → −0.02 三项仍非零 ⇒ 项数不变）。
+        self.assertEqual(len(self.effective), 28, f"生效项数变了：{sorted(self.effective)}")
 
     def test_vertical_velocity_penalty_restored(self):
         """2026-09-24 晚（用户："都还是蹦蹦跳跳的走的"）：竖直速度罚从"清零"改为"掩码恢复"。
 
-        2026-09-30：**−2.0 → −4.0**（治"抬脚过高/弹跳"；run @8500 的 `lin_vel_z_l2` = −0.0585
-        ⇒ vz RMS ≈ 0.17 m/s）。掩码**仍是** `("boxes", "gap")`（跃起必须免费）。
+        2026-09-30：曾 −2.0 → −4.0（治"抬脚过高/弹跳"）。
+        **2026-10-01 还原**：−4.0 → **−2.0**（与 4000 存档 L461 逐字一致）。
+        掩码**仍是** `("boxes", "gap")`（跃起必须免费）。
         """
-        self.assertEqual(self.effective["lin_vel_z_l2"], -4.0)
+        self.assertEqual(self.effective["lin_vel_z_l2"], -2.0)
         self.assertIn("MaskedLinVelZ", self.funcs["lin_vel_z_l2"])
         # 2026-09-28：feet_air_time 从 0.3 改回 **1.0**（对齐 PPO）；弹跳改由竖直速度罚 +
-        # −5.0 的机身水平罚 + 新增的 flat-only −35 高度罚管。
+        # −5.0 的机身水平罚管。
         self.assertEqual(self.effective["feet_air_time"], 1.0)
 
-    def test_flat_only_strict_height_term(self):
-        """2026-09-30（治"平地上蹲 7 cm"）：新增 flat-only、去重力门的 −35 高度罚。
+    def test_flat_only_strict_height_term_is_disabled(self):
+        """2026-10-01 还原：flat-only、去重力门的 `base_height_flat_l2` 由 −35 改回 **0.0（禁用）**。
 
-        证据：run `cmoe_v5_7_lv12cap` @8500 的 `base_height_l2` −0.0484 ⇒ 高度误差 RMS =
-        √(0.0484/10) = **0.070 m**，而代价只占任务项（+3.71/+1.37）的 ≈1%（@4000 −0.0030 ⇒ 14×）。
-        白名单 `active_terrain_names=("flat",)` ⇒ 障碍地形仍只受 `base_height_l2 −10` 约束。
+        4000 轮那份存档（`.../2026-09-29_20-16-27_cmoe_v5_5_hard/params/CMoE_env_cfg.py`）里
+        **没有**本项；term 定义与 `MaskedBaseHeightL2Strict` 类**保留**，作为"备用/可再启用"
+        （把 `__post_init__` 里那一行改回 −35 即可）。`disable_zero_weight_rewards()` 会把它移出
+        生效表 ⇒ 不得出现在 `effective` 里。
         """
-        self.assertEqual(self.effective["base_height_flat_l2"], -35.0)
+        self.assertEqual(self.weights["base_height_flat_l2"], 0.0)
+        self.assertNotIn("base_height_flat_l2", self.effective)
+        # func 仍是自定义类（作为备用保留）；它现在是"有意保留的死代码"（见下面的白名单）
         self.assertIn("MaskedBaseHeightL2Strict", self.funcs["base_height_flat_l2"])
 
     def test_signed_height_diagnostic_is_diagnostic_only(self):
-        """2026-09-30：逐列 `gait_base_height_<地形>`（有符号高度误差）只是记录（1e-6）。"""
+        """2026-09-30：逐列 `gait_base_height_<地形>`（有符号高度误差）只是记录（1e-6），**保留**。"""
         self.assertEqual(self.effective["diag_base_height"], 1e-6)
         self.assertLessEqual(abs(float(self.effective["diag_base_height"])), 1e-5)
 
-    def test_contact_penalties_strengthened(self):
-        """2026-09-30（治"膝盖往地"）：`undesired_contacts` −0.5 → **−5.0**、
-        `contact_forces` −0.02 → **−0.1**。"""
-        self.assertEqual(self.effective["undesired_contacts"], -5.0)
-        self.assertEqual(self.effective["contact_forces"], -0.1)
+    def test_contact_penalties_restored(self):
+        """2026-10-01 还原：`undesired_contacts` −5.0 → **−0.5**、
+        `contact_forces` −0.1 → **−0.02**（= 4000 时的父类默认值 `rough_env_cfg` 的 `-2e-2`）。"""
+        self.assertEqual(self.effective["undesired_contacts"], -0.5)
+        self.assertEqual(self.effective["contact_forces"], -0.02)
 
     def test_bounce_metric_is_diagnostic_only(self):
         self.assertIn("diag_bounce", self.effective)
@@ -198,7 +209,10 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
 
     def test_no_masked_func_is_dead(self):
         """带自定义 func 的项必须权重非零 —— 例外见 `INTENTIONALLY_DEAD_MASKED`。"""
-        intentionally_dead = {"feet_gait"}      # 2026-09-28 用户决定去掉相位核（保留探针读数）
+        intentionally_dead = {
+            "feet_gait",             # 2026-09-28 用户决定去掉相位核（保留探针读数）
+            "base_height_flat_l2",   # 2026-10-01 还原为 4000 口径 ⇒ 权重 0（term/类保留，改回 −35 即可再启用）
+        }
         for term in self.funcs:
             if term in intentionally_dead:
                 continue
@@ -266,19 +280,20 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
     def test_is_a_strict_subset_of_the_shaping_recipe(self):
         removed = set(self.shaping_effective) - set(self.effective)
         # 2026-09-28 起 `feet_gait` 在**两条链上都是 0**（用户："相位核去掉"）⇒ gaitfree 相对 cmoe
-        # 只再少**四项**（手工步态 shaping），生效项数 29 → **25**（2026-09-30 起两条链都多了
-        # `base_height_flat_l2` 与 `diag_base_height` —— 它们是**姿态/诊断**项，不跟着归零）。
+        # 只再少**四项**（手工步态 shaping），生效项数 29 → 25。
+        # 2026-10-01 还原后：两条链都少 `base_height_flat_l2`（权重 0 禁用）⇒ **28 → 24**。
         self.assertEqual(removed, {"joint_mirror", "feet_air_time", "feet_height_body",
                                    "feet_air_time_variance"},
                          f"gaitfree 相对 cmoe 只应少这四项，实际少了 {sorted(removed)}")
         self.assertEqual(len(self.effective), len(self.shaping_effective) - 4)
-        self.assertEqual(len(self.effective), 25, f"生效项数变了：{sorted(self.effective)}")
+        self.assertEqual(len(self.effective), 24, f"生效项数变了：{sorted(self.effective)}")
         # 2026-09-28 新增/恢复的两项**在 gaitfree 里也要有**（它们是"步态质量/姿态"，不是手工步态风格）：
         # `feet_slide −0.05`（治拖行）与 `flat_orientation_l2 −5.0`（掩码）。
         self.assertEqual(self.effective["feet_slide"], -0.05)
         self.assertEqual(self.effective["flat_orientation_l2"], -5.0)
-        # 2026-09-30 同理：flat-only 严格高度项与有符号高度诊断在 gaitfree 里**保持原值**。
-        self.assertEqual(self.effective["base_height_flat_l2"], -35.0)
+        # 2026-10-01 还原：flat-only 严格高度项已禁用（0.0、不在生效表），有符号高度诊断保留。
+        self.assertEqual(self.weights["base_height_flat_l2"], 0.0)
+        self.assertNotIn("base_height_flat_l2", self.effective)
         self.assertEqual(self.effective["diag_base_height"], 1e-6)
 
     def test_classifiers_and_diagnostics_are_kept(self):
@@ -290,7 +305,7 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
 
     def test_task_level_terms_are_untouched(self):
         for name, value in (("track_world_vel_xy_exp", 5.0), ("base_height_l2", -10.0),
-                            ("lin_vel_z_l2", -4.0), ("lin_pos_y", -0.4), ("yaw_abs", -0.2)):
+                            ("lin_vel_z_l2", -2.0), ("lin_pos_y", -0.4), ("yaw_abs", -0.2)):
             self.assertEqual(self.effective[name], value, f"{name} 不该被这条链改动")
         self.assertIn("MaskedLinVelZ", self.funcs["lin_vel_z_l2"])
 

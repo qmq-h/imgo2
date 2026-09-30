@@ -15,13 +15,19 @@
 
 `√(0.0484/10) = **0.070 m**` ⇒ 平地上蹲 7 cm，而代价只占任务项（+3.71/+1.37）的 ≈1%。
 
-四项改动（权重按用户给定，未自行调整）：
+**2026-10-01（用户）：只还原「奖励/权重」四项到 4000 轮存档口径**，本文件同步改期望值。
+基准文件（逐字可信）＝ `imgo2_rl/logs/cmoe/base_move_cmoe_rough/2026-09-29_20-16-27_cmoe_v5_5_hard/
+params/CMoE_env_cfg.py`（那次 run 实际使用的配置）。四项改动（权重按用户给定，未自行调整）：
 
 ① `mdp.diag_base_height`（1e-6 诊断）⇒ 逐列 `gait_base_height_<地形>`，**有符号**；
-② `base_height_flat_l2`（`mdp.MaskedBaseHeightL2Strict`，−35，**只在 flat**、去重力门）；
-③ `lin_vel_z_l2` −2.0 → **−4.0**（掩码仍 `("boxes", "gap")`）；
-④ `undesired_contacts` −0.5 → **−5.0**、`contact_forces` −0.02 → **−0.1**、
-   新增 DoneTerm `illegal_contact_body`（非足端、**50 N**、一行可关）。
+   ——**保留**（它是唯一的平地高度读数，不产生行为影响）；
+② `base_height_flat_l2`（`mdp.MaskedBaseHeightL2Strict`，**只在 flat**、去重力门）：
+   2026-09-30 曾启用 −35，**2026-10-01 还原为权重 0.0（禁用、移出生效表）** ——
+   term 定义与 `MaskedBaseHeightL2Strict` 类**保留**，作为"备用/可再启用"（改回 −35 即可）；
+③ `lin_vel_z_l2` **还原为 −2.0**（掩码仍 `("boxes", "gap")`，掩码不动）；
+④ `undesired_contacts` **还原为 −0.5**、`contact_forces` **还原为 −0.02**
+   （= 4000 时的父类默认值 `rough_env_cfg` 的 `-2e-2`，现写成显式值）；
+   新增 DoneTerm `illegal_contact_body`（非足端、**50 N**、一行可关）**有意保留**（开关仍是 False）。
 
 本文件与 `test_masked_terrain_terms.py` 同一套路：`mdp/rewards.py` 顶层 import isaaclab
 （缺 `omni.log`）无法整模块 import，所以用 AST 抽出**真实源码**、在桩命名空间里 exec；
@@ -459,16 +465,21 @@ class TestMaskedBaseHeightL2Strict(unittest.TestCase):
 
 # --------------------------------------------------------------------------- ③④/接线（源码级）
 class TestPosturePenaltyWiring(unittest.TestCase):
-    """③ lin_vel_z_l2 −4、④ 接触罚 −5/−0.1＋50 N 终止项、② 的 −35 启用与 flat-only。"""
+    """③ lin_vel_z_l2 **−2**（还原）、④ 接触罚 **−0.5/−0.02**（还原）＋50 N 终止项、② 已禁用（权重 0、定义保留）。"""
 
     @classmethod
     def setUpClass(cls):
         cls.src = _cmoe_source()
 
-    # ------------------------------------------------------------------ ② 严格高度项接线
-    def test_strict_height_is_enabled_with_minus_35(self):
+    # ------------------------------------------------------------------ ② 严格高度项接线（已禁用）
+    def test_strict_height_is_disabled_with_zero_weight(self):
+        """2026-10-01 还原：启用权重改回 **0.0（禁用）** ⇒ 由 `disable_zero_weight_rewards()` 移出生效表。
+
+        term 定义与 `MaskedBaseHeightL2Strict` 类**保留**（作为备用/可再启用，改回 −35 即可）。
+        """
         self.assertIn("self.rewards.base_height_flat_l2.func = mdp.MaskedBaseHeightL2Strict", self.src)
-        self.assertIn("self.rewards.base_height_flat_l2.weight = -35.0", self.src)
+        self.assertIn("self.rewards.base_height_flat_l2.weight = 0.0", self.src)
+        self.assertNotIn("self.rewards.base_height_flat_l2.weight = -35.0", self.src)
 
     def test_strict_height_default_weight_is_zero_in_the_base_cfg(self):
         """`CMoERewardsCfg` 默认 **0.0** ⇒ 不影响其它任务；只在 CMoE rough 的 `__post_init__` 启用。"""
@@ -495,10 +506,11 @@ class TestPosturePenaltyWiring(unittest.TestCase):
             self.src,
         )
 
-    def test_strict_height_keeps_a_10_plus_35_stack_on_flat(self):
-        """flat 上两项同时生效 ⇒ 总强度 ≈ −45；障碍地形只有 −10（`base_height_l2` 在 rough 基类）。"""
+    def test_strict_height_stack_removed_on_flat(self):
+        """flat 上不再叠加 −35（还原后只剩 `base_height_l2` 的 −10）；障碍地形本来就只有 −10。"""
         self.assertIn("self.rewards.base_height_l2.weight = -10.0", ROUGH_CFG.read_text(encoding="utf-8"))
-        self.assertIn("self.rewards.base_height_flat_l2.weight = -35.0", self.src)
+        self.assertIn("self.rewards.base_height_flat_l2.weight = 0.0", self.src)
+        self.assertNotIn("self.rewards.base_height_flat_l2.weight = -35.0", self.src)
 
     def test_strict_height_call_signature_accepts_every_cfg_param(self):
         """`__call__` 的参数名必须覆盖 cfg 的**全部** params 键。
@@ -530,20 +542,24 @@ class TestPosturePenaltyWiring(unittest.TestCase):
         self.assertIn("base_height_l2_strict(env, target_height, asset_cfg, sensor_cfg)", body)
         self.assertIn("self._active_mask.float()", body)
 
-    # ------------------------------------------------------------------ ③ 竖直速度罚
-    def test_lin_vel_z_is_doubled_and_mask_keeps_the_jump_exemption(self):
-        self.assertIn("self.rewards.lin_vel_z_l2.weight = -4.0", self.src)
-        self.assertNotIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
+    # ------------------------------------------------------------------ ③ 竖直速度罚（已还原）
+    def test_lin_vel_z_restored_and_mask_keeps_the_jump_exemption(self):
+        """2026-10-01 还原：−4.0 → **−2.0**；掩码**不动**（仍 `("boxes", "gap")`）。"""
+        self.assertIn("self.rewards.lin_vel_z_l2.weight = -2.0", self.src)
+        self.assertNotIn("self.rewards.lin_vel_z_l2.weight = -4.0", self.src)
         # 掩码保持 boxes/gap 豁免（2026-09-29 取消豁免 ⇒ "gap/boxes 过不去" ⇒ 当日回退 f7d1dc3）
         self.assertIn('self.rewards.lin_vel_z_l2.params["free_terrain_names"] = ("boxes", "gap")', self.src)
 
-    # ------------------------------------------------------------------ ④ 接触罚
-    def test_undesired_contacts_is_minus_5(self):
-        self.assertIn("self.rewards.undesired_contacts.weight = -5.0", self.src)
-        self.assertNotIn("self.rewards.undesired_contacts.weight = -0.5", self.src)
+    # ------------------------------------------------------------------ ④ 接触罚（已还原）
+    def test_undesired_contacts_restored_to_minus_half(self):
+        """2026-10-01 还原：−5.0 → **−0.5**（与 4000 存档 L407 逐字一致）。"""
+        self.assertIn("self.rewards.undesired_contacts.weight = -0.5", self.src)
+        self.assertNotIn("self.rewards.undesired_contacts.weight = -5.0", self.src)
 
-    def test_contact_forces_is_minus_point_1(self):
-        self.assertIn("self.rewards.contact_forces.weight = -0.1", self.src)
+    def test_contact_forces_restored_to_parent_default(self):
+        """2026-10-01 还原：−0.1 → **−0.02**（= 4000 时的父类默认值 `rough_env_cfg` 的 `-2e-2`）。"""
+        self.assertIn("self.rewards.contact_forces.weight = -0.02", self.src)
+        self.assertNotIn("self.rewards.contact_forces.weight = -0.1", self.src)
 
     def test_illegal_contact_body_done_term(self):
         params = _done_term_params("illegal_contact_body")
@@ -596,27 +612,32 @@ class TestEffectiveWeightsViaAudit(unittest.TestCase):
 
     def test_cmoe_effective_values(self):
         expected = {
-            "base_height_flat_l2": -35.0,
             "base_height_l2": -10.0,
-            "undesired_contacts": -5.0,
-            "contact_forces": -0.1,
-            "lin_vel_z_l2": -4.0,
+            "undesired_contacts": -0.5,
+            "contact_forces": -0.02,
+            "lin_vel_z_l2": -2.0,
             "diag_base_height": 1e-6,
         }
         for term, value in expected.items():
             self.assertEqual(self.cmoe[term], value, f"{term} 的最终生效权重不对")
+        # 2026-10-01 还原：flat-only 严格高度项已**禁用** ⇒ 权重 0、不在生效表（定义仍保留）
+        self.assertEqual(self.cmoe["base_height_flat_l2"], 0.0)
+        effective = {t: v for t, v in self.cmoe.items() if isinstance(v, (int, float)) and v != 0}
+        self.assertNotIn("base_height_flat_l2", effective)
 
     def test_gaitfree_keeps_the_posture_terms(self):
-        for term, value in (("base_height_flat_l2", -35.0), ("lin_vel_z_l2", -4.0),
-                            ("undesired_contacts", -5.0), ("contact_forces", -0.1)):
+        for term, value in (("lin_vel_z_l2", -2.0), ("undesired_contacts", -0.5),
+                            ("contact_forces", -0.02)):
             self.assertEqual(self.gaitfree[term], value, f"{term} 在 -gaitfree 链里被改动了")
+        # 严格高度项在两条链上都是 0.0（禁用），`-gaitfree` 不额外动它
+        self.assertEqual(self.gaitfree["base_height_flat_l2"], 0.0)
 
     def test_effective_term_counts(self):
-        """cmoe 27 → **29**（＋严格高度项、＋`diag_base_height`）；gaitfree 23 → **25**。"""
+        """2026-10-01 还原：cmoe 29 → **28**、gaitfree 25 → **24**（`base_height_flat_l2` 归零移出）。"""
         eff = {t: v for t, v in self.cmoe.items() if isinstance(v, (int, float)) and v != 0}
         eff_gf = {t: v for t, v in self.gaitfree.items() if isinstance(v, (int, float)) and v != 0}
-        self.assertEqual(len(eff), 29, f"生效项数变了：{sorted(eff)}")
-        self.assertEqual(len(eff_gf), 25, f"gaitfree 生效项数变了：{sorted(eff_gf)}")
+        self.assertEqual(len(eff), 28, f"生效项数变了：{sorted(eff)}")
+        self.assertEqual(len(eff_gf), 24, f"gaitfree 生效项数变了：{sorted(eff_gf)}")
 
 
 class TestTerrainColumnsAuditCoversTheNewMask(unittest.TestCase):
