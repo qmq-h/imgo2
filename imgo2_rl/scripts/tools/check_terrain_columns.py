@@ -39,12 +39,22 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 难度改由 `terrain_generator.difficulty_range = (0.70, 0.70)` **精确固定**（等价旧"第 14 行"的名义
 0.70）⇒ 本工具对 mix-test 增加这一项的检查（`MIX_TEST_DIFFICULTY_EXPECTED`）。
 
-**2026-10-04（第四批）**：mix-test 的 `mix` 图案要**占满整条 8 m 道**（用户："mix 还是太小了…让 mix
+**2026-10-04（第四批）**：mix-test 的 `mix` 图案要**占满整条道**（用户："mix 还是太小了…让 mix
 占满整条道"）⇒ 本工具对 mix-test 再增加三项检查（**原任务 `cmoe-rough` 的判据一字未动**）：
-① `MIX_TEST_PATTERN_SPACING_SCALE` 必须等于**反算值 2.25**（`(size[0] − pattern_start_x − 尾部余量)
-/ (160·x_unit) = (8 − 0.30 − 0.50)/(160×0.02)`）；② mix 调用必须显式 `fill_stretched_gaps=True`
-（把拉开出来的空档铺成 `height=0` 可走面）；③ 图案末端 `pattern_start_x + 160·x_unit·scale` 必须
-`≥ 7.0 m`（目标：≥ 85 % 的道长）且 `≤ size[0]`（溢出保护在运行期仍会 raise，上限 2.40625 未放宽）。
+① `MIX_TEST_PATTERN_SPACING_SCALE` 必须等于**反算值**（`(size[0] − pattern_start_x − 尾部余量)
+/ (160·x_unit)`）；② mix 调用必须显式 `fill_stretched_gaps=True`（把拉开出来的空档铺成 `height=0`
+可走面）；③ 图案末端 `pattern_start_x + 160·x_unit·scale` 必须 `≥` 目标下界且 `≤ size[0]`
+（溢出保护在运行期仍会 raise，上限未放宽）。
+
+**2026-10-04（第五批）**：用户："整体地形放大，原本是10m长就改成20m长，还是布满，但是障碍数量不变，
+设置不变，只把间隔改大" ⇒ 单块瓦片 X **8 m → 20 m**（`terrain_generator.size = (20, 4)`），乘子按同一
+反算式重算为 **6.00** ⇒ 图案末端 **19.50 m**（目标下界抬到 **19.0 m**）。因此本工具：
+① `terrain_size()` 改成**按类作用域**解析（原来全文件扫描会先撞到训练类的 `(8, 4)`），现在
+`terrain_size(MIX_TEST_CLASS) = (20, 4)`、`terrain_size(TRAIN_CLASS) = (8, 4)`；
+② mix-test 分支新增"**训练侧 `size` 仍是 (8, 4)**"的核对（用户明确要求：`size` 是共享字段，只有评测
+cfg 能改）；③ 期望乘子 2.25 → **6.00**、目标下界 7.0 → **19.0**、上限 2.40625 → **6.15625**；
+④ 新增"单局时长"检查：道 20 m ÷ 1.0 m/s = 20 s ⇒ 评测 cfg 的 `episode_length_s` 必须 ≥ 25 s。
+`--task cmoe-rough` 的判据与输出**一字未改、一字未放宽**。
 """
 
 from __future__ import annotations
@@ -87,6 +97,9 @@ MASKED_NAMES = {
 
 # ------------------------------------------------------------------ 2026-10-04：按任务区分
 TRAIN_CLASS = "Imgo2CMoERoughEnvCfg"
+# 2026-10-04（第五批）：play 类（评测场景的父类）也要能按类解析 `size`/`episode_length_s`
+# ⇒ 工具补一个类名常量（原来只有训练类与评测类两个）。
+PLAY_CLASS = "Imgo2CMoERoughPlayEnvCfg"
 MIX_TEST_CLASS = "Imgo2CMoEMixTestEnvCfg"
 MIX_TEST_TASK = "Imgo2-basemove-rough-cmoe-mix-test"
 # 任务 id（或短名）→ 规范任务 id
@@ -106,11 +119,21 @@ MIX_TEST_LEVELS_EXPECTED = 1
 # 名义 14/20 = 0.70）。工具解析 `difficulty_range` 并要求上下界都等于该值。
 MIX_TEST_DIFFICULTY_EXPECTED = 0.70
 # 2026-10-04（第四批）：`mix` 图案要**占满整条道** ⇒ 乘子必须是"刚好占满"的反算值
-#   (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit) = (8 − 0.30 − 0.50)/(160 × 0.02) = 2.25
-# 与目标下界 `图案末端 ≥ 7.0 m`（≥ 85 % 的 8 m 道）。值在此**写死**，以便"常量被改错"能被工具发现
-# （常量的字面值由 `tests/test_check_terrain_columns.py` 单独钉住）。
-MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 2.25
-MIX_TEST_PATTERN_END_MIN_X = 7.0
+#   (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)
+# 第五批（用户："整体地形放大，原本是10m长就改成20m长…只把间隔改大"）：单块瓦片 X 8 m → **20 m**，
+# 同一算式重算为 `(20 − 0.30 − 0.50)/(160 × 0.02) = 6.00`，目标下界随之抬到 `图案末端 ≥ 19.0 m`
+# （≥ 95 % 的 20 m 道）。值在此**写死**，以便"常量被改错"能被工具发现（常量的字面值由
+# `tests/test_check_terrain_columns.py` 单独钉住）。
+MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 6.00
+MIX_TEST_PATTERN_END_MIN_X = 19.0
+# 单块瓦片尺寸期望值（**按类作用域**解析）：评测 cfg = (20, 4)；训练/play = (8, 4) 且**不得被改**。
+MIX_TEST_TILE_SIZE_EXPECTED = (20.0, 4.0)
+TRAIN_TILE_SIZE_EXPECTED = (8.0, 4.0)
+# 单局时长（第五批）：道 20 m ÷ 恒定 1.0 m/s = 20 s ⇒ 评测 cfg 的 `episode_length_s` 必须 ≥ 25 s
+# （留余量）。`MIX_TEST_EPISODE_LENGTH_EXPECTED` 是当前选定值（35 s），下界用于判定"够不够"。
+MIX_TEST_EPISODE_LENGTH_EXPECTED = 35.0
+MIX_TEST_EPISODE_LENGTH_MIN_S = 25.0
+MIX_TEST_FORWARD_SPEED = 1.0
 # `track_mix_terrain` 的图案最后一个索引（`pattern_start_x + 160·x_unit·scale` = 图案末端）
 MIX_PATTERN_END_UNITS = 160.0
 
@@ -227,14 +250,21 @@ def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
     return info
 
 
-def terrain_size(default: tuple[float, float] = (8.0, 4.0)) -> tuple[float, float]:
-    """单块瓦片尺寸 `terrain_generator.size`（全文件扫描：mix-test 类**不设**它，父类/训练类设）。
+def terrain_size(class_name: str = TRAIN_CLASS,
+                 default: tuple[float, float] = TRAIN_TILE_SIZE_EXPECTED) -> tuple[float, float]:
+    """**指定类**的 `terrain_generator.size`（只在该类的 `__post_init__` 里找）。
 
     2026-10-04（第四批）：mix-test 的"图案是否占满整条道"要用它核算 ⇒ 从源码里真读，不用猜。
+    2026-10-04（第五批）：`size` 是**共享字段**（父类 `Imgo2CMoERoughEnvCfg` 设 `(8, 4)`，评测类
+    显式覆盖成 `(20, 4)`）⇒ 原来的"全文件第一个匹配"会**先撞到训练类**（类定义在前）⇒ 改成
+    **按类作用域**解析。这样 `terrain_size(MIX_TEST_CLASS) = (20, 4)`、
+    `terrain_size(TRAIN_CLASS) = (8, 4)`，也就能断言"训练侧未被改"。
     """
-    tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
+    fn = class_post_init(class_name)
+    if fn is None:
+        return default
     ns = module_constants()
-    for node in ast.walk(tree):
+    for node in ast.walk(fn):
         if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
             continue
         if not _TERRAIN_SIZE.search(ast.unparse(node.targets[0])):
@@ -243,6 +273,29 @@ def terrain_size(default: tuple[float, float] = (8.0, 4.0)) -> tuple[float, floa
         if isinstance(value, (tuple, list)) and len(value) == 2:
             return (float(value[0]), float(value[1]))
     return default
+
+
+def episode_length_s(class_name: str = TRAIN_CLASS) -> float | None:
+    """**指定类**的 `episode_length_s` 赋值（只在该类的 `__post_init__` 里找；没写返回 None）。
+
+    2026-10-04（第五批）：道 20 m ÷ 1.0 m/s = 20 s ⇒ 评测场景必须把继承来的 20 s 提到 ≥ 25 s。
+    返回 `float`（取值走模块常量求值），没写则 `None`（＝沿用继承来的值）。
+    """
+    fn = class_post_init(class_name)
+    if fn is None:
+        return None
+    ns = module_constants()
+    for node in ast.walk(fn):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        if ast.unparse(node.targets[0]) != "self.episode_length_s":
+            continue
+        value = literal(node.value, ns)
+        try:
+            return float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
@@ -354,6 +407,9 @@ def mix_test_report() -> tuple[int, list[str]]:
     info = scene_overrides(MIX_TEST_CLASS)
     props: dict[str, float] = info["props"]  # type: ignore[assignment]
     num_cols = info["num_cols"] if info["num_cols"] is not None else MIX_TEST_LANES_EXPECTED
+    # 单块瓦片尺寸：**按类作用域**解析（评测 cfg 第五批覆盖成 (20,4)；训练/play 仍是 (8,4)）。
+    size = terrain_size(MIX_TEST_CLASS)
+    train_size = terrain_size(TRAIN_CLASS)
     lines: list[str] = []
     problems = 0
 
@@ -399,15 +455,33 @@ def mix_test_report() -> tuple[int, list[str]]:
             problems += 1
     if not problems:
         say(f"  ✅ 唯一地形 mix 有 {counts.get('mix', 0)} 列（num_cols={num_cols}、num_rows={info['num_rows']}）"
-            f"⇒ 网格 **20 道 × 1 难度行**（世界 8 m(X) × 80 m(Y)），难度由 difficulty_range="
-            f"({difficulty_range[0]}, {difficulty_range[1]}) 精确固定 ⇒ `--num_envs ≤ 20` 时环境 i → 第 i 道")
+            f"⇒ 网格 **{MIX_TEST_LANES_EXPECTED} 道 × {MIX_TEST_LEVELS_EXPECTED} 难度行**"
+            f"（世界 {size[0]:g} m(X) × {size[1] * MIX_TEST_LANES_EXPECTED:g} m(Y)），难度由 difficulty_range="
+            f"({difficulty_range[0]}, {difficulty_range[1]}) 精确固定 ⇒ `--num_envs ≤ "
+            f"{MIX_TEST_LANES_EXPECTED}` 时环境 i → 第 i 道")
 
+    # ------------------------------------- 2026-10-04（第五批）：瓦片放大到 20 m ＋ 训练侧不得被改
+    say(f"\n  ── 第五批检查：单块瓦片 `terrain_generator.size`（评测 {size[0]:g}×{size[1]:g} m；"
+        f"训练 {train_size[0]:g}×{train_size[1]:g} m）──")
+    if (round(size[0], 9), round(size[1], 9)) != MIX_TEST_TILE_SIZE_EXPECTED:
+        say(f"  ❌ 评测 cfg 的 `terrain_generator.size` 应为 {MIX_TEST_TILE_SIZE_EXPECTED}"
+            f"（第五批：单块瓦片 X 8 m → 20 m），实测 {size}")
+        problems += 1
+    else:
+        say(f"  ✅ 评测 cfg 的 `terrain_generator.size` = {size[0]:g}×{size[1]:g} m"
+            f"（第五批：X 由 8 m 放大到 20 m；Y 仍 4 m）")
+    if (round(train_size[0], 9), round(train_size[1], 9)) != TRAIN_TILE_SIZE_EXPECTED:
+        say(f"  ❌ **训练/play 侧**的 `terrain_generator.size` 必须仍是 {TRAIN_TILE_SIZE_EXPECTED}"
+            f"（`size` 是共享字段，只有评测 cfg 能改），实测 {train_size}")
+        problems += 1
+    else:
+        say(f"  ✅ **训练/play 侧**的 `terrain_generator.size` 仍是 {train_size[0]:g}×{train_size[1]:g} m"
+            f"（共享字段未被评测场景带偏）")
 
-    # ------------------------------------------------- 2026-10-04（第四批）：图案占满整条道
-    size = terrain_size()
+    # ------------------------------- 2026-10-04（第四/五批）：图案占满整条道 ＋ 单局时长
     mix_kwargs = (info.get("sub_terrain_calls") or {}).get("mix", {})  # type: ignore[union-attr]
     scale = module_constants().get("MIX_TEST_PATTERN_SPACING_SCALE")
-    say(f"\n  ── 第四批检查：`mix` 图案占满整条道（瓦片 size[0] = {size[0]:g} m）──")
+    say(f"\n  ── 第四/五批检查：`mix` 图案占满整条道（瓦片 size[0] = {size[0]:g} m）──")
     if scale is None:
         say("  ❌ 解析不到常量 `MIX_TEST_PATTERN_SPACING_SCALE`")
         problems += 1
@@ -442,6 +516,30 @@ def mix_test_report() -> tuple[int, list[str]]:
                 f"{offset} + 160×{x_unit}×{scale} = {end:.2f} m（占 {100.0 * end / size[0]:.2f} % 的 "
                 f"{size[0]:g} m 道），尾部平地 {tail:.2f} m；乘子上限 "
                 f"({size[0]:g}−{offset})/(160×{x_unit}) = {upper:.5f}（溢出保护**不放宽**：超限直接 raise）")
+
+    # ---------------------------- 2026-10-04（第五批）：单局时长必须够走完 20 m（1.0 m/s ⇒ 20 s）
+    episode_length = episode_length_s(MIX_TEST_CLASS)
+    train_episode_length = episode_length_s(TRAIN_CLASS)
+    needed = size[0] / MIX_TEST_FORWARD_SPEED
+    say(f"\n  ── 第五批检查：单局时长（道 {size[0]:g} m ÷ 恒定 {MIX_TEST_FORWARD_SPEED:g} m/s = "
+        f"{needed:.1f} s）──")
+    if episode_length is None:
+        say(f"  ❌ 评测 cfg 未覆盖 `episode_length_s`（继承来的默认是 20 s，正好等于走完 20 m 的时间、"
+            f"没有余量）⇒ 必须显式设为 ≥ {MIX_TEST_EPISODE_LENGTH_MIN_S:g} s")
+        problems += 1
+    elif episode_length < MIX_TEST_EPISODE_LENGTH_MIN_S - 1.0e-9:
+        say(f"  ❌ 评测 cfg 的 `episode_length_s` = {episode_length:g} s < 下界 "
+            f"{MIX_TEST_EPISODE_LENGTH_MIN_S:g} s（走完 {size[0]:g} m 要 {needed:.1f} s，余量不足）")
+        problems += 1
+    else:
+        say(f"  ✅ 评测 cfg 的 `episode_length_s` = {episode_length:g} s ≥ 下界 "
+            f"{MIX_TEST_EPISODE_LENGTH_MIN_S:g} s（走完 {size[0]:g} m 要 {needed:.1f} s，余量 "
+            f"{episode_length - needed:.1f} s）")
+    if train_episode_length is None:
+        say("  ℹ️ 训练/play 链**未**覆盖 `episode_length_s`（沿用父类 20 s）—— 本批只改评测 cfg，"
+            "训练时长一字未动")
+    else:
+        say(f"  ℹ️ 训练/play 链的 `episode_length_s` = {train_episode_length:g} s（与评测侧各自独立）")
 
     absent = sorted({n for refs in MASKED_NAMES.values() for n in refs} - set(names))
     say("  ⚠️ 本场景**只有 mix**；掩码引用但本场景**不存在**的地形名（原任务判据**不放宽**，"

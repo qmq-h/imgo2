@@ -280,6 +280,12 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
     被拉开的只是"障碍之间的平地"；整块瓦片的可走面总长 = ``size[0] − 坑总长``（尾廊会吸收拉伸量，
     因此**整块瓦片的可走面总长不随 scale 变**——随 scale 单调增的是**图案区间内**的可走面与补出的平地）。
 
+    2026-10-04（第五批，用户："整体地形放大，原本是10m长就改成20m长，还是布满，但是障碍数量不变，
+    设置不变，只把间隔改大"）：本函数**一行未改** —— 放大的是瓦片 ``cfg.size = (20, 4)``（评测场景
+    显式覆盖 `terrain_generator.size`），乘子按同一套反算式重算为 **6.00**，于是障碍数量/尺寸/高度/
+    坑深/走廊宽/难度/顺序全部照旧，只有间隔变大。``size[0]`` 参与的两处都跟着变：
+    溢出上限 (20−0.30)/(160×0.02) = **6.15625**（保护不放宽），图案末端 = 0.30+160×0.02×6.00 = **19.50 m**。
+
     **总长保护（不静默溢出）**：图案末端 = ``pattern_start_x + 160 · x_unit · scale``。超过
     ``size[0]`` 时**直接 raise ``ValueError``**（并给出该瓦片上 scale 的上限）——参照问题表 CMOE-13：
     ``track_gap_terrain`` 缺这层保护，超长时会静默截断/与邻块重叠。该保护**不因 fill 模式而放宽**。
@@ -390,10 +396,12 @@ class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
     # 见函数 docstring 的「已知偏离」：图案整体平移，保证 0.75 m 出生点落在起步平台上
     pattern_start_x: float = 0.30
     # 2026-10-04：相邻图案之间的 **X 推进量**乘子（只改间距，不改障碍自身尺寸/高度/顺序）。
-    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 2.25
-    # （＝"刚好占满整条 8 m 道"的反算值，算法见 `CMoE_env_cfg.py::MIX_TEST_PATTERN_SPACING_SCALE`）。
-    # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（size[0]=8 m、x_unit=0.02
-    # ⇒ scale ≤ 2.40625）；超出会在 `track_mix_terrain` 里直接 raise（不静默溢出）。
+    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 **6.00**
+    # （＝"刚好占满整条 **20 m** 道"的反算值，算法见 `CMoE_env_cfg.py::MIX_TEST_PATTERN_SPACING_SCALE`；
+    # 第五批把该场景的单块瓦片 X 由 8 m 放大到 20 m，乘子随之由 2.25 重算为 `(20−0.30−0.50)/(160×0.02)`）。
+    # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（mix-test 现在 size[0]=20 m、
+    # x_unit=0.02 ⇒ scale ≤ 6.15625；训练侧 size[0]=8 m ⇒ 2.40625）；超出会在 `track_mix_terrain` 里
+    # 直接 raise（不静默溢出）。
     pattern_spacing_scale: float = 1.0
     # 2026-10-04（第四批）：把"因 pattern_spacing_scale 拉开而多出来的空档"（段间、尾段）铺成
     # height=0 的可走面（原有坑宽/障碍几何不变）。默认 **False ⇒ 与改动前逐位相同**；训练侧不传它。

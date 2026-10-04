@@ -22,7 +22,7 @@ import，所以 ① 纯 PD 数学从**只依赖 torch** 的 `mdp/mix_test_pd.py`
 覆盖：PD 纯函数（零点/符号/四象限/夹取/默认增益）、命令项在桩 env 上的行为（恒定 vx、PD 写
 `vel_command_b`、世界系镜像 `vel_command_w`、站立环境归零）、配置级（只 mix、**20 条并列的 mix 道**
 （`num_cols=20`）× **唯一一行**难度（`num_rows=1`）、难度**精确固定 0.70**（`difficulty_range=(0.70,0.70)`，
-不依赖 CLI、也不再需要子类）、世界坐标 X ∈ [−4,+4] / Y ∈ [−40,+40]、速度与 heading 范围、
+不依赖 CLI、也不再需要子类）、世界坐标 X ∈ [−10,+10] / Y ∈ [−40,+40]（第五批：瓦片 X 8 m → 20 m）、速度与 heading 范围、
 不重采样、20 环境、命令项用新类）、mix 地形参数与 `cmoe_terrains.py` 默认值**逐一相等**
 （防漂移；**唯一有意偏离项**是 `proportion=1.0`）、任务注册、以及"观测/动作契约未改"。
 
@@ -57,6 +57,28 @@ import，所以 ① 纯 PD 数学从**只依赖 torch** 的 `mdp/mix_test_pd.py`
   ⚠️ **一处与字面要求的冲突（如实记录）**：**整块瓦片**的可走面总长**不随 scale 变**（
   `可走面 + 坑 = size[0]` 恒等，坑总长恒定 ⇒ 整片可走面恒为 7.64 m；尾廊会吸收拉伸量）。
   因此"可走面总长随 scale 单调增"只能对**图案区间内**的可走面成立（2.84 → 6.84 m），本文按此断言。
+
+2026-10-04（**第五批**，用户原话：「整体地形放大，原本是10m长就改成20m长，还是布满，但是障碍数量
+不变，设置不变，只把间隔改大」）：**单块瓦片的 X 由 8 m 放大到 20 m**（`terrain_generator.size =
+(20, 4)`，Y 仍 4 m），mix 课程继续**铺满整条 20 m**，而**障碍数量 / 障碍自身尺寸与高度 / 坑深 /
+走廊宽 / 难度(0.70) / 图案顺序全部不变**，只把障碍之间的间隔拉大。本文件为此：
+
+* 反算式只换 `size[0]`：`scale = (20 − 0.30 − 0.50)/(160 × 0.02) = 19.20/3.20 = 6.00`
+  ⇒ 图案末端 **19.50 m**（占 97.5 %，尾部平地 0.50 m），仍严格小于溢出上限
+  `(20 − 0.30)/(160 × 0.02) = 6.15625` ⇒ **溢出保护不放宽**；
+* `TILE_SIZE` 8 m → **20 m**、世界 X ∈ **[−10, +10]**、出生点世界 X = `0.75 − 10 = −9.25`；
+  所有与瓦片长度相关的期望值同步（坑总长仍 0.36 m、整片可走面 7.64 → **19.64 m**、
+  图案区间可走面 2.84 → **18.84 m**、补出平地 4.00 → **16.00 m**）；
+* **新增"训练/play 侧 `size` 未被改"的断言**（`size` 是 `terrain_generator` 的共享字段，
+  `Imgo2CMoERoughEnvCfg` 里仍是 `(8.0, 4.0)`；play 类也不设它）；
+* **新增单局时长断言**：道 20 m ÷ 1.0 m/s = 20 s ⇒ 评测 cfg 把继承来的 `episode_length_s = 20 s`
+  提到 **35 s**（常量 `MIX_TEST_EPISODE_LENGTH_S`），并断言 ≥ 25 s；**训练/play 的时长一字未改**；
+* `TestMixTestFilledSpawnGeometry.MEASURED` 与 docs §7 的 X 区间表**用真 trimesh 在 20 m 道上重跑**；
+  出生点 `spawn_x = 0.75` 仍在实心区间 `[0.30, 0.90]`（顶面 0）内，**前方实心地面 1.95 → 5.55 m**
+  （第一处坑 `[2.70, 2.88]` → `[6.30, 6.48]`）。**如实记录一处与用户预期的差异**：用户预期"~8 m 级"，
+  实测 **5.55 m** —— 第一处坑按既定的铺平地规则**紧贴上游块末端**，落在 6.30 m 而不是"下游块起点"
+  （8.58 m）之前；详见 `test_spawn_is_safe_at_both_scales` 的 docstring。
+  ⚠️ `scale = 1.0`（训练几何）下"前方实心"仍只有 **0.75 m**（既有 `CMOE-17` 结论不变）。
 """
 
 from __future__ import annotations
@@ -102,16 +124,23 @@ REMOVED_IMPORTER_CLASS = "Imgo2CMoEMixTestTerrainImporter"
 MIX_TEST_LANES = 20
 MIX_TEST_LEVELS = 1
 MIX_TEST_DIFFICULTY = 0.70
-# 2026-10-04（第四批）：`pattern_spacing_scale` 改成**反算的"刚好占满整条道"值**
-#   scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit) = (8 − 0.30 − 0.50)/(160 × 0.02) = 2.25
-#   ⇒ 图案末端 = 0.30 + 160 × 0.02 × 2.25 = 7.50 m（占 8 m 的 93.75 %），尾部平地 0.50 m。
-MIX_TEST_PATTERN_SPACING_SCALE = 2.25
+# 2026-10-04（第五批）：**单块瓦片 X 8 m → 20 m**（用户："整体地形放大，原本是10m长就改成20m长，
+# 还是布满，但是障碍数量不变，设置不变，只把间隔改大"）⇒ 乘子按同一反算式重算为
+#   scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit) = (20 − 0.30 − 0.50)/(160 × 0.02) = 6.00
+#   ⇒ 图案末端 = 0.30 + 160 × 0.02 × 6.00 = 19.50 m（占 20 m 的 97.5 %），尾部平地 0.50 m。
+MIX_TEST_PATTERN_SPACING_SCALE = 6.00
 MIX_TEST_TAIL_MARGIN = 0.50
-MIX_TEST_PATTERN_END_X = 7.50
+MIX_TEST_PATTERN_END_X = 19.50
 MIX_TEST_FILL_STRETCHED_GAPS = True
-# "占满整条道"的目标下界：图案末端 ≥ 7.0 m（＝≥ 85 % 的 8 m 道，用户给定）
-MIX_PATTERN_END_MIN_X = 7.0
-TILE_SIZE = (8.0, 4.0)
+# "占满整条道"的目标下界：图案末端 ≥ 19.0 m（＝≥ 95 % 的 20 m 道，随第五批的瓦片长度一起抬）
+MIX_PATTERN_END_MIN_X = 19.0
+TILE_SIZE = (20.0, 4.0)
+# 训练/play 侧仍是 `(8, 4)`（`size` 是 `terrain_generator` 的共享字段 ⇒ 只有评测 cfg 覆盖它）
+TRAIN_TILE_SIZE = (8.0, 4.0)
+# 单局时长（第五批）：道 20 m ÷ 恒定 1.0 m/s = 20 s ⇒ 评测 cfg 必须 ≥ 25 s（当前取 35 s）。
+MIX_TEST_EPISODE_LENGTH_S = 35.0
+MIX_TEST_EPISODE_LENGTH_MIN_S = 25.0
+MIX_TEST_FORWARD_SPEED = 1.0
 # 世界范围 = 单块尺寸 × 网格（行沿 X、道沿 Y）；地形整体按 (-size0·rows/2, -size1·cols/2) 居中
 WORLD_X = (-0.5 * TILE_SIZE[0] * MIX_TEST_LEVELS, 0.5 * TILE_SIZE[0] * MIX_TEST_LEVELS)
 WORLD_Y = (-0.5 * TILE_SIZE[1] * MIX_TEST_LANES, 0.5 * TILE_SIZE[1] * MIX_TEST_LANES)
@@ -623,13 +652,13 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertIn("max_init_terrain_level = 5", _class_source(PLAY_CLASS),
                       "play 的初始等级上限必须保持 5")
 
-    # --------------------------------------------------- 障碍间距乘子（第四批：占满整条道）
+    # --------------------------------------------------- 障碍间距乘子（第四/五批：占满整条道）
     def test_scene_fills_the_whole_lane(self):
-        """评测场景：乘子 = **反算的"刚好占满整条道"值 2.25** ＋ `fill_stretched_gaps = True`。
+        """评测场景：乘子 = **反算的"刚好占满整条 20 m 道"值 6.00** ＋ `fill_stretched_gaps = True`。
 
-        算式（用户第四批："让 mix 占满整条道"）：
+        算式（用户第四批："让 mix 占满整条道"；第五批只把 `size[0]` 8 → 20）：
         ``scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)``
-        ``= (8 − 0.30 − 0.50) / (160 × 0.02) = 7.20 / 3.20 = 2.25`` ⇒ 图案末端 **7.50 m**。
+        ``= (20 − 0.30 − 0.50) / (160 × 0.02) = 19.20 / 3.20 = 6.00`` ⇒ 图案末端 **19.50 m**。
         """
         call = self.assign[
             next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
@@ -640,7 +669,7 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertEqual(ast.unparse(kwargs["pattern_spacing_scale"]), "MIX_TEST_PATTERN_SPACING_SCALE")
         consts = _module_constants()
         self.assertEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], MIX_TEST_PATTERN_SPACING_SCALE)
-        self.assertEqual(MIX_TEST_PATTERN_SPACING_SCALE, 2.25)
+        self.assertEqual(MIX_TEST_PATTERN_SPACING_SCALE, 6.00)
         self.assertAlmostEqual(
             consts["MIX_TEST_TAIL_MARGIN"], MIX_TEST_TAIL_MARGIN, places=9
         )
@@ -695,35 +724,97 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         scale = MIX_TEST_PATTERN_SPACING_SCALE
         size_x = TILE_SIZE[0]
         end = offset + MIX_PATTERN_END_UNITS * x_unit * scale
-        self.assertAlmostEqual(end, 7.50, places=9, msg="占满值下图案末端应在 7.50 m")
-        self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X, "图案末端目标 ≥ 7.0 m（≥ 85 % 的 8 m 道）")
+        self.assertAlmostEqual(end, 19.50, places=9, msg="占满值下图案末端应在 19.50 m")
+        self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X, "图案末端目标 ≥ 19.0 m（≥ 95 % 的 20 m 道）")
         self.assertLess(end, size_x, f"图案总长 {end} m 必须装得进 {size_x} m 瓦片")
         self.assertAlmostEqual(size_x - end, 0.50, places=9, msg="尾部走廊应剩 0.50 m 平地")
         max_scale = (size_x - offset) / (MIX_PATTERN_END_UNITS * x_unit)
-        self.assertAlmostEqual(max_scale, 2.40625, places=9,
-                               msg="该瓦片上乘子上限 = (8 − 0.30) / (160 × 0.02) —— 未放宽")
+        self.assertAlmostEqual(max_scale, 6.15625, places=9,
+                               msg="该瓦片上乘子上限 = (20 − 0.30) / (160 × 0.02) —— 未放宽")
         self.assertLess(scale, max_scale, "选定乘子必须严格小于上限（否则 raise）")
+        # 旧的 8 m 道上的上限仍可复现（对照，证明"放宽"不是靠改公式实现的）
+        old_max = (8.0 - offset) / (MIX_PATTERN_END_UNITS * x_unit)
+        self.assertAlmostEqual(old_max, 2.40625, places=9)
 
-    def test_world_extent_is_eight_by_eighty(self):
-        """世界范围 = 单块尺寸 × 网格：**8 m(X) × 80 m(Y)**（旧方案 20 行时是 160 m × 80 m）。"""
-        self.assertNotIn("terrain_generator.size", _class_source(CFG_CLASS),
-                         "单块尺寸由父类设定，本类不得改")
-        self.assertEqual(WORLD_X, (-4.0, 4.0), "唯一一行 × 8 m ⇒ X ∈ [−4, +4]")
+    def test_world_extent_is_twenty_by_eighty(self):
+        """世界范围 = 单块尺寸 × 网格：**20 m(X) × 80 m(Y)**（第三批 8 m，第五批放大到 20 m）。"""
+        self.assertEqual(WORLD_X, (-10.0, 10.0), "唯一一行 × 20 m ⇒ X ∈ [−10, +10]")
         self.assertEqual(WORLD_Y, (-40.0, 40.0), "20 道 × 4 m ⇒ Y ∈ [−40, +40]")
         rows = _literal(self.assign["self.scene.terrain.terrain_generator.num_rows"])
         cols = _literal(self.assign["self.scene.terrain.terrain_generator.num_cols"])
         self.assertEqual((rows, cols), ("MIX_TEST_LEVELS", "MIX_TEST_LANES"))
         # 出生点在瓦片局部 x = spawn_x；瓦片被 `_get_terrain_mesh` 按 −size/2 居中、整片再按
-        # −size·rows/2 居中 ⇒ 唯一一行的世界 X 起点 = −4 ⇒ 出生点 X = spawn_x − 4 = −3.25。
-        self.assertAlmostEqual(MIX_SPAWN_X - 4.0, -3.25, places=9)
+        # −size·rows/2 居中 ⇒ 唯一一行的世界 X 起点 = −10 ⇒ 出生点 X = spawn_x − 10 = −9.25。
+        self.assertAlmostEqual(MIX_SPAWN_X - 10.0, -9.25, places=9)
 
-    def test_tile_size_is_unchanged(self):
-        """`size=(8, 4)` 由父类设定，本类不得改（训练侧仍是 20 行 ⇒ X 20×8=160 m）。"""
-        self.assertNotIn("terrain_generator.size", _class_source(CFG_CLASS))
+    def test_tile_size_is_20_for_the_test_and_8_for_training(self):
+        """**第五批硬要求**：只有评测 cfg 把 `terrain_generator.size` 改成 `(20, 4)`；
+        训练/play 两条链共享的 `size` **仍是 `(8, 4)`**（`size` 是 `terrain_generator` 的共享字段）。"""
+        cfg_body = _class_source(CFG_CLASS)
+        self.assertIn("self.scene.terrain.terrain_generator.size = MIX_TEST_TILE_SIZE", cfg_body,
+                      "评测 cfg 必须显式把 size 覆盖成常量 MIX_TEST_TILE_SIZE")
+        self.assertEqual(_module_constants()["MIX_TEST_TILE_SIZE"], TILE_SIZE)
+        # 训练类：字面量 (8.0, 4.0)，且 20 行 × 40 列不变
         train = _class_source(TRAIN_CLASS)
         self.assertIn("self.scene.terrain.terrain_generator.size = (8.0, 4.0)", train)
         self.assertIn("self.scene.terrain.terrain_generator.num_rows = 20", train)
         self.assertIn("self.scene.terrain.terrain_generator.num_cols = 40", train)
+        # play 类不碰 size（沿用训练值 8×4）
+        play = _class_source(PLAY_CLASS)
+        self.assertNotIn("terrain_generator.size", play, "play 链不得改 size")
+        # 训练类也不得写评测用的 20 m
+        self.assertNotIn("(20.0, 4.0)", train, "训练侧不得被评测的 20 m 带偏")
+        train_assign = _assignments(_post_init(CMOE_CFG, TRAIN_CLASS))
+        self.assertIn("self.scene.terrain.terrain_generator.size", train_assign,
+                      "训练类必须显式设自己的 (8, 4)——size 是共享字段，训练侧的值不能被评测场景改掉")
+        self.assertEqual(
+            ast.literal_eval(train_assign["self.scene.terrain.terrain_generator.size"]),
+            TRAIN_TILE_SIZE,
+            "训练侧 size 必须仍是 (8, 4)",
+        )
+        self.assertEqual(TRAIN_TILE_SIZE, (8.0, 4.0))
+
+    # --------------------------------------------- 单局时长（第五批：20 m 道 × 1.0 m/s ⇒ ≥ 25 s）
+    def test_episode_length_is_long_enough_for_the_twenty_metre_lane(self):
+        """⑤ 单局时长充足性：道 20 m ÷ 恒定 1.0 m/s = 20 s ⇒ 评测 cfg 必须把继承来的
+        `episode_length_s`（父类默认 **20 s**，`velocity_env_cfg.py:716`）提到 **≥ 25 s**（当前 35 s）。"""
+        consts = _module_constants()
+        self.assertAlmostEqual(consts["MIX_TEST_EPISODE_LENGTH_S"], MIX_TEST_EPISODE_LENGTH_S, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_EPISODE_LENGTH_MIN_S"], MIX_TEST_EPISODE_LENGTH_MIN_S,
+                               places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_FORWARD_SPEED"], MIX_TEST_FORWARD_SPEED, places=9)
+        self.assertEqual(MIX_TEST_EPISODE_LENGTH_S, 35.0)
+        self.assertEqual(MIX_TEST_EPISODE_LENGTH_MIN_S, 25.0)
+        # 常量层断言：≥ 25 s，且 ≥ 走完整条道所需的时间（20 m ÷ 1.0 m/s = 20 s）
+        needed = TILE_SIZE[0] / MIX_TEST_FORWARD_SPEED
+        self.assertAlmostEqual(needed, 20.0, places=9)
+        self.assertGreaterEqual(MIX_TEST_EPISODE_LENGTH_S, MIX_TEST_EPISODE_LENGTH_MIN_S,
+                                "单局时长必须 ≥ 25 s")
+        self.assertGreaterEqual(MIX_TEST_EPISODE_LENGTH_S, needed, "单局时长必须够走完 20 m")
+        self.assertGreater(MIX_TEST_EPISODE_LENGTH_S, needed, "还要留余量（不能刚好卡在走完那一刻）")
+        # 赋值必须是常量名（一处改、两处生效）
+        self.assertEqual(
+            ast.unparse(self.assign["self.episode_length_s"]), "MIX_TEST_EPISODE_LENGTH_S",
+            "评测 cfg 必须显式覆盖 episode_length_s（继承来的是 20 s，不够）",
+        )
+        # 前进速度的字面量与常量一致（`lin_vel_x` 仍写 1.0，常量只作自文档/核算）
+        ranges = _kwargs(_kwargs(self.assign["self.commands.base_velocity"])["ranges"])
+        self.assertEqual(_literal(ranges["lin_vel_x"]), (MIX_TEST_FORWARD_SPEED, MIX_TEST_FORWARD_SPEED))
+
+    def test_training_and_play_episode_length_are_untouched(self):
+        """**训练/play 的时长一字未改**：两条链的 `__post_init__` 都不得写 `self.episode_length_s`。"""
+        for name, label in ((TRAIN_CLASS, "训练"), (PLAY_CLASS, "play")):
+            with self.subTest(class_name=name):
+                assigned = _assignments(_post_init(CMOE_CFG, name))
+                self.assertNotIn("self.episode_length_s", assigned,
+                                 f"{label} 链不得改单局时长（本批只改评测 cfg）")
+                self.assertNotIn("episode_length_s", _class_source(name),
+                                 f"{label} 链源码里不应出现 episode_length_s")
+        # 继承来的默认值仍是 20 s（父类 `velocity_env_cfg.py`）
+        velocity_cfg = (ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/"
+                        "velocity_env_cfg.py").read_text(encoding="utf-8")
+        self.assertIn("self.episode_length_s = 20.0", velocity_cfg,
+                      "父类默认 20 s 是'不够用'的前提，必须仍是 20.0")
 
     def test_mix_terrain_params_match_training_defaults(self):
         """mix 的地形参数**逐字沿用训练值**（＝ `cmoe_terrains.py` 的类默认值），防两处漂移。
@@ -785,14 +876,30 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
 
     # ----------------------------------------------------------- 契约不变
     def test_observations_and_actions_are_untouched(self):
-        """**观测/动作契约不变**：新类不得改观测组、动作维度、扫描器或奖励/终止/课程。"""
+        """**观测/动作契约不变**：新类不得改观测组、动作维度、扫描器或奖励/终止/课程。
+
+        ⚠️ 唯一**有意**新增的非契约赋值是第五批的 `self.scene.terrain.terrain_generator.size`
+        （瓦片 X 8 m → 20 m）与 `self.episode_length_s`（20 s → 35 s）—— 它们由
+        `test_tile_size_is_20_for_the_test_and_8_for_training` /
+        `test_episode_length_is_long_enough_for_the_twenty_metre_lane` 单独钉死，故不在这里的禁用前缀里。
+        """
         forbidden = (
             "self.observations", "self.actions", "self.rewards", "self.terminations",
             "self.curriculum", "self.scene.height_scanner", "self.scene.robot",
-            "self.scene.terrain.terrain_generator.size", "self.decimation", "self.sim",
+            "self.decimation", "self.sim",
         )
         touched = sorted(t for t in self.assign if t.startswith(forbidden))
         self.assertEqual(touched, [], f"新类不应触碰观测/动作/奖励等契约：{touched}")
+        # 新增的非契约赋值**只允许**这两处（防止以后顺手多改）
+        allowed_extra = {
+            "self.scene.terrain.terrain_generator.size",
+            "self.episode_length_s",
+        }
+        overrides = {t for t in self.assign if t.startswith((
+            "self.scene.terrain.terrain_generator.size", "self.episode_length_s",
+        ))}
+        self.assertEqual(overrides, allowed_extra,
+                         f"非契约覆盖只允许 size / episode_length_s，实测 {sorted(overrides)}")
 
     def test_no_obs_or_action_class_terms_in_body(self):
         body = ast.get_source_segment(self.src, self.cls)
@@ -1175,9 +1282,9 @@ class TestMixTerrainGeometry(unittest.TestCase):
         """②（关键）"只拉间距、不多深坑"：**坑总长恒 0.36 m 不随 scale 增**，图案区间内的可走面
         随 scale **单调增**（增量全部来自补出的 `height=0` 平地）。
 
-        ⚠️ **如实记录一条与字面要求的冲突**：**整块瓦片**的可走面总长恒为 `size[0] − 坑总长 = 7.64 m`
-        —— 尾廊会吸收拉伸量（图案末端 3.50 → 7.50 m 时尾廊 4.50 → 0.50 m），所以"整片可走面随 scale
-        增"在几何上不可能成立。随 scale 单调增的是"图案区间内的可走面"与"补出的平地"。
+        ⚠️ **如实记录一条与字面要求的冲突**：**整块瓦片**的可走面总长恒为 `size[0] − 坑总长 = 19.64 m`
+        —— 尾廊会吸收拉伸量（20 m 道：图案末端 3.50 → 19.50 m 时尾廊 16.50 → 0.50 m），所以"整片可走面
+        随 scale 增"在几何上不可能成立。随 scale 单调增的是"图案区间内的可走面"与"补出的平地"。
         """
         spacings = (1.0, 1.25, 1.5, 2.0, MIX_TEST_PATTERN_SPACING_SCALE)
         pattern_walkable, pit_totals, fill_totals, lane_walkable = [], [], [], []
@@ -1201,18 +1308,20 @@ class TestMixTerrainGeometry(unittest.TestCase):
             [round(160.0 * MIX_X_UNIT * (s - 1.0), 6) for s in spacings],
         )
         self.assertAlmostEqual(pattern_walkable[0], 2.84, places=9, msg="scale=1.0：图案区间内 3.20 − 0.36")
-        self.assertAlmostEqual(pattern_walkable[-1], 6.84, places=9, msg="scale=2.25：图案区间内 7.20 − 0.36")
-        # 整块瓦片的可走面总长恒定（尾廊吸收拉伸量）—— 如实锁定
-        self.assertEqual([round(v, 9) for v in lane_walkable], [7.64] * len(spacings))
+        self.assertAlmostEqual(pattern_walkable[-1], 18.84, places=9,
+                               msg="scale=6.00：图案区间内 19.20 − 0.36")
+        self.assertAlmostEqual(fill_totals[-1], 16.00, places=9, msg="补出平地 = 3.2·(6.00−1)")
+        # 整块瓦片的可走面总长恒定（尾廊吸收拉伸量）—— 如实锁定（20 m 道 ⇒ 20 − 0.36）
+        self.assertEqual([round(v, 9) for v in lane_walkable], [19.64] * len(spacings))
 
-    def test_pattern_ends_past_seven_metres(self):
-        """④ 图案末端 ≥ 7.0 m（＝≥ 85 % 的 8 m 道）：反算式、常量、真几何三处一致。"""
+    def test_pattern_ends_past_nineteen_metres(self):
+        """④ 图案末端 ≥ 19.0 m（＝≥ 95 % 的 20 m 道）：反算式、常量、真几何三处一致。"""
         scale = MIX_TEST_PATTERN_SPACING_SCALE
         end = MIX_PATTERN_START_X + MIX_PATTERN_END_UNITS * MIX_X_UNIT * scale
         self.assertAlmostEqual(end, MIX_TEST_PATTERN_END_X, places=9)
-        self.assertAlmostEqual(end, 7.50, places=9)
+        self.assertAlmostEqual(end, 19.50, places=9)
         self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X)
-        self.assertGreaterEqual(end, 0.85 * TILE_SIZE[0])
+        self.assertGreaterEqual(end, 0.95 * TILE_SIZE[0])
         self.assertAlmostEqual(TILE_SIZE[0] - end, MIX_TEST_TAIL_MARGIN, places=9)
         # 反算式：scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)
         self.assertAlmostEqual(
@@ -1220,25 +1329,26 @@ class TestMixTerrainGeometry(unittest.TestCase):
             / (MIX_PATTERN_END_UNITS * MIX_X_UNIT),
             scale, places=9,
         )
-        # 真几何：尾廊从 7.50 铺到 8.00（被铺平的是 [最后一段末端 7.00, 图案末端 7.50] 这段尾段空档）
+        # 真几何：尾廊从 19.50 铺到 20.00（被铺平的是 [最后一段末端 17.50, 图案末端 19.50] 这段尾段空档）
         walk, pits = _walkable_and_pits(self._build(scale, 0.70, fill=True))
         self.assertAlmostEqual(walk[-1][0], MIX_TEST_PATTERN_END_X, places=9, msg="尾廊起点 = 图案末端")
         self.assertAlmostEqual(walk[-1][1], TILE_SIZE[0], places=9)
-        self.assertAlmostEqual(walk[-3][1], 7.00, places=9, msg="最后一段原图案块的末端不动")
-        self.assertAlmostEqual(walk[-2][0], 7.00, places=9, msg="尾段空档从 7.00 m 开始")
-        self.assertAlmostEqual(walk[-2][1], MIX_TEST_PATTERN_END_X, places=9, msg="尾段空档 0.50 m 被铺平")
+        self.assertAlmostEqual(walk[-3][1], 17.50, places=9, msg="最后一段原图案块的末端不动")
+        self.assertAlmostEqual(walk[-2][0], 17.50, places=9, msg="尾段空档从 17.50 m 开始")
+        self.assertAlmostEqual(walk[-2][1], MIX_TEST_PATTERN_END_X, places=9, msg="尾段空档 2.00 m 被铺平")
         self.assertEqual(len(pits), 2)
 
     def test_overflow_guard_is_not_relaxed_by_fill_mode(self):
-        """溢出保护**不放宽**：`fill=True` 时超限仍直接 raise，上限仍是 2.40625。"""
+        """溢出保护**不放宽**：`fill=True` 时超限仍直接 raise，上限仍是 6.15625（20 m 道）。"""
         max_spacing = (TILE_SIZE[0] - MIX_PATTERN_START_X) / (MIX_PATTERN_END_UNITS * MIX_X_UNIT)
-        self.assertAlmostEqual(max_spacing, 2.40625, places=9)
+        self.assertAlmostEqual(max_spacing, 6.15625, places=9)
         self._build(max_spacing, 0.70, fill=True)  # 不抛
         with self.assertRaises(ValueError) as ctx:
             self._build(max_spacing + 1.0e-4, 0.70, fill=True)
         self.assertIn("超出瓦片长", str(ctx.exception))
+        self.assertIn("6.1562", str(ctx.exception), "上限必须仍是 6.15625（未放宽）")
         with self.assertRaises(ValueError):
-            self._build(3.0, 0.70, fill=True)
+            self._build(7.0, 0.70, fill=True)
 
     # ------------------------------------------------------------ 2.0 = 只放大间距
     def test_two_times_spacing_only_changes_the_gaps(self):
@@ -1271,13 +1381,13 @@ class TestMixTerrainGeometry(unittest.TestCase):
 
     # ------------------------------------------------------------ 总长核算（不静默溢出）
     def test_total_length_accounting_at_two_times(self):
-        """总长核算：图案末端 6.70 m（尾部走廊 6.70→8.00）；被拉开的空间是**深坑**（见 docs）。"""
+        """总长核算（20 m 道）：图案末端 6.70 m（尾部走廊 6.70→20.00）；被拉开的空间是**深坑**（见 docs）。"""
         rows = _mesh_rows(self._build(2.0, 0.70))
         corridors = rows[1:]
         self.assertAlmostEqual(corridors[0][0], 0.00, places=9, msg="起步走廊起点不动")
         self.assertAlmostEqual(corridors[0][1], 0.30, places=9, msg="起步平台宽度 0.30 m 不变")
         self.assertAlmostEqual(corridors[-1][0], 6.70, places=9, msg="尾部走廊起点 = 图案末端 6.70 m")
-        self.assertAlmostEqual(corridors[-1][1], 8.00, places=9, msg="尾廊铺到瓦片末端")
+        self.assertAlmostEqual(corridors[-1][1], TILE_SIZE[0], places=9, msg="尾廊铺到瓦片末端")
         wide_gaps = [after[0] - before[1] for before, after in zip(corridors, corridors[1:])]
         self.assertAlmostEqual(max(wide_gaps), 0.60, places=9,
                                msg=f"最大间距（深坑）应为 0.60 m：{wide_gaps}")
@@ -1291,16 +1401,16 @@ class TestMixTerrainGeometry(unittest.TestCase):
     def test_overflow_guard_raises_instead_of_silently_clipping(self):
         """溢出保护：超出瓦片长度**直接 raise**（并给出上限），不静默截断（对照 CMOE-13）。"""
         with self.assertRaises(ValueError) as ctx:
-            self._build(2.5, 0.70)
+            self._build(6.25, 0.70)
         message = str(ctx.exception)
         self.assertIn("超出瓦片长", message)
-        self.assertIn("2.4062", message, f"应给出该瓦片上的乘子上限：{message}")
-        self.assertIn("8.3000", message, f"应给出实际总长：{message}")
+        self.assertIn("6.1562", message, f"应给出该瓦片上的乘子上限：{message}")
+        self.assertIn("20.3000", message, f"应给出实际总长：{message}")
 
     def test_max_fitting_spacing_is_the_boundary(self):
-        """上限 2.40625 = (8 − 0.30) / (160 × 0.02)：取它不 raise，再大一点就 raise。"""
+        """上限 6.15625 = (20 − 0.30) / (160 × 0.02)：取它不 raise，再大一点就 raise。"""
         max_spacing = (TILE_SIZE[0] - MIX_PATTERN_START_X) / (MIX_PATTERN_END_UNITS * MIX_X_UNIT)
-        self.assertAlmostEqual(max_spacing, 2.40625, places=9)
+        self.assertAlmostEqual(max_spacing, 6.15625, places=9)
         self._build(max_spacing, 0.70)  # 不抛异常
         with self.assertRaises(ValueError):
             self._build(max_spacing + 1.0e-4, 0.70)
@@ -1425,7 +1535,7 @@ class TestMixTestDifficultyPinning(unittest.TestCase):
         self.assertAlmostEqual(difficulty, 0.70, places=15)
         self.assertAlmostEqual(max(r[4] for r in walkable), 0.2618, places=9,
                                msg="高栏顶面 = 170·z_unit·height_scale·d")
-        # 第一处原始深坑：前 5 段首尾相接 ⇒ **上游块末端**（占满值 2.25 下 = 2.70 m，见下）；
+        # 第一处原始深坑：前 5 段首尾相接 ⇒ **上游块末端**（占满值 6.00 下 = 6.30 m，见下）；
         # d = 0.70 ⇒ gap_shrink = round(10·0.3) = 3 ⇒ 坑宽 = (72−3−60)·0.02 = 0.18 m（与 scale 无关）。
         self.assertAlmostEqual(MIX_FIRST_PIT_X, 1.50, places=9, msg="scale=1.0 时第一处坑左沿 1.50 m")
         first_pits = [(round(a, 4), round(b, 4)) for a, b in _walkable_and_pits(build(difficulty))[1]]
@@ -1433,14 +1543,14 @@ class TestMixTestDifficultyPinning(unittest.TestCase):
         for pit_x0, pit_x1 in first_pits:
             self.assertAlmostEqual(pit_x1 - pit_x0, 0.18, places=9, msg=f"坑宽与 scale 无关：{first_pits}")
         # 占满值下第一处坑紧贴上游戏块（索引 48:60）的末端：
-        #   0.30 + 60×0.02 + (2.25−1)×48×0.02 = 0.30 + 1.20 + 1.20 = 2.70 m
+        #   0.30 + 60×0.02 + (6.00−1)×48×0.02 = 0.30 + 1.20 + 4.80 = 6.30 m
         self.assertAlmostEqual(
             first_pits[0][0],
             MIX_PATTERN_START_X + 60.0 * MIX_X_UNIT
             + (MIX_TEST_PATTERN_SPACING_SCALE - 1.0) * 48.0 * MIX_X_UNIT,
             places=9,
         )
-        self.assertAlmostEqual(first_pits[0][0], 2.70, places=9)
+        self.assertAlmostEqual(first_pits[0][0], 6.30, places=9)
         # 与 d = 0.0 / 1.0 明显不同 ⇒ "固定成 0.70"是**有意义**的（不是恰好都一样）
         self.assertNotAlmostEqual(max(r[4] for r in sorted(_mesh_rows(build(0.0)), key=lambda r: r[0])
                                       if abs(r[4] + 0.50) > 1.0e-9), 0.2618, places=9)
@@ -1457,7 +1567,8 @@ class TestMixTestSpawnGeometry(unittest.TestCase):
     `-0.50 m` 深坑）；第四批之后**评测场景**已改用 `scale = 2.25 + fill_stretched_gaps = True`
     （见 `TestMixTestFilledSpawnGeometry`），这里的读数作为"不补空档会怎样"的**回归对照**保留。
 
-    实测结论（`d = 0.70`，`size = (8,4)`，`pattern_start_x = 0.30`，`fill_stretched_gaps = False`）：
+    实测结论（`d = 0.70`，`size = (20,4)`（第五批；8 m 道上这些 X 读数相同、只有"整片可走面"变），
+    `pattern_start_x = 0.30`，`fill_stretched_gaps = False`）：
 
     | scale | 出生点落在 | 前方实心地面 | 第一处坑 |
     |---|---|---|---|
@@ -1512,9 +1623,13 @@ class TestMixTestSpawnGeometry(unittest.TestCase):
         self.assertAlmostEqual(probe["pits"][0][1] - probe["pits"][0][0], 0.30, places=9)
 
     def test_walkable_total_shrinks_and_pit_total_grows_with_scale(self):
-        """乘子越大 ⇒ 可走面总长越小、坑总长越大（"拉开间距"实际是"更多/更长的深坑"，与 docs §6.2 一致）。"""
+        """乘子越大 ⇒ 可走面总长越小、坑总长越大（"拉开间距"实际是"更多/更长的深坑"，与 docs §6.2 一致）。
+
+        20 m 道（第五批）：`可走面 + 坑 = size[0]` ⇒ 可走面 19.64 / 18.04 / 16.44 m，坑 0.36 / 1.96 / 3.56 m
+        （坑总长与瓦片长度无关，可走面＝20 − 坑总长）。
+        """
         probes = [self._spawn(s) for s in (1.0, 1.5, 2.0)]
-        self.assertEqual([round(p["walkable_total"], 4) for p in probes], [7.64, 6.04, 4.44])
+        self.assertEqual([round(p["walkable_total"], 4) for p in probes], [19.64, 18.04, 16.44])
         self.assertEqual([round(p["pit_total"], 4) for p in probes], [0.36, 1.96, 3.56])
         for smaller, bigger in zip(probes, probes[1:]):
             self.assertLess(bigger["walkable_total"], smaller["walkable_total"])
@@ -1524,23 +1639,29 @@ class TestMixTestSpawnGeometry(unittest.TestCase):
 # =========================== ③.7b 出生点真几何（第四批：铺平地之后的 `fill_stretched_gaps=True`）
 @unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
 class TestMixTestFilledSpawnGeometry(unittest.TestCase):
-    """第四批规格：`spawn_x = 0.75` 必须落在**实心可走面**上、**前方实心 ≥ 1.0 m**（覆盖
-    `scale ∈ {1.0, 反算值 2.25}`）。读数＝桩 `isaaclab` ＋ **真 `trimesh`** 真跑 `track_mix_terrain`。
+    """第四/五批规格：`spawn_x = 0.75` 必须落在**实心可走面**上、**前方实心 ≥ 1.0 m**（覆盖
+    `scale ∈ {1.0, 反算值 6.00}`）。读数＝桩 `isaaclab` ＋ **真 `trimesh`** 真跑 `track_mix_terrain`。
 
-    实测（`d = 0.70`、`size = (8,4)`、`pattern_start_x = 0.30`、`fill_stretched_gaps = True`）：
+    实测（`d = 0.70`、`size = (20,4)`（第五批把瓦片 X 由 8 m 放大到 20 m）、`pattern_start_x = 0.30`、
+    `fill_stretched_gaps = True`）：
 
     | scale | 出生点落在 | 前方实心地面 | 第一处坑 | 坑总长 | 整片可走面 |
     |---|---|---|---|---|---|
-    | 1.0 | `[0.30, 0.90]` 顶面 0.00 m | 0.75 m | `[1.50, 1.68]`（宽 0.18） | 0.36 m | 7.64 m |
-    | **2.25（本场景）** | `[0.30, 0.90]` 顶面 0.00 m | **1.95 m** | `[2.70, 2.88]`（宽 0.18） | 0.36 m | 7.64 m |
+    | 1.0 | `[0.30, 0.90]` 顶面 0.00 m | 0.75 m | `[1.50, 1.68]`（宽 0.18） | 0.36 m | 19.64 m |
+    | **6.00（本场景）** | `[0.30, 0.90]` 顶面 0.00 m | **5.55 m** | `[6.30, 6.48]`（宽 0.18） | 0.36 m | 19.64 m |
 
-    对照：同样 `scale = 2.25` 但**不补空档**（`fill_stretched_gaps=False`）时，第一处"坑"紧贴起步
+    对照：同样 `scale = 6.00` 但**不补空档**（`fill_stretched_gaps=False`）时，第一处"坑"紧贴起步
     平台末端（`[0.90, …]`，前方只剩 **0.15 m**，小于机身约 0.2 m 的半长）——这正是第二批/第三批记录
     的问题；`fill_stretched_gaps=True` 把这段拉开的空档铺平后**自动满足**"前方实心 ≥ 1.0 m"。
 
     ⚠️ **`scale = 1.0` 是唯一的例外**：它没有任何可拉的余量（补块列表为空）⇒ 前方实心仍是训练几何的
     **0.75 m**（< 规格的 1.0 m）。该数字只由图案与 `pattern_start_x` 决定，不动图案就改不了 —— 见
     `test_spawn_is_safe_at_both_scales` 的 docstring（**与规格的一处冲突，本轮只记录**）。
+
+    ⚠️ **与用户预期的一处差异（第五批，如实记录）**：用户预期 20 m 道下"前方实心地面 ~8 m 级"，实测
+    **5.55 m**。原因是既定的铺平地规则把"原图案本来就有的坑"放在**紧贴上游块末端**处（而不是紧贴下游
+    块）：第一处坑因此落在 `0.30 + 60×0.02 + (6.00−1)×48×0.02 = 6.30 m`，而不是下游块起点 8.58 m 前面。
+    5.55 m 仍远大于规格的 1.0 m（也大于机身尺度），但**不等于 8 m** —— 本文与测试以实测为准。
     """
 
     @classmethod
@@ -1558,36 +1679,38 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
         return _spawn_probe(self.function(difficulty, cfg)[0])
 
     # 真几何实测的 X 区间表（x0, x1, 顶面高度；保留 4 位小数 ⇒ 与上面的函数读数逐位对上）
+    # 第五批：用真 trimesh 在 **20 m 道**上重跑（`size = (20, 4)`）；`scale = 1.0` 一侧的"图案段"读数
+    # 与 8 m 道完全一致，变的只是尾廊（3.50 → 20.00 而不是 3.50 → 8.00）。
     MEASURED = {
         1.0: {
             "walkable": [
                 (0.0, 0.3, 0.0), (0.3, 0.9, 0.0), (0.9, 1.02, 0.0462), (1.02, 1.14, 0.0924),
                 (1.14, 1.26, 0.1386), (1.26, 1.5, 0.1848), (1.68, 1.98, 0.1848), (1.98, 2.02, 0.0),
                 (2.02, 2.22, 0.1478), (2.22, 2.28, 0.2618), (2.28, 2.52, 0.1848), (2.7, 3.1, 0.1848),
-                (3.1, 3.5, 0.0924), (3.5, 8.0, 0.0),
+                (3.1, 3.5, 0.0924), (3.5, 20.0, 0.0),
             ],
             "pits": [(1.5, 1.68), (2.52, 2.7)],
             "solid_ahead": 0.75,
         },
-        2.25: {
+        6.00: {
             "walkable": [
-                (0.0, 0.3, 0.0), (0.3, 0.9, 0.0), (0.9, 1.65, 0.0), (1.65, 1.77, 0.0462),
-                (1.77, 1.92, 0.0), (1.92, 2.04, 0.0924), (2.04, 2.19, 0.0), (2.19, 2.31, 0.1386),
-                (2.31, 2.46, 0.0), (2.46, 2.7, 0.1848), (2.88, 3.405, 0.0), (3.405, 3.705, 0.1848),
-                (3.705, 4.08, 0.0), (4.08, 4.12, 0.0), (4.12, 4.17, 0.0), (4.17, 4.37, 0.1478),
-                (4.37, 4.62, 0.0), (4.62, 4.68, 0.2618), (4.68, 4.755, 0.0), (4.755, 4.995, 0.1848),
-                (5.175, 5.7, 0.0), (5.7, 6.1, 0.1848), (6.1, 6.6, 0.0), (6.6, 7.0, 0.0924),
-                (7.0, 7.5, 0.0), (7.5, 8.0, 0.0),
+                (0.0, 0.3, 0.0), (0.3, 0.9, 0.0), (0.9, 3.9, 0.0), (3.9, 4.02, 0.0462),
+                (4.02, 4.62, 0.0), (4.62, 4.74, 0.0924), (4.74, 5.34, 0.0), (5.34, 5.46, 0.1386),
+                (5.46, 6.06, 0.0), (6.06, 6.3, 0.1848), (6.48, 8.58, 0.0), (8.58, 8.88, 0.1848),
+                (8.88, 10.38, 0.0), (10.38, 10.42, 0.0), (10.42, 10.62, 0.0), (10.62, 10.82, 0.1478),
+                (10.82, 11.82, 0.0), (11.82, 11.88, 0.2618), (11.88, 12.18, 0.0), (12.18, 12.42, 0.1848),
+                (12.6, 14.7, 0.0), (14.7, 15.1, 0.1848), (15.1, 17.1, 0.0), (17.1, 17.5, 0.0924),
+                (17.5, 19.5, 0.0), (19.5, 20.0, 0.0),
             ],
-            "pits": [(2.7, 2.88), (4.995, 5.175)],
-            "solid_ahead": 1.95,
+            "pits": [(6.3, 6.48), (12.42, 12.6)],
+            "solid_ahead": 5.55,
         },
     }
 
     def test_scene_spacing_is_the_reverse_computed_fill_value(self):
-        """先钉住"反算值 + 保护不放宽 + 图案末端 ≥ 7.0 m"这三条前提。"""
+        """先钉住"反算值 + 保护不放宽 + 图案末端 ≥ 19.0 m"这三条前提。"""
         max_spacing = (TILE_SIZE[0] - MIX_PATTERN_START_X) / (MIX_PATTERN_END_UNITS * MIX_X_UNIT)
-        self.assertAlmostEqual(max_spacing, 2.40625, places=9, msg="溢出上限未放宽")
+        self.assertAlmostEqual(max_spacing, 6.15625, places=9, msg="溢出上限未放宽")
         self.assertLess(MIX_TEST_PATTERN_SPACING_SCALE, max_spacing,
                         f"{MIX_TEST_PATTERN_SPACING_SCALE} 必须严格小于上限 {max_spacing}")
         self.assertAlmostEqual(
@@ -1596,20 +1719,23 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
             MIX_TEST_PATTERN_SPACING_SCALE, places=9, msg="必须是反算出来的「占满整条道」值",
         )
         end = MIX_PATTERN_START_X + MIX_PATTERN_END_UNITS * MIX_X_UNIT * MIX_TEST_PATTERN_SPACING_SCALE
-        self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X, "图案末端 ≥ 7.0 m")
+        self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X, "图案末端 ≥ 19.0 m")
         # 两张实测表必须覆盖 `{1.0, 反算值}` 两个 scale
         self.assertIn(1.0, self.MEASURED)
         self.assertIn(MIX_TEST_PATTERN_SPACING_SCALE, self.MEASURED)
 
     def test_spawn_is_safe_at_both_scales(self):
         """⑤ 出生点安全：`spawn_x = 0.75` 都在实心区间 `[0.30, 0.90]`（顶面 0.00 m）内；
-        占满值 `2.25` 下前方实心 **1.95 m ≥ 1.0 m**。
+        占满值 `6.00` 下前方实心 **5.55 m ≥ 1.0 m**。
 
         ⚠️ **与规格的一处冲突（如实记录）**：规格要求 `scale ∈ {1.0, 反算值}` 两处都满足"前方实心
         ≥ 1.0 m"，但 `scale = 1.0`（＝训练几何本身）下第一处坑恒在 `pattern_start_x + 60·x_unit =
         1.50 m` ⇒ 出生点前方只有 **0.75 m**。该数字**只由图案与 `pattern_start_x` 决定**，与补空档开关
         无关（`scale = 1.0` 时没有任何可拉的余量、补块列表为空）；要把它推到 ≥ 1.0 m 就得改
         `pattern_start_x`/图案本身 ⇒ 会破坏"默认路径逐位不变"的硬要求，**本轮不做**，只记录读数。
+
+        ⚠️ **与用户预期的一处差异（第五批）**：用户预期 20 m 道下"前方实心地面 ~8 m 级"，实测 **5.55 m**
+        —— 坑按既有规则紧贴**上游**块末端（`6.30 m`），不是下游块起点（`8.58 m`）前。仍远大于 1.0 m。
         """
         for spacing, min_ahead in ((1.0, 0.75), (MIX_TEST_PATTERN_SPACING_SCALE, 1.0)):
             with self.subTest(spacing=spacing):
@@ -1627,12 +1753,13 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
         self.assertAlmostEqual(self._spawn(1.0)["solid_ahead"], 0.75, places=9,
                                msg="scale=1.0（训练几何）：前方 0.75 m < 规格的 1.0 m —— 见 docstring")
         filled = self._spawn(MIX_TEST_PATTERN_SPACING_SCALE)
-        self.assertAlmostEqual(filled["solid_ahead"], 1.95, places=9)
-        self.assertAlmostEqual(filled["first_pit_x"], 2.70, places=9)
+        self.assertAlmostEqual(filled["solid_ahead"], 5.55, places=9,
+                               msg="第五批实测：前方实心 5.55 m（不是用户预期的 ~8 m，见 docstring）")
+        self.assertAlmostEqual(filled["first_pit_x"], 6.30, places=9)
         self.assertAlmostEqual(filled["pits"][0][1] - filled["pits"][0][0], 0.18, places=9)
 
     def test_fill_mode_is_what_keeps_the_spawn_safe_at_the_fill_scale(self):
-        """同一 `scale = 2.25`：**不补空档**时前方只剩 0.15 m（旧问题），补空档后 1.95 m。"""
+        """同一 `scale = 6.00`：**不补空档**时前方只剩 0.15 m（旧问题），补空档后 5.55 m。"""
         without = self._spawn(MIX_TEST_PATTERN_SPACING_SCALE, fill=False)
         self.assertAlmostEqual(without["first_pit_x"], 0.90, places=9, msg="不补时深坑从 0.90 m 就开始")
         self.assertAlmostEqual(without["solid_ahead"], 0.15, places=9)
@@ -1641,7 +1768,7 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
         self.assertGreater(with_fill["solid_ahead"], without["solid_ahead"] + 1.0)
 
     def test_measured_x_interval_table(self):
-        """真 trimesh 实测的"可走面 / 坑"X 区间表（对照 `scale = 1.0` 与占满值 2.25）—— 回归锁定。"""
+        """真 trimesh 实测的"可走面 / 坑"X 区间表（对照 `scale = 1.0` 与占满值 6.00，20 m 道）—— 回归锁定。"""
         for spacing, expected in self.MEASURED.items():
             with self.subTest(spacing=spacing):
                 probe = self._spawn(spacing)
@@ -1651,7 +1778,7 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
                 self.assertEqual(got_pits, expected["pits"])
                 self.assertAlmostEqual(probe["solid_ahead"], expected["solid_ahead"], places=9)
                 self.assertAlmostEqual(probe["pit_total"], 0.36, places=9, msg="坑总长与 scale 无关")
-                self.assertAlmostEqual(probe["walkable_total"], 7.64, places=9,
+                self.assertAlmostEqual(probe["walkable_total"], 19.64, places=9,
                                        msg="整片可走面 = size[0] − 坑总长（尾廊吸收拉伸量）")
 
 
