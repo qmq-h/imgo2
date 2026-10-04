@@ -55,6 +55,29 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 cfg 能改）；③ 期望乘子 2.25 → **6.00**、目标下界 7.0 → **19.0**、上限 2.40625 → **6.15625**；
 ④ 新增"单局时长"检查：道 20 m ÷ 1.0 m/s = 20 s ⇒ 评测 cfg 的 `episode_length_s` 必须 ≥ 25 s。
 `--task cmoe-rough` 的判据与输出**一字未改、一字未放宽**。
+
+**2026-10-04（第六批）**：mix 评测道的「台阶似乎只有一级」修复 ⇒ mix-test 分支的 mix 图案检查改成
+「**第六批检查：分组语义**」（组内连续／组间拉大／坑宽 0.18 m／平地铺在坑的上游），另**只报告**
+图案里其它「难组合」。**原任务 `cmoe-rough` 的判据与输出一字未改、一字未放宽**（上面的第四/五批
+段落保留作历史记录，其对应检查在第七批被替换）。
+
+**2026-10-05（第七批）**：用户说「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在一起。
+我希望是和单独的那个几个场景类似的障碍放在这个整条的（道）上」＋「每个地形要间隔开，而不是混合到
+一起放在一个位置」⇒ 评测场景的地形**由参考 `mix` 图案换成复合道**
+（`cmoe_terrains.track_composite_terrain` / `CMoETrackCompositeTerrainCfg`；`sub_terrains` 的键名
+是 `composite`）。因此本工具对 mix-test 的检查**整体换成复合道**：
+
+* 障碍清单与 **X 区间表**（种类 / `[x0,x1]` / 宽度 / 尺寸参数 / 每段平地长度）；
+* **逐对相邻障碍间隔表** + 断言「最小相邻间隔 ≥ 下界」⇒ 打印
+  `✅ 最小相邻间隔 2.3636 m ≥ 下界 1.5000 m`（用户硬约束：**所有**相邻对，不只是"坑不紧贴抬高块"）；
+* **楼梯上下紧贴**（上 4 级 + 下 4 级首尾相接、级间无平地）＋「楼梯与相邻障碍间隔 = X m ≥ 下界」；
+* **占满**整条 20 m（最后一个障碍末端 ＋ 尾段平地 = `size[0]`）；
+* **出生点**（`spawn_x = 0.75` 在实心平地上、到第一个障碍 ≥ 1.50 m）；
+* 另有一段「**训练侧 `mix` 未受影响**」：`CMoETrackMixTerrainCfg` 默认仍是 `1.0`/`False`、
+  12 段图案仍切成 3 组、4 级楼梯仍连续（评测场景已不再引用 mix 图案，相关拉间距几何继续由
+  `tests/test_cmoe_mix_test_scene.py` 用真 trimesh 锁定）。
+`--task cmoe-rough` 的判据与输出仍然**一字未改、一字未放宽**（原判据的负向对照仍在
+`tests/test_check_terrain_columns.py` 里）。
 """
 
 from __future__ import annotations
@@ -118,14 +141,6 @@ MIX_TEST_LEVELS_EXPECTED = 1
 # 唯一一行的难度：由 `terrain_generator.difficulty_range = (d, d)` 精确固定（等价旧"第 14 行"的
 # 名义 14/20 = 0.70）。工具解析 `difficulty_range` 并要求上下界都等于该值。
 MIX_TEST_DIFFICULTY_EXPECTED = 0.70
-# 2026-10-04（第四批）：`mix` 图案要**占满整条道** ⇒ 乘子必须是"刚好占满"的反算值
-#   (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)
-# 第五批（用户："整体地形放大，原本是10m长就改成20m长…只把间隔改大"）：单块瓦片 X 8 m → **20 m**，
-# 同一算式重算为 `(20 − 0.30 − 0.50)/(160 × 0.02) = 6.00`，目标下界随之抬到 `图案末端 ≥ 19.0 m`
-# （≥ 95 % 的 20 m 道）。值在此**写死**，以便"常量被改错"能被工具发现（常量的字面值由
-# `tests/test_check_terrain_columns.py` 单独钉住）。
-MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 6.00
-MIX_TEST_PATTERN_END_MIN_X = 19.0
 # 单块瓦片尺寸期望值（**按类作用域**解析）：评测 cfg = (20, 4)；训练/play = (8, 4) 且**不得被改**。
 MIX_TEST_TILE_SIZE_EXPECTED = (20.0, 4.0)
 TRAIN_TILE_SIZE_EXPECTED = (8.0, 4.0)
@@ -134,8 +149,44 @@ TRAIN_TILE_SIZE_EXPECTED = (8.0, 4.0)
 MIX_TEST_EPISODE_LENGTH_EXPECTED = 35.0
 MIX_TEST_EPISODE_LENGTH_MIN_S = 25.0
 MIX_TEST_FORWARD_SPEED = 1.0
-# `track_mix_terrain` 的图案最后一个索引（`pattern_start_x + 160·x_unit·scale` = 图案末端）
+# ======================================================================================
+# 2026-10-05（第七批）：评测场景的地形由"参考 `mix` 图案"改成**复合道**
+# （`cmoe_terrains.track_composite_terrain` ＋ `CMoETrackCompositeTerrainCfg`）⇒ 本工具对 mix-test
+# 的检查改成：**障碍清单 / 逐对相邻间隔下界 / 占满整条道 / 出生点**，并打印 X 区间表。
+# 下面这些期望值**写死**，以便"cfg 被改错"能被工具发现（常量的字面值由
+# `tests/test_check_terrain_columns.py` 单独钉住）。原任务 `--task cmoe-rough` 的判据**一字未放宽**。
+# ======================================================================================
+# `sub_terrains` 里唯一一项的键名（原来叫 `mix`）。
+MIX_TEST_SUB_TERRAIN_KEY = "composite"
+# 障碍顺序（＝`cmoe_terrains.COMPOSITE_OBSTACLE_SEQUENCE`）：坑 → 楼梯 → 箱子/台阶块 → 栏 → 坑。
+COMPOSITE_SEQUENCE_EXPECTED = ("gap", "stairs", "boxes", "hurdle", "gap")
+# d = 0.70 时每个障碍单元的宽度（m）与总宽 —— 全部由各自独立地形的难度律算出：
+#   坑 0.12 + 0.70×0.20 = 0.26；楼梯 2×4×0.30 = 2.40；箱子 2×0.44 + 1.30 = 2.18；
+#   栏 2×0.096 + 0.64 = 0.832；坑 0.26 ⇒ Σ = 5.932。
+COMPOSITE_WIDTHS_EXPECTED = (0.26, 2.40, 2.18, 0.832, 0.26)
+COMPOSITE_TOTAL_WIDTH_EXPECTED = 5.932
+# 出生平地：`first_obstacle_x = spawn_x + spawn_clearance = 0.75 + 1.50 = 2.25 m`（用户硬约束 ≥ 1.50 m）。
+COMPOSITE_SPAWN_X_EXPECTED = 0.75
+COMPOSITE_SPAWN_CLEARANCE_MIN = 1.50
+COMPOSITE_FIRST_OBSTACLE_X_EXPECTED = 2.25
+# 相邻障碍之间的**均匀平地间隔**（反算值）：`(20 − 2.25 − 5.932) / 5 = 11.818 / 5 = **2.3636 m**`
+# （5 段＝每个障碍之后各一段，最后一段是尾段）⇒ 整条道刚好占满 20.00 m。
+COMPOSITE_SPACING_EXPECTED = 2.3636
+# 间隔下界（＝`cmoe_terrains.COMPOSITE_MIN_OBSTACLE_SPACING`，用户硬约束："任意两个相邻障碍之间都必须
+# 有 ≥ obstacle_spacing 的平地"）。
+COMPOSITE_MIN_SPACING_EXPECTED = 1.50
+# 最后一个障碍末端与尾段长度（占满核算）：17.6364 + 2.3636 = 20.0000 m。
+COMPOSITE_LAST_OBSTACLE_END_EXPECTED = 17.6364
+# 楼梯：上 4 级 + 下 4 级**首尾相接**（中间没有平地），级高 0.05 + 0.70×0.15 = 0.155 m、步深 0.30 m
+# ⇒ 楼梯段总长 8 × 0.30 = 2.40 m、峰高 4 × 0.155 = 0.62 m。
+COMPOSITE_STAIR_LEVELS_EXPECTED = 4
+COMPOSITE_STAIR_STEP_HEIGHT_EXPECTED = 0.155
+COMPOSITE_STAIR_PEAK_EXPECTED = 0.62
+# `track_mix_terrain` 的图案最后一个索引（**训练侧参考**：评测场景已不再用 mix 图案，这里保留供
+# "训练侧未被改"的核算与既有回归测试使用）。
 MIX_PATTERN_END_UNITS = 160.0
+# `mix` 一侧的"占满 20 m 道"参考乘子（第五/六批的评测取值；**现只作训练侧几何参照**）。
+MIX_WIDE_SCALE_EXPECTED = 6.00
 # mix 图案的源码（第六批的分组/几何核算从它 AST 解析 `segments` 表与 cfg 默认值；只用标准库）
 CMOE_TERRAINS = (REPO / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity"
                  "/base_move/cmoe_terrains.py")
@@ -152,6 +203,31 @@ MIX_GAP_SLOTS_EXPECTED = 3
 MIX_PIT_WIDTH_EXPECTED = 0.18
 # 追加要求：补出的平地铺在**坑的上游** ⇒ 每处坑前的平地长度 = 均匀分配的一份（建议 ≥ 0.5 m）。
 MIX_UPSTREAM_FLAT_MIN_S = 0.5
+# 障碍种类的中文标签（打印 X 区间表/逐对相邻间隔表用）。
+COMPOSITE_KIND_CN = {
+    "gap": "坑（横向沟）",
+    "stairs": "楼梯（上下紧贴）",
+    "boxes": "箱子/台阶块",
+    "hurdle": "栏（薄横栏）",
+}
+
+
+def _composite_detail(kind: str, params: dict) -> str:
+    """把一个障碍单元的尺寸参数压成一行可读文本（打印 X 区间表用）。"""
+    if kind == "gap":
+        return f"坑宽 {float(params['gap_width']):.4f} m"
+    if kind == "stairs":
+        return (f"上/下各 {int(params['num_steps'])} 级，级高 {float(params['step_height']):.4f} m、"
+                f"步深 {float(params['step_depth']):.2f} m、峰高 {float(params['peak_height']):.4f} m")
+    if kind == "boxes":
+        return (f"{int(params['count'])} 块，块高 {float(params['block_height']):.4f} m、块长 "
+                f"{float(params['block_length']):.4f} m、块间距 {float(params['block_spacing']):.2f} m")
+    if kind == "hurdle":
+        lo, hi = params["height_range"]
+        return (f"{int(params['count'])} 道，栏高 {float(params['bar_height']):.4f} m"
+                f"（律区间 [{float(lo):.4f}, {float(hi):.4f}] 的中点）、厚 "
+                f"{float(params['bar_length']):.4f} m、间距 {float(params['bar_spacing']):.2f} m")
+    return ""
 
 # 类作用域的目标匹配（`ast.unparse` 用单引号，正则同时接受两种引号）
 _SUB_PROP = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion$")
@@ -164,17 +240,7 @@ _TERRAIN_SIZE = re.compile(r"terrain_generator\.size$")
 
 def module_constants() -> dict[str, object]:
     """`CMoE_env_cfg.py` 顶层的 `NAME = <可求值字面量>` 常量表（2026-10-04 起 num_cols 用常量写）。"""
-    tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
-    ns: dict[str, object] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            try:
-                ns[node.targets[0].id] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
-                    compile(ast.Expression(node.value), str(CMOE_CFG), "eval"), {}, dict(ns)
-                )
-            except Exception:
-                continue
-    return ns
+    return _top_level_constants(CMOE_CFG)
 
 
 def literal(node: ast.AST, ns: dict[str, object]) -> object:
@@ -314,26 +380,47 @@ def episode_length_s(class_name: str = TRAIN_CLASS) -> float | None:
     return None
 
 
-def mix_terrain_defaults() -> dict[str, float]:
-    """从 `cmoe_terrains.py` 读 `CMoETrackMixTerrainCfg` 的字段默认值（AST；模块级常量就地求值）。
+def _top_level_constants(path: Path) -> dict[str, object]:
+    """某个源文件顶层 `NAME = <可求值字面量>` 与 `NAME: type = <字面量>` 的常量表。
 
-    **只用标准库** ⇒ 没有 Isaac Lab / trimesh 的机器上也能复核 mix 的分组与几何。
+    两种写法都要收：`CMoE_env_cfg.py` 的 `MIX_TEST_*` 用前者，`cmoe_terrains.py` 的
+    `COMPOSITE_*`（第七批新增）用后者（带注解）。
     """
-    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
+    tree = ast.parse(Path(path).read_text(encoding="utf-8-sig"))
     ns: dict[str, object] = {}
     for node in tree.body:
+        target = value = None
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            try:
-                ns[node.targets[0].id] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
-                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, dict(ns)
-                )
-            except Exception:
-                continue
-    cls = next((n for n in tree.body
-                if isinstance(n, ast.ClassDef) and n.name == "CMoETrackMixTerrainCfg"), None)
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            target, value = node.target.id, node.value
+        if target is None:
+            continue
+        try:
+            ns[target] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
+                compile(ast.Expression(value), str(path), "eval"), {}, dict(ns)
+            )
+        except Exception:
+            continue
+    return ns
+
+
+def cmoe_module_constants() -> dict[str, object]:
+    """`cmoe_terrains.py` 顶层的常量表（2026-10-05 起复合道也用它）。"""
+    return _top_level_constants(CMOE_TERRAINS)
+
+
+def cfg_field_defaults(class_name: str) -> dict[str, object]:
+    """从 `cmoe_terrains.py` 读某个 `@configclass` 的字段默认值（AST；模块级常量就地求值）。
+
+    **只用标准库** ⇒ 没有 Isaac Lab / trimesh 的机器上也能复核地形几何。
+    """
+    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
+    ns = cmoe_module_constants()
+    cls = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name), None)
     if cls is None:
         return {}
-    out: dict[str, float] = {}
+    out: dict[str, object] = {}
     for node in cls.body:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
             try:
@@ -343,6 +430,154 @@ def mix_terrain_defaults() -> dict[str, float]:
             except Exception:
                 continue
     return out
+
+
+def mix_terrain_defaults() -> dict[str, float]:
+    """`CMoETrackMixTerrainCfg` 的字段默认值（**训练侧**参考；评测场景已改用复合道）。"""
+    return cfg_field_defaults("CMoETrackMixTerrainCfg")  # type: ignore[return-value]
+
+
+def composite_terrain_defaults() -> dict[str, object]:
+    """`CMoETrackCompositeTerrainCfg` 的字段默认值（复合道核算的兜底值）。"""
+    return cfg_field_defaults("CMoETrackCompositeTerrainCfg")
+
+
+def composite_units(difficulty: float, kwargs: dict[str, object]) -> list[dict[str, object]]:
+    """**只用标准库**重算复合道每个障碍单元的宽度/尺寸（与 `cmoe_terrains` 同一套难度律）。
+
+    `kwargs` 是 `sub_terrains['composite'] = CMoETrackCompositeTerrainCfg(...)` 的实参；缺失的字段用
+    类默认值补齐。障碍顺序取自 `cmoe_terrains.COMPOSITE_OBSTACLE_SEQUENCE`（模块级常量）。
+    """
+    defaults = composite_terrain_defaults()
+
+    def field(name: str):
+        value = kwargs.get(name, defaults.get(name))
+        if value is None:
+            raise KeyError(f"CMoETrackCompositeTerrainCfg 缺少字段 {name}")
+        return value
+
+    sequence = tuple(cmoe_module_constants().get("COMPOSITE_OBSTACLE_SEQUENCE",
+                                                 COMPOSITE_SEQUENCE_EXPECTED))
+    gap_lo, gap_hi = field("gap_width_range")           # type: ignore[misc]
+    gap_width = float(gap_lo) + difficulty * (float(gap_hi) - float(gap_lo))
+    stair_lo, stair_hi = field("stairs_step_height_range")  # type: ignore[misc]
+    step_height = float(stair_lo) + difficulty * (float(stair_hi) - float(stair_lo))
+    step_depth = float(field("stairs_step_depth"))
+    num_steps = int(field("stairs_num_steps"))
+    box_lo, box_hi = field("box_height_range")          # type: ignore[misc]
+    box_height = float(box_lo) + difficulty * (float(box_hi) - float(box_lo))
+    len_lo, len_hi = field("box_length_range")          # type: ignore[misc]
+    box_length = float(len_lo) + difficulty * (float(len_hi) - float(len_lo))
+    box_count = int(field("box_count"))
+    box_spacing = float(field("box_spacing"))
+    hurdle_lo, hurdle_hi = field("hurdle_len_range")    # type: ignore[misc]
+    hurdle_length = float(hurdle_lo) + difficulty * (float(hurdle_hi) - float(hurdle_lo))
+    hurdle_count = int(field("hurdle_count"))
+    spacing_lo, spacing_hi = field("hurdle_spacing_range")  # type: ignore[misc]
+    hurdle_gap = float(spacing_lo) + float(field("hurdle_spacing_fraction")) * (
+        float(spacing_hi) - float(spacing_lo))
+    height_min = float(field("hurdle_height_min_slope")) * difficulty
+    height_max = float(field("hurdle_height_max_base")) + float(field("hurdle_height_max_slope")) * difficulty
+    hurdle_height = height_min + float(field("hurdle_height_fraction")) * (height_max - height_min)
+
+    units: list[dict[str, object]] = []
+    for kind in sequence:
+        if kind == "gap":
+            units.append({"kind": "gap", "width": gap_width, "params": {"gap_width": gap_width}})
+        elif kind == "stairs":
+            # 上 num_steps 级 + 下 num_steps 级**首尾相接**（中间没有平地）⇒ 总长 2·n·step_depth，
+            # 峰高 n·step_height（级高序列 (1..n)·h、(n−1..0)·h）。
+            treads = [round((index + 1) * step_height, 9) for index in range(num_steps)]
+            treads += [round((num_steps - index - 1) * step_height, 9) for index in range(num_steps)]
+            units.append({
+                "kind": "stairs", "width": 2.0 * num_steps * step_depth,
+                "params": {"num_steps": num_steps, "step_count_total": 2 * num_steps,
+                           "step_height": step_height,
+                           "step_depth": step_depth, "peak_height": num_steps * step_height,
+                           "tread_tops": tuple(treads)},
+            })
+        elif kind == "boxes":
+            units.append({
+                "kind": "boxes", "width": box_count * box_length + (box_count - 1) * box_spacing,
+                "params": {"count": box_count, "block_height": box_height,
+                           "block_length": box_length, "block_spacing": box_spacing},
+            })
+        elif kind == "hurdle":
+            units.append({
+                "kind": "hurdle", "width": hurdle_count * hurdle_length + (hurdle_count - 1) * hurdle_gap,
+                "params": {"count": hurdle_count, "bar_length": hurdle_length, "bar_height": hurdle_height,
+                           "bar_spacing": hurdle_gap, "height_range": (height_min, height_max)},
+            })
+        else:  # pragma: no cover
+            raise ValueError(f"未知障碍种类 {kind!r}")
+    return units
+
+
+def composite_layout(difficulty: float, kwargs: dict[str, object],
+                     size: tuple[float, float]) -> dict[str, object]:
+    """**只用标准库**重算复合道布局（与 `cmoe_terrains.composite_track_layout` 同一套算式）。
+
+    返回 `{sequence, units, obstacles, flats, adjacent_gaps, spacing, first_obstacle_x, spawn_x,
+    spawn_clearance, total_width, last_obstacle_end, end_x, tail_length}`。真值由
+    `tests/test_check_terrain_columns.py` 与"桩 isaaclab ＋ 真 trimesh"的实跑交叉核对。
+    """
+    defaults = composite_terrain_defaults()
+
+    def field(name: str, fallback):
+        return kwargs.get(name, defaults.get(name, fallback))
+
+    units = composite_units(difficulty, kwargs)
+    spawn_x = float(field("spawn_x", COMPOSITE_SPAWN_X_EXPECTED))
+    clearance = float(field("spawn_clearance", COMPOSITE_SPAWN_CLEARANCE_MIN))
+    first_x = spawn_x + clearance
+    total_width = sum(float(unit["width"]) for unit in units)
+    count = len(units)
+    spacing_field = float(field("obstacle_spacing", -1.0))
+    if spacing_field >= 0.0:
+        spacing = spacing_field
+        auto = False
+    else:
+        spacing = (float(size[0]) - first_x - total_width) / count
+        auto = True
+    obstacles: list[dict[str, object]] = []
+    flats: list[dict[str, object]] = [
+        {"kind": "lead_in", "x0": 0.0, "x1": first_x, "length": first_x}
+    ]
+    cursor = first_x
+    for index, unit in enumerate(units):
+        obstacles.append({
+            "index": index, "kind": unit["kind"], "x0": cursor, "x1": cursor + float(unit["width"]),
+            "width": float(unit["width"]), "params": unit["params"],
+        })
+        cursor += float(unit["width"])
+        length = spacing if index < count - 1 else float(size[0]) - cursor
+        flats.append({
+            "kind": "tail" if index == count - 1 else "between", "after_index": index,
+            "x0": cursor, "x1": cursor + length, "length": length,
+        })
+        cursor += length
+    adjacent_gaps = [
+        {"pair": (obstacles[index]["kind"], obstacles[index + 1]["kind"]),
+         "x0": flats[index + 1]["x0"], "x1": flats[index + 1]["x1"],
+         "length": flats[index + 1]["length"]}
+        for index in range(count - 1)
+    ]
+    return {
+        "sequence": tuple(unit["kind"] for unit in units),
+        "units": units,
+        "obstacles": obstacles,
+        "flats": flats,
+        "adjacent_gaps": adjacent_gaps,
+        "spacing": spacing,
+        "spacing_is_auto": auto,
+        "first_obstacle_x": first_x,
+        "spawn_x": spawn_x,
+        "spawn_clearance": clearance,
+        "total_width": total_width,
+        "last_obstacle_end": obstacles[-1]["x1"],
+        "end_x": flats[-1]["x1"],
+        "tail_length": flats[-1]["length"],
+    }
 
 
 def mix_pattern_segments(difficulty: float) -> list[tuple[float, float, float]]:
@@ -606,23 +841,24 @@ def mix_test_report() -> tuple[int, list[str]]:
         lines.append(text)
         print(text)
 
-    say(f"\n=== [{MIX_TEST_TASK}] 受控测试场景（只 mix；cfg 类 {MIX_TEST_CLASS}）===")
+    say(f"\n=== [{MIX_TEST_TASK}] 受控测试场景（只**复合道**；cfg 类 {MIX_TEST_CLASS}）===")
     if not info["cleared"]:
-        say("  ❌ 该任务必须先 `sub_terrains.clear()` 再只放 mix（否则会继承基类的 11 类地形）")
+        say("  ❌ 该任务必须先 `sub_terrains.clear()` 再只放复合道（否则会继承基类的 11 类地形）")
         problems += 1
-    if list(props.keys()) != ["mix"]:
-        say(f"  ❌ 该任务的 sub_terrains 必须**有且只有** mix，实测 {list(props.keys())}")
+    if list(props.keys()) != [MIX_TEST_SUB_TERRAIN_KEY]:
+        say(f"  ❌ 该任务的 sub_terrains 必须**有且只有** `{MIX_TEST_SUB_TERRAIN_KEY}`"
+            f"（复合道），实测 {list(props.keys())}")
         problems += 1
-    elif props["mix"] != 1.0:
-        say(f"  ❌ mix 的 proportion 应为 1.0，实测 {props['mix']}")
+    elif props[MIX_TEST_SUB_TERRAIN_KEY] != 1.0:
+        say(f"  ❌ 复合道的 proportion 应为 1.0，实测 {props[MIX_TEST_SUB_TERRAIN_KEY]}")
         problems += 1
     if info["num_cols"] != MIX_TEST_LANES_EXPECTED:
-        say(f"  ❌ num_cols 应为 {MIX_TEST_LANES_EXPECTED}（＝`MIX_TEST_LANES`：20 条并列的 mix 道，"
+        say(f"  ❌ num_cols 应为 {MIX_TEST_LANES_EXPECTED}（＝`MIX_TEST_LANES`：20 条并列的道，"
             f"道数＝可同时评估的环境数上限），实测 {info['num_cols']}")
         problems += 1
     if info["num_rows"] != MIX_TEST_LEVELS_EXPECTED:
         say(f"  ❌ num_rows 应为 {MIX_TEST_LEVELS_EXPECTED}（＝`MIX_TEST_LEVELS`：只留**唯一一行**难度，"
-            f"沿世界 +X ⇒ 世界 X 只有 8 m），实测 {info['num_rows']}")
+            f"沿世界 +X ⇒ 世界 X 只有 {size[0]:g} m），实测 {info['num_rows']}")
         problems += 1
     difficulty_range = info["difficulty_range"]
     if difficulty_range != (MIX_TEST_DIFFICULTY_EXPECTED, MIX_TEST_DIFFICULTY_EXPECTED):
@@ -633,7 +869,15 @@ def mix_test_report() -> tuple[int, list[str]]:
         problems += 1
 
     names = list(props.keys())
-    counts = report([(n, props[n]) for n in names], num_cols, f"{MIX_TEST_TASK}｜只 mix（20 道并列）")
+    if not names:
+        # 防御：`sub_terrains` 解析为空（cfg 被改坏 / 无赋值）时不要崩在 `report()` 里，
+        # 而是明确报错（**这是新增的健壮性，不是放宽既有判据**）。
+        say("  ❌ 解析不到任何 `sub_terrains` 赋值 ⇒ 无法核算列数（cfg 被改坏？）")
+        problems += 1
+        counts = {}
+    else:
+        counts = report([(n, props[n]) for n in names], num_cols,
+                        f"{MIX_TEST_TASK}｜只 {MIX_TEST_SUB_TERRAIN_KEY}（20 道并列）")
     for name in names:
         if counts[name] < 1:
             say(f"  ❌ 唯一地形 '{name}' 在 num_cols={num_cols} 下 0 列 ⇒ 命令与掩码都会静默失效")
@@ -643,7 +887,9 @@ def mix_test_report() -> tuple[int, list[str]]:
                 f"实测 {counts[name]} 列")
             problems += 1
     if not problems:
-        say(f"  ✅ 唯一地形 mix 有 {counts.get('mix', 0)} 列（num_cols={num_cols}、num_rows={info['num_rows']}）"
+        say(f"  ✅ 唯一地形 {MIX_TEST_SUB_TERRAIN_KEY} 有 "
+            f"{counts.get(MIX_TEST_SUB_TERRAIN_KEY, 0)} 列（num_cols={num_cols}、"
+            f"num_rows={info['num_rows']}）"
             f"⇒ 网格 **{MIX_TEST_LANES_EXPECTED} 道 × {MIX_TEST_LEVELS_EXPECTED} 难度行**"
             f"（世界 {size[0]:g} m(X) × {size[1] * MIX_TEST_LANES_EXPECTED:g} m(Y)），难度由 difficulty_range="
             f"({difficulty_range[0]}, {difficulty_range[1]}) 精确固定 ⇒ `--num_envs ≤ "
@@ -667,113 +913,206 @@ def mix_test_report() -> tuple[int, list[str]]:
         say(f"  ✅ **训练/play 侧**的 `terrain_generator.size` 仍是 {train_size[0]:g}×{train_size[1]:g} m"
             f"（共享字段未被评测场景带偏）")
 
-    # ------------------------------- 2026-10-04（第四/五批）：图案占满整条道 ＋ 单局时长
-    mix_kwargs = (info.get("sub_terrain_calls") or {}).get("mix", {})  # type: ignore[union-attr]
-    scale = module_constants().get("MIX_TEST_PATTERN_SPACING_SCALE")
-    say(f"\n  ── 第四/五批检查：`mix` 图案占满整条道（瓦片 size[0] = {size[0]:g} m）──")
-    if scale is None:
-        say("  ❌ 解析不到常量 `MIX_TEST_PATTERN_SPACING_SCALE`")
-        problems += 1
-    elif abs(float(scale) - MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED) > 1.0e-9:  # type: ignore[arg-type]
-        say(f"  ❌ `MIX_TEST_PATTERN_SPACING_SCALE` 应为 {MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED}"
-            f"（＝「刚好占满整条道」的反算值），实测 {scale}")
-        problems += 1
-    if mix_kwargs.get("fill_stretched_gaps") is not True:
-        say(f"  ❌ mix 调用必须显式 `fill_stretched_gaps=True`（把拉开的空档铺成 height=0 可走面），"
-            f"实测 {mix_kwargs.get('fill_stretched_gaps')!r}")
-        problems += 1
-    offset = mix_kwargs.get("pattern_start_x")
-    x_unit = mix_kwargs.get("x_unit")
-    if not isinstance(offset, (int, float)) or not isinstance(x_unit, (int, float)):
-        say(f"  ❌ 解析不到 mix 的 `pattern_start_x` / `x_unit`（实测 {offset!r} / {x_unit!r}）"
-            "⇒ 无法核算图案长度")
-        problems += 1
-    elif isinstance(scale, (int, float)):
-        end = float(offset) + MIX_PATTERN_END_UNITS * float(x_unit) * float(scale)
-        tail = size[0] - end
-        upper = (size[0] - float(offset)) / (MIX_PATTERN_END_UNITS * float(x_unit))
-        if end > size[0] + 1.0e-9:
-            say(f"  ❌ 图案末端 {end:.4f} m 超出瓦片长 {size[0]:g} m（`track_mix_terrain` 的溢出保护"
-                f"会在运行期直接 raise；上限 = {upper:.5f}）")
-            problems += 1
-        elif end < MIX_TEST_PATTERN_END_MIN_X:
-            say(f"  ❌ 图案末端 {end:.4f} m < 目标 {MIX_TEST_PATTERN_END_MIN_X:g} m（未占满整条道）")
-            problems += 1
-        else:
-            say(f"  ✅ `pattern_spacing_scale` = {scale}（反算值：({size[0]:g} − {offset} − "
-                f"{tail:.2f})/(160×{x_unit})）＋ `fill_stretched_gaps=True` ⇒ 图案末端 = "
-                f"{offset} + 160×{x_unit}×{scale} = {end:.2f} m（占 {100.0 * end / size[0]:.2f} % 的 "
-                f"{size[0]:g} m 道），尾部平地 {tail:.2f} m；乘子上限 "
-                f"({size[0]:g}−{offset})/(160×{x_unit}) = {upper:.5f}（溢出保护**不放宽**：超限直接 raise）")
-
-    # ---------------- 2026-10-04（第六批）：分组语义（组内连续、组间拉大、平地铺在坑的上游）
-    # 本段**只新增检查**：原任务（`--task cmoe-rough`）与 mix-test 既有的每一条判据都一字未动。
-    say("\n  ── 第六批检查：分组语义（组内连续、组间拉大、平地铺在坑的上游）──")
-    scale_value = module_constants().get("MIX_TEST_PATTERN_SPACING_SCALE")
+    # ================== 2026-10-05（第七批）：**复合道**（障碍清单 / 逐对相邻间隔 / 占满 / 出生点）
+    # 用户原话：「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在一起。我希望是和单独的那个
+    # 几个场景类似的障碍放在这个整条的（道）上」＋「每个地形要间隔开，而不是混合到一起放在一个位置」
+    # ⇒ 评测场景的地形已换成 `track_composite_terrain`；本段是它的**离线判据**（标准库算术复算，
+    # 真 trimesh 侧的交叉核对在 `tests/test_check_terrain_columns.py` 与
+    # `tests/test_cmoe_mix_test_scene.py`）。**原任务 `cmoe-rough` 的判据一字未放宽。**
+    composite_kwargs = (info.get("sub_terrain_calls") or {}).get(MIX_TEST_SUB_TERRAIN_KEY)  # type: ignore[union-attr]
+    say(f"\n  ── 第七批检查：复合道（`{MIX_TEST_SUB_TERRAIN_KEY}`，瓦片 size[0] = {size[0]:g} m）──")
     layout: dict[str, object] | None = None
-    if not isinstance(scale_value, (int, float)):
-        say("  ❌ 解析不到常量 `MIX_TEST_PATTERN_SPACING_SCALE` ⇒ 无法核算分组几何")
+    if not isinstance(composite_kwargs, dict):
+        say(f"  ❌ 解析不到 `sub_terrains['{MIX_TEST_SUB_TERRAIN_KEY}'] = <Cfg>(...)`"
+            f"（实测 sub_terrains = {list(props)}）")
         problems += 1
     else:
+        if float(composite_kwargs.get("proportion", -1.0)) != 1.0:
+            say(f"  ❌ 复合道 `proportion` 应为 1.0，实测 {composite_kwargs.get('proportion')!r}")
+            problems += 1
         try:
-            layout = mix_group_layout(MIX_TEST_DIFFICULTY_EXPECTED, float(scale_value))
+            layout = composite_layout(MIX_TEST_DIFFICULTY_EXPECTED, composite_kwargs, size)
         except Exception as error:  # pragma: no cover - 正常仓库不会走到
-            say(f"  ❌ 核算分组几何失败（{error}）")
+            say(f"  ❌ 复核复合道布局失败（{error}）")
             problems += 1
     if layout is not None:
-        spans = list(layout["spans"])  # type: ignore[arg-type]
-        groups = list(layout["groups"])  # type: ignore[arg-type]
-        if len(spans) != MIX_CONTIGUOUS_GROUPS_EXPECTED or tuple(spans) != MIX_GROUP_SPANS_EXPECTED:
-            say(f"  ❌ 分组应为 {MIX_CONTIGUOUS_GROUPS_EXPECTED} 组 {MIX_GROUP_SPANS_EXPECTED}，"
-                f"实测 {spans}（按「原始 units 首尾相接」切）")
-            problems += 1
-        elif not all(abs(after[0] - before[1]) <= 1.0e-9
-                     for group in groups for before, after in zip(group, group[1:])):
-            say("  ❌ 组内必须逐段首尾相接（否则 4 级楼梯又会被拆成孤立小凸块）")
+        sequence = tuple(layout["sequence"])  # type: ignore[arg-type]
+        if sequence != COMPOSITE_SEQUENCE_EXPECTED:
+            say(f"  ❌ 障碍顺序应为 {COMPOSITE_SEQUENCE_EXPECTED}，实测 {sequence}")
             problems += 1
         else:
-            say(f"  ✅ 分组：按原始 units 首尾相接切成 **{len(spans)} 组** —— "
-                + "、".join(f"{a:g}→{b:g}" for a, b in spans) + "（组内逐段首尾相接 ✅）")
-        stairs = list(layout["stairs"])  # type: ignore[arg-type]
-        tops = [round(block[2], 4) for block in stairs]
-        if len(stairs) != MIX_STAIR_LEVELS_EXPECTED or tuple(tops) != MIX_STAIR_TOPS_EXPECTED:
-            say(f"  ❌ 楼梯应为同一组内首尾相接的 {MIX_STAIR_LEVELS_EXPECTED} 级、顶面 "
-                f"{MIX_STAIR_TOPS_EXPECTED}，实测 {len(stairs)} 级、顶面 {tops}")
+            say("  ✅ 障碍按类型分组顺序摆放（不混在同一小段里）："
+                + " → ".join(COMPOSITE_KIND_CN[k] for k in sequence))
+        widths = [round(float(o["width"]), 6) for o in layout["obstacles"]]  # type: ignore[union-attr]
+        if len(widths) != len(COMPOSITE_WIDTHS_EXPECTED) or any(
+            abs(got - want) > 1.0e-6 for got, want in zip(widths, COMPOSITE_WIDTHS_EXPECTED)
+        ):
+            say(f"  ❌ 各障碍宽度应为 {COMPOSITE_WIDTHS_EXPECTED}（＝各自独立地形的难度律，d = "
+                f"{MIX_TEST_DIFFICULTY_EXPECTED}），实测 {widths}")
             problems += 1
-        elif any(abs(stairs[i + 1][0] - stairs[i][1]) > 1.0e-9 for i in range(len(stairs) - 1)):
-            say("  ❌ 楼梯级间出现了空档（平地/坑）⇒ 楼梯不连续（用户反馈的「台阶似乎只有一级」）")
+        total_width = float(layout["total_width"])
+        if abs(total_width - COMPOSITE_TOTAL_WIDTH_EXPECTED) > 1.0e-6:
+            say(f"  ❌ 障碍总宽应为 {COMPOSITE_TOTAL_WIDTH_EXPECTED} m，实测 {total_width:.4f} m")
+            problems += 1
+
+        # ---------------- 障碍清单与 X 区间表（障碍 / 平地间隔 / 种类 / 尺寸）
+        say(f"  ── 障碍清单与 X 区间表（d = {MIX_TEST_DIFFICULTY_EXPECTED}，瓦片 {size[0]:g} m）──")
+        flat_list = list(layout["flats"])  # type: ignore[arg-type]
+        say(f"    [0.0000, {float(flat_list[0]['x1']):.4f}]  平地（出生平地，长 "
+            f"{float(flat_list[0]['length']):.4f} m）")
+        for index, obstacle in enumerate(layout["obstacles"]):  # type: ignore[union-attr]
+            kind = str(obstacle["kind"])
+            detail = _composite_detail(kind, obstacle["params"])  # type: ignore[arg-type]
+            say(f"    [{float(obstacle['x0']):.4f}, {float(obstacle['x1']):.4f}]  "
+                f"{COMPOSITE_KIND_CN[kind]:10s} 宽 {float(obstacle['width']):.4f} m（{detail}）")
+            flat = flat_list[index + 1]
+            tag = "尾平地" if flat["kind"] == "tail" else "平地间隔"
+            say(f"    [{float(flat['x0']):.4f}, {float(flat['x1']):.4f}]  {tag}，长 "
+                f"{float(flat['length']):.4f} m")
+        say("    ⇒ 每个障碍都用**它自己那类独立地形**的难度律（坑宽＝沟宽律、楼梯级高＝步高律、"
+            "箱子高/长＝步高/步长律、栏高＝栏高律）⇒ 尺寸逐项与独立地形一致"
+            "（真 trimesh 对照见 tests/test_cmoe_mix_test_scene.py）。")
+
+        # ---------------- **逐对相邻间隔**（硬约束：任意两个相邻障碍之间都有 ≥ obstacle_spacing 的平地）
+        min_spacing = float(composite_kwargs.get("min_obstacle_spacing", COMPOSITE_MIN_SPACING_EXPECTED))
+        say("  ── 逐对相邻障碍间隔表（硬约束：**所有**相邻对都必须 ≥ 下界）──")
+        say("    障碍对                              间隔(m)   下界(m)   是否 ≥ 下界")
+        worst = float("inf")
+        for gap in layout["adjacent_gaps"]:  # type: ignore[union-attr]
+            left, right = gap["pair"]
+            length = float(gap["length"])
+            worst = min(worst, length)
+            mark = "✅" if length >= min_spacing - 1.0e-9 else "❌"
+            say(f"    {COMPOSITE_KIND_CN[str(left)]} ↔ {COMPOSITE_KIND_CN[str(right)]:<14s} "
+                f"{length:8.4f}  {min_spacing:8.4f}   {mark}")
+        if worst + 1.0e-9 < min_spacing:
+            say(f"  ❌ 最小相邻间隔 {worst:.4f} m < 下界 {min_spacing:.4f} m ⇒ 有障碍被挤在一起")
             problems += 1
         else:
-            say(f"  ✅ 楼梯 {MIX_STAIR_LEVELS_EXPECTED} 级连续（同一组内 30:36 / 36:42 / 42:48 / 48:60，"
-                "级间**无平地**）：" + " / ".join(f"[{a:.4f},{b:.4f}] {t:.4f}" for a, b, t in stairs))
-        pit_widths = list(layout["pit_widths"])  # type: ignore[arg-type]
-        pits = list(layout["pits"])  # type: ignore[arg-type]
-        if len(pit_widths) != 2 or any(abs(w - MIX_PIT_WIDTH_EXPECTED) > 1.0e-9 for w in pit_widths):
-            say(f"  ❌ 两处坑宽应恒为 {MIX_PIT_WIDTH_EXPECTED} m，实测 "
-                f"{[round(w, 6) for w in pit_widths]}")
+            say(f"  ✅ 最小相邻间隔 {worst:.4f} m ≥ 下界 {min_spacing:.4f} m"
+                "（**每一对相邻障碍之间都有平地** ⇒ 各自独立、不混在一起）")
+        spacing = float(layout["spacing"])
+        if abs(spacing - COMPOSITE_SPACING_EXPECTED) > 1.0e-6:
+            say(f"  ❌ 均匀间隔应为反算值 {COMPOSITE_SPACING_EXPECTED} m，实测 {spacing:.4f} m")
+            problems += 1
+        if abs(min_spacing - COMPOSITE_MIN_SPACING_EXPECTED) > 1.0e-9:
+            say(f"  ❌ `min_obstacle_spacing` 应为 {COMPOSITE_MIN_SPACING_EXPECTED} m，实测 {min_spacing}")
+            problems += 1
+        first_x = float(layout["first_obstacle_x"])
+        reverse = (size[0] - first_x - total_width) / len(layout["obstacles"])  # type: ignore[arg-type]
+        say(f"  ✅ 均匀间隔 ＝ 反算值：({size[0]:g} − {first_x:.4f} − {total_width:.4f}) / "
+            f"{len(layout['obstacles'])} = **{reverse:.4f} m**"  # type: ignore[arg-type]
+            f"（{'自动反算' if layout['spacing_is_auto'] else '显式指定'}；下界 {min_spacing:.4f} m，"
+            "建议区间 (1.50, 2.50)）")
+
+        # ---------------- 楼梯：**上下紧贴**（级间没有平地）＋ 楼梯与相邻障碍之间有平地
+        stairs = [o for o in layout["obstacles"] if o["kind"] == "stairs"]  # type: ignore[union-attr]
+        if len(stairs) != 1:
+            say(f"  ❌ 复合道应恰有 1 段楼梯，实测 {len(stairs)}")
             problems += 1
         else:
-            say(f"  ✅ 两处坑宽恒 {MIX_PIT_WIDTH_EXPECTED} m（合计 0.36 m）："
-                + "、".join(f"[{a:.4f},{b:.4f}]" for a, b in pits)
-                + "（各自**紧贴下游组起点** ⇒ 平地铺在坑的上游）")
-        fills = [fill for fill in layout["fills"] if fill[1] - fill[0] > 1.0e-12]  # type: ignore[union-attr]
-        if len(fills) != MIX_GAP_SLOTS_EXPECTED:
-            say(f"  ❌ 可拉伸空档应为 {MIX_GAP_SLOTS_EXPECTED} 个（两处坑所在空档 ＋ 尾段），"
-                f"实测 {len(fills)} 个有长度的补块：{[(round(a, 3), round(b, 3)) for a, b in fills]}")
-            problems += 1
-        else:
-            upstream = [fill[1] - fill[0] for fill in fills[:2]]
-            say(f"  ✅ 补出的平地 = 160×x_unit×(scale−1) 均匀分给 **{len(fills)} 个空档**："
-                f"两处坑**上游**各 {upstream[0]:.4f} m（建议 ≥ {MIX_UPSTREAM_FLAT_MIN_S:g} m）、"
-                f"尾段 {fills[2][1] - fills[2][0]:.4f} m；坑后落点平地 **0.0000 m**"
-                "（坑后直接是下游组第一块）")
-            if any(length < MIX_UPSTREAM_FLAT_MIN_S - 1.0e-9 for length in upstream):
-                say(f"  ❌ 每处坑前的平地必须 ≥ {MIX_UPSTREAM_FLAT_MIN_S:g} m，实测 "
-                    f"{[round(v, 4) for v in upstream]}")
+            params = stairs[0]["params"]  # type: ignore[assignment]
+            level_count = int(params["step_count_total"])  # type: ignore[index]
+            tops = list(params["tread_tops"])  # type: ignore[index]
+            step_depth = float(params["step_depth"])  # type: ignore[index]
+            stair_x0 = float(stairs[0]["x0"])
+            width = float(stairs[0]["width"])
+            if level_count != 2 * COMPOSITE_STAIR_LEVELS_EXPECTED:
+                say(f"  ❌ 楼梯级数应为上 {COMPOSITE_STAIR_LEVELS_EXPECTED} + 下 "
+                    f"{COMPOSITE_STAIR_LEVELS_EXPECTED} = {2 * COMPOSITE_STAIR_LEVELS_EXPECTED} 级，"
+                    f"实测 {level_count} 级")
                 problems += 1
-    say("  ── 图案里其它「难组合」（**只报告、本轮不改**，供上层汇报）──")
-    for line in mix_hard_combinations(MIX_TEST_DIFFICULTY_EXPECTED):
-        say(f"    {line}")
+            elif abs(tops[COMPOSITE_STAIR_LEVELS_EXPECTED - 1]
+                     - COMPOSITE_STAIR_PEAK_EXPECTED) > 1.0e-9:
+                say(f"  ❌ 楼梯峰高应为 {COMPOSITE_STAIR_PEAK_EXPECTED} m"
+                    f"（= {COMPOSITE_STAIR_LEVELS_EXPECTED} × "
+                    f"{COMPOSITE_STAIR_STEP_HEIGHT_EXPECTED}），实测 "
+                    f"{tops[COMPOSITE_STAIR_LEVELS_EXPECTED - 1]}")
+                problems += 1
+            elif abs(width - 2 * COMPOSITE_STAIR_LEVELS_EXPECTED * step_depth) > 1.0e-9:
+                say(f"  ❌ 楼梯段总长应为 2 × {COMPOSITE_STAIR_LEVELS_EXPECTED} × {step_depth} = "
+                    f"{2 * COMPOSITE_STAIR_LEVELS_EXPECTED * step_depth} m，实测 {width:.4f} m")
+                problems += 1
+            else:
+                say(f"  ✅ 楼梯上下紧贴：上 {COMPOSITE_STAIR_LEVELS_EXPECTED} 级 + 下 "
+                    f"{COMPOSITE_STAIR_LEVELS_EXPECTED} 级**首尾相接、级间无平地**（金字塔形），"
+                    f"级高 {COMPOSITE_STAIR_STEP_HEIGHT_EXPECTED} m、步深 {step_depth} m、段长 "
+                    f"{width:.2f} m、峰高 {COMPOSITE_STAIR_PEAK_EXPECTED:.2f} m")
+                say("      " + " / ".join(
+                    f"[{stair_x0 + i * step_depth:.4f},{stair_x0 + (i + 1) * step_depth:.4f}] {t:.4f}"
+                    for i, t in enumerate(tops)))
+            stair_gaps = [g for g in layout["adjacent_gaps"] if "stairs" in g["pair"]]  # type: ignore[union-attr]
+            if stair_gaps:
+                lengths = [float(g["length"]) for g in stair_gaps]
+                if min(lengths) + 1.0e-9 < min_spacing:
+                    say(f"  ❌ 楼梯与相邻障碍之间的平地 {min(lengths):.4f} m < 下界 {min_spacing:.4f} m")
+                    problems += 1
+                else:
+                    say(f"  ✅ 楼梯与相邻障碍间隔 = {min(lengths):.4f} m ≥ 下界 {min_spacing:.4f} m"
+                        "（「紧贴」只指上/下楼梯之间）")
+
+        # ---------------- 占满整条道 ＋ 出生点
+        last_end = float(layout["last_obstacle_end"])
+        tail = float(layout["tail_length"])
+        end_x = float(layout["end_x"])
+        say(f"  ── 占满核算：最后一个障碍末端 {last_end:.4f} m ＋ 尾段平地 {tail:.4f} m = "
+            f"{end_x:.4f} m（瓦片 {size[0]:g} m）──")
+        if abs(end_x - size[0]) > 1.0e-6:
+            say(f"  ❌ 复合道末端 {end_x:.4f} m ≠ 瓦片长 {size[0]:g} m（未占满整条道）")
+            problems += 1
+        elif abs(last_end - COMPOSITE_LAST_OBSTACLE_END_EXPECTED) > 1.0e-6:
+            say(f"  ❌ 最后一个障碍末端应为 {COMPOSITE_LAST_OBSTACLE_END_EXPECTED} m，实测 "
+                f"{last_end:.4f} m")
+            problems += 1
+        else:
+            say(f"  ✅ 占满整条道：0 → {end_x:.4f} m（最后一段间隔＝尾段 {tail:.4f} m ≥ 下界 "
+                f"{min_spacing:.4f} m）")
+        spawn_x = float(layout["spawn_x"])
+        clearance = float(layout["spawn_clearance"])
+        if clearance + 1.0e-9 < COMPOSITE_SPAWN_CLEARANCE_MIN:
+            say(f"  ❌ `spawn_clearance` = {clearance:.4f} m < 下界 {COMPOSITE_SPAWN_CLEARANCE_MIN} m")
+            problems += 1
+        elif abs(spawn_x - COMPOSITE_SPAWN_X_EXPECTED) > 1.0e-9:
+            say(f"  ❌ `spawn_x` 应为 {COMPOSITE_SPAWN_X_EXPECTED}，实测 {spawn_x}")
+            problems += 1
+        elif abs(first_x - COMPOSITE_FIRST_OBSTACLE_X_EXPECTED) > 1.0e-9:
+            say(f"  ❌ 第一个障碍左沿应为 {COMPOSITE_FIRST_OBSTACLE_X_EXPECTED} m（= "
+                f"{COMPOSITE_SPAWN_X_EXPECTED} + {COMPOSITE_SPAWN_CLEARANCE_MIN}），实测 "
+                f"{first_x:.4f} m")
+            problems += 1
+        else:
+            say(f"  ✅ 出生点：`spawn_x` = {spawn_x} 落在 [0, {first_x:.4f}] 的实心平地上（顶面 0），"
+                f"到第一个障碍 **{first_x - spawn_x:.4f} m ≥ {COMPOSITE_SPAWN_CLEARANCE_MIN} m**")
+
+    # ---------------- 训练侧 `mix` 未受影响（**本轮不碰训练**；评测场景已不再引用 mix 图案）
+    mix_defaults = mix_terrain_defaults()
+    say("\n  ── 训练侧 `mix` 未受影响（本轮只换评测场景的地形类型）──")
+    if abs(float(mix_defaults.get("pattern_spacing_scale", -1.0)) - 1.0) > 1.0e-9 or \
+            mix_defaults.get("fill_stretched_gaps") is not False:
+        say("  ❌ `CMoETrackMixTerrainCfg` 的默认值被改了（应为 `pattern_spacing_scale=1.0`、"
+            f"`fill_stretched_gaps=False`），实测 {mix_defaults.get('pattern_spacing_scale')!r} / "
+            f"{mix_defaults.get('fill_stretched_gaps')!r}")
+        problems += 1
+    else:
+        say("  ✅ `CMoETrackMixTerrainCfg` 默认仍是 `pattern_spacing_scale = 1.0`、"
+            "`fill_stretched_gaps = False` ⇒ 训练几何逐位不变")
+    segments = mix_pattern_segments(MIX_TEST_DIFFICULTY_EXPECTED)
+    groups = mix_contiguous_groups(segments)
+    spans = [(group[0][0], group[-1][1]) for group in groups]
+    raised = [segment for group in groups
+              if group[0][0] <= 30.0 <= group[-1][1] for segment in group if segment[2] > 0.0]
+    if len(segments) != 12 or spans != list(MIX_GROUP_SPANS_EXPECTED) or \
+            len(raised) != MIX_STAIR_LEVELS_EXPECTED:
+        say(f"  ❌ 训练侧 `mix` 图案被改了（段数/分组/楼梯级数与既有结论不一致）："
+            f"{len(segments)} 段、{spans}、楼梯 {len(raised)} 级")
+        problems += 1
+    else:
+        say(f"  ✅ 训练侧 `mix` 图案 12 段、按首尾相接仍切成 {len(spans)} 组、4 级楼梯仍连续"
+            f"（拉大 {MIX_WIDE_SCALE_EXPECTED:g} 倍后的几何仍由 "
+            "`tests/test_cmoe_mix_test_scene.py` 用真 trimesh 锁定）")
+    if MIX_TEST_SUB_TERRAIN_KEY in (info.get("sub_terrain_calls") or {}):  # type: ignore[union-attr]
+        say(f"  ✅ 评测场景的 `sub_terrains` 只有 `{MIX_TEST_SUB_TERRAIN_KEY}`"
+            "（**不再引用** `CMoETrackMixTerrainCfg`）")
 
     # ---------------------------- 2026-10-04（第五批）：单局时长必须够走完 20 m（1.0 m/s ⇒ 20 s）
     episode_length = episode_length_s(MIX_TEST_CLASS)
@@ -800,7 +1139,8 @@ def mix_test_report() -> tuple[int, list[str]]:
         say(f"  ℹ️ 训练/play 链的 `episode_length_s` = {train_episode_length:g} s（与评测侧各自独立）")
 
     absent = sorted({n for refs in MASKED_NAMES.values() for n in refs} - set(names))
-    say("  ⚠️ 本场景**只有 mix**；掩码引用但本场景**不存在**的地形名（原任务判据**不放宽**，"
+    say(f"  ⚠️ 本场景**只有 `{MIX_TEST_SUB_TERRAIN_KEY}`（复合道）**；掩码引用但本场景**不存在**的"
+        "地形名（原任务判据**不放宽**，"
         "这些项在本场景恒为 0 属**预期**）：")
     if not absent:
         say("    （无）")
@@ -817,20 +1157,19 @@ def mix_test_report() -> tuple[int, list[str]]:
     if fwd is None:
         say("  ❌ 继承链里找不到 `forward_only_terrain_names`（掩码/命令会静默退化）")
         problems += 1
-    elif "mix" not in fwd:
-        say(f"  ❌ `forward_only_terrain_names` 未覆盖唯一的 mix：{fwd}")
-        problems += 1
     else:
         tag = "（继承父类）" if inherited else ""
         extra = [n for n in fwd if n not in names]
         note = ""
         if extra:
-            note = (f"；另含 {len(extra)} 个本场景不存在的地形名（{', '.join(extra)}）—— 命令项"
-                    " `MixTestVelocityCommand` 根本不读这张表，且 `is_env_assigned_to_terrain` 对未登记"
-                    " 的名字返回全 False ⇒ 在这里是**惰性**的，属预期")
-        say(f"  ✅ `forward_only_terrain_names`{tag} 覆盖 mix{note}")
+            note = (f"；名单里另含 {len(extra)} 个本场景不存在的地形名（{', '.join(extra)}）—— 命令项"
+                    " `MixTestVelocityCommand` 根本不读这张表（恒给前进 1.0 m/s），且"
+                    " `is_env_assigned_to_terrain` 对未登记的名字返回全 False ⇒ 在这里是**惰性**的，"
+                    "属预期")
+        say(f"  ✅ `forward_only_terrain_names`{tag} 存在（训练侧 11 类）{note}")
 
-    say("\n结论：" + ("test 任务只有 mix 一种地形；掩码引用的其它地形名在本场景恒为 0，属**预期** ✅"
+    say("\n结论：" + (f"test 任务只有复合道 `{MIX_TEST_SUB_TERRAIN_KEY}` 一种地形；"
+                      "掩码引用的其它地形名在本场景恒为 0，属**预期** ✅"
                       if problems == 0 else f"test 任务有 {problems} 处问题 ❌"))
     return problems, lines
 

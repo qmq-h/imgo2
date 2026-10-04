@@ -18,6 +18,7 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import My
 
 from .rough_env_cfg import Imgo2RoughEnvCfg
 from .cmoe_terrains import (
+    CMoETrackCompositeTerrainCfg,
     CMoETrackGapTerrainCfg,
     CMoETrackHurdleTerrainCfg,
     CMoETrackMixTerrainCfg,
@@ -850,60 +851,41 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
 
 
 # ======================================================================================
-# 2026-10-04（用户）：**只在 `mix` 一种地形上评测的受控测试场景**（**继承 play 任务**）。
+# 2026-10-04（用户）：**只在一种地形上评测的受控测试场景**（**继承 play 任务**）。
 #
-# 用途：在受控条件下评估策略通过 `mix`（复合障碍：窄走廊+台阶+深坑+高台+高栏）的能力，把
-# **横向漂移**与**航向漂移**从评测里剔除。本场景只改五件事：
-#   ① 地形只留 `mix`；网格 = **20 条并列的 mix 道（沿世界 Y）× 唯一一行难度（沿世界 X）**，
+# 2026-10-05（**第七批＝本轮，用户**）：「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在一起。
+# 我希望是和单独的那个几个场景类似的障碍放在这个整条的（道）上」＋「每个地形要间隔开，而不是混合到
+# 一起放在一个位置」＋（已确认的顺序与楼梯形态）⇒ **本场景的地形由"参考 `mix` 图案"改成"复合道"**
+# （`cmoe_terrains.track_composite_terrain` ＋ `CMoETrackCompositeTerrainCfg`，只在本类里实例化）：
+#
+#     出生平地 → 【坑】 → 平地间隔 → 【楼梯（上 4 级 + 下 4 级紧贴）】 → 平地间隔 →
+#     【箱子/台阶块】 → 平地间隔 → 【栏】 → 平地间隔 → 尾平地
+#
+#   每个障碍都用**它自己那类独立地形**的难度律与几何（尺寸逐项与独立地形一致，数值对照见
+#   `docs/cmoe_mix_test_scene_2026-10-04.md` 的复合道章节），**所有相邻障碍之间都是同一个
+#   `obstacle_spacing`（反算 2.3636 m ≥ 下界 1.50 m）** ⇒ 不再有"坑紧挨抬高块"、也不再有参考图案
+#   专有的 4 cm 窄槽 / 0.26 m 长尖峰。满 20 m 的反算式见下面 `MIX_TEST_OBSTACLE_SPACING` 常量注释。
+#
+# 用途：在受控条件下评估策略通过**各类独立障碍**的能力，把**横向漂移**与**航向漂移**从评测里剔除。
+# 本场景只改六件事：
+#   ① 地形只有**复合道**一类；网格 = **20 条并列的道（沿世界 Y）× 唯一一行难度（沿世界 X）**，
 #      该行由 `terrain_generator.difficulty_range = (0.70, 0.70)` **精确固定**在 d = 0.70
 #      （＝旧方案"第 14 行"的名义难度 14/20）；
 #   ② 速度指令**只给前进**（默认恒定 **1.0 m/s**）、`heading` 目标恒 0；
 #   ③ 横向与航向改由**指令层 PD 外环**负责（`mdp.MixTestVelocityCommand`）；
-#   ④ mix 图案的**障碍间距乘子**：第三批取 1.0（＝训练默认值、评测几何与训练逐位一致），
-#      第四批改为反算的 2.25（让 mix 占满整条 8 m 道）＋ `fill_stretched_gaps=True`
-#      （把拉开的空档铺成 height=0 可走面）；
-#   ⑤ **第五批：单块瓦片 X 由 8 m 放大到 20 m**（`terrain_generator.size = (20, 4)`，只改本评测
-#      场景的 `size`，训练/play 的 `terrain_generator.size` 仍是 `(8, 4)`），乘子按同一套反算式
-#      重算为 **6.00** ⇒ mix 图案继续铺满整条 20 m 道（图案末端 19.50 m）；**障碍数量、障碍自身
-#      尺寸与高度、坑深、走廊宽、难度 0.70、图案顺序全部不变**，只是障碍之间的间隔拉大。
-#      道变长 ⇒ 单局时长由继承来的 20 s 提到 **35 s**（20 m ÷ 1.0 m/s = 20 s ＋ 15 s 余量）。
-#      现状见本块末尾的第四/五批段与 docs §6。
+#   ④ **单块瓦片 X = 20 m**（第五批定下的 `size = (20, 4)`）上铺**复合道**：5 个障碍单元
+#      （坑 / 楼梯 / 箱子/台阶块 / 栏 / 坑）＋ 5 段**等长**平地（含尾段），间隔反算 =
+#      `(size[0] − first_obstacle_x − Σ障碍宽) / 5`（＝"把余量按障碍个数均分"）；
+#   ⑤ 难度 0.70、走廊宽 0.80 m、坑底 −0.50 m、单局时长 **35 s**（20 m ÷ 1.0 m/s ＋ 15 s 余量）
+#      全部沿用第五批的设定（**训练/play 的 `size` 与时长仍分别是 `(8, 4)` 与 20 s**）；
+#   ⑥ **训练/play 一律不碰**：训练仍用 `track_mix_terrain`（默认路径逐位不变，有测试护栏）。
 #
-# 2026-10-04（用户第二批要求，原话）：「地形不要按照列排，放在行里面」「都固定到14难度」
-# 「mix 中每个地形间隔大一点 ×1.5~2.0」——第二批落地为"20 道 × 20 行 + 子类钉第 14 行 + 乘子 2.0"。
-#
-# 2026-10-04（用户第三批要求，原话）：「分居了，但是我不需要还保持那么多行，我需要他们并列」
-#   ⇒ **去掉 19 行用不到的难度行**：`num_rows = 1`、`num_cols = 20`（20 条并列的道，道数不变），
-#   难度不再靠"把等级钉在第 14 行"，改成 `difficulty_range = (0.70, 0.70)` **精确固定**；
-#   世界由 160 m(X) × 80 m(Y) 缩到 **8 m(X) × 80 m(Y)**；钉等级的子类 `Imgo2CMoEMixTestTerrainImporter`
-#   **删除**（`num_rows = 1` 时课程天然只有 0 级，见常量与类注释）；乘子由 2.0 回到 **1.0**（用户：
-#   「各个难度间距先不要调整」⇒ 评测沿用训练几何）。
-#
-# 2026-10-04（用户第四批要求，原话）：「mix 还是太小了…课程长度太短：让 mix 占满整条道」
-#   ⇒ `mix` 的障碍序列**铺满整条 8 m 道**，但**障碍自身的尺寸/高度一字不变**（只把障碍之间拉开）：
-#   ① `cmoe_terrains.CMoETrackMixTerrainCfg` 新增布尔字段 `fill_stretched_gaps`（默认 **False**
-#      ⇒ 与改动前**逐位相同**，训练侧不传）：为 True 时把"因拉开而多出来的空档"（段与段之间、尾段）
-#      铺成 `height=0` 的可走面；**原图案本来就有的两处坑（d=0.70 时各 0.18 m）原样保留**，
-#      障碍每块的宽度/顶面高度/顺序与坑宽都只由原图案与难度决定、**与乘子无关**；
-#   ② 评测场景 `pattern_spacing_scale` 取**反算的"刚好占满整条道"值 `2.25`**（≤ 溢出上限 2.40625，
-#      保护仍在、超限直接 `ValueError`）＋ `fill_stretched_gaps = True`；图案末端由 3.50 m 推到
-#      **7.50 m**（占 8 m 道的 93.75 %，尾部留 0.50 m 平地）；出生点前方实心地面由 0.75 m 变为 **1.95 m**。
-#
-# 2026-10-04（用户第五批要求，原话）：「整体地形放大，原本是10m长就改成20m长，还是布满，但是
-# 障碍数量不变，设置不变，只把间隔改大」
-#   ⇒ **只把单块瓦片的 X 长度由 8 m 放大到 20 m**（`size = (20, 4)`；Y 仍 4 m），让 mix 课程继续
-#   **铺满整条 20 m**，而**障碍数量 / 障碍自身尺寸与高度 / 坑深 / 走廊宽 / 难度(0.70) / 图案顺序
-#   全部不变**，只把障碍之间的间隔拉大（仍用第四批的 `pattern_spacing_scale` ＋
-#   `fill_stretched_gaps=True` 机制：拉间距、把多出来的空档铺成 height=0 可走面）：
-#   ① 反算式同第四批、只换 `size[0]`：`scale = (20 − 0.30 − 0.50)/(160 × 0.02) = 19.20/3.20 = 6.00`
-#      ⇒ 图案末端 = `0.30 + 160×0.02×6.00 = **19.50 m**`（占 20 m 道的 97.5 %，尾部留 0.50 m 平地）；
-#      仍严格小于溢出上限 `(20 − 0.30)/(160×0.02) = 6.15625` ⇒ **溢出保护不放宽**（超限照旧 raise）；
-#   ② **`size` 是 `terrain_generator` 的共享字段** ⇒ 本评测 cfg **显式覆盖**它，训练/play 两条链
-#      的 `terrain_generator.size` **仍是 `(8, 4)`**（改动只在 `Imgo2CMoEMixTestEnvCfg` 里，
-#      `tests/test_cmoe_mix_test_scene.py` 与 `scripts/tools/check_terrain_columns.py` 都钉住这一点）；
-#   ③ 道变 20 m 长、速度恒定 1.0 m/s ⇒ 走完要 ~20 s，而继承来的 `episode_length_s` 只有 **20 s**
-#      （`velocity_env_cfg.py:716`）⇒ 本评测 cfg 把它提到 **35 s**（20 s ＋ 15 s 余量）。**只影响该
-#      评测任务**，训练侧时长一字未改。副作用：回合变长 ⇒ 单轮更慢、dump 采样的步数上限需相应调大。
+# 历史（前六批，网格/难度/时长/PD 外环这些结论继续有效）：第二批"20 道 × 20 行 + 子类钉第 14 行 +
+# mix 乘子 2.0" → 第三批"`num_rows = 1` × `num_cols = 20` 并列 + `difficulty_range` 精确固定 +
+# 删掉钉等级子类 + mix 乘子回 1.0" → 第四/五批"mix 乘子 2.25 → 6.00（8 m → 20 m 道）＋
+# `fill_stretched_gaps=True`" → 第六批"mix 拉间距的粒度改成每个连续段组、平地铺在坑的上游"。
+# ⚠️ 第四/五/六批那套 **mix 图案**的具体做法（`pattern_spacing_scale` / `fill_stretched_gaps`）
+# **本轮起不再被本场景使用**，但字段与实现**原样保留**（训练侧的 `mix` 与相关回归测试继续用它们）。
 #
 # 网格方向的真值（来自 Isaac Lab 源码，不是约定）：`terrain_generator.py:247-261` 逐列逐行用
 # `difficulty = lower + (upper−lower)·(sub_row + U(0,1)) / num_rows` 生成瓦片；`:330` 里
@@ -915,7 +897,7 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
 #   * 世界 X ∈ [-10, +10]：唯一一行 × 20 m；**出生点**（瓦片局部 x = spawn_x = 0.75）落在
 #     **X = 0.75 − 10 = −9.25**；
 #   * 世界 Y ∈ [-40, +40]：20 道 × 4 m；第 i 道占 [4i − 40, 4(i+1) − 40]，道中心 Y = 4i − 38，
-#     道内 mix 走廊（宽 0.80 m）占 [4i − 38.4, 4i − 37.6]。
+#     道内走廊（宽 0.80 m）占 [4i − 38.4, 4i − 37.6]。
 # **动作空间与观测契约一字未改** ⇒ 既有 CMoE checkpoint 可直接加载（这不是新策略任务）。
 # ⚠️ 本类是"评测场景"，不参与训练；注册 id 见 `base_move/__init__.py`。
 # ======================================================================================
@@ -939,29 +921,24 @@ MIX_TEST_DIFFICULTY = 0.70
 # Y 仍 4 m。**`size` 是 `terrain_generator` 的共享字段** ⇒ 只有本评测场景显式覆盖它；
 # 训练/play 两条链（`Imgo2CMoERoughEnvCfg` 的 `size = (8.0, 4.0)`）**保持不变**（有测试与审计钉住）。
 MIX_TEST_TILE_SIZE = (20.0, 4.0)
-# mix 图案的**障碍间距乘子**（`CMoETrackMixTerrainCfg.pattern_spacing_scale`）：本评测场景取
-# **反算的"刚好占满整条 20 m 道"值 6.00**（2026-10-04 用户第四批「让 mix 占满整条道」＋
-# 第五批「整体地形放大…还是布满…只把间隔改大」）。
-# 算式（先定"尾部余量"再解乘子；只把 `size[0]` 从 8 换成 20，其余一字不变）：
-#     pattern_start_x + 160 · x_unit · scale ≤ size[0] − 尾部余量
-#     ⇒ scale ≤ (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)
-#            = (20.00 − 0.30 − 0.50) / (160 × 0.02)
-#            = 19.20 / 3.20 = 6.00
-# 取该值 ⇒ 图案末端 = 0.30 + 160 × 0.02 × 6.00 = **19.50 m**（占 20 m 道的 97.5 %，≥ 目标 19.0 m），
-# 尾部余量 = 20.00 − 19.50 = 0.50 m 平地；仍 ≤ 溢出上限 (20 − 0.30)/(160 × 0.02) = 6.15625（保护不放宽）。
-# ⚠️ 单靠乘子会把"段间空档"变成更长的整宽 −0.50 m 深坑（第四批实测：`spawn_x = 0.75` 前方实心地面
-# 只剩 0.15 m）⇒ 本场景同时把 `fill_stretched_gaps` 置 True，把这些空档铺成 height=0 的可走面；
-# 原图案本来就有的两处坑原样保留（d = 0.70 ⇒ 各 0.18 m）。
-MIX_TEST_PATTERN_SPACING_SCALE = 6.00
-# 上式的两个中间量（写成常量便于测试/审计脚本核对，值与 `MIX_TEST_PATTERN_SPACING_SCALE` 一致）：
-# 尾部余量（图案末端 → `size[0]`）= 0.50 m；图案末端 = **19.50 m**（第五批：随 `size[0]` 8 → 20 同步）。
-# 见 `CMoETrackMixTerrainCfg` 的 `fill_stretched_gaps`（本场景 True）与 docs 的"课程占满整条道"一节。
-MIX_TEST_TAIL_MARGIN = 0.50
-MIX_TEST_PATTERN_END_X = 19.50
-# 是否把"因拉开而多出来的空档"铺成 height=0 的可走面（`CMoETrackMixTerrainCfg.fill_stretched_gaps`）：
-# 本场景 **True**（用户第四批要求"拉开出来的区间铺成 height=0 的可走面，而不是留成 −0.50 m 深坑"）。
-MIX_TEST_FILL_STRETCHED_GAPS = True
-# **单局时长**（第五批新增；`episode_length_s`）。道变 20 m 长、速度恒定 1.0 m/s ⇒ 走完需要 ~20 s，
+# **复合道**在 `sub_terrains` 里的**键名**（2026-10-05 第七批：原来唯一的地形键是 `mix`，现在换成
+# `composite`，对应 `cmoe_terrains.CMoETrackCompositeTerrainCfg`）。工具与测试都用它定位。
+MIX_TEST_SUB_TERRAIN_KEY = "composite"
+# 复合道的**相邻障碍间隔**：本场景用"自动反算"（`obstacle_spacing = COMPOSITE_SPACING_AUTO`，
+# 见 `cmoe_terrains`），把余量按障碍个数**均分**：
+#     spacing = (size[0] − first_obstacle_x − Σ 障碍宽) / N
+#             = (20.00 − 2.25 − 5.932) / 5 = 11.818 / 5 = **2.3636 m**
+# 其中 5 个障碍（d = 0.70，尺寸全部来自各自独立地形的难度律）：坑 0.26 ＋ 楼梯 2×4×0.30 = 2.40 ＋
+# 箱子 2×0.44＋1.30 = 2.18 ＋ 栏 2×0.096＋0.64 = 0.832 ＋ 坑 0.26 ⇒ **Σ = 5.932 m**；
+# `first_obstacle_x = spawn_x + spawn_clearance = 0.75 + 1.50 = 2.25 m`（出生点前方 1.50 m 平地）。
+# 5 段间隔（含尾段）各 2.3636 m ⇒ 尾段结束在 20.00 m（**刚好占满整条道**）。
+# 下界 `MIX_TEST_MIN_OBSTACLE_SPACING = 1.50 m`（用户硬约束"任意两个相邻障碍之间都必须有 ≥
+# obstacle_spacing 的平地"）不满足时 `track_composite_terrain` **直接 raise**（保护不放宽）。
+MIX_TEST_OBSTACLE_SPACING = 2.3636
+MIX_TEST_MIN_OBSTACLE_SPACING = 1.50
+# 出生点到第一个障碍的**平地下界**（`CMoETrackCompositeTerrainCfg.spawn_clearance`）：≥ 1.50 m。
+MIX_TEST_SPAWN_CLEARANCE = 1.50
+# **单局时长**（第五批新增；`episode_length_s`）。道 20 m 长、速度恒定 1.0 m/s ⇒ 走完需要 ~20 s，
 # 而继承来的默认值只有 **20 s**（`velocity_env_cfg.py:716` 的 `LocomotionVelocityRoughEnvCfg`）⇒
 # 本评测 cfg 把它提到 **35 s**（20 m ÷ 1.0 m/s = 20 s，再留 15 s 余量给起步/减速/扰动恢复）。
 # **只影响该评测任务**（在 `Imgo2CMoEMixTestEnvCfg.__post_init__` 里赋值）；训练/play 的时长一字未改。
@@ -989,12 +966,12 @@ MIX_TEST_FORWARD_SPEED = 1.0
 
 @configclass
 class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
-    """`mix`-only 受控测试场景：**20 条并列的 mix 道 × 唯一一行难度 d = 0.70** ＋ 前进 1.0 m/s ＋ 横向/航向 PD。
+    """**复合道**受控测试场景：**20 条并列的道 × 唯一一行难度 d = 0.70** ＋ 前进 1.0 m/s ＋ 横向/航向 PD。
 
     继承 `Imgo2CMoERoughPlayEnvCfg` ⇒ 自动保留它的确定性设定（`pose_range` 全 0、`velocity_range`
     全 0、关闭全部域随机化事件、关闭观测噪声），本类覆盖：
 
-    * **网格**：`num_cols = MIX_TEST_LANES = 20`（20 条并列的 mix 道 ⇒ 沿世界 Y 铺 80 m）×
+    * **网格**：`num_cols = MIX_TEST_LANES = 20`（20 条并列的道 ⇒ 沿世界 Y 铺 80 m）×
       `num_rows = MIX_TEST_LEVELS = 1`（唯一一行难度 ⇒ 沿世界 X 只有**单块瓦片长**）；
       默认 `num_envs = 20`，一条道一个环境；
       **单块瓦片 X 2026-10-04 第五批由 8 m 放大到 20 m**（`terrain_generator.size = MIX_TEST_TILE_SIZE
@@ -1005,12 +982,18 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
       d = 0.70**（依据与旧方案对比见常量注释、docs §5）；配套 `max_init_terrain_level = 0`
       （`num_rows = 1` ⇒ 0 是唯一合法等级）且 **`class_type` 保持默认 `TerrainImporter`**
       ⇒ 课程**天然冻结**，不需要自定义子类；
-    * **课程占满整条 20 m 道**：`pattern_spacing_scale = MIX_TEST_PATTERN_SPACING_SCALE = 6.00`（**反算值**：
-      `(20 − 0.30 − 0.50) / (160 × 0.02)`）＋ `fill_stretched_gaps = True` ⇒ 图案 X 总长 =
-      `0.30 + 160×0.02×6.00 = 19.50 m ≤ 20 m`（占 97.5 %，尾部留 0.50 m 平地）；障碍数量、
-      障碍自身宽度/高度/顺序与**原有两处坑宽**（d = 0.70 ⇒ 各 0.18 m）一字不变，只把障碍之间拉开
-      并把空档铺成 `height=0` 可走面（用户第四批：「让 mix 占满整条道」＋「拉开出来的区间铺成
-      height=0 的可走面」；第五批：「整体地形放大…还是布满…只把间隔改大」）；
+    * **地形 = 复合道**（2026-10-05 第七批，用户：「是有些障碍分到一起了，我说的是障碍本身…我希望是和
+      单独的那个几个场景类似的障碍放在这个整条的（道）上」＋「每个地形要间隔开，而不是混合到一起放在
+      一个位置」）：`sub_terrains` 里唯一一项是 `CMoETrackCompositeTerrainCfg`（键名
+      `MIX_TEST_SUB_TERRAIN_KEY = "composite"`），沿 +X 依次是
+      **出生平地(1.50 m) → 坑(0.26) → 平地(2.3636) → 楼梯(上 4 级 + 下 4 级紧贴，2.40) → 平地 →
+      箱子/台阶块(2 块，2.18) → 平地 → 栏(2 道，0.832) → 平地 → 坑(0.26) → 尾平地(2.3636)**；
+      每个障碍都用它**自己那类独立地形**的难度律与几何（尺寸逐项与独立地形一致），
+      **所有相邻障碍之间都是同一个 `obstacle_spacing = MIX_TEST_OBSTACLE_SPACING = 2.3636 m`**
+      （反算：`(20 − 2.25 − 5.932) / 5`）≥ 下界 `MIX_TEST_MIN_OBSTACLE_SPACING = 1.50 m`
+      ⇒ 不会有任何两个障碍贴在一起（**坑不再紧挨抬高块**），也没有参考图案专有的 4 cm 窄槽 /
+      0.26 m 尖峰；总长刚好 20.00 m（最后一个障碍末端 17.6364 m ＋ 尾段 2.3636 m）；
+      长度不够时 `track_composite_terrain` **直接 `ValueError`**（三选一：减障碍／加长道／降间隔）；
     * **单局时长 35 s**：道 20 m ÷ 1.0 m/s = 20 s，而继承来的 `episode_length_s` 只有 20 s
       ⇒ 本类把它提到 `MIX_TEST_EPISODE_LENGTH_S = 35.0`（20 s ＋ 15 s 余量）。**只影响该评测任务**
       （训练/play 的时长一字未改）。副作用：回合变长 ⇒ 单轮更慢；按固定步数 dump/采样的工具
@@ -1030,35 +1013,63 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # ------------------------------------------------------------ ① 地形：只留 `mix` 一类
-        # 先清空（play 类刚把所有 proportion 设成 1.0），再只放 mix。**逐字沿用训练实例化时的 mix 值**
-        # —— 训练侧是 `CMoETrackMixTerrainCfg(proportion=0.10)`，其余字段全部取类默认值，这里把它们
-        # 显式展开写死（`tests/test_cmoe_mix_test_scene.py` 会断言这些字面量与 `cmoe_terrains.py` 的
-        # 类默认值**逐一相等**，改默认值而不同步这里就会红）。
-        # **唯一有意偏离默认值的三处**（测试里单独断言）：
+        # ------------------------------------------------------ ① 地形：只留**复合道**一类
+        # 先清空（play 类刚把所有 proportion 设成 1.0），再只放复合道。字段值＝**训练侧各类地形的
+        # 实例值**（训练侧是 `CMoETrackGapTerrainCfg(gap_width_range=(0.12,0.32), …)` /
+        # `CMoETrackStairsTerrainCfg(step_height_range=(0.05,0.20), num_steps=6, step_depth=0.30)` /
+        # `CMoETrackStepTerrainCfg(first_step_x=1.6, num_steps=2, step_spacing=1.3,
+        # step_length_range=(0.3,0.5), step_height_range=(0.08,0.30))` / `CMoETrackHurdleTerrainCfg()`
+        # 的默认值）—— 这里显式展开写死，`tests/test_cmoe_mix_test_scene.py` 会拿 `CMoE_env_cfg.py` 的
+        # **训练实例字面量**与它们逐一对照，改训练参数而不同步这里就会红。
+        # **有意偏离独立地形默认值的四处**（测试里单独断言）：
         #   * `proportion=1.0`（本场景只有这一类，比例无意义、Isaac 会归一化）；
-        #   * `pattern_spacing_scale = 6.00`（反算的"占满整条道"值）＋ `fill_stretched_gaps = True`
-        #     （把拉开的空档铺成 height=0 可走面）；
+        #   * `stairs_num_steps=4`（用户确认"上 4 级 + 下 4 级紧贴"；训练实例是 6 级，
+        #     **单级步高/步深逐字相同**）；
+        #   * `obstacle_spacing`（负值 ⇒ 自动反算"刚好占满整条 20 m 道"的 2.3636 m）
+        #     ＋ `spawn_clearance=1.50`（出生点前方 ≥ 1.5 m 平地）；
         #   * `terrain_generator.size = (20, 4)`（第五批：单块瓦片 X 8 m → 20 m；**只有本类覆盖它**，
         #     训练/play 的共享字段仍是 `(8, 4)` —— 见下面 ①b 与测试/审计里的"训练侧 size 未被改"断言）。
-        # 其余字段（`x_unit`/`z_unit`/`height_scale`/`gap_shrink_units`/`corridor_width`/`pit_depth`/
-        # `pattern_start_x`/`spawn_x`）都取**训练同值**（＝类默认值），⇒ **障碍自身几何与训练逐位相同**，
-        # 评测与训练的唯一几何差异是"障碍之间的间距/平地"与"道有多长"，不是障碍本身。
+        # 其余字段（`corridor_width`/`pit_depth`/`spawn_x`/四个障碍的尺寸律）都取**独立地形同值**，
+        # ⇒ "同一难度下本道障碍的尺寸 == 它在自己那类地形里的尺寸"（`track_composite_terrain` 复用同一
+        # 套公式与常量）。**训练侧仍用 `track_mix_terrain`**，本类与训练互不影响。
         self.scene.terrain.terrain_generator.sub_terrains.clear()
-        self.scene.terrain.terrain_generator.sub_terrains["mix"] = CMoETrackMixTerrainCfg(
-            proportion=1.0,
-            x_unit=0.02,            # = _MIX_X_UNIT = 0.05 × REFERENCE_SCALE(0.4)
-            z_unit=0.002,           # = _MIX_Z_UNIT = 0.005 × REFERENCE_SCALE(0.4)
-            height_scale=1.1,       # 参考 diff = hurdle_height_range[0] × 1.1
-            gap_shrink_units=10.0,  # 参考 round(10 − 10·d)
-            corridor_width=0.80,    # 参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4
-            pit_depth=0.50,         # 参考坑深 0.5–1.5 m ⇒ ×0.4 后取固定值
-            pattern_start_x=0.30,   # 见 `track_mix_terrain` docstring 的"已知偏离"（起步平台装得下 0.75 m 出生点）
-            # **占满整条 20 m 道**：反算值 6.00 = (20 − 0.30 − 0.50)/(160 × 0.02) ⇒ 图案末端 19.50 m。
-            pattern_spacing_scale=MIX_TEST_PATTERN_SPACING_SCALE,
-            # **拉开的空档铺成 height=0 可走面**（否则段间空档会变成更长的整宽 −0.50 m 深坑）。
-            fill_stretched_gaps=MIX_TEST_FILL_STRETCHED_GAPS,
-            spawn_x=0.75,
+        self.scene.terrain.terrain_generator.sub_terrains["composite"] = (
+            CMoETrackCompositeTerrainCfg(
+                proportion=1.0,
+                # 走廊 / 基座 / 出生点（沿用评测场景既有设定，不新造）
+                corridor_width=0.80,       # 与 mix 走廊同宽（参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4）
+                pit_depth=0.50,            # 与 mix 同坑底（参考坑深 0.5–1.5 m ⇒ ×0.4 后取固定值）
+                spawn_x=0.75,
+                # 出生点前方 ≥ 1.5 m 平地（用户硬约束）⇒ 第一个障碍在 0.75 + 1.50 = 2.25 m
+                spawn_clearance=MIX_TEST_SPAWN_CLEARANCE,
+                # 负值 ⇒ **反算**"刚好占满整条 20 m 道"的均匀间隔（见常量注释的算式 ⇒ 2.3636 m）；
+                # 下界 1.50 m 由 track_composite_terrain 强制（不满足直接 raise，保护不放宽）。
+                obstacle_spacing=-1.0,     # = COMPOSITE_SPACING_AUTO
+                min_obstacle_spacing=MIX_TEST_MIN_OBSTACLE_SPACING,
+                # 建议区间（只用于审计打印"实测间隔是否落在建议区间内"，不参与判定）
+                suggested_spacing_range=(1.50, 2.50),
+                # ① 坑：**训练实例** gap_width_range=(0.12, 0.32)（本道 2 个坑，首尾各一）
+                gap_width_range=(0.12, 0.32),
+                # ② 楼梯：步高/步深取**训练实例**值（(0.05,0.20) / 0.30），级数取 4（上 4 + 下 4 紧贴）
+                stairs_num_steps=4,
+                stairs_step_height_range=(0.05, 0.20),
+                stairs_step_depth=0.30,
+                # ③ 箱子/台阶块：**训练实例** (0.08,0.30) / (0.30,0.50) / 1.30 / 2 块
+                box_count=2,
+                box_height_range=(0.08, 0.30),
+                box_length_range=(0.30, 0.50),
+                box_spacing=1.30,
+                # ④ 栏：**训练实例**＝类默认值（厚度律 (0.04,0.12)、高度律 [0.08·d, 0.06+0.10·d]、
+                # 间距律 (0.48,0.80)）；高度与间距取律区间中点（独立地形是随机的）
+                hurdle_count=2,
+                hurdle_len_range=(0.04, 0.12),
+                hurdle_height_min_slope=0.08,
+                hurdle_height_max_base=0.06,
+                hurdle_height_max_slope=0.10,
+                hurdle_spacing_range=(0.48, 0.80),
+                hurdle_height_fraction=0.5,
+                hurdle_spacing_fraction=0.5,
+            )
         )
         # ①b **单块瓦片 X 8 m → 20 m**（2026-10-04 第五批，用户："整体地形放大…还是布满，但是障碍数量
         # 不变，设置不变，只把间隔改大"）。`size` 是 `terrain_generator` 的**共享字段**（父类
@@ -1066,7 +1077,7 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
         # `tests/test_cmoe_mix_test_scene.py::test_tile_size_is_20_for_the_test_and_8_for_training` 与
         # `scripts/tools/check_terrain_columns.py --task mix-test` 都断言"训练侧仍是 (8, 4)"。
         self.scene.terrain.terrain_generator.size = MIX_TEST_TILE_SIZE
-        # **20 条并列的 mix 道 × 唯一一行难度**（列沿世界 Y、行沿世界 X）：
+        # **20 条并列的复合道 × 唯一一行难度**（列沿世界 Y、行沿世界 X）：
         # 道数 = 可同时评估的环境数上限 ⇒ 默认 20 个环境时"一道一个环境"，`terrain_types` 恰为 0..19。
         self.scene.terrain.terrain_generator.num_cols = MIX_TEST_LANES
         self.scene.terrain.terrain_generator.num_rows = MIX_TEST_LEVELS

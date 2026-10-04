@@ -489,12 +489,12 @@ class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
     # 见函数 docstring 的「已知偏离」：图案整体平移，保证 0.75 m 出生点落在起步平台上
     pattern_start_x: float = 0.30
     # 2026-10-04：相邻图案之间的 **X 推进量**乘子（只改间距，不改障碍自身尺寸/高度/顺序）。
-    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 **6.00**
-    # （＝"刚好占满整条 **20 m** 道"的反算值，算法见 `CMoE_env_cfg.py::MIX_TEST_PATTERN_SPACING_SCALE`；
-    # 第五批把该场景的单块瓦片 X 由 8 m 放大到 20 m，乘子随之由 2.25 重算为 `(20−0.30−0.50)/(160×0.02)`）。
-    # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（mix-test 现在 size[0]=20 m、
-    # x_unit=0.02 ⇒ scale ≤ 6.15625；训练侧 size[0]=8 m ⇒ 2.40625）；超出会在 `track_mix_terrain` 里
-    # 直接 raise（不静默溢出）。
+    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）—— 训练侧就是这个默认值。
+    # 2026-10-05（第七批）：**评测场景已不再使用 mix 图案**（换成 `track_composite_terrain`）⇒ 该字段
+    # 现在只服务训练侧与既有回归测试；历史上的评测取值（第四批 2.25 → 第五批 6.00，＝"刚好占满整条
+    # 20 m 道"的反算值 `(20−0.30−0.50)/(160×0.02)`）记录在 docs/cmoe_mix_test_scene_2026-10-04.md。
+    # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（20 m / x_unit=0.02 ⇒ 6.15625；
+    # 训练侧 size[0]=8 m ⇒ 2.40625）；超出会在 `track_mix_terrain` 里直接 raise（不静默溢出）。
     pattern_spacing_scale: float = 1.0
     # 2026-10-04（第四批）：把"因 pattern_spacing_scale 拉开而多出来的空档"（段间、尾段）铺成
     # height=0 的可走面（原有坑宽/障碍几何不变）。默认 **False ⇒ 与改动前逐位相同**；训练侧不传它。
@@ -563,3 +563,450 @@ class CMoETrackNarrowStairsTerrainCfg(SubTerrainBaseCfg):
     # 参考坑深随机 0.05–1.5 m ⇒ 缩比 0.02–0.60 m，取固定值
     pit_depth: float = 0.50
     spawn_x: float = 0.75
+
+
+# ======================================================================================
+# 2026-10-05：**复合道**（composite track）—— 评测任务 `Imgo2-basemove-rough-cmoe-mix-test` 专用。
+#
+# 用户反馈（本轮唯一目标，原话）：「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在一起。
+# 我希望是和单独的那个几个场景类似的障碍放在这个整条的（道）上」；补充「每个地形要间隔开，而不是
+# 混合到一起放在一个位置」；再补充（顺序与楼梯形态，已确认）：
+#
+#     出生平地 → 【坑】 → 平地间隔 → 【楼梯】 → 平地间隔 → 【箱子/台阶块】 → 平地间隔 → 【栏】
+#     → 平地间隔 → 尾平地
+#
+# 楼梯形态：**上下楼梯紧贴**（先上 4 级、紧接再下 4 级、中间**没有平地**）＝经典金字塔形。
+#
+# ⇒ **放弃**参考实现的 `track_mix_terrain` 小图案（坑紧挨抬高块、4 cm 窄槽、0.26 m 长的尖峰、
+#   间距只够一个脚掌）—— 那些是**参考图案专有**的结构，在任何一类"独立地形"里都不存在。
+#   本函数把**各类独立地形**里的障碍**各自成形**、**按类型分组顺序**铺在这条 20 m 道上，
+#   障碍单元之间统一留等长平地。**训练侧仍用 `track_mix_terrain`**（两函数互不影响；`mix` 一侧
+#   的默认值与全部既有测试逐位不变）。
+# ======================================================================================
+# 障碍顺序（模块级常量，便于审计与测试）：坑 → 楼梯 → 箱子/台阶块 → 栏 → 坑（用户："首尾各一"）。
+COMPOSITE_OBSTACLE_SEQUENCE: tuple[str, ...] = ("gap", "stairs", "boxes", "hurdle", "gap")
+# 相邻障碍之间的**平地间隔下界**（m）。用户硬约束："任意两个相邻障碍之间都必须有 ≥ obstacle_spacing
+# 的平地"（不只是"坑不紧贴抬高块"）⇒ 每种障碍在视觉上各自独立、彼此分开。运行期**不放宽**：
+# 反算/显式给出的间隔小于它时 `track_composite_terrain` 直接 `raise ValueError`。
+COMPOSITE_MIN_OBSTACLE_SPACING: float = 1.50
+# 用户给出的**建议区间**（只用于报告"实测间隔是否落在建议区间内"，不参与判定）。
+COMPOSITE_SUGGESTED_OBSTACLE_SPACING: tuple[float, float] = (1.50, 2.50)
+# `obstacle_spacing` 字段的"自动反算"哨兵：**负值** ⇒ 忽略字段值、按"刚好占满整条道"反算；
+# **非负值**（含 0）⇒ 当作用户显式给的间隔，必须 ≥ `min_obstacle_spacing`，否则直接 `raise`
+# （⇒ "把 `obstacle_spacing` 设成 0（＝两个障碍贴在一起）"是一个**会报错**的构造，见测试的负向对照）。
+COMPOSITE_SPACING_AUTO: float = -1.0
+
+
+
+def _composite_obstacle_units(
+    difficulty: float, cfg: "CMoETrackCompositeTerrainCfg"
+) -> list[dict]:
+    """按**各类独立地形自己的难度律**算出复合道上每个障碍单元的几何（与摆放位置无关）。
+
+    尺寸一律**复用既有常量与公式**（不新造）：① 坑 ＝ `track_gap_terrain` 的沟宽律；② 楼梯 ＝
+    `track_stairs_terrain` 的步高律 ＋ `step_depth`（上 `num_steps` 级 ＋ 下 `num_steps` 级，
+    **首尾相接**）；③ 箱子/台阶块 ＝ `track_step_terrain` 的高/长律 ＋ `step_spacing`；④ 栏 ＝
+    `track_hurdle_terrain` 的高度律 `[min_slope·d, max_base + max_slope·d]` 与厚度律。
+
+    返回列表每项：``{"kind", "label", "width", "params", "raised": [(dx0, dx1, top), ...]}``，
+    其中 `raised` 是**相对单元起点**的抬高块（`_corridor` 用）；坑的 `raised` 为空
+    ⇒ 该 X 区间**不铺走廊**，露出 `-pit_depth` 的整宽基座（＝坑底）。
+    """
+    units: list[dict] = []
+    for kind in COMPOSITE_OBSTACLE_SEQUENCE:
+        if kind == "gap":
+            width = cfg.gap_width_range[0] + difficulty * (
+                cfg.gap_width_range[1] - cfg.gap_width_range[0]
+            )
+            units.append(
+                {
+                    "kind": kind,
+                    "label": "坑（横向沟）",
+                    "width": float(width),
+                    "params": {"gap_width": float(width)},
+                    "raised": [],
+                }
+            )
+        elif kind == "stairs":
+            step_height = cfg.stairs_step_height_range[0] + difficulty * (
+                cfg.stairs_step_height_range[1] - cfg.stairs_step_height_range[0]
+            )
+            step_depth = float(cfg.stairs_step_depth)
+            count = int(cfg.stairs_num_steps)
+            # 上 n 级：顶面 step_height … n·step_height；紧接**下 n 级**：顶面 (n−1)·step_height … 0
+            # （逐字复用 `track_stairs_terrain` 的 ascending / ascending=False 两段，中间不加平地）。
+            raised = [
+                (index * step_depth, (index + 1) * step_depth, (index + 1) * step_height)
+                for index in range(count)
+            ]
+            raised += [
+                (
+                    count * step_depth + index * step_depth,
+                    count * step_depth + (index + 1) * step_depth,
+                    (count - index - 1) * step_height,
+                )
+                for index in range(count)
+            ]
+            units.append(
+                {
+                    "kind": kind,
+                    "label": f"楼梯（上/下各 {count} 级，紧贴）",
+                    "width": 2.0 * count * step_depth,
+                    "params": {
+                        "num_steps": count,
+                        "step_height": float(step_height),
+                        "step_depth": step_depth,
+                        "peak_height": float(count * step_height),
+                        "step_count_total": 2 * count,
+                        # 8 级（上 4 + 下 4）的顶面序列（审计/测试直接用，不必再重建）
+                        "tread_tops": tuple(float(top) for _dx0, _dx1, top in raised),
+                    },
+                    "raised": raised,
+                }
+            )
+        elif kind == "boxes":
+            box_height = cfg.box_height_range[0] + difficulty * (
+                cfg.box_height_range[1] - cfg.box_height_range[0]
+            )
+            box_length = cfg.box_length_range[0] + difficulty * (
+                cfg.box_length_range[1] - cfg.box_length_range[0]
+            )
+            count = int(cfg.box_count)
+            spacing = float(cfg.box_spacing)
+            # 与 `track_step_terrain` 相同：块之间是 `step_spacing` 米平地（本单元**内部**的间距）。
+            raised = [
+                (index * (box_length + spacing),
+                 index * (box_length + spacing) + box_length,
+                 box_height)
+                for index in range(count)
+            ]
+            units.append(
+                {
+                    "kind": kind,
+                    "label": "箱子/台阶块",
+                    "width": count * box_length + (count - 1) * spacing,
+                    "params": {
+                        "count": count,
+                        "block_height": float(box_height),
+                        "block_length": float(box_length),
+                        "block_spacing": spacing,
+                    },
+                    "raised": raised,
+                }
+            )
+        elif kind == "hurdle":
+            hurdle_length = cfg.hurdle_len_range[0] + difficulty * (
+                cfg.hurdle_len_range[1] - cfg.hurdle_len_range[0]
+            )
+            height_min = cfg.hurdle_height_min_slope * difficulty
+            height_max = cfg.hurdle_height_max_base + cfg.hurdle_height_max_slope * difficulty
+            # 独立地形对每道栏在 [height_min, height_max] 内**随机**取值；复合道要确定性 ⇒
+            # 取该区间的 `hurdle_height_fraction` 分位（默认 0.5 ＝ 中点）。
+            hurdle_height = height_min + cfg.hurdle_height_fraction * (height_max - height_min)
+            # 独立地形的相邻栏间距在 `spacing_range` 内**随机**；同样取 `hurdle_spacing_fraction`
+            # 分位（默认 0.5 ＝ 中点）。
+            gap = cfg.hurdle_spacing_range[0] + cfg.hurdle_spacing_fraction * (
+                cfg.hurdle_spacing_range[1] - cfg.hurdle_spacing_range[0]
+            )
+            count = int(cfg.hurdle_count)
+            raised = [
+                (index * (hurdle_length + gap),
+                 index * (hurdle_length + gap) + hurdle_length,
+                 float(hurdle_height))
+                for index in range(count)
+            ]
+            units.append(
+                {
+                    "kind": kind,
+                    "label": "栏（薄横栏）",
+                    "width": count * hurdle_length + (count - 1) * gap,
+                    "params": {
+                        "count": count,
+                        "bar_length": float(hurdle_length),
+                        "bar_height": float(hurdle_height),
+                        "bar_spacing": float(gap),
+                        "height_range": (float(height_min), float(height_max)),
+                    },
+                    "raised": raised,
+                }
+            )
+        else:  # pragma: no cover - 常量表里只有上面四种
+            raise ValueError(f"track_composite_terrain: 未知障碍种类 {kind!r}")
+    return units
+
+
+def composite_track_layout(
+    difficulty: float, cfg: "CMoETrackCompositeTerrainCfg"
+) -> dict:
+    """复合道的**完整布局**（纯算术，不生成网格）：审计脚本、测试与 `track_composite_terrain` 共用。
+
+    摆放规则（用户确认的顺序与"间隔开"硬约束）::
+
+        出生平地(0 → first_obstacle_x) → 障碍#1 → 平地(spacing) → 障碍#2 → … → 障碍#N → 平地(尾段)
+
+    * `first_obstacle_x = spawn_x + spawn_clearance`（默认 `0.75 + 1.50 = 2.25 m`）
+      ⇒ 出生点是实心平地，且**前方 ≥ 1.5 m 平地**才遇到第一个障碍；
+    * **所有**相邻障碍单元之间（含尾段）都是**同一个** `obstacle_spacing`
+      ⇒ "任意两个相邻障碍之间都有等长平地"这条硬约束由构造保证；
+    * `obstacle_spacing` **反算**（`cfg.obstacle_spacing` 为负）::
+
+          spacing = (size[0] − first_obstacle_x − Σ 障碍宽度) / N       # N ＝ 障碍个数
+                  = (20 − 2.25 − ΣW) / 5
+
+      即"把余量按障碍个数均分"（每个障碍之后各分到一段，最后一段就是尾段）⇒ 整条道**刚好占满**；
+    * `cfg.obstacle_spacing ≥ 0` 时按显式值摆，尾段吸收余量；两者都必须 ≥ `min_obstacle_spacing`，
+      且总长不得超过 `size[0]`，否则**直接 `raise ValueError`**（溢出保护不放宽）。
+
+    返回字典含：`obstacles`（含 `x0/x1/width/params/raised`（绝对 X））、`flats`（平地区间）、
+    `adjacent_gaps`（**逐对相邻障碍**之间的平地表）、`obstacle_spacing`、`end_x` 等。
+    """
+    units = _composite_obstacle_units(difficulty, cfg)
+    size_x, size_y = float(cfg.size[0]), float(cfg.size[1])
+    spawn_x = float(cfg.spawn_x)
+    clearance = float(cfg.spawn_clearance)
+    first_x = spawn_x + clearance
+    total_width = float(sum(unit["width"] for unit in units))
+    count = len(units)
+    min_spacing = float(cfg.min_obstacle_spacing)
+
+    if first_x + total_width + count * min_spacing > size_x + 1.0e-9:
+        raise ValueError(
+            f"track_composite_terrain: 放不下 —— 出生平地区间 {first_x:.4f} m ＋ 障碍总宽 "
+            f"{total_width:.4f} m ＋ {count} 段间隔（每段 ≥ {min_spacing:.4f} m）"
+            f" = {first_x + total_width + count * min_spacing:.4f} m > size[0]={size_x:.4f} m。"
+            f"三选一：① 减障碍（改 COMPOSITE_OBSTACLE_SEQUENCE）；② 增大 "
+            f"terrain_generator.size[0]（现在 {size_x:.4f}）；③ 降 "
+            f"min_obstacle_spacing（现在 {min_spacing:.4f}）。"
+        )
+
+    explicit = float(cfg.obstacle_spacing)
+    if explicit >= 0.0:
+        spacing = explicit
+        auto = False
+        if spacing < min_spacing - 1.0e-9:
+            raise ValueError(
+                f"track_composite_terrain: 显式 obstacle_spacing={spacing:.4f} m < 下界 "
+                f"min_obstacle_spacing={min_spacing:.4f} m ⇒ 两个相邻障碍会贴在一起（用户硬约束："
+                f"任意相邻障碍之间必须有 ≥ {min_spacing:.4f} m 的平地）。"
+            )
+        if first_x + total_width + count * spacing > size_x + 1.0e-9:
+            raise ValueError(
+                f"track_composite_terrain: 总长 {first_x + total_width + count * spacing:.4f} m 超出 "
+                f"瓦片长 size[0]={size_x:.4f} m（obstacle_spacing={spacing:.4f}）。三选一："
+                f"① 减少障碍；② 增大 terrain_generator.size[0]；③ 把 obstacle_spacing 降到 "
+                f"{(size_x - first_x - total_width) / count:.4f} 以下。"
+            )
+    else:
+        spacing = (size_x - first_x - total_width) / count
+        auto = True
+        if spacing < min_spacing - 1.0e-9:
+            raise ValueError(
+                f"track_composite_terrain: 反算出的间隔 {spacing:.4f} m < 下界 "
+                f"min_obstacle_spacing={min_spacing:.4f} m ⇒ 障碍会被挤在一起（{count} 个障碍总宽 "
+                f"{total_width:.4f} m 装进 {size_x:.4f} m 的道）。三选一：① 减障碍（改 "
+                f"COMPOSITE_OBSTACLE_SEQUENCE）；② 增大 terrain_generator.size[0]；③ 降 "
+                f"min_obstacle_spacing（现在 {min_spacing:.4f}）。"
+            )
+
+    obstacles: list[dict] = []
+    flats: list[dict] = [{"kind": "lead_in", "x0": 0.0, "x1": first_x, "length": first_x}]
+    cursor = first_x
+    for index, unit in enumerate(units):
+        raised = [
+            {
+                "x0": cursor + float(dx0),
+                "x1": cursor + float(dx1),
+                "top": float(top),
+            }
+            for dx0, dx1, top in unit["raised"]
+        ]
+        obstacles.append(
+            {
+                "index": index,
+                "kind": unit["kind"],
+                "label": unit["label"],
+                "x0": cursor,
+                "x1": cursor + unit["width"],
+                "width": unit["width"],
+                "params": unit["params"],
+                "raised": raised,
+            }
+        )
+        cursor += unit["width"]
+        if index < count - 1:
+            length = spacing
+        else:
+            length = size_x - cursor  # 尾段（自动反算时恰好等于 spacing，浮点上容差 1e-15）
+        if length < min_spacing - 1.0e-9:
+            raise ValueError(
+                f"track_composite_terrain: 第 {index + 1} 段平地只有 {length:.4f} m < 下界 "
+                f"{min_spacing:.4f} m（尾段被显式间隔挤没了）。三选一：① 减少障碍；"
+                f"② 增大 terrain_generator.size[0]；③ 降 min_obstacle_spacing。"
+            )
+        flats.append(
+            {
+                "kind": "tail" if index == count - 1 else "between",
+                "after_index": index,
+                "x0": cursor,
+                "x1": cursor + length,
+                "length": length,
+            }
+        )
+        cursor += length
+
+    adjacent_gaps = [
+        {
+            "pair": (obstacles[index]["kind"], obstacles[index + 1]["kind"]),
+            "labels": (obstacles[index]["label"], obstacles[index + 1]["label"]),
+            "x0": flats[index + 1]["x0"],
+            "x1": flats[index + 1]["x1"],
+            "length": flats[index + 1]["length"],
+            "ok": flats[index + 1]["length"] >= min_spacing - 1.0e-9,
+        }
+        for index in range(count - 1)
+    ]
+
+    return {
+        "difficulty": float(difficulty),
+        "size": (size_x, size_y),
+        "corridor_width": float(cfg.corridor_width),
+        "pit_depth": float(cfg.pit_depth),
+        "spawn_x": spawn_x,
+        "spawn_clearance": clearance,
+        "first_obstacle_x": first_x,
+        # 键名与 `check_terrain_columns.composite_layout()`（**只用标准库**的算术复算）保持一致 ⇒
+        # 审计脚本、测试与生成器读的是同一套字段，避免两套名字漂移。
+        "spacing": float(spacing),
+        "obstacle_spacing": float(spacing),
+        "spacing_is_auto": auto,
+        "min_obstacle_spacing": min_spacing,
+        "suggested_spacing_range": tuple(cfg.suggested_spacing_range),
+        "sequence": COMPOSITE_OBSTACLE_SEQUENCE,
+        "obstacle_sequence": COMPOSITE_OBSTACLE_SEQUENCE,
+        "total_width": total_width,
+        "total_obstacle_width": total_width,
+        "obstacles": obstacles,
+        "flats": flats,
+        "adjacent_gaps": adjacent_gaps,
+        "last_obstacle_end": obstacles[-1]["x1"],
+        "end_x": size_x,
+        "tail_length": flats[-1]["length"],
+    }
+
+
+def composite_adjacency_violations(layout: dict, min_spacing: float | None = None) -> list[dict]:
+    """**逐对相邻障碍**的间隔违规清单（空列表 ＝ 全部合格），供审计脚本与负向对照使用。
+
+    `min_spacing` 缺省取 `layout["min_obstacle_spacing"]`。返回的每一项含 `pair`/`x0`/`x1`/`length`/
+    `min_spacing`，便于直接打印。**不抛异常**（生成期已经抛过；这里给"人造布局"的检查用）。
+    """
+    bound = float(layout["min_obstacle_spacing"] if min_spacing is None else min_spacing)
+    return [
+        dict(gap, min_spacing=bound)
+        for gap in layout["adjacent_gaps"]
+        if gap["length"] < bound - 1.0e-9
+    ]
+
+
+def track_composite_terrain(difficulty: float, cfg: "CMoETrackCompositeTerrainCfg"):
+    """生成**复合道**：一段 0.80 m 宽、20 m 长的走廊上按类型顺序各自成形的独立障碍。
+
+    几何（`_corridor` ＝走廊宽 × 顶面高度；基座 ＝整宽、顶面 `-pit_depth`）::
+
+        [整宽基座]                     顶面 -pit_depth（走廊外与坑底都是它）
+        ├ 出生平地 [0, first_x]        顶面 0
+        ├ 坑                          **不铺走廊** ⇒ 露出 -pit_depth 基座（＝坑底）
+        ├ 平地 [spacing]
+        ├ 楼梯（上 n 级 ＋ 下 n 级紧贴）  逐级顶面 (1..n)·h、(n−1..0)·h
+        ├ 平地 [spacing]
+        ├ 箱子/台阶块                  单元内平地 ＋ 2 块抬高块
+        ├ 平地 [spacing]
+        ├ 栏                          单元内平地 ＋ 2 道薄横栏（**栏周围是 z=0 平地**）
+        ├ 平地 [spacing]
+        ├ 坑                          **不铺走廊**
+        └ 尾平地 [spacing] → size[0]
+
+    * **每个障碍都用它自己那类地形的难度律与几何**（`_composite_obstacle_units`），本函数不新造尺寸；
+    * **所有相邻障碍之间都是同一个 `obstacle_spacing`**（反算或显式，≥ `min_obstacle_spacing`）
+      ⇒ 不会出现"坑紧挨抬高块"或任何两个障碍贴在一起；
+    * 长度不够时**直接 `ValueError`**（三选一：减障碍／加长道／降间隔），**不静默截断**；
+    * 通道宽度沿用评测场景既有的 `corridor_width = 0.80 m`、坑底深度沿用 `pit_depth = 0.50 m`
+      （与 `track_mix_terrain` 同一套"走廊 ＋ 整宽基座"约定）。
+    """
+    layout = composite_track_layout(difficulty, cfg)
+    size_x, size_y = layout["size"]
+    corridor = layout["corridor_width"]
+
+    meshes: list[trimesh.Trimesh] = [_platform(0.0, size_x, size_y, -layout["pit_depth"])]
+    # 平地（出生平地 ＋ 相邻障碍之间的平地 ＋ 尾段）：一律顶面 0
+    for flat in layout["flats"]:
+        if flat["length"] > 1.0e-12:
+            meshes.append(_corridor(flat["x0"], flat["x1"], size_y, corridor, 0.0))
+    for obstacle in layout["obstacles"]:
+        if obstacle["kind"] == "gap":
+            continue  # 坑：走廊断开（露出基座当坑底）
+        # 障碍单元内先铺一块 0 高度走廊（箱子/栏的"周围是 z=0 平地"；楼梯的每一级都盖住它）
+        meshes.append(_corridor(obstacle["x0"], obstacle["x1"], size_y, corridor, 0.0))
+        for part in obstacle["raised"]:
+            meshes.append(_corridor(part["x0"], part["x1"], size_y, corridor, part["top"]))
+
+    origin = np.array([cfg.spawn_x, 0.5 * size_y, 0.0])
+    return meshes, origin
+
+
+@configclass
+class CMoETrackCompositeTerrainCfg(SubTerrainBaseCfg):
+    """**复合道**：各类独立地形里的障碍各自成形、按类型顺序铺在一条 20 m 道上（训练侧不使用）。
+
+    字段默认值＝**训练侧各类地形的实例值**（`CMoE_env_cfg.py::Imgo2CMoERoughEnvCfg` 里
+    `gap` / `pyramid_stairs` / `boxes` / `hurdle` 的显式参数），所以"同一难度下本道障碍的尺寸
+    ＝它在自己那类地形里的尺寸"（逐项对照见 `docs/cmoe_mix_test_scene_2026-10-04.md`）。
+    与独立地形的**有意差异只有三处**，逐条写在字段注释里：
+    ① `stairs_num_steps = 4`（任务书要求 4 级；训练实例是 6 级，**单级步高/步深逐字相同**）；
+    ② `hurdle_height_fraction` / `hurdle_spacing_fraction` —— 独立地形在区间内**随机**，本道取确定值；
+    ③ `obstacle_spacing` —— 复合道自己的**布局**参数（相邻障碍单元之间的平地），独立地形没有这一层。
+    """
+
+    function = track_composite_terrain
+    # ---------------- 走廊 / 基座 / 出生点（沿用评测场景既有设定，**不新造**）
+    corridor_width: float = 0.80
+    pit_depth: float = 0.50
+    spawn_x: float = 0.75
+    # `spawn_x` 前方**至少**这么多米持平地，之后才允许出现第一个障碍（用户硬约束 ≥ 1.5 m）。
+    spawn_clearance: float = 1.50
+    # ---------------- 布局：相邻障碍之间的**均匀平地间隔**
+    # 负值（= COMPOSITE_SPACING_AUTO）⇒ **反算**成"刚好占满整条 `size[0]`"的值；
+    # 非负值 ⇒ 显式间隔（必须 ≥ `min_obstacle_spacing`，否则 `ValueError`）。
+    obstacle_spacing: float = COMPOSITE_SPACING_AUTO
+    min_obstacle_spacing: float = COMPOSITE_MIN_OBSTACLE_SPACING
+    suggested_spacing_range: tuple[float, float] = COMPOSITE_SUGGESTED_OBSTACLE_SPACING
+    # ---------------- ① 坑（`track_gap_terrain` 的沟宽律）
+    # 训练实例 `CMoETrackGapTerrainCfg(gap_width_range=(0.12, 0.32), …)`；本道放 **2 个坑**（首尾各一，
+    # 见 `COMPOSITE_OBSTACLE_SEQUENCE`）。
+    gap_width_range: tuple[float, float] = (0.12, 0.32)
+    # ---------------- ② 楼梯（`track_stairs_terrain` 的步高律 ＋ step_depth）
+    # 训练实例 `CMoETrackStairsTerrainCfg(step_height_range=(0.05, 0.20), num_steps=6)`；
+    # **本道取 4 级**（用户确认的"上 4 级 + 下 4 级紧贴"），单级步高/步深与训练实例逐字相同
+    # （d = 0.70 ⇒ 0.05 + 0.70×0.15 = 0.155 m、步深 0.30 m）。
+    stairs_num_steps: int = 4
+    stairs_step_height_range: tuple[float, float] = (0.05, 0.20)
+    stairs_step_depth: float = 0.30
+    # ---------------- ③ 箱子/台阶块（`track_step_terrain` 的高/长律 ＋ step_spacing）
+    # 训练实例 `CMoETrackStepTerrainCfg(step_height_range=(0.08, 0.30), step_length_range=(0.30, 0.50),
+    # step_spacing=1.30, num_steps=2)` —— 逐字相同（`box_spacing` 是单元**内部**间距）。
+    box_count: int = 2
+    box_height_range: tuple[float, float] = (0.08, 0.30)
+    box_length_range: tuple[float, float] = (0.30, 0.50)
+    box_spacing: float = 1.30
+    # ---------------- ④ 栏（`track_hurdle_terrain` 的高度律与厚度律；训练实例＝类默认值）
+    hurdle_count: int = 2
+    hurdle_len_range: tuple[float, float] = (0.04, 0.12)
+    hurdle_height_min_slope: float = 0.08
+    hurdle_height_max_base: float = 0.06
+    hurdle_height_max_slope: float = 0.10
+    hurdle_spacing_range: tuple[float, float] = (0.48, 0.80)
+    # 独立地形对**每道栏**的高度、以及相邻栏的间距**在区间内随机**；复合道必须确定性可核
+    # ⇒ 取区间的这两个分位（0.5 ＝ 中点）。栏高 d = 0.70 ⇒ [0.056, 0.130]，中点 **0.093 m**；
+    # 栏间距中点 = (0.48 + 0.80)/2 = **0.64 m**。`track_hurdle_terrain` 本身一字未改。
+    hurdle_height_fraction: float = 0.5
+    hurdle_spacing_fraction: float = 0.5

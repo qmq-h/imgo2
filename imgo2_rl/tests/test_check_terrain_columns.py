@@ -134,19 +134,21 @@ class TestTerrainColumns(unittest.TestCase):
 
 
 class TestMixTestTerrainColumns(unittest.TestCase):
-    """`Imgo2-basemove-rough-cmoe-mix-test`（**只有 mix** 的受控测试场景）的单独断言。
+    """`Imgo2-basemove-rough-cmoe-mix-test`（**只有复合道**的受控测试场景）的单独断言。
 
-    2026-10-04 用户要求：这个测试场景只有 `mix` ⇒ 掩码引用的其它地形名在本场景**恒为 0**（预期）。
+    2026-10-04 用户要求：这个测试场景只有一种地形 ⇒ 掩码引用的其它地形名在本场景**恒为 0**（预期）。
     处理方式必须是"给工具加**按任务区分**的能力并**明确标注**"，而**不是**放宽原判据：
     ① 原任务（`--task cmoe-rough`）的"每一项 ≥1 列"判据在本文件里原样保留（见
     `TestTerrainColumns.test_every_masked_terrain_name_has_columns` 与下面的负向对照）；
-    ② test 任务走**单独分支**，仍然强制 `sub_terrains.clear()` + 只有 mix + mix 占满全部列 +
-    `num_cols=20`（＝`MIX_TEST_LANES`：20 条**并列**的 mix 道）+ `num_rows=1`（唯一一行难度）+
-    `difficulty_range=(0.70, 0.70)`，并把"其它地形名 0 列"**逐条打印成预期**。
-    2026-10-04（第二批，用户："地形不要按照列排，放在行里面"）：列数 **1 → 20**（20 条道沿世界 Y
-    并列）⇒ 本类的期望值同步改成 20；同时加"模块级可读常量能被工具解析"的断言。
-    2026-10-04（第三批，用户："我不需要还保持那么多行，我需要他们并列"）：行数 **20 → 1**、
-    难度改由 `difficulty_range` 精确固定 ⇒ 本类期望改成 `num_rows=1` 并检查难度范围。
+    ② test 任务走**单独分支**，仍然强制 `sub_terrains.clear()` + 只有一种地形 + 占满全部列 +
+    `num_cols=20`（＝`MIX_TEST_LANES`）+ `num_rows=1`（唯一一行难度）+ `difficulty_range=(0.70,0.70)`，
+    并把"其它地形名 0 列"**逐条打印成预期**。
+
+    **2026-10-05（第七批）**：唯一地形由 `mix` 换成**复合道**（键名 `composite`，
+    `cmoe_terrains.track_composite_terrain`）⇒ 本类整体改写为复合道的断言：
+    障碍清单/X 区间表、**逐对相邻间隔 ≥ 下界**、**楼梯上下紧贴**、占满 20 m、出生点前方 1.50 m，
+    以及一段"训练侧 `mix` 未受影响"的复核。真 trimesh 侧的交叉核对在
+    `tests/test_cmoe_mix_test_scene.py::TestCompositeTerrainGeometry`。
     """
 
     @classmethod
@@ -154,6 +156,7 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         cls.info = chk.scene_overrides(chk.MIX_TEST_CLASS)
         cls.props = cls.info["props"]
         cls.task = chk.MIX_TEST_TASK
+        cls.key = chk.MIX_TEST_SUB_TERRAIN_KEY
 
     # ------------------------------------------------------------- test 任务自身
     def test_task_id_and_class_are_wired_to_the_tool(self):
@@ -163,14 +166,15 @@ class TestMixTestTerrainColumns(unittest.TestCase):
     def test_sub_terrains_are_cleared(self):
         self.assertTrue(self.info["cleared"], "test 任务必须先清空基类地形，否则会继承 11 类")
 
-    def test_mix_is_the_only_sub_terrain(self):
-        self.assertEqual(list(self.props.keys()), ["mix"], f"只允许 mix，实测 {list(self.props)}")
-        self.assertAlmostEqual(self.props["mix"], 1.0, places=9)
+    def test_composite_is_the_only_sub_terrain(self):
+        self.assertEqual(list(self.props.keys()), [self.key], f"只允许复合道，实测 {list(self.props)}")
+        self.assertAlmostEqual(self.props[self.key], 1.0, places=9)
+        self.assertEqual(self.key, "composite")
 
     def test_num_cols_twenty_and_num_rows_one(self):
-        """20 条**并列**的 mix 道（列、沿世界 Y）× **唯一一行**难度（行、沿世界 X）。"""
-        self.assertEqual(self.info["num_cols"], 20, "20 条并列的 mix 道（＝可同时评估的环境数上限）")
-        self.assertEqual(self.info["num_rows"], 1, "只留唯一一行难度 ⇒ 世界 X 只有 8 m（旧方案 20 行）")
+        """20 条**并列**的道（列、沿世界 Y）× **唯一一行**难度（行、沿世界 X）。"""
+        self.assertEqual(self.info["num_cols"], 20, "20 条并列的道（＝可同时评估的环境数上限）")
+        self.assertEqual(self.info["num_rows"], 1, "只留唯一一行难度 ⇒ 世界 X 只有 20 m")
         self.assertEqual(chk.MIX_TEST_LANES_EXPECTED, 20)
         self.assertEqual(chk.MIX_TEST_LEVELS_EXPECTED, 1)
 
@@ -181,40 +185,31 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertAlmostEqual(chk.MIX_TEST_DIFFICULTY_EXPECTED, 0.70, places=9)
 
     def test_num_cols_is_read_from_the_module_constant(self):
-        """`num_cols`/`num_rows`/难度/间距乘子都写成可读常量 ⇒ 工具必须能求值模块常量。"""
+        """`num_cols`/`num_rows`/难度/复合道常量都写成可读常量 ⇒ 工具必须能求值模块常量。"""
         consts = chk.module_constants()
         self.assertEqual(consts["MIX_TEST_LANES"], 20)
         self.assertEqual(consts["MIX_TEST_LEVELS"], 1)
         self.assertAlmostEqual(consts["MIX_TEST_DIFFICULTY"], 0.70, places=9)
-        # 2026-10-04（第四批）：乘子改成"占满整条道"的反算值（原来 1.0 = 训练默认值）
-        # 2026-10-04（第五批）：瓦片 X 8 m → 20 m ⇒ 反算值 2.25 → **6.00**、图案末端 7.50 → **19.50**
-        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], 6.00, places=9)
-        self.assertAlmostEqual(consts["MIX_TEST_TAIL_MARGIN"], 0.50, places=9)
-        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_END_X"], 19.50, places=9)
-        self.assertIs(consts["MIX_TEST_FILL_STRETCHED_GAPS"], True)
-        # 第五批新增常量
         self.assertEqual(consts["MIX_TEST_TILE_SIZE"], (20.0, 4.0))
         self.assertAlmostEqual(consts["MIX_TEST_EPISODE_LENGTH_S"], 35.0, places=9)
         self.assertAlmostEqual(consts["MIX_TEST_EPISODE_LENGTH_MIN_S"], 25.0, places=9)
         self.assertAlmostEqual(consts["MIX_TEST_FORWARD_SPEED"], 1.0, places=9)
+        # 第七批新增的复合道常量
+        self.assertEqual(consts["MIX_TEST_SUB_TERRAIN_KEY"], "composite")
+        self.assertAlmostEqual(consts["MIX_TEST_OBSTACLE_SPACING"], 2.3636, places=3)
+        self.assertAlmostEqual(consts["MIX_TEST_MIN_OBSTACLE_SPACING"], 1.50, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_SPAWN_CLEARANCE"], 1.50, places=9)
+        # 旧的 mix 图案常量必须随场景切换一起删掉（留着会让人以为场景还在用 mix）
+        for gone in ("MIX_TEST_PATTERN_SPACING_SCALE", "MIX_TEST_TAIL_MARGIN",
+                     "MIX_TEST_PATTERN_END_X", "MIX_TEST_FILL_STRETCHED_GAPS"):
+            self.assertNotIn(gone, consts, f"评测场景已改用复合道 ⇒ 旧常量 {gone} 应删除")
         self.assertNotIn("MIX_TEST_PINNED_LEVEL", consts,
                          "旧的'钉第 14 行'常量必须随子类一起删掉（难度改由 difficulty_range 固定）")
         # 字面量与常量两种写法都要能读（`literal` 先字面量、后常量命名空间）
         self.assertEqual(chk.literal(ast.parse("7", mode="eval").body, consts), 7)
         self.assertEqual(chk.literal(ast.parse("MIX_TEST_LANES", mode="eval").body, consts), 20)
-        self.assertEqual(chk.literal(ast.parse("MIX_TEST_FILL_STRETCHED_GAPS", mode="eval").body, consts), True)
-
-    # ------------------------------------------- 2026-10-04（第四/五批）：图案占满整条道
-    def test_mix_call_kwargs_are_parsed(self):
-        """工具要能从 `sub_terrains['mix'] = <Cfg>(...)` 里读出 `pattern_spacing_scale` 与
-        `fill_stretched_gaps`（新字段是常量名，必须走模块常量求值）。"""
-        calls = self.info["sub_terrain_calls"]
-        self.assertEqual(list(calls.keys()), ["mix"])
-        kwargs = calls["mix"]
-        self.assertAlmostEqual(kwargs["pattern_spacing_scale"], 6.00, places=9)
-        self.assertIs(kwargs["fill_stretched_gaps"], True)
-        self.assertAlmostEqual(kwargs["pattern_start_x"], 0.30, places=9)
-        self.assertAlmostEqual(kwargs["x_unit"], 0.02, places=9)
+        self.assertEqual(chk.literal(ast.parse("MIX_TEST_SUB_TERRAIN_KEY", mode="eval").body, consts),
+                         "composite")
 
     def test_terrain_size_is_read_from_the_source_per_class(self):
         """`terrain_generator.size` 由**各类的 `__post_init__`** 设定 ⇒ 工具要**按类**真读源码（不猜）。
@@ -245,171 +240,93 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertAlmostEqual(needed, 20.0, places=9, msg="走完 20 m 需要 20 s")
         self.assertGreaterEqual(chk.MIX_TEST_EPISODE_LENGTH_EXPECTED, chk.MIX_TEST_EPISODE_LENGTH_MIN_S)
 
-    def test_report_checks_the_pattern_fills_the_lane(self):
-        """第四/五批：工具必须核算"图案末端 ≥ 19.0 m"、乘子 = 反算值、`fill_stretched_gaps=True`。"""
-        import contextlib
-        import io
+    # ------------------------------------------- 2026-10-05（第七批）：复合道（离线算术复算）
+    def test_composite_call_kwargs_are_parsed(self):
+        """工具要能从 `sub_terrains['composite'] = <Cfg>(...)` 读出全部字段（含写成常量名的）。"""
+        calls = self.info["sub_terrain_calls"]
+        self.assertEqual(list(calls.keys()), [self.key])
+        kwargs = calls[self.key]
+        self.assertAlmostEqual(kwargs["proportion"], 1.0, places=9)
+        self.assertLess(kwargs["obstacle_spacing"], 0.0, "必须是自动反算的哨兵")
+        self.assertAlmostEqual(kwargs["spawn_clearance"], 1.50, places=9)
+        self.assertAlmostEqual(kwargs["min_obstacle_spacing"], 1.50, places=9)
+        self.assertEqual(tuple(kwargs["gap_width_range"]), (0.12, 0.32))
+        self.assertEqual(int(kwargs["stairs_num_steps"]), 4)
+        self.assertEqual(tuple(kwargs["stairs_step_height_range"]), (0.05, 0.20))
+        self.assertEqual(int(kwargs["box_count"]), 2)
+        self.assertEqual(tuple(kwargs["box_length_range"]), (0.30, 0.50))
 
-        buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
-            problems, lines = chk.mix_test_report()
-        text = "\n".join(lines)
-        self.assertEqual(problems, 0, text)
-        self.assertIn("第四/五批检查", text)
-        self.assertIn("pattern_spacing_scale", text)
-        self.assertIn("19.50 m", text)
-        self.assertIn("97.50", text)
-        self.assertIn("6.15625", text, "上限（溢出保护）必须打印出来")
-        self.assertIn("fill_stretched_gaps=True", text)
-        self.assertIn("第五批检查：单块瓦片", text)
-        self.assertIn("训练/play 侧**的 `terrain_generator.size` 仍是 8×4 m", text)
-        self.assertIn("单局时长", text)
-        self.assertIn("episode_length_s", text)
-        self.assertIn("35 s", text)
-        self.assertNotIn("❌", text)
-        # 常量本身的期望值也写死在工具里（防止 cfg 常量被改错而工具沉默）
-        self.assertAlmostEqual(chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED, 6.00, places=9)
-        self.assertAlmostEqual(chk.MIX_TEST_PATTERN_END_MIN_X, 19.0, places=9)
-        self.assertAlmostEqual(chk.MIX_PATTERN_END_UNITS, 160.0, places=9)
+    def _layout(self):
+        return chk.composite_layout(chk.MIX_TEST_DIFFICULTY_EXPECTED,
+                                    self.info["sub_terrain_calls"][self.key],
+                                    chk.terrain_size(chk.MIX_TEST_CLASS))
 
-    def test_report_flags_a_wrong_spacing_scale(self):
-        """负向对照：期望乘子被改成别的值时必须报 ❌（"6.00"是被检查的，不是打印而已）。"""
-        import contextlib
-        import io
+    def test_composite_layout_matches_the_hardcoded_expectations(self):
+        """障碍顺序/宽度/总宽/间隔必须与工具里**写死**的期望值一致（真几何用真 trimesh 另测）。"""
+        layout = self._layout()
+        self.assertEqual(tuple(layout["sequence"]), chk.COMPOSITE_SEQUENCE_EXPECTED)
+        self.assertEqual([round(float(u["width"]), 6) for u in layout["units"]],
+                         [round(w, 6) for w in chk.COMPOSITE_WIDTHS_EXPECTED])
+        self.assertAlmostEqual(float(layout["total_width"]), chk.COMPOSITE_TOTAL_WIDTH_EXPECTED, places=9)
+        self.assertAlmostEqual(float(layout["spacing"]), chk.COMPOSITE_SPACING_EXPECTED, places=9)
+        # 反算式自洽：(20 − 2.25 − 5.932) / 5 = 2.3636
+        self.assertAlmostEqual(
+            (20.0 - chk.COMPOSITE_FIRST_OBSTACLE_X_EXPECTED - chk.COMPOSITE_TOTAL_WIDTH_EXPECTED) / 5,
+            chk.COMPOSITE_SPACING_EXPECTED, places=9,
+        )
+        self.assertAlmostEqual(float(layout["last_obstacle_end"]),
+                               chk.COMPOSITE_LAST_OBSTACLE_END_EXPECTED, places=9)
+        self.assertAlmostEqual(float(layout["end_x"]), 20.0, places=9, msg="必须占满整条道")
 
-        original = chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED
-        chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 2.0
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("应为 2.0", text)
-        finally:
-            chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = original
+    def test_adjacent_gaps_all_meet_the_lower_bound(self):
+        """**逐对相邻障碍**：每一对（含尾段以外的所有相邻对）的平地都 ≥ 下界。"""
+        layout = self._layout()
+        pairs = tuple(tuple(g["pair"]) for g in layout["adjacent_gaps"])
+        self.assertEqual(pairs, (("gap", "stairs"), ("stairs", "boxes"),
+                                 ("boxes", "hurdle"), ("hurdle", "gap")))
+        worst = min(float(g["length"]) for g in layout["adjacent_gaps"])
+        self.assertGreaterEqual(worst, chk.COMPOSITE_MIN_SPACING_EXPECTED - 1.0e-9)
+        self.assertAlmostEqual(worst, chk.COMPOSITE_SPACING_EXPECTED, places=9, msg="间隔等长")
+        self.assertAlmostEqual(
+            float(layout["spacing"]), (20.0 - float(layout["first_obstacle_x"])
+                                      - float(layout["total_width"])) / len(layout["obstacles"]),
+            places=12, msg="间隔必须等于反算式",
+        )
 
-    def test_report_flags_a_pattern_that_does_not_fill_the_lane(self):
-        """负向对照：目标下界抬到 19.6 m 时，19.50 m 的图案必须被判"未占满整条道"。"""
-        import contextlib
-        import io
+    def test_stairs_up_and_down_are_contiguous(self):
+        """楼梯：上 4 级 + 下 4 级**首尾相接**、级间无平地；峰高 0.62 m、段长 2.40 m。"""
+        layout = self._layout()
+        stairs = [o for o in layout["obstacles"] if o["kind"] == "stairs"]
+        self.assertEqual(len(stairs), 1)
+        params = stairs[0]["params"]
+        self.assertEqual(int(params["num_steps"]), chk.COMPOSITE_STAIR_LEVELS_EXPECTED)
+        self.assertEqual(int(params["step_count_total"]), 2 * chk.COMPOSITE_STAIR_LEVELS_EXPECTED)
+        self.assertAlmostEqual(float(params["step_height"]),
+                               chk.COMPOSITE_STAIR_STEP_HEIGHT_EXPECTED, places=9)
+        self.assertAlmostEqual(float(params["peak_height"]),
+                               chk.COMPOSITE_STAIR_PEAK_EXPECTED, places=9)
+        self.assertAlmostEqual(float(stairs[0]["width"]),
+                               2 * chk.COMPOSITE_STAIR_LEVELS_EXPECTED * 0.30, places=9)
+        # 楼梯与相邻障碍之间的平地也必须 ≥ 下界（"紧贴"只指上/下楼梯之间）
+        for gap in layout["adjacent_gaps"]:
+            if "stairs" in gap["pair"]:
+                self.assertGreaterEqual(float(gap["length"]),
+                                        chk.COMPOSITE_MIN_SPACING_EXPECTED - 1.0e-9)
 
-        original = chk.MIX_TEST_PATTERN_END_MIN_X
-        chk.MIX_TEST_PATTERN_END_MIN_X = 19.6
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("未占满整条道", text)
-        finally:
-            chk.MIX_TEST_PATTERN_END_MIN_X = original
+    def test_spawn_clearance_and_first_obstacle(self):
+        """出生点：`spawn_x = 0.75` 前方 1.50 m 平地 ⇒ 第一个障碍左沿 = 2.25 m。"""
+        layout = self._layout()
+        self.assertAlmostEqual(float(layout["spawn_x"]), chk.COMPOSITE_SPAWN_X_EXPECTED, places=9)
+        self.assertGreaterEqual(float(layout["spawn_clearance"]),
+                                chk.COMPOSITE_SPAWN_CLEARANCE_MIN - 1.0e-9)
+        self.assertAlmostEqual(float(layout["first_obstacle_x"]),
+                               chk.COMPOSITE_FIRST_OBSTACLE_X_EXPECTED, places=9)
 
-    def test_report_flags_a_wrong_tile_size(self):
-        """负向对照：评测瓦片期望值改错时必须报 ❌（"20 m"是被检查的）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_TEST_TILE_SIZE_EXPECTED
-        chk.MIX_TEST_TILE_SIZE_EXPECTED = (8.0, 4.0)
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("`terrain_generator.size` 应为", text)
-        finally:
-            chk.MIX_TEST_TILE_SIZE_EXPECTED = original
-
-    def test_report_flags_the_training_side_being_scaled_up(self):
-        """负向对照：训练侧 `size` 若不是 (8,4)（＝被评测场景带偏）必须报 ❌。"""
-        import contextlib
-        import io
-
-        original = chk.TRAIN_TILE_SIZE_EXPECTED
-        chk.TRAIN_TILE_SIZE_EXPECTED = (20.0, 4.0)
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("训练/play 侧**的 `terrain_generator.size` 必须仍是", text)
-        finally:
-            chk.TRAIN_TILE_SIZE_EXPECTED = original
-
-    def test_report_flags_a_too_short_episode(self):
-        """负向对照：下界抬到 40 s 时 35 s 的单局时长必须被判"余量不足"。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_TEST_EPISODE_LENGTH_MIN_S
-        chk.MIX_TEST_EPISODE_LENGTH_MIN_S = 40.0
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("下界 40 s", text)
-        finally:
-            chk.MIX_TEST_EPISODE_LENGTH_MIN_S = original
-
-    def test_report_flags_a_missing_episode_length_override(self):
-        """负向对照：评测 cfg 没覆盖 `episode_length_s` 时必须报 ❌（继承来的 20 s 不够走 20 m）。"""
-        import contextlib
-        import io
-
-        original = chk.episode_length_s
-
-        def patched(class_name=chk.TRAIN_CLASS):
-            if class_name == chk.MIX_TEST_CLASS:
-                return None
-            return original(class_name)
-
-        chk.episode_length_s = patched
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("未覆盖 `episode_length_s`", text)
-        finally:
-            chk.episode_length_s = original
-
-    def test_report_flags_a_missing_fill_flag(self):
-        """负向对照：`fill_stretched_gaps` 不是 True 时必须报 ❌（"铺成可走面"同样被检查）。"""
-        import contextlib
-        import io
-
-        original = chk.scene_overrides
-
-        def patched(class_name=chk.TRAIN_CLASS):
-            info = original(class_name)
-            if class_name == chk.MIX_TEST_CLASS:
-                info["sub_terrain_calls"]["mix"]["fill_stretched_gaps"] = False
-            return info
-
-        chk.scene_overrides = patched
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("fill_stretched_gaps=True", text)
-            self.assertIn("❌", text)
-        finally:
-            chk.scene_overrides = original
-
-    # ---------------------------------- 2026-10-04（第六批）：分组语义（组内连续、组间拉大、坑前平地）
+    # ------------------------------------------- 训练侧 mix 几何仍可离线复核（原判据保留）
     def test_pattern_segments_are_parsed_from_the_source(self):
         """`segments` 表必须能从 `cmoe_terrains.py` **AST 解析**出来（只用标准库 ⇒ 离线可复核）。"""
         segments = chk.mix_pattern_segments(chk.MIX_TEST_DIFFICULTY_EXPECTED)
-        self.assertEqual(len(segments), 12, "图案 12 段（障碍数量不变）")
+        self.assertEqual(len(segments), 12, "训练侧图案 12 段")
         self.assertEqual(segments[0], (0.0, 30.0, 0.0))
         self.assertEqual(segments[5][0], 69.0, "第一处坑的下游段起点 = 72 − round(10·(1−0.70)) = 69")
         self.assertEqual(segments[10][0], 120.0, "第二处坑的下游段起点 = 123 − 3 = 120")
@@ -430,9 +347,9 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertEqual(len(raised), chk.MIX_STAIR_LEVELS_EXPECTED, "楼梯必须是同一组内首尾相接的 4 级")
 
     def test_group_layout_puts_the_flat_upstream_of_the_pits(self):
-        """几何核算：楼梯 4 级连续、两处坑紧贴**下游组起点**、平地铺在**坑的上游**且均匀分配。"""
-        layout = chk.mix_group_layout(chk.MIX_TEST_DIFFICULTY_EXPECTED,
-                                      chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED)
+        """训练侧 `mix` 几何核算（**评测场景已不用它**，仍作为训练侧回归保留）：楼梯 4 级连续、
+        两处坑紧贴**下游组起点**、平地铺在**坑的上游**且均匀分配。"""
+        layout = chk.mix_group_layout(chk.MIX_TEST_DIFFICULTY_EXPECTED, chk.MIX_WIDE_SCALE_EXPECTED)
         stairs = layout["stairs"]
         self.assertEqual([round(top, 4) for _a, _b, top in stairs], list(chk.MIX_STAIR_TOPS_EXPECTED))
         self.assertEqual([round(a, 4) for a, _b, _t in stairs], [0.9, 1.02, 1.14, 1.26])
@@ -449,8 +366,23 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertAlmostEqual(fills[0][1] - fills[0][0], 16.0 / 3.0, places=9)
         self.assertAlmostEqual(fills[2][1], 19.5, places=9, msg="尾段补块铺到图案末端")
 
-    def test_report_checks_the_grouping_and_the_staircase(self):
-        """工具必须**打印并检查**：分组数与组内连续性（楼梯 4 级连续）、坑宽、坑前平地。"""
+    def test_hard_combinations_are_report_only(self):
+        """图案里其它"难组合"只报告、不改几何：三行都在、都带"只报告"、且数与实测一致。
+
+        （函数仍在：它是**训练侧 mix** 的只报告清单；评测场景已改用复合道、不再打印这三行。）
+        """
+        lines = chk.mix_hard_combinations(chk.MIX_TEST_DIFFICULTY_EXPECTED)
+        self.assertEqual(len(lines), 3, lines)
+        for line in lines:
+            self.assertIn("只报告", line)
+        self.assertIn("窄凹口", lines[0])
+        self.assertIn("84:86", lines[0])
+        self.assertIn("尖峰", lines[1])
+        self.assertIn("落差", lines[2])
+
+    # ------------------------------------------------------------- 报告（正向）
+    def test_report_checks_the_composite_track(self):
+        """工具必须打印并**检查**：障碍清单/X 区间表、逐对相邻间隔、楼梯上下紧贴、占满、出生点。"""
         import contextlib
         import io
 
@@ -459,94 +391,27 @@ class TestMixTestTerrainColumns(unittest.TestCase):
             problems, lines = chk.mix_test_report()
         text = "\n".join(lines)
         self.assertEqual(problems, 0, text)
-        self.assertIn("第六批检查", text)
-        self.assertIn("切成 **3 组**", text)
-        self.assertIn("0→60、69→111、120→160", text)
-        self.assertIn("楼梯 4 级连续", text)
-        self.assertIn("0.0462", text)
-        self.assertIn("0.1848", text)
-        self.assertIn("级间**无平地**", text)
-        self.assertIn("两处坑宽恒 0.18 m", text)
-        self.assertIn("紧贴下游组起点", text)
-        self.assertIn("两处坑**上游**各 5.3333 m", text)
-        self.assertIn("坑后落点平地 **0.0000 m**", text)
-        self.assertIn("难组合", text)
-        self.assertIn("窄凹口", text)
-        self.assertIn("尖峰", text)
-        self.assertIn("落差", text)
+        self.assertIn("第七批检查：复合道", text)
+        self.assertIn("障碍清单与 X 区间表", text)
+        self.assertIn("逐对相邻障碍间隔表", text)
+        self.assertIn("✅ 最小相邻间隔 2.3636 m ≥ 下界 1.5000 m", text)
+        self.assertIn("楼梯上下紧贴", text)
+        self.assertIn("楼梯与相邻障碍间隔 = 2.3636 m ≥ 下界", text)
+        self.assertIn("占满整条道", text)
+        self.assertIn("到第一个障碍 **1.5000 m ≥ 1.5 m**", text)
+        self.assertIn("训练侧 `mix` 未受影响", text)
+        self.assertIn("第五批检查：单块瓦片", text)
+        self.assertIn("训练/play 侧**的 `terrain_generator.size` 仍是 8×4 m", text)
+        self.assertIn("单局时长", text)
+        self.assertIn("35 s", text)
         self.assertNotIn("❌", text)
+        # 工具里写死的期望值也钉一遍（防止 cfg 常量被改错而工具沉默）
+        self.assertEqual(chk.COMPOSITE_SEQUENCE_EXPECTED, ("gap", "stairs", "boxes", "hurdle", "gap"))
+        self.assertAlmostEqual(chk.COMPOSITE_SPACING_EXPECTED, 2.3636, places=9)
+        self.assertAlmostEqual(chk.COMPOSITE_TOTAL_WIDTH_EXPECTED, 5.932, places=9)
+        self.assertAlmostEqual(chk.COMPOSITE_MIN_SPACING_EXPECTED, 1.50, places=9)
 
-    def test_report_flags_a_wrong_group_count_expectation(self):
-        """负向对照：期望组数被改错时必须报 ❌（"3 组"是被**检查**的，不是打印而已）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_CONTIGUOUS_GROUPS_EXPECTED
-        chk.MIX_CONTIGUOUS_GROUPS_EXPECTED = 5
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("分组应为 5 组", text)
-        finally:
-            chk.MIX_CONTIGUOUS_GROUPS_EXPECTED = original
-
-    def test_report_flags_a_wrong_stair_level_count(self):
-        """负向对照：期望楼梯级数被改错时必须报 ❌（"4 级连续"是被检查的）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_STAIR_LEVELS_EXPECTED
-        chk.MIX_STAIR_LEVELS_EXPECTED = 3
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("楼梯应为同一组内首尾相接的 3 级", text)
-        finally:
-            chk.MIX_STAIR_LEVELS_EXPECTED = original
-
-    def test_report_flags_a_too_short_upstream_flat(self):
-        """负向对照：坑前平地的下界抬到 6 m 时 5.3333 m 必须被判不足（追加要求的"助跑"被检查）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_UPSTREAM_FLAT_MIN_S
-        chk.MIX_UPSTREAM_FLAT_MIN_S = 6.0
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("每处坑前的平地必须 ≥ 6", text)
-        finally:
-            chk.MIX_UPSTREAM_FLAT_MIN_S = original
-
-    def test_hard_combinations_are_report_only(self):
-        """其它"难组合"只报告、不改几何：三行都在、都带"只报告"、且数与实测一致。"""
-        lines = chk.mix_hard_combinations(chk.MIX_TEST_DIFFICULTY_EXPECTED)
-        self.assertEqual(len(lines), 3, lines)
-        for line in lines:
-            self.assertIn("只报告", line)
-        self.assertIn("窄凹口", lines[0])
-        self.assertIn("84:86", lines[0])
-        self.assertIn("0.1848", lines[0])   # 上游邻块 69:84 的顶面（120 索引）
-        self.assertIn("0.1478", lines[0])   # 下游邻块 86:96 的顶面（96 索引）
-        self.assertIn("尖峰", lines[1])
-        self.assertIn("0.2618", lines[1])
-        self.assertIn("落差", lines[2])
-        self.assertIn("0.0924", lines[2])
-
-    def test_mix_gets_all_columns(self):
-        """只 mix 一类 ⇒ 20 列**全部**是 mix（每道 1 列）。"""
-        self.assertEqual(chk.allocate([("mix", 1.0)], 20), ["mix"] * 20)
-
-    def test_report_shows_twenty_mix_columns_and_one_row(self):
+    def test_report_shows_twenty_columns_and_one_row(self):
         import contextlib
         import io
 
@@ -555,60 +420,9 @@ class TestMixTestTerrainColumns(unittest.TestCase):
             chk.mix_test_report()
         text = buffer.getvalue()
         self.assertIn("num_cols=20，共 20 列", text)
-        self.assertIn("mix                     20 列", text)
+        self.assertIn("composite               20 列", text)
         self.assertIn("网格 **20 道 × 1 难度行**", text)
         self.assertIn("世界 20 m(X) × 80 m(Y)", text)
-
-    def test_report_flags_a_wrong_lane_count(self):
-        """负向对照：把期望道数改成别的值，判定必须报 ❌（证明"20 列"是被**检查**的，不是打印而已）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_TEST_LANES_EXPECTED
-        chk.MIX_TEST_LANES_EXPECTED = 1
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("❌", text)
-        finally:
-            chk.MIX_TEST_LANES_EXPECTED = original
-
-    def test_report_flags_a_wrong_row_count(self):
-        """负向对照：期望行数被改错时必须报 ❌（"1 行"同样是被检查的）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_TEST_LEVELS_EXPECTED
-        chk.MIX_TEST_LEVELS_EXPECTED = 20
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("num_rows 应为 20", text)
-        finally:
-            chk.MIX_TEST_LEVELS_EXPECTED = original
-
-    def test_report_flags_a_wrong_difficulty(self):
-        """负向对照：期望难度被改错时必须报 ❌（难度固定这一条同样是被检查的）。"""
-        import contextlib
-        import io
-
-        original = chk.MIX_TEST_DIFFICULTY_EXPECTED
-        chk.MIX_TEST_DIFFICULTY_EXPECTED = 0.5
-        try:
-            buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                problems, lines = chk.mix_test_report()
-            text = "\n".join(lines)
-            self.assertGreater(problems, 0, text)
-            self.assertIn("difficulty_range 应为", text)
-        finally:
-            chk.MIX_TEST_DIFFICULTY_EXPECTED = original
 
     def test_mix_test_report_is_clean_and_annotates_absence(self):
         """test 任务判定必须通过（0 问题），并把"其它地形名恒为 0"明确标为预期。"""
@@ -621,11 +435,12 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         text = "\n".join(lines)
         self.assertEqual(problems, 0, f"test 任务不应报错：{text}")
         self.assertIn("属**预期**", text)
-        self.assertIn("mix", text)
+        self.assertIn("复合道", text)
         self.assertNotIn("❌", text)
-        # 每一条被引用的"本场景不存在"的地形名都要**逐条**标注
-        absent = sorted({n for refs in chk.MASKED_NAMES.values() for n in refs} - {"mix"})
-        self.assertTrue(absent, "本测试的前提是掩码引用了 mix 之外的地形名")
+        # 每一条被引用的"本场景不存在"的地形名都要**逐条**标注（现在连 `mix` 也不存在了）
+        absent = sorted({n for refs in chk.MASKED_NAMES.values() for n in refs}
+                        - {chk.MIX_TEST_SUB_TERRAIN_KEY})
+        self.assertTrue(absent, "本测试的前提是掩码引用了别的类地形名")
         for name in absent:
             self.assertIn(name, text, f"缺少对 '{name}' 的预期标注")
 
@@ -639,22 +454,213 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         text = "\n".join(lines)
         for key, refs in chk.MASKED_NAMES.items():
             for name in refs:
-                if name != "mix":
+                if name != chk.MIX_TEST_SUB_TERRAIN_KEY:
                     self.assertIn(f"{key} → {name}", text)
 
-    def test_forward_only_covers_the_only_terrain(self):
+    def test_forward_only_list_is_present_but_lazy_for_this_scene(self):
+        """本场景的命令项**不读** `forward_only_terrain_names` ⇒ 只需该名单在继承链里存在。"""
         fwd = chk.forward_only_names(chk.MIX_TEST_CLASS) or chk.forward_only_names(chk.TRAIN_CLASS)
-        self.assertIn("mix", fwd)
+        self.assertIsNotNone(fwd)
+        self.assertIn("mix", fwd, "训练侧名单里仍有 mix（训练未受影响）")
 
-    # ------------------------------------------------- 原判据不放宽（负向对照）
-    def test_original_criteria_still_fail_on_absent_names(self):
-        """负向对照：把"只有 mix"的场景丢给**原判据**，必须仍然报错（证明没被放宽）。"""
+    # ------------------------------------------------------------- 负向对照（第七批）
+    def _report(self):
         import contextlib
         import io
 
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            problems = chk.check_mask_columns({"mix": 1}, 1)
+            problems, lines = chk.mix_test_report()
+        return problems, "\n".join(lines)
+
+    def test_report_flags_a_wrong_sequence(self):
+        """负向对照：期望障碍顺序被改错时（或换成旧 mix 图案）必须报 ❌。"""
+        original = chk.COMPOSITE_SEQUENCE_EXPECTED
+        chk.COMPOSITE_SEQUENCE_EXPECTED = ("gap", "stairs", "gap")
+        try:
+            problems, text = self._report()
+        finally:
+            chk.COMPOSITE_SEQUENCE_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("障碍顺序应为", text)
+
+    def test_report_flags_a_wrong_spacing_expectation(self):
+        """负向对照：期望间隔被改成别的值时必须报 ❌（"2.3636 m"是被**检查**的）。"""
+        original = chk.COMPOSITE_SPACING_EXPECTED
+        chk.COMPOSITE_SPACING_EXPECTED = 3.0
+        try:
+            problems, text = self._report()
+        finally:
+            chk.COMPOSITE_SPACING_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("均匀间隔应为反算值", text)
+
+    def test_report_flags_a_wrong_min_spacing(self):
+        """负向对照：下界被抬到 3 m 时 2.3636 m 的间隔必须被判"小于下界"。"""
+        original = chk.COMPOSITE_MIN_SPACING_EXPECTED
+        chk.COMPOSITE_MIN_SPACING_EXPECTED = 3.0
+        try:
+            problems, text = self._report()
+        finally:
+            chk.COMPOSITE_MIN_SPACING_EXPECTED = original
+        # 期望值只影响 `min_obstacle_spacing` 的核对；把下界抬到 3 会先报"应为 3.0 m"
+        self.assertGreater(problems, 0, text)
+        self.assertIn("`min_obstacle_spacing` 应为", text)
+
+    def test_report_flags_a_wrong_stair_level_count(self):
+        """负向对照：期望楼梯级数被改错时必须报 ❌（"上 4 + 下 4"是被检查的）。"""
+        original = chk.COMPOSITE_STAIR_LEVELS_EXPECTED
+        chk.COMPOSITE_STAIR_LEVELS_EXPECTED = 3
+        try:
+            problems, text = self._report()
+        finally:
+            chk.COMPOSITE_STAIR_LEVELS_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("楼梯级数应为", text)
+
+    def test_report_flags_a_lane_that_is_not_filled(self):
+        """负向对照：末端期望值改错（或道变短）⇒ "未占满整条道"必须被报出来。"""
+        original = chk.COMPOSITE_LAST_OBSTACLE_END_EXPECTED
+        chk.COMPOSITE_LAST_OBSTACLE_END_EXPECTED = 19.0
+        try:
+            problems, text = self._report()
+        finally:
+            chk.COMPOSITE_LAST_OBSTACLE_END_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("最后一个障碍末端应为", text)
+
+    def test_report_flags_a_missing_composite_call(self):
+        """负向对照：`sub_terrains` 里没有 `composite` 时必须报 ❌。"""
+        import contextlib
+        import io
+
+        original = chk.scene_overrides
+
+        def patched(class_name=chk.TRAIN_CLASS):
+            info = original(class_name)
+            if class_name == chk.MIX_TEST_CLASS:
+                info["sub_terrain_calls"] = {}
+            return info
+
+        chk.scene_overrides = patched
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.scene_overrides = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("解析不到", text)
+
+    def test_report_flags_a_too_short_episode(self):
+        """负向对照：下界抬到 40 s 时 35 s 的单局时长必须被判"余量不足"。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_EPISODE_LENGTH_MIN_S
+        chk.MIX_TEST_EPISODE_LENGTH_MIN_S = 40.0
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.MIX_TEST_EPISODE_LENGTH_MIN_S = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("下界 40 s", text)
+
+    def test_report_flags_a_missing_episode_length_override(self):
+        """负向对照：评测 cfg 没覆盖 `episode_length_s` 时必须报 ❌（继承来的 20 s 不够走 20 m）。"""
+        import contextlib
+        import io
+
+        original = chk.episode_length_s
+
+        def patched(class_name=chk.TRAIN_CLASS):
+            if class_name == chk.MIX_TEST_CLASS:
+                return None
+            return original(class_name)
+
+        chk.episode_length_s = patched
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.episode_length_s = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("未覆盖 `episode_length_s`", text)
+
+    def test_report_flags_a_wrong_tile_size(self):
+        """负向对照：评测瓦片期望值改错时必须报 ❌（"20 m"是被检查的）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_TILE_SIZE_EXPECTED
+        chk.MIX_TEST_TILE_SIZE_EXPECTED = (8.0, 4.0)
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.MIX_TEST_TILE_SIZE_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("`terrain_generator.size` 应为", text)
+
+    def test_report_flags_the_training_side_being_scaled_up(self):
+        """负向对照：训练侧 `size` 若不是 (8,4)（＝被评测场景带偏）必须报 ❌。"""
+        import contextlib
+        import io
+
+        original = chk.TRAIN_TILE_SIZE_EXPECTED
+        chk.TRAIN_TILE_SIZE_EXPECTED = (20.0, 4.0)
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.TRAIN_TILE_SIZE_EXPECTED = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("训练/play 侧**的 `terrain_generator.size` 必须仍是", text)
+
+    def test_report_flags_a_changed_training_mix_default(self):
+        """负向对照：训练侧 `mix` 的默认值被改（`fill_stretched_gaps=True`）必须报 ❌。"""
+        import contextlib
+        import io
+
+        original = chk.cfg_field_defaults
+
+        def patched(class_name):
+            defaults = original(class_name)
+            if class_name == "CMoETrackMixTerrainCfg":
+                defaults = dict(defaults)
+                defaults["fill_stretched_gaps"] = True
+            return defaults
+
+        chk.cfg_field_defaults = patched
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+        finally:
+            chk.cfg_field_defaults = original
+        self.assertGreater(problems, 0, text)
+        self.assertIn("默认值被改了", text)
+
+    # ------------------------------------------------- 原判据不放宽（负向对照）
+    def test_original_criteria_still_fail_on_absent_names(self):
+        """负向对照：把"只有复合道"的场景丢给**原判据**，必须仍然报错（证明没被放宽）。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems = chk.check_mask_columns({"composite": 1}, 1)
         self.assertGreater(problems, 0, "原判据必须继续对'掩码引用的地形名不存在'报错")
         self.assertIn("不在 sub_terrains 里", buffer.getvalue())
 
@@ -665,7 +671,7 @@ class TestMixTestTerrainColumns(unittest.TestCase):
 
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            problems = chk.check_mask_columns({"mix": 1, "boxes": 0, "gap": 0, "flat": 0}, 1)
+            problems = chk.check_mask_columns({"composite": 1, "boxes": 0, "gap": 0, "flat": 0}, 1)
         self.assertGreater(problems, 0)
         self.assertIn("只有 0 列", buffer.getvalue())
 
@@ -678,7 +684,7 @@ class TestMixTestTerrainColumns(unittest.TestCase):
 
     # ------------------------------------------------- 类作用域解析：不污染默认任务
     def test_default_task_parse_is_not_contaminated_by_the_test_scene(self):
-        """mix-test 类里也写了 `sub_terrains["mix"]`；默认任务必须仍按训练值解析（比例 0.10、40 列）。"""
+        """mix-test 类里也写了 `sub_terrains[...]`；默认任务必须仍按训练值解析（比例 0.10、40 列）。"""
         props, cols = chk.cmoe_overrides()
         self.assertAlmostEqual(props["mix"], 0.10, places=9)
         self.assertEqual(cols["num_cols"], 40)

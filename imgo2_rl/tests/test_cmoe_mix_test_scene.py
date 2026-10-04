@@ -79,6 +79,28 @@ import，所以 ① 纯 PD 数学从**只依赖 torch** 的 `mdp/mix_test_pd.py`
   实测 **5.55 m** —— 第一处坑按既定的铺平地规则**紧贴上游块末端**，落在 6.30 m 而不是"下游块起点"
   （8.58 m）之前；详见 `test_spawn_is_safe_at_both_scales` 的 docstring。
   ⚠️ `scale = 1.0`（训练几何）下"前方实心"仍只有 **0.75 m**（既有 `CMOE-17` 结论不变）。
+
+2026-10-05（**第七批＝本轮**，用户原话：「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在
+一起。我希望是和单独的那个几个场景类似的障碍放在这个整条的（道）上」；追加「每个地形要间隔开，
+而不是混合到一起放在一个位置」；再追加并确认顺序与楼梯形态）：
+
+* **评测场景的地形由参考 `mix` 图案换成"复合道"**：`cmoe_terrains.track_composite_terrain` ＋
+  `CMoETrackCompositeTerrainCfg`（`sub_terrains` 键名 `composite`），沿 +X 依次
+  **坑 → 楼梯（上 4 级 + 下 4 级紧贴）→ 箱子/台阶块 → 栏 → 坑**，每个障碍都用**它自己那类独立
+  地形**的难度律与几何，**所有相邻障碍之间都是同一个 `obstacle_spacing`（反算 2.3636 m ≥ 下界
+  1.50 m）** ⇒ 不再有"坑紧挨抬高块"、也不再有参考图案专有的 4 cm 窄槽 / 0.26 m 尖峰；总长刚好
+  20.00 m（最后障碍末端 17.6364 m ＋ 尾段 2.3636 m）。
+* 本文件为此**新增** `TestCompositeTerrainGeometry`（桩 `isaaclab` ＋ **真 trimesh**）与
+  `TestMixTestEnvCfgSource` 里的复合道断言：障碍清单与 X 区间表、**逐对相邻间隔 ≥ 下界**、
+  **楼梯上下紧贴**（级间无平地）而**楼梯与其它障碍之间有平地**、占满 20 m、出生点前方 1.50 m 平地、
+  尺寸与独立地形逐项一致、溢出保护（超长 / 间隔小于下界都 `ValueError`），以及**负向对照**
+  （把 `obstacle_spacing` 设 0 / 缩小道 / 人造贴在一起的布局都必须被判违规）。
+* **训练侧未受影响**：`track_mix_terrain` 与 `CMoETrackMixTerrainCfg` **一行未改**，本文件既有的
+  `TestMixTerrainGeometry` / `TestMixTestSpawnGeometry` / `TestMixTestFilledSpawnGeometry` /
+  `TestMixTestDifficultyPinning` / `TestTrainingSpawnHazard` 全部**原样保留**，继续用真 trimesh
+  锁定训练侧（`mix`）几何——包括"默认路径（`pattern_spacing_scale = 1.0`、`fill_stretched_gaps =
+  False`）逐位不变"这条护栏。⚠️ 其中的 `MIX_TEST_PATTERN_SPACING_SCALE = 6.00` 等常量**不再是评测
+  场景的配置**（场景已改用复合道），只作"20 m 道上的 mix 压力场景"读数使用，注释已标注。
 """
 
 from __future__ import annotations
@@ -124,8 +146,9 @@ REMOVED_IMPORTER_CLASS = "Imgo2CMoEMixTestTerrainImporter"
 MIX_TEST_LANES = 20
 MIX_TEST_LEVELS = 1
 MIX_TEST_DIFFICULTY = 0.70
-# 2026-10-04（第五批）：**单块瓦片 X 8 m → 20 m**（用户："整体地形放大，原本是10m长就改成20m长，
-# 还是布满，但是障碍数量不变，设置不变，只把间隔改大"）⇒ 乘子按同一反算式重算为
+# ⚠️ 2026-10-05（第七批）：评测场景的地形已换成**复合道** ⇒ 下面这几个 `mix` 常量**不再是场景配置**，
+# 只作为"20 m 道上的 mix 压力场景"读数，继续供 `TestMixTerrainGeometry` / `TestMixTestFilledSpawnGeometry`
+# 等**训练侧回归**使用（CMoE_env_cfg.py 里的同名常量已随场景切换删除）：
 #   scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit) = (20 − 0.30 − 0.50)/(160 × 0.02) = 6.00
 #   ⇒ 图案末端 = 0.30 + 160 × 0.02 × 6.00 = 19.50 m（占 20 m 的 97.5 %），尾部平地 0.50 m。
 MIX_TEST_PATTERN_SPACING_SCALE = 6.00
@@ -156,6 +179,80 @@ MIX_CORRIDOR_HALF_WIDTH = 0.40
 # 训练侧 `Imgo2CMoERoughEnvCfg` 的 reset 平移范围（`pose_range`），用于量化出生点隐患
 TRAIN_POSE_RANGE_X = (-0.5, 0.5)
 TRAIN_POSE_RANGE_Y = (-0.5, 0.5)
+
+# ======================================================================================
+# 2026-10-05（第七批）：**复合道**（评测场景现在用的地形）的期望值 —— 全部写死，便于"cfg 被改错 /
+# 生成器被改坏"能被测试发现。数值来源：`d = 0.70`、`size = (20, 4)`、
+# `first_obstacle_x = spawn_x(0.75) + spawn_clearance(1.50) = 2.25`。
+# ======================================================================================
+COMPOSITE_KEY = "composite"
+COMPOSITE_CFG_CLASS = "CMoETrackCompositeTerrainCfg"
+COMPOSITE_FUNCTION_NAME = "track_composite_terrain"
+COMPOSITE_SEQUENCE = ("gap", "stairs", "boxes", "hurdle", "gap")
+# 各障碍宽度（m）：坑 0.12+0.70×0.20 = 0.26；楼梯 2×4×0.30 = 2.40；箱子 2×0.44+1.30 = 2.18；
+# 栏 2×0.096+0.64 = 0.832；坑 0.26 ⇒ Σ = 5.932。
+COMPOSITE_WIDTHS = (0.26, 2.40, 2.18, 0.832, 0.26)
+COMPOSITE_TOTAL_WIDTH = 5.932
+COMPOSITE_SPACING = 2.3636          # = (20 − 2.25 − 5.932) / 5
+COMPOSITE_MIN_SPACING = 1.50
+COMPOSITE_SPAWN_CLEARANCE = 1.50
+COMPOSITE_FIRST_OBSTACLE_X = 2.25
+COMPOSITE_LAST_OBSTACLE_END = 17.6364
+COMPOSITE_STAIR_LEVELS = 4           # 上 4 级；下 4 级与它首尾相接
+COMPOSITE_STAIR_STEP_HEIGHT = 0.155  # 0.05 + 0.70 × 0.15
+COMPOSITE_STAIR_PEAK = 0.62          # 4 × 0.155
+COMPOSITE_PIT_DEPTH = 0.50
+COMPOSITE_CORRIDOR_WIDTH = 0.80
+# 逐对相邻障碍的期望顺序（用户确认的摆放顺序）。
+COMPOSITE_ADJACENT_PAIRS = (
+    ("gap", "stairs"), ("stairs", "boxes"), ("boxes", "hurdle"), ("hurdle", "gap"),
+)
+# 真 trimesh 实测的 X 区间表（`d = 0.70`、`size = (20, 4)`）：
+#   * `COMPOSITE_MEASURED_UNION`＝**可走面（顶面 > −0.50 m）的 X 区间并集**：走廊除了两处坑以外
+#     全程连续（抬高块与 0 高度走廊在 X 上重叠，合并后就是这三段）；
+#   * `COMPOSITE_MEASURED_PITS`＝补集（两处坑，各 0.26 m ⇒ 合计 0.52 m）；
+#   * `COMPOSITE_MEASURED_RAISED`＝**顶面 > 0** 的抬高块（楼梯上 4 级 / 下 3 级 / 箱子 2 块 / 栏 2 道；
+#     楼梯下 4 级那一级的顶面是 0.0 ⇒ 与走廊重合，不在表里，由布局的 8 级序列单独核对）。
+COMPOSITE_MEASURED_UNION = ((0.0, 2.25), (2.51, 17.3764), (17.6364, 20.0))
+COMPOSITE_MEASURED_PITS = ((2.25, 2.51), (17.3764, 17.6364))
+COMPOSITE_MEASURED_RAISED = (
+    (4.8736, 5.1736, 0.155), (5.1736, 5.4736, 0.31),
+    (5.4736, 5.7736, 0.465), (5.7736, 6.0736, 0.62),
+    (6.0736, 6.3736, 0.465), (6.3736, 6.6736, 0.31), (6.6736, 6.9736, 0.155),
+    (9.6372, 10.0772, 0.234), (11.3772, 11.8172, 0.234),
+    (14.1808, 14.2768, 0.093), (14.9168, 15.0128, 0.093),
+)
+# 楼梯 8 级（含最后一级顶面 0.0）的 `(x0, x1, top)`：级与级**首尾相接**（级间不得有平地）。
+COMPOSITE_MEASURED_STAIR_TREADS = (
+    (4.8736, 5.1736, 0.155), (5.1736, 5.4736, 0.31), (5.4736, 5.7736, 0.465),
+    (5.7736, 6.0736, 0.62), (6.0736, 6.3736, 0.465), (6.3736, 6.6736, 0.31),
+    (6.6736, 6.9736, 0.155), (6.9736, 7.2736, 0.0),
+)
+# 独立地形在 d = 0.70 的对照尺寸（真 trimesh 实测；训练实例参数）：
+COMPOSITE_STANDALONE = {
+    "pit_width": 0.26,          # `track_gap_terrain` 的沟宽（三个坑都相同）
+    "stair_step_height": 0.155,  # `track_stairs_terrain` 的单级步高
+    "stair_step_depth": 0.30,
+    "box_height": 0.234,        # `track_step_terrain` 的块高
+    "box_length": 0.44,
+    "box_spacing": 1.30,
+    "hurdle_thickness": 0.096,  # `track_hurdle_terrain` 的栏厚（律的确定值）
+    "hurdle_height_range": (0.056, 0.130),  # 独立地形在该区间内**随机**
+    "hurdle_spacing_range": (0.48, 0.80),
+}
+
+# `scripts/tools/check_terrain_columns.py`（**只用标准库**）—— 交叉核对它那套算术复算与真生成器。
+# 2026-10-05：审计脚本对 mix-test 的复合道判据全部来自它 ⇒ 两个来源必须给出同一套几何。
+TOOLS = ROOT / "scripts" / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+try:
+    import check_terrain_columns as chk
+except Exception as error:  # pragma: no cover - 工具缺失时跳过交叉核对
+    chk = None
+    CHK_ERROR: object = error
+else:
+    CHK_ERROR = None
 
 try:
     import torch
@@ -196,17 +293,29 @@ def _method_def(path: Path, class_name: str, method_name: str) -> ast.FunctionDe
 
 
 def _module_constants(path: Path = CMOE_CFG) -> dict[str, object]:
-    """`CMoE_env_cfg.py` 顶层 `NAME = <可求值字面量>` 常量（`num_cols` 等改用可读常量赋值）。"""
+    """`CMoE_env_cfg.py` 顶层 `NAME = <可求值字面量>` 常量（`num_cols` 等改用可读常量赋值）。
+
+    2026-10-05：同时收 `NAME: type = <字面量>`（`AnnAssign`）—— `CMoETrackCompositeTerrainCfg` 的
+    模块级常量（`COMPOSITE_OBSTACLE_SEQUENCE` / `COMPOSITE_MIN_OBSTACLE_SPACING` /
+    `COMPOSITE_SPACING_AUTO` …）都是带注解的写法。
+    """
     tree = ast.parse(Path(path).read_text(encoding="utf-8-sig"))
     out: dict[str, object] = {}
     for node in tree.body:
+        target = None
+        value = None
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            try:
-                out[node.targets[0].id] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
-                    compile(ast.Expression(node.value), str(path), "eval"), {}, dict(out)
-                )
-            except Exception:
-                continue
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            target, value = node.target.id, node.value
+        if target is None:
+            continue
+        try:
+            out[target] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
+                compile(ast.Expression(value), str(path), "eval"), {}, dict(out)
+            )
+        except Exception:
+            continue
     return out
 
 
@@ -236,6 +345,16 @@ def _literal(node: ast.AST):
         return ast.literal_eval(node)
     except Exception:
         return ast.unparse(node)
+
+
+def _cfg_const(node: ast.AST):
+    """先按字面量求值；失败则用 `CMoE_env_cfg.py` 的**模块常量**求值（字段值可能写成常量名）。"""
+    value = _literal(node)
+    if isinstance(value, str):
+        consts = _module_constants()
+        if value in consts:
+            return consts[value]
+    return value
 
 
 def _kwargs(call: ast.Call) -> dict[str, ast.AST]:
@@ -535,21 +654,29 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertNotIn("self.events.randomize_reset_base = ", self.src.split(f"class {CFG_CLASS}")[1])
         self.assertNotIn("enable_corruption = True", self.src.split(f"class {CFG_CLASS}")[1])
 
-    # ---------------------------------------------------------------- 地形：只 mix
+    # ---------------------------------------------------------------- 地形：只复合道
     def test_sub_terrains_are_cleared_first(self):
-        self.assertTrue(_clear_calls(self.fn), "必须先 `sub_terrains.clear()` 再只放 mix")
+        self.assertTrue(_clear_calls(self.fn), "必须先 `sub_terrains.clear()` 再只放复合道")
 
-    def test_mix_is_the_only_sub_terrain(self):
+    def test_composite_is_the_only_sub_terrain(self):
+        """2026-10-05（第七批）：唯一地形由 `mix` 换成**复合道** `composite`。"""
         names = [k for k in self.assign
                  if re.search(r"\.sub_terrains\[['\"]([a-z_0-9]+)['\"]\]$", k)]
         self.assertEqual(len(names), 1, f"只允许一处 sub_terrains[...] 赋值，实测 {names}")
         match = re.search(r"\.sub_terrains\[['\"]([a-z_0-9]+)['\"]\]$", names[0])
-        self.assertEqual(match.group(1), "mix", "唯一地形必须是 mix")
+        self.assertEqual(match.group(1), COMPOSITE_KEY, "唯一地形必须是复合道 `composite`")
+        self.assertEqual(_module_constants()["MIX_TEST_SUB_TERRAIN_KEY"], COMPOSITE_KEY,
+                         "可读常量必须与写死的键名一致")
         call = self.assign[names[0]]
         self.assertIsInstance(call, ast.Call)
-        self.assertEqual(ast.unparse(call.func), "CMoETrackMixTerrainCfg")
+        self.assertEqual(ast.unparse(call.func), COMPOSITE_CFG_CLASS)
         kwargs = _kwargs(call)
         self.assertAlmostEqual(_literal(kwargs["proportion"]), 1.0, places=9)
+        # 复合道生成器必须真的存在（桩 isaaclab 下能跑；真几何在 TestCompositeTerrainGeometry）
+        namespace = _load_cmoe_terrains()
+        self.assertIn(COMPOSITE_FUNCTION_NAME, namespace)
+        self.assertIn(COMPOSITE_CFG_CLASS, namespace)
+        self.assertIs(namespace[COMPOSITE_CFG_CLASS].function, namespace[COMPOSITE_FUNCTION_NAME])
 
     def test_num_cols_twenty_and_num_rows_one(self):
         """**20 条并列的 mix 道**（列 ⇒ 沿世界 Y）× **唯一一行**难度（行 ⇒ 沿世界 X）。"""
@@ -652,54 +779,50 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertIn("max_init_terrain_level = 5", _class_source(PLAY_CLASS),
                       "play 的初始等级上限必须保持 5")
 
-    # --------------------------------------------------- 障碍间距乘子（第四/五批：占满整条道）
-    def test_scene_fills_the_whole_lane(self):
-        """评测场景：乘子 = **反算的"刚好占满整条 20 m 道"值 6.00** ＋ `fill_stretched_gaps = True`。
-
-        算式（用户第四批："让 mix 占满整条道"；第五批只把 `size[0]` 8 → 20）：
-        ``scale = (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)``
-        ``= (20 − 0.30 − 0.50) / (160 × 0.02) = 19.20 / 3.20 = 6.00`` ⇒ 图案末端 **19.50 m**。
-        """
-        call = self.assign[
-            next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
+    # --------------------------------- 2026-10-05（第七批）：复合道占满整条 20 m 道
+    def _composite_call(self) -> ast.Call:
+        return self.assign[
+            next(k for k in self.assign if re.search(rf"\.sub_terrains\['{COMPOSITE_KEY}'\]$", k))
         ]
+
+    def test_scene_is_a_composite_track_that_fills_the_lane(self):
+        """评测场景 = **复合道**：5 个障碍（坑→楼梯→箱子→栏→坑）＋ 5 段**等长**平地（含尾段）。
+
+        间隔 = **反算值**：`(size[0] − first_obstacle_x − Σ障碍宽) / 5`
+        = `(20 − 2.25 − 5.932) / 5 = 11.818 / 5 = **2.3636 m**`（≥ 下界 1.50 m）⇒ 刚好铺满整条 20 m。
+        """
+        call = self._composite_call()
         kwargs = _kwargs(call)
-        # 乘子：写常量名（一处改、两处生效），常量值 = 反算值
-        self.assertIn("pattern_spacing_scale", kwargs)
-        self.assertEqual(ast.unparse(kwargs["pattern_spacing_scale"]), "MIX_TEST_PATTERN_SPACING_SCALE")
         consts = _module_constants()
-        self.assertEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], MIX_TEST_PATTERN_SPACING_SCALE)
-        self.assertEqual(MIX_TEST_PATTERN_SPACING_SCALE, 6.00)
+        # `obstacle_spacing` 必须写"自动反算"哨兵（负数）⇒ 由生成器按"占满整条道"解出来
+        self.assertIn("obstacle_spacing", kwargs)
+        self.assertLess(_cfg_const(kwargs["obstacle_spacing"]), 0.0,
+                        "评测场景必须让生成器**反算**间隔（写死数字会在换道长时悄悄不满/溢出）")
+        self.assertEqual(_cfg_const(kwargs["spawn_clearance"]), COMPOSITE_SPAWN_CLEARANCE)
+        self.assertEqual(_cfg_const(kwargs["min_obstacle_spacing"]), COMPOSITE_MIN_SPACING)
+        self.assertAlmostEqual(consts["MIX_TEST_SPAWN_CLEARANCE"], COMPOSITE_SPAWN_CLEARANCE, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_MIN_OBSTACLE_SPACING"], COMPOSITE_MIN_SPACING, places=9)
+        # 反算式自洽（常量注释里给出的结果）：2.3636 = (20 − 2.25 − 5.932) / 5
         self.assertAlmostEqual(
-            consts["MIX_TEST_TAIL_MARGIN"], MIX_TEST_TAIL_MARGIN, places=9
+            (TILE_SIZE[0] - COMPOSITE_FIRST_OBSTACLE_X - COMPOSITE_TOTAL_WIDTH) / 5,
+            COMPOSITE_SPACING, places=9,
         )
-        self.assertAlmostEqual(
-            consts["MIX_TEST_PATTERN_END_X"], MIX_TEST_PATTERN_END_X, places=9
+        self.assertAlmostEqual(consts["MIX_TEST_OBSTACLE_SPACING"], COMPOSITE_SPACING, places=3)
+        # 真几何（桩 isaaclab ＋ 真 trimesh）：占满 + 出生点前方 1.50 m（详见 TestCompositeTerrainGeometry）
+        namespace = _load_cmoe_terrains()
+        cfg = _composite_cfg_from_call(
+            namespace, {k: _cfg_const(v) for k, v in kwargs.items()}
         )
-        # 反算式自洽：乘子 == (size[0] − pattern_start_x − 尾部余量)/(160·x_unit)
-        reverse = (TILE_SIZE[0] - MIX_PATTERN_START_X - MIX_TEST_TAIL_MARGIN) / (
-            MIX_PATTERN_END_UNITS * MIX_X_UNIT
-        )
-        self.assertAlmostEqual(reverse, MIX_TEST_PATTERN_SPACING_SCALE, places=9,
-                               msg="乘子必须等于「占满整条道」的反算值")
-        # 尾部余量 / 图案末端自洽
-        end = MIX_PATTERN_START_X + MIX_PATTERN_END_UNITS * MIX_X_UNIT * MIX_TEST_PATTERN_SPACING_SCALE
-        self.assertAlmostEqual(end, MIX_TEST_PATTERN_END_X, places=9)
-        self.assertAlmostEqual(TILE_SIZE[0] - end, MIX_TEST_TAIL_MARGIN, places=9)
-        # **补空档**字段：写成常量名（教程/审计可读），且常量为 True
-        self.assertIn("fill_stretched_gaps", kwargs)
-        self.assertEqual(ast.unparse(kwargs["fill_stretched_gaps"]), "MIX_TEST_FILL_STRETCHED_GAPS")
-        self.assertIs(_module_constants()["MIX_TEST_FILL_STRETCHED_GAPS"], True)
-        self.assertIs(MIX_TEST_FILL_STRETCHED_GAPS, True)
-        # 与训练默认值的**有意偏离**只有两处（缺一不可）：
-        self.assertNotEqual(_mix_defaults()["pattern_spacing_scale"], MIX_TEST_PATTERN_SPACING_SCALE,
-                            "本场景的乘子**不再**等于训练默认值（按用户要求占满整条道）")
-        self.assertIs(_mix_defaults()["fill_stretched_gaps"], False,
-                      "类默认必须是 False ⇒ 训练与既有测试不受影响")
+        layout = namespace["composite_track_layout"](0.70, cfg)
+        self.assertAlmostEqual(layout["obstacle_spacing"], COMPOSITE_SPACING, places=4)
+        self.assertAlmostEqual(layout["end_x"], TILE_SIZE[0], places=9, msg="必须占满整条道")
+        self.assertAlmostEqual(layout["first_obstacle_x"], COMPOSITE_FIRST_OBSTACLE_X, places=9)
+        self.assertEqual([round(float(o["width"]), 9) for o in layout["obstacles"]],
+                         [round(w, 9) for w in COMPOSITE_WIDTHS])
 
     def test_default_spacing_and_fill_stay_neutral_for_training(self):
         """硬要求：`CMoETrackMixTerrainCfg` 默认 `pattern_spacing_scale=1.0`、`fill_stretched_gaps=False`；
-        训练实例化**两个都不传**。"""
+        训练实例化**两个都不传**（⇒ `mix` 默认路径逐位不变，评测场景已不再用它）。"""
         self.assertEqual(_mix_defaults()["pattern_spacing_scale"], 1.0)
         self.assertIs(_mix_defaults()["fill_stretched_gaps"], False)
         train = _class_source(TRAIN_CLASS)
@@ -713,28 +836,28 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertNotIn("fill_stretched_gaps", written,
                          "训练侧不得传补空档开关（取默认 False ⇒ 几何逐位不变）")
 
-    def test_mix_pattern_fits_the_tile(self):
-        """总长核算：`pattern_start_x + 160·x_unit·scale ≤ size[0]`（不静默溢出，上限不放宽）。"""
-        call = self.assign[
-            next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
-        ]
-        kwargs = _kwargs(call)
-        offset = float(_literal(kwargs["pattern_start_x"]))
-        x_unit = float(_literal(kwargs["x_unit"]))
-        scale = MIX_TEST_PATTERN_SPACING_SCALE
-        size_x = TILE_SIZE[0]
-        end = offset + MIX_PATTERN_END_UNITS * x_unit * scale
-        self.assertAlmostEqual(end, 19.50, places=9, msg="占满值下图案末端应在 19.50 m")
-        self.assertGreaterEqual(end, MIX_PATTERN_END_MIN_X, "图案末端目标 ≥ 19.0 m（≥ 95 % 的 20 m 道）")
-        self.assertLess(end, size_x, f"图案总长 {end} m 必须装得进 {size_x} m 瓦片")
-        self.assertAlmostEqual(size_x - end, 0.50, places=9, msg="尾部走廊应剩 0.50 m 平地")
-        max_scale = (size_x - offset) / (MIX_PATTERN_END_UNITS * x_unit)
-        self.assertAlmostEqual(max_scale, 6.15625, places=9,
-                               msg="该瓦片上乘子上限 = (20 − 0.30) / (160 × 0.02) —— 未放宽")
-        self.assertLess(scale, max_scale, "选定乘子必须严格小于上限（否则 raise）")
-        # 旧的 8 m 道上的上限仍可复现（对照，证明"放宽"不是靠改公式实现的）
-        old_max = (8.0 - offset) / (MIX_PATTERN_END_UNITS * x_unit)
-        self.assertAlmostEqual(old_max, 2.40625, places=9)
+    def test_composite_call_expands_the_defaults_without_drift(self):
+        """评测 cfg 把复合道的字段**显式展开**，且每一项都与 `cmoe_terrains.py` 的类默认值一致
+        （除 `proportion=1.0`；`proportion` 也是默认值）⇒ 改默认值而不同步评测 cfg 就会红。
+
+        总长不变式同时在这里钉住：`first_obstacle_x + Σ障碍宽 + 5·间隔 = size[0]`（刚好 20 m）。
+        """
+        kwargs = {k: _cfg_const(v) for k, v in _kwargs(self._composite_call()).items()}
+        defaults = _composite_defaults()
+        self.assertTrue(defaults, "读不到 `CMoETrackCompositeTerrainCfg` 的字段默认值")
+        self.assertEqual(set(kwargs) - {"proportion"}, set(defaults),
+                         f"显式字段集合应与类字段一致：写={sorted(kwargs)} 默认={sorted(defaults)}")
+        self.assertAlmostEqual(float(kwargs["proportion"]), 1.0, places=9)
+        for field, expected in defaults.items():
+            with self.subTest(field=field):
+                got = kwargs[field]
+                if isinstance(expected, tuple):
+                    self.assertEqual(tuple(got), tuple(expected), f"{field} 与类默认值不一致")
+                else:
+                    self.assertAlmostEqual(float(got), float(expected), places=9,
+                                           msg=f"{field} 与类默认值不一致")
+        total = COMPOSITE_FIRST_OBSTACLE_X + COMPOSITE_TOTAL_WIDTH + 5 * COMPOSITE_SPACING
+        self.assertAlmostEqual(total, TILE_SIZE[0], places=9, msg="刚好占满 20 m")
 
     def test_world_extent_is_twenty_by_eighty(self):
         """世界范围 = 单块尺寸 × 网格：**20 m(X) × 80 m(Y)**（第三批 8 m，第五批放大到 20 m）。"""
@@ -816,36 +939,82 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertIn("self.episode_length_s = 20.0", velocity_cfg,
                       "父类默认 20 s 是'不够用'的前提，必须仍是 20.0")
 
-    def test_mix_terrain_params_match_training_defaults(self):
-        """mix 的地形参数**逐字沿用训练值**（＝ `cmoe_terrains.py` 的类默认值），防两处漂移。
+    def test_composite_params_match_training_instances(self):
+        """复合道的**障碍难度律参数**逐字沿用训练实例（`Imgo2CMoERoughEnvCfg` 里各类地形的实参），
+        防两处漂移；两处**有意偏离**单独断言：
 
-        唯一**有意偏离**的是 `proportion=1.0`（本场景只有这一类）与第四批的
-        `pattern_spacing_scale = 2.25` ＋ `fill_stretched_gaps = True`（"占满整条道"＋把拉开的空档铺平）
-        —— 逐项单独断言。其余字段（`x_unit`/`z_unit`/`height_scale`/`gap_shrink_units`/
-        `corridor_width`/`pit_depth`/`pattern_start_x`/`spawn_x`）与训练默认值**逐一相等**
-        ⇒ **障碍自身的几何与训练逐位相同**，评测与训练的差异只在"障碍之间的间距/平地"。
+        * `stairs_num_steps`：本道 4 级（用户确认"上 4 + 下 4 紧贴"），训练实例是 6 级 ——
+          **单级步高/步深逐字相同**（`stairs_step_height_range`/`stairs_step_depth` 仍逐一相等）；
+        * 布局字段（`obstacle_spacing` / `spawn_clearance` / `min_obstacle_spacing` /
+          `corridor_width` / `pit_depth` / `spawn_x`）：复合道自己的摆放参数，独立地形里没有这一层。
         """
-        call = self.assign[
-            next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
-        ]
-        written = {k: _literal(v) for k, v in _kwargs(call).items()}
-        defaults = _mix_defaults()
-        deviations = {
-            "proportion", "pattern_spacing_scale", "fill_stretched_gaps",
+        composite = {k: _cfg_const(v) for k, v in _kwargs(self._composite_call()).items()}
+        train = {}
+        for node in ast.walk(ast.parse(_class_source(TRAIN_CLASS))):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) in (
+                "CMoETrackGapTerrainCfg", "CMoETrackStairsTerrainCfg",
+                "CMoETrackStepTerrainCfg", "CMoETrackHurdleTerrainCfg",
+            ):
+                train[ast.unparse(node.func)] = {k: _literal(v) for k, v in _kwargs(node).items()}
+        self.assertTrue(train, "解析不到训练类里的地形实例")
+
+        def field_value(cfg_name: str, field: str, cfg_class_name: str):
+            """训练实参优先；没写就取该类在 `cmoe_terrains.py` 里的默认值。"""
+            kwargs = train[cfg_name]
+            if field in kwargs:
+                return kwargs[field]
+            return _cfg_field_defaults(cfg_class_name)[field]
+
+        # ① 坑：沟宽律与训练实例逐字相同
+        self.assertEqual(tuple(composite["gap_width_range"]),
+                         tuple(field_value("CMoETrackGapTerrainCfg", "gap_width_range",
+                                           "CMoETrackGapTerrainCfg")))
+        # ② 楼梯：步高/步深与训练实例逐字相同（只有级数不同：本道 4、训练 6）
+        self.assertEqual(tuple(composite["stairs_step_height_range"]),
+                         tuple(field_value("CMoETrackStairsTerrainCfg", "step_height_range",
+                                           "CMoETrackStairsTerrainCfg")))
+        self.assertAlmostEqual(float(composite["stairs_step_depth"]),
+                               float(field_value("CMoETrackStairsTerrainCfg", "step_depth",
+                                                 "CMoETrackStairsTerrainCfg")), places=9)
+        self.assertEqual(int(float(composite["stairs_num_steps"])), COMPOSITE_STAIR_LEVELS)
+        self.assertEqual(int(float(field_value("CMoETrackStairsTerrainCfg", "num_steps",
+                                               "CMoETrackStairsTerrainCfg"))), 6,
+                         "训练实例仍是 6 级（本道用 4 级，已在 docstring 里登记为有意偏离）")
+        # ③ 箱子/台阶块：块数/高/长/间距全部与训练实例相同
+        self.assertEqual(int(float(composite["box_count"])),
+                         int(float(field_value("CMoETrackStepTerrainCfg", "num_steps",
+                                               "CMoETrackStepTerrainCfg"))))
+        self.assertEqual(tuple(composite["box_height_range"]),
+                         tuple(field_value("CMoETrackStepTerrainCfg", "step_height_range",
+                                           "CMoETrackStepTerrainCfg")))
+        self.assertEqual(tuple(composite["box_length_range"]),
+                         tuple(field_value("CMoETrackStepTerrainCfg", "step_length_range",
+                                           "CMoETrackStepTerrainCfg")))
+        self.assertAlmostEqual(float(composite["box_spacing"]),
+                               float(field_value("CMoETrackStepTerrainCfg", "step_spacing",
+                                                 "CMoETrackStepTerrainCfg")), places=9)
+        # ④ 栏：训练实例取的是类默认值 ⇒ 与默认值逐一相等（含高度律与间距律）
+        # ⚠️ 字段名在两处不同（本道 `hurdle_*`／独立地形 `stone_len_range`、`spacing_range`），
+        # 这里显式给出映射，避免"名字一样但其实没对照"。
+        hurdle_field_map = {
+            "hurdle_len_range": "stone_len_range",
+            "hurdle_height_min_slope": "hurdle_height_min_slope",
+            "hurdle_height_max_base": "hurdle_height_max_base",
+            "hurdle_height_max_slope": "hurdle_height_max_slope",
+            "hurdle_spacing_range": "spacing_range",
         }
-        self.assertEqual(set(written) - deviations, set(defaults) - deviations,
-                         f"显式写出的字段应与类字段集合一致：写={sorted(written)} 默认={sorted(defaults)}")
-        self.assertAlmostEqual(float(_literal(_kwargs(call)["proportion"])), 1.0, places=9)
-        self.assertEqual(ast.unparse(_kwargs(call)["pattern_spacing_scale"]),
-                         "MIX_TEST_PATTERN_SPACING_SCALE")
-        self.assertEqual(ast.unparse(_kwargs(call)["fill_stretched_gaps"]),
-                         "MIX_TEST_FILL_STRETCHED_GAPS")
-        for field, expected in defaults.items():
-            if field in deviations:
-                continue
+        for field, standalone_field in hurdle_field_map.items():
             with self.subTest(field=field):
-                self.assertAlmostEqual(float(written[field]), float(expected), places=9,
-                                       msg=f"{field} 与训练默认值不一致")
+                default = _cfg_field_defaults("CMoETrackHurdleTerrainCfg")[standalone_field]
+                got = composite[field]
+                if isinstance(default, tuple):
+                    self.assertEqual(tuple(got), tuple(default), f"{field} 与独立地形默认值不一致")
+                else:
+                    self.assertAlmostEqual(float(got), float(default), places=9,
+                                           msg=f"{field} 与独立地形默认值不一致")
+        # 训练实例确实没传栏的字段（＝取默认值）⇒ 上面的对照就是"训练同值"
+        self.assertEqual(set(train["CMoETrackHurdleTerrainCfg"]) - {"proportion"}, set(),
+                         f"训练侧的 hurdle 实例不应写别的字段：{sorted(train['CMoETrackHurdleTerrainCfg'])}")
 
 
     # ----------------------------------------------------------- 速度指令 + PD
@@ -970,6 +1139,19 @@ def _load_cmoe_terrains() -> dict:
     return namespace
 
 
+def _composite_cfg_from_call(namespace: dict, kwargs: dict, size=TILE_SIZE):
+    """按**评测 cfg 的实参**（AST 求值结果）构造一个真 `CMoETrackCompositeTerrainCfg`（桩 isaaclab 下）。
+
+    只设 `kwargs` 里显式写出的字段，其余取类默认值 ⇒ "评测 cfg 与类默认值漂移"会被
+    `TestMixTestEnvCfgSource::test_composite_call_expands_the_defaults_without_drift` 抓到。
+    """
+    cfg = namespace[COMPOSITE_CFG_CLASS]()
+    cfg.size = size
+    for key, value in kwargs.items():
+        setattr(cfg, key, value)
+    return cfg
+
+
 def _pattern_piece_rows(difficulty: float, spacing: float, size=TILE_SIZE) -> list[tuple]:
     """**图案自身**每一段的参照几何（不含领先段 / 尾廊 / 整宽坑底），顺序＝图案顺序。
 
@@ -1062,6 +1244,106 @@ def _spawn_probe(meshes, spawn_x: float = MIX_SPAWN_X, pit_depth: float = 0.50):
         "pits": pits,
         "walkable": walk,
     }
+
+
+def _cfg_field_defaults(class_name: str) -> dict:
+    """从 `cmoe_terrains.py` 读某个 `@configclass` 的字段默认值（AST；模块级常量就地求值）。"""
+    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
+    ns: dict[str, object] = {}
+    for node in tree.body:
+        target = value = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            target, value = node.target.id, node.value
+        if target is None:
+            continue
+        try:
+            ns[target] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
+                compile(ast.Expression(value), str(CMOE_TERRAINS), "eval"), {}, ns
+            )
+        except Exception:
+            continue
+    cls = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name), None)
+    if cls is None:
+        return {}
+    out: dict = {}
+    for node in cls.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            try:
+                out[node.target.id] = eval(  # noqa: S307
+                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, ns
+                )
+            except Exception:
+                continue
+    return out
+
+
+def _composite_defaults() -> dict:
+    """`CMoETrackCompositeTerrainCfg` 的字段默认值（防"评测 cfg 与这里的字段名/默认值漂移"）。"""
+    return _cfg_field_defaults(COMPOSITE_CFG_CLASS)
+
+
+def _composite_walkable_union(meshes, pit_depth: float = COMPOSITE_PIT_DEPTH):
+    """把复合道的真网格切成**可走面 X 区间并集**与**坑**（补集）。
+
+    复合道里抬高块与它所在单元的那块 `height=0` 走廊在 X 上**重叠** ⇒ 不能用"按 x0 排序后相邻相减"的
+    朴素算法（否则箱子/栏之间的平地会被误报成坑）。这里对"顶面 > −pit_depth"的块取**区间并集**，
+    再取补集当坑。返回 ``(union, pits, pieces)``。
+    """
+    rows = _mesh_rows(meshes)
+    size_x = max(row[1] for row in rows)
+    pieces = [row for row in rows if row[4] > -pit_depth + 1.0e-9]
+    union: list[list[float]] = []
+    for x0, x1 in sorted((row[0], row[1]) for row in pieces):
+        if union and x0 <= union[-1][1] + 1.0e-9:
+            union[-1][1] = max(union[-1][1], x1)
+        else:
+            union.append([x0, x1])
+    pits: list[tuple[float, float]] = []
+    cursor = 0.0
+    for x0, x1 in union:
+        if x0 - cursor > 1.0e-9:
+            pits.append((cursor, x0))
+        cursor = max(cursor, x1)
+    if size_x - cursor > 1.0e-9:
+        pits.append((cursor, size_x))
+    return [(a, b) for a, b in union], pits, pieces
+
+
+def _composite_raised_pieces(meshes) -> list[tuple[float, float, float]]:
+    """真网格里**顶面 > 0** 的抬高块（楼梯级/箱子/栏），按 x0 升序 ⇒ 用来核对级间是否严丝合缝。"""
+    rows = [row for row in _mesh_rows(meshes) if row[4] > 1.0e-9]
+    return sorted((row[0], row[1], row[4]) for row in rows)
+
+
+def _composite_spawn_probe(meshes, spawn_x: float = MIX_SPAWN_X,
+                           pit_depth: float = COMPOSITE_PIT_DEPTH) -> dict:
+    """复合道的出生点真几何读数（用**区间并集**算坑，不能被同一单元的抬高块骗到）。"""
+    union, pits, _pieces = _composite_walkable_union(meshes, pit_depth)
+    holders = [piece for piece in union if piece[0] - 1.0e-9 <= spawn_x <= piece[1] + 1.0e-9]
+    next_pits = [pit for pit in pits if pit[0] >= spawn_x - 1.0e-9]
+    first_pit_x = min(pit[0] for pit in next_pits) if next_pits else None
+    size_x = max(row[1] for row in _mesh_rows(meshes))
+    return {
+        "on_solid": bool(holders),
+        "piece": holders[0] if holders else None,
+        "first_pit_x": first_pit_x,
+        "solid_ahead": (first_pit_x - spawn_x) if first_pit_x is not None else size_x - spawn_x,
+        "walkable_total": sum(b - a for a, b in union),
+        "pit_total": sum(b - a for a, b in pits),
+        "pits": pits,
+        "walkable": union,
+    }
+
+
+def _composite_flats_from_pieces(pieces) -> list[tuple[float, float, float]]:
+    """把抬高块的间隙（同一障碍单元**内部**的分块间距，或单元之间的平地）摊出来（只作报告/核对）。"""
+    out = []
+    for before, after in zip(pieces, pieces[1:]):
+        if after[0] - before[1] > 1.0e-9:
+            out.append((before[1], after[0], after[0] - before[1]))
+    return out
 
 
 def _pattern_piece_segments(difficulty: float) -> list[tuple[float, float, float]]:
@@ -1825,6 +2107,43 @@ class TestMixTestDifficultyPinning(unittest.TestCase):
                                       if abs(r[4] + 0.50) > 1.0e-9), 0.2618, places=9)
 
 
+
+    # ------------------------------- 路径 ②（第七批）：真跑 track_composite_terrain
+    @unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
+    def test_track_composite_terrain_at_the_pinned_difficulty(self):
+        """评测场景现在用的是**复合道** ⇒ 把"生成器会传进去的 difficulty"真喂给它，核对就是 d = 0.70
+        那一套几何（坑宽 0.26、楼梯级高 0.155、箱子块高 0.234、栏高 0.093、间隔 2.3636、占满 20 m）。
+        """
+        namespace = _load_cmoe_terrains()
+        function, cfg_class = namespace[COMPOSITE_FUNCTION_NAME], namespace[COMPOSITE_CFG_CLASS]
+        layout_fn = namespace["composite_track_layout"]
+        difficulty = _isaac_curriculum_difficulty(0, MIX_TEST_LEVELS, self._pinned_range(), 0.5)
+        self.assertAlmostEqual(difficulty, 0.70, places=15)
+        assign = _assignments(_post_init(CMOE_CFG, CFG_CLASS))
+        call = assign[next(k for k in assign
+                           if re.search(rf"\.sub_terrains\['{COMPOSITE_KEY}'\]$", k))]
+        kwargs = {k: _cfg_const(v) for k, v in _kwargs(call).items()}
+        cfg = _composite_cfg_from_call(namespace, kwargs)
+        layout = layout_fn(difficulty, cfg)
+        params = {o["kind"]: o["params"] for o in layout["obstacles"]}
+        self.assertAlmostEqual(params["gap"]["gap_width"], 0.26, places=9)
+        self.assertAlmostEqual(params["stairs"]["step_height"], COMPOSITE_STAIR_STEP_HEIGHT, places=9)
+        self.assertAlmostEqual(params["boxes"]["block_height"], 0.234, places=9)
+        self.assertAlmostEqual(params["hurdle"]["bar_height"], 0.093, places=9)
+        self.assertAlmostEqual(layout["spacing"], COMPOSITE_SPACING, places=9)
+        self.assertAlmostEqual(layout["end_x"], TILE_SIZE[0], places=9)
+        meshes = function(difficulty, cfg)[0]
+        _union, pits, _pieces = _composite_walkable_union(meshes)
+        self.assertEqual([round(b - a, 4) for a, b in pits], [0.26, 0.26])
+        # 与 d = 0.0 / 1.0 明显不同 ⇒ "固定成 0.70"是**有意义**的（不是恰好都一样）
+        for other in (0.0, 1.0):
+            with self.subTest(other_difficulty=other):
+                other_layout = layout_fn(other, cfg)
+                self.assertNotAlmostEqual(
+                    other_layout["obstacles"][0]["width"], 0.26, places=9,
+                    msg="d = 0.0/1.0 的坑宽应与 0.26 m 不同 ⇒ 固定难度是有意义的",
+                )
+
 # ============== ③.7 出生点真几何（第三批的 `fill_stretched_gaps=False` 旧行为，**回归锁定**）
 @unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
 class TestMixTestSpawnGeometry(unittest.TestCase):
@@ -1931,6 +2250,10 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
     对照：同样 `scale = 6.00` 但**不补空档**（`fill_stretched_gaps=False`，＝第四批之前的旧路径）时
     空档是整宽 −0.50 m 深坑、第一处"坑"从 `0.90 m` 就开始（前方只剩 **0.15 m**）、整片可走面只有
     `3.64 m`；分组铺平地仍把这段救回来（`test_fill_mode_is_what_keeps_the_spawn_safe_at_the_fill_scale`）。
+
+    ⚠️ **2026-10-05（第七批）**：评测场景的地形已换成**复合道**（`TestCompositeTerrainGeometry`），
+    本类的 `MEASURED` 表**不再是"评测场景的 X 区间表"**，而是 `track_mix_terrain`（**训练侧仍在用**）
+    在 20 m 瓦片上的回归读数 —— 保留它是为了继续锁住训练/play 的 `mix` 几何（含 §"默认路径逐位不变"）。
     """
 
     @classmethod
@@ -2064,6 +2387,458 @@ class TestMixTestFilledSpawnGeometry(unittest.TestCase):
                 self.assertAlmostEqual(probe["pit_total"], 0.36, places=9, msg="坑总长与 scale 无关")
                 self.assertAlmostEqual(probe["walkable_total"], 19.64, places=9,
                                        msg="整片可走面 = size[0] − 坑总长（尾廊吸收拉伸量）")
+
+
+# =========================== ③.7c **复合道**真几何（第七批：评测场景现在用的地形，真 trimesh）
+@unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
+class TestCompositeTerrainGeometry(unittest.TestCase):
+    """**复合道**（`track_composite_terrain`）的真几何：桩 `isaaclab` ＋ **真 `trimesh`**。
+
+    用户原话（第七批）：「是有些障碍分到一起了，我说的是障碍本身。gap 和突台也在一起。我希望是和单独的
+    那个几个场景类似的障碍放在这个整条的（道）上」＋「每个地形要间隔开，而不是混合到一起放在一个
+    位置」⇒ 本类逐条钉住：
+
+    * **障碍清单与 X 区间表**（`COMPOSITE_MEASURED_*`，真 trimesh 包围盒）；
+    * **逐对相邻障碍之间都有 ≥ `obstacle_spacing` 的平地**（含负向对照：人造贴在一起必须被判违规）；
+    * **楼梯上下紧贴**（上 4 级 + 下 4 级首尾相接、级间无平地）而**楼梯与相邻障碍之间有平地**；
+    * **占满整条 20 m**、**出生点在实心平地且前方 1.50 m**；
+    * **尺寸与独立地形逐项一致**（同一 d = 0.70 下真跑四类独立地形来对照）；
+    * 溢出/下界保护（超长、间隔小于下界都 `ValueError`）；
+    * **训练侧未受影响**（训练仍用 `track_mix_terrain`，本文件既有的 mix 几何类原样保留）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        namespace = _load_cmoe_terrains()
+        cls.function = staticmethod(namespace[COMPOSITE_FUNCTION_NAME])
+        cls.cfg_class = namespace[COMPOSITE_CFG_CLASS]
+        cls.layout_fn = staticmethod(namespace["composite_track_layout"])
+        cls.violations_fn = staticmethod(namespace["composite_adjacency_violations"])
+        cls.namespace = namespace
+
+    # ---------------------------------------------------------------- 构造工具
+    def _cfg(self, size=TILE_SIZE, **overrides):
+        cfg = self.cfg_class()
+        cfg.size = size
+        cfg.proportion = 1.0
+        # 与评测 cfg 的实例同值（＝训练实例的难度律；见 `test_composite_params_match_training_instances`）
+        cfg.corridor_width = COMPOSITE_CORRIDOR_WIDTH
+        cfg.pit_depth = COMPOSITE_PIT_DEPTH
+        cfg.spawn_x = MIX_SPAWN_X
+        cfg.spawn_clearance = COMPOSITE_SPAWN_CLEARANCE
+        cfg.obstacle_spacing = -1.0
+        cfg.min_obstacle_spacing = COMPOSITE_MIN_SPACING
+        cfg.suggested_spacing_range = (1.50, 2.50)
+        cfg.gap_width_range = (0.12, 0.32)
+        cfg.stairs_num_steps = COMPOSITE_STAIR_LEVELS
+        cfg.stairs_step_height_range = (0.05, 0.20)
+        cfg.stairs_step_depth = 0.30
+        cfg.box_count = 2
+        cfg.box_height_range = (0.08, 0.30)
+        cfg.box_length_range = (0.30, 0.50)
+        cfg.box_spacing = 1.30
+        cfg.hurdle_count = 2
+        cfg.hurdle_len_range = (0.04, 0.12)
+        cfg.hurdle_height_min_slope = 0.08
+        cfg.hurdle_height_max_base = 0.06
+        cfg.hurdle_height_max_slope = 0.10
+        cfg.hurdle_spacing_range = (0.48, 0.80)
+        cfg.hurdle_height_fraction = 0.5
+        cfg.hurdle_spacing_fraction = 0.5
+        for key, value in overrides.items():
+            setattr(cfg, key, value)
+        return cfg
+
+    def _build(self, difficulty=0.70, size=TILE_SIZE, **overrides):
+        return self.function(difficulty, self._cfg(size=size, **overrides))[0]
+
+    def _layout(self, difficulty=0.70, size=TILE_SIZE, **overrides):
+        return self.layout_fn(difficulty, self._cfg(size=size, **overrides))
+
+    # ---------------------------------------------------------------- ① 清单 / X 区间表
+    def test_measured_x_interval_table(self):
+        """真 trimesh 实测的「可走面并集 / 坑」X 区间表 —— 回归锁定（`COMPOSITE_MEASURED_*`）。"""
+        meshes = self._build()
+        union, pits, _pieces = _composite_walkable_union(meshes)
+        self.assertEqual([(round(a, 4), round(b, 4)) for a, b in union],
+                         [(round(a, 4), round(b, 4)) for a, b in COMPOSITE_MEASURED_UNION])
+        self.assertEqual([(round(a, 4), round(b, 4)) for a, b in pits],
+                         [(round(a, 4), round(b, 4)) for a, b in COMPOSITE_MEASURED_PITS])
+        raised = _composite_raised_pieces(meshes)
+        self.assertEqual([(round(a, 4), round(b, 4), round(t, 4)) for a, b, t in raised],
+                         [(round(a, 4), round(b, 4), round(t, 4)) for a, b, t in COMPOSITE_MEASURED_RAISED])
+        # 坑总长 = 两处 0.26 m；可走面总长 = 20 − 0.52
+        self.assertAlmostEqual(sum(b - a for a, b in pits), 0.52, places=9)
+        self.assertAlmostEqual(sum(b - a for a, b in union), TILE_SIZE[0] - 0.52, places=9)
+
+    def test_obstacle_sequence_and_widths_from_the_layout(self):
+        """障碍顺序（按类型分组：坑→楼梯→箱子→栏→坑）与每个单元的宽度（真算，不只看源码常量）。"""
+        layout = self._layout()
+        self.assertEqual(tuple(layout["sequence"]), COMPOSITE_SEQUENCE)
+        self.assertEqual([round(float(o["width"]), 6) for o in layout["obstacles"]],
+                         [round(w, 6) for w in COMPOSITE_WIDTHS])
+        self.assertAlmostEqual(layout["total_obstacle_width"], COMPOSITE_TOTAL_WIDTH, places=9)
+        # X 区间表（布局层）
+        spans = [(round(float(o["x0"]), 4), round(float(o["x1"]), 4)) for o in layout["obstacles"]]
+        self.assertEqual(spans, [(2.25, 2.51), (4.8736, 7.2736), (9.6372, 11.8172),
+                                 (14.1808, 15.0128), (17.3764, 17.6364)])
+
+    # ---------------------------------------------------------------- ② 均匀间隔 + 逐对相邻
+    def test_spacing_is_uniform_and_the_reverse_computed_value(self):
+        """间隔 = 反算值 `(size[0] − first_obstacle_x − Σ障碍宽) / N`（＝"把余量按障碍个数均分"）。"""
+        layout = self._layout()
+        self.assertTrue(layout["spacing_is_auto"], "评测场景用的是自动反算（负哨兵）")
+        self.assertAlmostEqual(layout["obstacle_spacing"], COMPOSITE_SPACING, places=9)
+        self.assertAlmostEqual(
+            (TILE_SIZE[0] - layout["first_obstacle_x"] - layout["total_obstacle_width"])
+            / len(layout["obstacles"]),
+            layout["obstacle_spacing"], places=12, msg="必须等于反算式",
+        )
+        for flat in layout["flats"][1:]:
+            self.assertAlmostEqual(float(flat["length"]), COMPOSITE_SPACING, places=9,
+                                   msg="所有间隔（含尾段）必须等长")
+        self.assertAlmostEqual(layout["obstacle_spacing"], 2.3636, places=9)
+
+    def test_every_adjacent_pair_has_flat_at_least_the_bound(self):
+        """**逐对相邻障碍**表：每一对的平地都 ≥ 下界（用户硬约束，不只是"坑不紧贴抬高块"）。"""
+        layout = self._layout()
+        pairs = tuple(tuple(g["pair"]) for g in layout["adjacent_gaps"])
+        self.assertEqual(pairs, COMPOSITE_ADJACENT_PAIRS)
+        for gap in layout["adjacent_gaps"]:
+            with self.subTest(pair=gap["pair"]):
+                self.assertGreaterEqual(float(gap["length"]),
+                                        float(layout["min_obstacle_spacing"]) - 1.0e-9)
+                self.assertTrue(gap["ok"])
+        self.assertEqual(self.violations_fn(layout), [], "默认布局不应有任何相邻间隔违规")
+        # 真几何侧：两两障碍的 X 区间之间确实夹着 ≥ 下界的平地（用并集/抬高块实测值核算）
+        meshes = self._build()
+        raised = _composite_raised_pieces(meshes)
+        pits = _composite_walkable_union(meshes)[1]
+        first_block_end = pits[0][1]  # 第一个障碍（坑）的右沿
+        self.assertAlmostEqual(raised[0][0] - first_block_end, COMPOSITE_SPACING, places=9,
+                               msg="坑 → 楼梯之间的平地（真几何）")
+
+    def test_no_pit_is_adjacent_to_a_raised_block(self):
+        """**坑不得紧贴抬高块**：两处坑的两侧都必须有 ≥ 下界的平地（真几何 + 布局两层核对）。"""
+        layout = self._layout()
+        obstacles = layout["obstacles"]
+        self.assertEqual([o["kind"] for o in obstacles].count("gap"), 2)
+        for position, obstacle in enumerate(obstacles):
+            if obstacle["kind"] != "gap":
+                continue
+            with self.subTest(index=position):
+                if position > 0:
+                    self.assertGreaterEqual(
+                        float(obstacle["x0"]) - float(obstacles[position - 1]["x1"]),
+                        COMPOSITE_MIN_SPACING - 1.0e-9, "坑的上游必须先是平地"
+                    )
+                if position < len(obstacles) - 1:
+                    self.assertGreaterEqual(
+                        float(obstacles[position + 1]["x0"]) - float(obstacle["x1"]),
+                        COMPOSITE_MIN_SPACING - 1.0e-9, "坑的下游必须先是平地"
+                    )
+
+    def test_negative_control_a_tight_layout_is_flagged(self):
+        """**负向对照**：人造一个"两个障碍贴在一起"的布局 ⇒ 校验函数必须报违规（非空）。"""
+        layout = self._layout()
+        doctored = dict(layout)
+        gaps = [dict(gap) for gap in layout["adjacent_gaps"]]
+        gaps[0]["length"] = 0.0          # 把第一对贴在一起
+        gaps[0]["x1"] = gaps[0]["x0"]
+        doctored["adjacent_gaps"] = gaps
+        violations = self.violations_fn(doctored)
+        self.assertEqual(len(violations), 1, f"应恰有 1 处违规，实测 {violations}")
+        self.assertEqual(tuple(violations[0]["pair"]), COMPOSITE_ADJACENT_PAIRS[0])
+        # 也可以把下界调大 ⇒ 全部违规
+        self.assertEqual(len(self.violations_fn(layout, min_spacing=COMPOSITE_SPACING + 1.0)),
+                         len(layout["adjacent_gaps"]))
+
+    # ---------------------------------------------------------------- ③ 楼梯
+    def test_stairs_up_and_down_are_contiguous(self):
+        """**楼梯上下紧贴**：8 级首尾相接、级间**没有平地**（真 trimesh 逐级 + 布局两层）。"""
+        layout = self._layout()
+        stairs = [o for o in layout["obstacles"] if o["kind"] == "stairs"]
+        self.assertEqual(len(stairs), 1)
+        params = stairs[0]["params"]
+        self.assertEqual(int(params["num_steps"]), COMPOSITE_STAIR_LEVELS)
+        self.assertEqual(int(params["step_count_total"]), 2 * COMPOSITE_STAIR_LEVELS)
+        self.assertAlmostEqual(params["step_height"], COMPOSITE_STAIR_STEP_HEIGHT, places=12)
+        self.assertAlmostEqual(params["peak_height"], COMPOSITE_STAIR_PEAK, places=12)
+        for before, after in zip(params["tread_tops"][:-1], params["tread_tops"][1:]):
+            self.assertNotAlmostEqual(float(before), float(after), places=6,
+                                      msg="相邻两级的顶面必须不同（否则不是台阶）")
+        # 真几何：8 块踏步严丝合缝（最后一级顶面 0 ⇒ 用布局的 `raised` 序列核对 X 连续性）
+        raised = sorted(((float(p["x0"]), float(p["x1"]), float(p["top"]))
+                         for p in stairs[0]["raised"]), key=lambda item: item[0])
+        self.assertEqual(len(raised), 2 * COMPOSITE_STAIR_LEVELS)
+        for before, after in zip(raised, raised[1:]):
+            self.assertAlmostEqual(before[1], after[0], places=12, msg="上下楼梯之间不得有平地")
+        self.assertEqual([round(top, 4) for _x0, _x1, top in raised],
+                         [round(t, 4) for _x0, _x1, t in COMPOSITE_MEASURED_STAIR_TREADS])
+        # 真网格里楼梯段的 7 块"顶面 > 0"的踏步与实测表一致
+        stair_pieces = [piece for piece in _composite_raised_pieces(self._build())
+                        if piece[0] < 7.3]
+        self.assertEqual([(round(a, 4), round(b, 4), round(t, 4)) for a, b, t in stair_pieces],
+                         [(round(a, 4), round(b, 4), round(t, 4))
+                          for a, b, t in COMPOSITE_MEASURED_STAIR_TREADS if t > 1.0e-9])
+
+    def test_stairs_have_flat_to_both_neighbours(self):
+        """**"紧贴"只指上/下楼梯之间**：楼梯与相邻的坑/箱子之间必须有 ≥ `obstacle_spacing` 的平地。"""
+        layout = self._layout()
+        stairs = [o for o in layout["obstacles"] if o["kind"] == "stairs"][0]
+        for gap in layout["adjacent_gaps"]:
+            if "stairs" not in gap["pair"]:
+                continue
+            with self.subTest(pair=gap["pair"]):
+                self.assertAlmostEqual(float(gap["length"]), COMPOSITE_SPACING, places=9)
+                self.assertGreaterEqual(float(gap["length"]), COMPOSITE_MIN_SPACING)
+        # 真几何：楼梯段左沿 − 坑右沿 = 间隔；箱子左沿 − 楼梯段右沿 = 间隔
+        self.assertAlmostEqual(float(stairs["x0"]) - 2.51, COMPOSITE_SPACING, places=9)
+        self.assertAlmostEqual(9.6372 - float(stairs["x1"]), COMPOSITE_SPACING, places=9)
+
+    # ---------------------------------------------------------------- ④ 占满 / 出生点
+    def test_lane_is_filled_end_to_end(self):
+        """**占满**：最后障碍末端 17.6364 m ＋ 尾段 2.3636 m = 20.0000 m（＝`size[0]`）。"""
+        layout = self._layout()
+        self.assertAlmostEqual(layout["last_obstacle_end"], COMPOSITE_LAST_OBSTACLE_END, places=9)
+        self.assertAlmostEqual(layout["tail_length"], COMPOSITE_SPACING, places=9)
+        self.assertAlmostEqual(layout["end_x"], TILE_SIZE[0], places=12)
+        # 真几何：最后一个有几何的 X = 20.0（尾平地铺到瓦片末端）
+        union, pits, _pieces = _composite_walkable_union(self._build())
+        self.assertAlmostEqual(max(b for _a, b in union), TILE_SIZE[0], places=9)
+        self.assertAlmostEqual(max(b for _a, b in pits), 17.6364, places=9,
+                               msg="最后一个障碍（坑）的右沿")
+
+    def test_spawn_is_on_solid_flat_with_enough_clearance(self):
+        """出生点：`spawn_x = 0.75` 在**实心平地**上（顶面 0），到第一个障碍 **1.50 m**（≥ 1.50 m）。"""
+        probe = _composite_spawn_probe(self._build())
+        self.assertTrue(probe["on_solid"], "spawn_x 必须落在实心可走面上")
+        self.assertAlmostEqual(probe["piece"][0], 0.0, places=9)
+        self.assertAlmostEqual(probe["piece"][1], COMPOSITE_FIRST_OBSTACLE_X, places=9)
+        # 顶面 = 0：出生点所在 X 上不得有任何抬高块（这是"实心平地"的直接证据）
+        raised_over_spawn = [piece for piece in _composite_raised_pieces(self._build())
+                             if piece[0] - 1.0e-9 <= MIX_SPAWN_X <= piece[1] + 1.0e-9]
+        self.assertEqual(raised_over_spawn, [], "出生点上方不得有抬高块")
+        self.assertAlmostEqual(probe["first_pit_x"], COMPOSITE_FIRST_OBSTACLE_X, places=9)
+        self.assertAlmostEqual(probe["solid_ahead"], COMPOSITE_SPAWN_CLEARANCE, places=9)
+        self.assertGreaterEqual(probe["solid_ahead"], COMPOSITE_SPAWN_CLEARANCE - 1.0e-9)
+        self.assertAlmostEqual(probe["pit_total"], 0.52, places=9)
+        self.assertAlmostEqual(probe["walkable_total"], TILE_SIZE[0] - 0.52, places=9)
+
+    # ---------------------------------------------------------------- ⑤ 尺寸与独立地形对照
+    def test_sizes_match_the_standalone_terrains(self):
+        """**同一难度（d = 0.70）下，本道每个障碍的尺寸都与它在自己那类地形里的尺寸一致**。
+
+        对照方式：用**训练实例参数**真跑 `track_gap_terrain` / `track_stairs_terrain` /
+        `track_step_terrain` / `track_hurdle_terrain`，逐项比较（真 trimesh）。
+        """
+        difficulty = 0.70
+        rows = _mesh_rows
+        # ① 坑：独立地形的沟宽（三个坑）与复合道的两处坑宽相同
+        gap_cfg = self.namespace["CMoETrackGapTerrainCfg"]()
+        gap_cfg.size, gap_cfg.proportion = TILE_SIZE, 1.0
+        gap_cfg.gap_width_range = (0.12, 0.32)
+        gap_cfg.platform_length_range = (0.9, 1.4)
+        gap_cfg.first_gap_x, gap_cfg.num_gaps = 1.6, 3
+        standalone_gap = sorted(rows(self.namespace["track_gap_terrain"](difficulty, gap_cfg)[0]))
+        standalone_pits = [(a[1], b[0]) for a, b in zip(standalone_gap, standalone_gap[1:])
+                           if b[0] - a[1] > 1.0e-9]
+        self.assertEqual([round(b - a, 6) for a, b in standalone_pits],
+                         [COMPOSITE_STANDALONE["pit_width"]] * 3)
+        composite_pits = _composite_walkable_union(self._build())[1]
+        for pit in composite_pits:
+            self.assertAlmostEqual(pit[1] - pit[0], COMPOSITE_STANDALONE["pit_width"], places=9)
+        # ② 楼梯：独立地形（6 级上行）的单级步高/步深与本道逐项相同（本道前 4 级与它完全重合）
+        stairs_cfg = self.namespace["CMoETrackStairsTerrainCfg"]()
+        stairs_cfg.size, stairs_cfg.proportion = TILE_SIZE, 1.0
+        stairs_cfg.step_height_range = (0.05, 0.20)
+        stairs_cfg.num_steps, stairs_cfg.step_depth, stairs_cfg.ascending = 6, 0.30, True
+        standalone_stairs = sorted(rows(self.namespace["track_stairs_terrain"](difficulty, stairs_cfg)[0]))
+        standalone_treads = [(a[0], a[1], a[4]) for a in standalone_stairs
+                             if a[4] > 1.0e-9 and abs((a[1] - a[0]) - 0.30) < 1.0e-9]
+        composite_treads = [t for t in COMPOSITE_MEASURED_STAIR_TREADS if t[2] > 1.0e-9]
+        self.assertEqual(len(standalone_treads), 6, "独立地形训练实例是 6 级（本道 4 级，见 docstring）")
+        for index in range(COMPOSITE_STAIR_LEVELS):
+            with self.subTest(level=index):
+                self.assertAlmostEqual(standalone_treads[index][2], composite_treads[index][2], places=9,
+                                       msg="同一难度下单级步高必须相同")
+                self.assertAlmostEqual(standalone_treads[index][1] - standalone_treads[index][0],
+                                       composite_treads[index][1] - composite_treads[index][0], places=9,
+                                       msg="步深必须相同")
+        self.assertAlmostEqual(composite_treads[0][2], COMPOSITE_STANDALONE["stair_step_height"], places=9)
+        # ③ 箱子/台阶块：块高/块长/块间距逐项相同
+        step_cfg = self.namespace["CMoETrackStepTerrainCfg"]()
+        step_cfg.size, step_cfg.proportion = TILE_SIZE, 1.0
+        step_cfg.first_step_x, step_cfg.num_steps, step_cfg.step_spacing = 1.6, 2, 1.30
+        step_cfg.step_length_range, step_cfg.step_height_range = (0.30, 0.50), (0.08, 0.30)
+        standalone_boxes = sorted(rows(self.namespace["track_step_terrain"](difficulty, step_cfg)[0]))
+        blocks = [r for r in standalone_boxes if r[4] > 1.0e-9]
+        self.assertEqual(len(blocks), 2)
+        for block in blocks:
+            self.assertAlmostEqual(block[4], COMPOSITE_STANDALONE["box_height"], places=9)
+            self.assertAlmostEqual(block[1] - block[0], COMPOSITE_STANDALONE["box_length"], places=9)
+        self.assertAlmostEqual(blocks[1][0] - blocks[0][1], COMPOSITE_STANDALONE["box_spacing"], places=9)
+        composite_boxes = [piece for piece in _composite_raised_pieces(self._build())
+                           if abs(piece[2] - COMPOSITE_STANDALONE["box_height"]) < 1.0e-9]
+        self.assertEqual(len(composite_boxes), 2)
+        for box in composite_boxes:
+            self.assertAlmostEqual(box[1] - box[0], COMPOSITE_STANDALONE["box_length"], places=9)
+        self.assertAlmostEqual(composite_boxes[1][0] - composite_boxes[0][1],
+                               COMPOSITE_STANDALONE["box_spacing"], places=9,
+                               msg="箱子单元**内部**的间距沿用 `step_spacing` = 1.30 m")
+        # ④ 栏：厚度律是确定值 ⇒ 与独立地形完全相同；高度/间距在独立地形里是**随机**
+        #    ⇒ 本道取律区间的中点（如实对照，不当成"相同"）
+        hurdle_cfg = self.namespace["CMoETrackHurdleTerrainCfg"]()
+        hurdle_cfg.size, hurdle_cfg.proportion = TILE_SIZE, 1.0
+        np.random.seed(0)
+        standalone_hurdles = sorted(rows(self.namespace["track_hurdle_terrain"](difficulty, hurdle_cfg)[0]))
+        bars = [r for r in standalone_hurdles if r[4] > 1.0e-9]
+        self.assertTrue(bars, "独立地形应至少生成一道栏")
+        for bar in bars:
+            self.assertAlmostEqual(bar[1] - bar[0], COMPOSITE_STANDALONE["hurdle_thickness"], places=9)
+        lo, hi = COMPOSITE_STANDALONE["hurdle_height_range"]
+        composite_bars = [piece for piece in _composite_raised_pieces(self._build())
+                          if abs(piece[2] - 0.093) < 1.0e-9]
+        self.assertEqual(len(composite_bars), 2)
+        for bar in composite_bars:
+            self.assertAlmostEqual(bar[1] - bar[0], COMPOSITE_STANDALONE["hurdle_thickness"], places=9)
+            self.assertGreaterEqual(bar[2], lo - 1.0e-9)
+            self.assertLessEqual(bar[2], hi + 1.0e-9)
+            self.assertAlmostEqual(bar[2], 0.5 * (lo + hi), places=9, msg="栏高取律区间中点")
+        self.assertAlmostEqual(composite_bars[1][0] - composite_bars[0][1], 0.64, places=9,
+                               msg="栏间距取 spacing_range 中点（独立地形是随机的）")
+
+    def test_sizes_are_difficulty_dependent(self):
+        """尺寸随难度变（不是写死的常量）：d = 0 与 1 的坑宽/坡高明显不同，且都落在各自律区间内。"""
+        widths = {}
+        for difficulty in (0.0, 0.70, 1.0):
+            layout = self._layout(difficulty)
+            widths[difficulty] = [round(float(o["width"]), 6) for o in layout["obstacles"]]
+            self.assertAlmostEqual(layout["end_x"], TILE_SIZE[0], places=9,
+                                   msg="任何难度下都必须占满整条道（间隔随难度自动重算）")
+        self.assertAlmostEqual(widths[0.0][0], 0.12, places=9)
+        self.assertAlmostEqual(widths[1.0][0], 0.32, places=9)
+        for smaller, bigger in ((0.0, 0.70), (0.70, 1.0)):
+            self.assertLess(widths[smaller][0], widths[bigger][0], "坑宽随难度单调增")
+
+    # ---------------------------------------------------------------- ⑥ 保护（不放宽）
+    def test_overflow_guard_raises_instead_of_silently_clipping(self):
+        """放不下时**直接 `ValueError`**（三选一提示），不静默截断/重叠。"""
+        with self.assertRaises(ValueError) as ctx:
+            self._build(size=(8.0, 4.0))
+        message = str(ctx.exception)
+        self.assertIn("三选一", message)
+        self.assertIn("8.0000", message, f"应报出实际的瓦片长度：{message}")
+        # 底线：`size[0]` 刚好等于"最小可放长度"时**不抛**（保护只在不够时生效）
+        minimum = COMPOSITE_FIRST_OBSTACLE_X + COMPOSITE_TOTAL_WIDTH + 5 * COMPOSITE_MIN_SPACING
+        self._build(size=(minimum, 4.0))  # 不抛
+        with self.assertRaises(ValueError):
+            self._build(size=(minimum - 1.0e-3, 4.0))
+
+    def test_explicit_spacing_below_the_bound_raises(self):
+        """**负向对照**：把 `obstacle_spacing` 设成 0（＝两个障碍贴在一起）或 0.5 ⇒ 必须报错。"""
+        # 0 是**显式值**（不是自动反算的哨兵 −1）⇒ 生成器必须拒绝（"两个障碍贴在一起"）
+        with self.assertRaises(ValueError) as ctx:
+            self._build(obstacle_spacing=0.0)
+        self.assertIn("贴在一起", str(ctx.exception))
+        with self.assertRaises(ValueError):
+            self._build(obstacle_spacing=COMPOSITE_MIN_SPACING - 1.0e-3)
+        # 显式给一个"够大但会溢出"的值也要报错（溢出保护不放宽）
+        with self.assertRaises(ValueError):
+            self._build(obstacle_spacing=COMPOSITE_SPACING + 1.0)
+        # 负哨兵（＝评测场景用的自动反算）不报错，且间隔 ≥ 下界
+        auto = self._layout()
+        self.assertTrue(auto["spacing_is_auto"])
+        self.assertGreaterEqual(float(auto["spacing"]), float(auto["min_obstacle_spacing"]))
+
+    def test_boundary_spacing_is_accepted(self):
+        """边界：显式间隔恰好 = 下界 1.50 m 时不报错（保护只拒绝**小于**下界的值）。"""
+        meshes = self._build(obstacle_spacing=COMPOSITE_MIN_SPACING)
+        probe = _spawn_probe(meshes)
+        self.assertTrue(probe["on_solid"])
+        union, pits, _pieces = _composite_walkable_union(meshes)
+        self.assertAlmostEqual(max(b for _a, b in union), TILE_SIZE[0], places=9)
+        self.assertEqual(len(pits), 2)
+
+    # ---------------------------------------------------------------- ⑦ 训练侧未受影响
+    def test_training_uses_mix_and_the_default_path_is_untouched(self):
+        """**训练侧未受影响**：训练实例化的仍是 `CMoETrackMixTerrainCfg`（不传新字段 ⇒ 默认路径
+        逐位不变），评测场景不再引用它；`track_mix_terrain` 在默认值下与既有参照逐块相同。"""
+        train = _class_source(TRAIN_CLASS)
+        self.assertIn("CMoETrackMixTerrainCfg(proportion=0.10)", train,
+                      "训练侧必须仍用 mix（本轮只换评测场景）")
+        eval_cfg = _class_source(CFG_CLASS)
+        self.assertNotIn("CMoETrackMixTerrainCfg", eval_cfg,
+                         "评测场景不得再引用 mix 地形（已换成复合道）")
+        self.assertIn(COMPOSITE_CFG_CLASS, eval_cfg)
+        # 默认路径（训练几何）逐位不变：真跑 track_mix_terrain 与既有参照逐块对照
+        mix_cfg = self.namespace["CMoETrackMixTerrainCfg"]()
+        mix_cfg.size, mix_cfg.proportion = TILE_SIZE, 1.0
+        self.assertEqual(mix_cfg.pattern_spacing_scale, 1.0)
+        self.assertIs(mix_cfg.fill_stretched_gaps, False)
+        got = _mesh_rows(self.namespace["track_mix_terrain"](0.70, mix_cfg)[0])
+        want = _pattern_rows(0.70, 1.0, TILE_SIZE)
+        self.assertEqual(len(got), len(want))
+        for row, ref in zip(got, want):
+            for value, expected in zip(row, ref):
+                self.assertAlmostEqual(value, expected, places=9,
+                                       msg=f"训练侧 mix 默认路径被改了：{row} != {ref}")
+
+    def test_checker_layout_matches_the_real_generator(self):
+        """**两个来源交叉核对**：`check_terrain_columns.composite_layout()`（只用标准库的算术复算，审计
+        脚本用的那套）与真 `composite_track_layout()` 必须给出同一套障碍顺序/宽度/间隔/末端，
+        且对 d ∈ {0, 0.35, 0.70, 1.0} 都成立（尺寸随难度变，间隔随之重算）。"""
+        if chk is None:
+            self.skipTest(f"check_terrain_columns 不可导入：{CHK_ERROR}")
+        assign = _assignments(_post_init(CMOE_CFG, CFG_CLASS))
+        call = assign[next(k for k in assign
+                           if re.search(rf"\.sub_terrains\['{COMPOSITE_KEY}'\]$", k))]
+        kwargs = {k: _cfg_const(v) for k, v in _kwargs(call).items()}
+        for difficulty in (0.0, 0.35, 0.70, 1.0):
+            with self.subTest(difficulty=difficulty):
+                mine = chk.composite_layout(difficulty, kwargs, TILE_SIZE)
+                real = self.layout_fn(difficulty, _composite_cfg_from_call(self.namespace, kwargs))
+                self.assertEqual(tuple(mine["sequence"]), tuple(real["sequence"]))
+                self.assertEqual([round(float(u["width"]), 9) for u in mine["units"]],
+                                 [round(float(o["width"]), 9) for o in real["obstacles"]])
+                self.assertAlmostEqual(float(mine["spacing"]), float(real["spacing"]), places=12)
+                self.assertAlmostEqual(float(mine["end_x"]), float(real["end_x"]), places=9)
+                self.assertAlmostEqual(float(mine["last_obstacle_end"]),
+                                       float(real["last_obstacle_end"]), places=9)
+                self.assertAlmostEqual(float(mine["total_width"]), float(real["total_width"]), places=9)
+                self.assertEqual(tuple(tuple(g["pair"]) for g in mine["adjacent_gaps"]),
+                                 tuple(tuple(g["pair"]) for g in real["adjacent_gaps"]))
+
+    def test_composite_terrain_is_exported_and_registered_in_the_cfg(self):
+        """源码级：`track_composite_terrain` / `CMoETrackCompositeTerrainCfg` 同文件成对存在且已接线。"""
+        source = CMOE_TERRAINS.read_text(encoding="utf-8-sig")
+        self.assertIn(f"def {COMPOSITE_FUNCTION_NAME}(difficulty: float, cfg:", source)
+        self.assertIn(f"class {COMPOSITE_CFG_CLASS}(SubTerrainBaseCfg)", source)
+        self.assertIn(f"function = {COMPOSITE_FUNCTION_NAME}", source)
+        self.assertIn("COMPOSITE_OBSTACLE_SEQUENCE", source)
+        self.assertIn("COMPOSITE_MIN_OBSTACLE_SPACING", source)
+        # 溢出与下界保护必须写在函数里（防止被删掉后仍"看起来能跑"）
+        body = source[source.index("def composite_track_layout"):
+                      source.index(f"class {COMPOSITE_CFG_CLASS}")]
+        self.assertIn("raise ValueError", body, "溢出/下界保护必须写在 composite_track_layout 里")
+        self.assertIn("三选一", body)
+        terrain_body = source[source.index(f"def {COMPOSITE_FUNCTION_NAME}"):
+                              source.index(f"class {COMPOSITE_CFG_CLASS}")]
+        self.assertIn("composite_track_layout", terrain_body)
+        # 模块级常量表本身：顺序/下界/哨兵
+        consts = {}
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                    and isinstance(node.targets[0], ast.Name):
+                consts[node.targets[0].id] = node
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                consts[node.target.id] = node
+        self.assertIn("COMPOSITE_OBSTACLE_SEQUENCE", consts)
+        self.assertEqual(tuple(ast.literal_eval(consts["COMPOSITE_OBSTACLE_SEQUENCE"].value)),
+                         COMPOSITE_SEQUENCE)
+        self.assertAlmostEqual(ast.literal_eval(consts["COMPOSITE_MIN_OBSTACLE_SPACING"].value),
+                               COMPOSITE_MIN_SPACING, places=9)
+        self.assertLess(ast.literal_eval(consts["COMPOSITE_SPACING_AUTO"].value), 0.0)
 
 
 # ================================= ③.8 训练侧出生点隐患（**本轮不改训练**，只量化+登记）
@@ -2233,28 +3008,7 @@ class TestMixTestTerrainLevelCli(unittest.TestCase):
 # ============================================================ 工具：cmoe_terrains 默认值
 def _mix_defaults() -> dict[str, float]:
     """从 `cmoe_terrains.py` 读出 `CMoETrackMixTerrainCfg` 的字段默认值（含模块级常量求值）。"""
-    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
-    ns: dict[str, object] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            try:
-                ns[node.targets[0].id] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
-                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, ns
-                )
-            except Exception:
-                continue
-    cls = next(n for n in tree.body
-               if isinstance(n, ast.ClassDef) and n.name == "CMoETrackMixTerrainCfg")
-    defaults: dict[str, float] = {}
-    for node in cls.body:
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            try:
-                defaults[node.target.id] = eval(  # noqa: S307
-                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, ns
-                )
-            except Exception:
-                continue
-    return defaults
+    return _cfg_field_defaults("CMoETrackMixTerrainCfg")  # type: ignore[return-value]
 
 
 # ======================================================================= 桩（命令项用）
