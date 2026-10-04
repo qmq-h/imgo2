@@ -405,6 +405,143 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         finally:
             chk.scene_overrides = original
 
+    # ---------------------------------- 2026-10-04（第六批）：分组语义（组内连续、组间拉大、坑前平地）
+    def test_pattern_segments_are_parsed_from_the_source(self):
+        """`segments` 表必须能从 `cmoe_terrains.py` **AST 解析**出来（只用标准库 ⇒ 离线可复核）。"""
+        segments = chk.mix_pattern_segments(chk.MIX_TEST_DIFFICULTY_EXPECTED)
+        self.assertEqual(len(segments), 12, "图案 12 段（障碍数量不变）")
+        self.assertEqual(segments[0], (0.0, 30.0, 0.0))
+        self.assertEqual(segments[5][0], 69.0, "第一处坑的下游段起点 = 72 − round(10·(1−0.70)) = 69")
+        self.assertEqual(segments[10][0], 120.0, "第二处坑的下游段起点 = 123 − 3 = 120")
+        self.assertEqual(segments[-1], (140.0, 160.0, 60.0))
+        self.assertTrue(all(end > start for start, end, _height in segments))
+
+    def test_contiguous_groups_are_three_and_include_the_staircase(self):
+        """分组 = 按**原始 units 首尾相接**切；d = 0.70 时 3 组、组内逐段相接、楼梯 4 级在同一组。"""
+        groups = chk.mix_contiguous_groups(chk.mix_pattern_segments(chk.MIX_TEST_DIFFICULTY_EXPECTED))
+        spans = tuple((group[0][0], group[-1][1]) for group in groups)
+        self.assertEqual(len(groups), chk.MIX_CONTIGUOUS_GROUPS_EXPECTED)
+        self.assertEqual(spans, chk.MIX_GROUP_SPANS_EXPECTED)
+        for group in groups:
+            for before, after in zip(group, group[1:]):
+                self.assertAlmostEqual(after[0], before[1], places=9, msg="组内必须首尾相接")
+        stair_group = next(group for group in groups if group[0][0] <= 30.0 <= group[-1][1])
+        raised = [segment for segment in stair_group if segment[2] > 0.0]
+        self.assertEqual(len(raised), chk.MIX_STAIR_LEVELS_EXPECTED, "楼梯必须是同一组内首尾相接的 4 级")
+
+    def test_group_layout_puts_the_flat_upstream_of_the_pits(self):
+        """几何核算：楼梯 4 级连续、两处坑紧贴**下游组起点**、平地铺在**坑的上游**且均匀分配。"""
+        layout = chk.mix_group_layout(chk.MIX_TEST_DIFFICULTY_EXPECTED,
+                                      chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED)
+        stairs = layout["stairs"]
+        self.assertEqual([round(top, 4) for _a, _b, top in stairs], list(chk.MIX_STAIR_TOPS_EXPECTED))
+        self.assertEqual([round(a, 4) for a, _b, _t in stairs], [0.9, 1.02, 1.14, 1.26])
+        for before, after in zip(stairs, stairs[1:]):
+            self.assertAlmostEqual(before[1], after[0], places=9, msg="级间不得有空档")
+        self.assertEqual([round(width, 9) for width in layout["pit_widths"]], [0.18, 0.18])
+        self.assertEqual([(round(a, 4), round(b, 4)) for a, b in layout["pits"]],
+                         [(6.8333, 7.0133), (13.1867, 13.3667)])
+        fills = [fill for fill in layout["fills"] if fill[1] - fill[0] > 1.0e-12]
+        self.assertEqual(len(fills), chk.MIX_GAP_SLOTS_EXPECTED)
+        for fill, pit in zip(fills[:2], layout["pits"]):
+            self.assertAlmostEqual(fill[1], pit[0], places=9, msg="平地必须正好铺到坑的左沿")
+            self.assertGreaterEqual(fill[1] - fill[0], chk.MIX_UPSTREAM_FLAT_MIN_S)
+        self.assertAlmostEqual(fills[0][1] - fills[0][0], 16.0 / 3.0, places=9)
+        self.assertAlmostEqual(fills[2][1], 19.5, places=9, msg="尾段补块铺到图案末端")
+
+    def test_report_checks_the_grouping_and_the_staircase(self):
+        """工具必须**打印并检查**：分组数与组内连续性（楼梯 4 级连续）、坑宽、坑前平地。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems, lines = chk.mix_test_report()
+        text = "\n".join(lines)
+        self.assertEqual(problems, 0, text)
+        self.assertIn("第六批检查", text)
+        self.assertIn("切成 **3 组**", text)
+        self.assertIn("0→60、69→111、120→160", text)
+        self.assertIn("楼梯 4 级连续", text)
+        self.assertIn("0.0462", text)
+        self.assertIn("0.1848", text)
+        self.assertIn("级间**无平地**", text)
+        self.assertIn("两处坑宽恒 0.18 m", text)
+        self.assertIn("紧贴下游组起点", text)
+        self.assertIn("两处坑**上游**各 5.3333 m", text)
+        self.assertIn("坑后落点平地 **0.0000 m**", text)
+        self.assertIn("难组合", text)
+        self.assertIn("窄凹口", text)
+        self.assertIn("尖峰", text)
+        self.assertIn("落差", text)
+        self.assertNotIn("❌", text)
+
+    def test_report_flags_a_wrong_group_count_expectation(self):
+        """负向对照：期望组数被改错时必须报 ❌（"3 组"是被**检查**的，不是打印而已）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_CONTIGUOUS_GROUPS_EXPECTED
+        chk.MIX_CONTIGUOUS_GROUPS_EXPECTED = 5
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("分组应为 5 组", text)
+        finally:
+            chk.MIX_CONTIGUOUS_GROUPS_EXPECTED = original
+
+    def test_report_flags_a_wrong_stair_level_count(self):
+        """负向对照：期望楼梯级数被改错时必须报 ❌（"4 级连续"是被检查的）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_STAIR_LEVELS_EXPECTED
+        chk.MIX_STAIR_LEVELS_EXPECTED = 3
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("楼梯应为同一组内首尾相接的 3 级", text)
+        finally:
+            chk.MIX_STAIR_LEVELS_EXPECTED = original
+
+    def test_report_flags_a_too_short_upstream_flat(self):
+        """负向对照：坑前平地的下界抬到 6 m 时 5.3333 m 必须被判不足（追加要求的"助跑"被检查）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_UPSTREAM_FLAT_MIN_S
+        chk.MIX_UPSTREAM_FLAT_MIN_S = 6.0
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("每处坑前的平地必须 ≥ 6", text)
+        finally:
+            chk.MIX_UPSTREAM_FLAT_MIN_S = original
+
+    def test_hard_combinations_are_report_only(self):
+        """其它"难组合"只报告、不改几何：三行都在、都带"只报告"、且数与实测一致。"""
+        lines = chk.mix_hard_combinations(chk.MIX_TEST_DIFFICULTY_EXPECTED)
+        self.assertEqual(len(lines), 3, lines)
+        for line in lines:
+            self.assertIn("只报告", line)
+        self.assertIn("窄凹口", lines[0])
+        self.assertIn("84:86", lines[0])
+        self.assertIn("0.1848", lines[0])   # 上游邻块 69:84 的顶面（120 索引）
+        self.assertIn("0.1478", lines[0])   # 下游邻块 86:96 的顶面（96 索引）
+        self.assertIn("尖峰", lines[1])
+        self.assertIn("0.2618", lines[1])
+        self.assertIn("落差", lines[2])
+        self.assertIn("0.0924", lines[2])
+
     def test_mix_gets_all_columns(self):
         """只 mix 一类 ⇒ 20 列**全部**是 mix（每道 1 列）。"""
         self.assertEqual(chk.allocate([("mix", 1.0)], 20), ["mix"] * 20)

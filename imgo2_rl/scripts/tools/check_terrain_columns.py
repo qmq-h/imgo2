@@ -136,6 +136,22 @@ MIX_TEST_EPISODE_LENGTH_MIN_S = 25.0
 MIX_TEST_FORWARD_SPEED = 1.0
 # `track_mix_terrain` 的图案最后一个索引（`pattern_start_x + 160·x_unit·scale` = 图案末端）
 MIX_PATTERN_END_UNITS = 160.0
+# mix 图案的源码（第六批的分组/几何核算从它 AST 解析 `segments` 表与 cfg 默认值；只用标准库）
+CMOE_TERRAINS = (REPO / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity"
+                 "/base_move/cmoe_terrains.py")
+# 2026-10-04（第六批）：分组语义的期望值（**写死**，以便"分组规则被改坏"能被工具发现）。
+# 分组 = 把 `segments` 按"原始 units 上是否首尾相接"切开；d = 0.70 时实测 3 组：
+#   0→60（起步平台 ＋ 4 级楼梯）、69→111、120→160。
+MIX_CONTIGUOUS_GROUPS_EXPECTED = 3
+MIX_GROUP_SPANS_EXPECTED = ((0.0, 60.0), (69.0, 111.0), (120.0, 160.0))
+# 楼梯必须是同一组里 **首尾相接的 4 级**（级间不得有平地），顶面高度序列固定：
+MIX_STAIR_LEVELS_EXPECTED = 4
+MIX_STAIR_TOPS_EXPECTED = (0.0462, 0.0924, 0.1386, 0.1848)
+# 可拉伸空档数 = 两处坑所在空档 ＋ 尾段 = 3；坑宽恒 0.18 m（d = 0.70）。
+MIX_GAP_SLOTS_EXPECTED = 3
+MIX_PIT_WIDTH_EXPECTED = 0.18
+# 追加要求：补出的平地铺在**坑的上游** ⇒ 每处坑前的平地长度 = 均匀分配的一份（建议 ≥ 0.5 m）。
+MIX_UPSTREAM_FLAT_MIN_S = 0.5
 
 # 类作用域的目标匹配（`ast.unparse` 用单引号，正则同时接受两种引号）
 _SUB_PROP = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion$")
@@ -296,6 +312,179 @@ def episode_length_s(class_name: str = TRAIN_CLASS) -> float | None:
         except (TypeError, ValueError):
             return None
     return None
+
+
+def mix_terrain_defaults() -> dict[str, float]:
+    """从 `cmoe_terrains.py` 读 `CMoETrackMixTerrainCfg` 的字段默认值（AST；模块级常量就地求值）。
+
+    **只用标准库** ⇒ 没有 Isaac Lab / trimesh 的机器上也能复核 mix 的分组与几何。
+    """
+    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
+    ns: dict[str, object] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                ns[node.targets[0].id] = eval(  # noqa: S307 - 只求值仓库自己的常量表达式
+                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, dict(ns)
+                )
+            except Exception:
+                continue
+    cls = next((n for n in tree.body
+                if isinstance(n, ast.ClassDef) and n.name == "CMoETrackMixTerrainCfg"), None)
+    if cls is None:
+        return {}
+    out: dict[str, float] = {}
+    for node in cls.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            try:
+                out[node.target.id] = eval(  # noqa: S307
+                    compile(ast.Expression(node.value), str(CMOE_TERRAINS), "eval"), {}, dict(ns)
+                )
+            except Exception:
+                continue
+    return out
+
+
+def mix_pattern_segments(difficulty: float) -> list[tuple[float, float, float]]:
+    """**AST 解析** `track_mix_terrain` 里的 `segments` 表（`72.0 - gap_shrink` 按该难度就地求值）。
+
+    返回非空段 `(start_units, end_units, height_units)`（顺序＝函数里的顺序）—— 分组与几何的第二来源。
+    """
+    defaults = mix_terrain_defaults()
+    tree = ast.parse(CMOE_TERRAINS.read_text(encoding="utf-8-sig"))
+    function = next((n for n in ast.walk(tree)
+                     if isinstance(n, ast.FunctionDef) and n.name == "track_mix_terrain"), None)
+    if function is None:
+        return []
+    table = next((node.value for node in ast.walk(function)
+                  if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "segments"), None)
+    if not isinstance(table, ast.Tuple):
+        return []
+    ns = {"gap_shrink": round(float(defaults.get("gap_shrink_units", 10.0)) * (1.0 - difficulty))}
+    out: list[tuple[float, float, float]] = []
+    for element in table.elts:
+        try:
+            start, end, height = (
+                float(v) for v in eval(  # noqa: S307 - 只求值仓库自己的常量表达式
+                    compile(ast.Expression(element), str(CMOE_TERRAINS), "eval"),
+                    {"__builtins__": {}}, dict(ns),
+                )
+            )
+        except Exception:
+            continue
+        if end > start:
+            out.append((start, end, height))
+    return out
+
+
+def mix_contiguous_groups(segments) -> list[list[tuple[float, float, float]]]:
+    """第六批的分组规则：**原始 units 上首尾相接**（`next.start == prev.end`）的连续段归为一组。"""
+    groups: list[list[tuple[float, float, float]]] = []
+    for segment in segments:
+        if groups and abs(segment[0] - groups[-1][-1][1]) <= 1.0e-9:
+            groups[-1].append(segment)
+        else:
+            groups.append([segment])
+    return groups
+
+
+def mix_group_layout(difficulty: float, scale: float) -> dict[str, object]:
+    """第六批"组内连续、组间拉大、平地铺在坑的上游"的**独立几何核算**（只用标准库）。
+
+    与 `track_mix_terrain` 的第六批段落逐条对应：`extra = 160·x_unit·(scale−1)` 均匀分给
+    "两处坑所在空档 ＋ 尾段"，每处坑宽 `= 原始空档 units · x_unit` 且**紧贴下游组起点**，
+    补出的 `height=0` 平地铺在**坑的上游**。返回供打印/判定的几何量。
+    """
+    defaults = mix_terrain_defaults()
+    offset = float(defaults.get("pattern_start_x", 0.30))
+    x_unit = float(defaults.get("x_unit", 0.02))
+    z_unit = float(defaults.get("z_unit", 0.002))
+    height_scale = float(defaults.get("height_scale", 1.1))
+    diff = height_scale * difficulty
+    segments = mix_pattern_segments(difficulty)
+    groups = mix_contiguous_groups(segments)
+    ends = [group[-1][1] for group in groups]
+    gaps = [(index, group[0][0] - ends[index - 1])
+            for index, group in enumerate(groups)
+            if index and group[0][0] - ends[index - 1] > 1.0e-9]
+    gap_indexes = {index for index, _width in gaps}
+    extra_each = (scale - 1.0) * MIX_PATTERN_END_UNITS * x_unit / (len(gaps) + 1)
+    shifts: dict[tuple[float, float], float] = {}
+    shift = 0.0
+    for index, group in enumerate(groups):
+        if index in gap_indexes:
+            shift += extra_each
+        for start, end, _height in group:
+            shifts[(start, end)] = shift
+    blocks: list[tuple[float, float, float, float, float]] = []   # (start_units, x0, x1, top, height_units)
+    for start, end, height in segments:
+        x0 = offset + start * x_unit + shifts[(start, end)]
+        blocks.append((start, x0, x0 + (end - start) * x_unit, height * z_unit * diff, height))
+    pits: list[tuple[float, float]] = []
+    fills: list[tuple[float, float]] = []
+    for index, width_units in gaps:
+        previous_start, previous_end, _previous_height = groups[index - 1][-1]
+        upstream_x = offset + previous_end * x_unit + shifts[(previous_start, previous_end)]
+        first_start, first_end, _first_height = groups[index][0]
+        next_x0 = offset + first_start * x_unit + shifts[(first_start, first_end)]
+        pits.append((next_x0 - width_units * x_unit, next_x0))
+        fills.append((upstream_x, next_x0 - width_units * x_unit))
+    last_start, last_end, _last_height = groups[-1][-1]
+    last_x0 = offset + last_end * x_unit + shifts[(last_start, last_end)]
+    fills.append((last_x0, offset + MIX_PATTERN_END_UNITS * x_unit * scale))
+    # 楼梯 = "包含索引 30 的那一组"（＝第 1 组）里所有**抬高**段（首尾相接，数据驱动、不写死索引）
+    staircase_group = next(
+        group for group in groups if group[0][0] <= 30.0 <= group[-1][1]
+    )
+    stair_starts = {segment[0] for segment in staircase_group if segment[2] > 0.0}
+    stairs = [(x0, x1, top) for start, x0, x1, top, _height in blocks if start in stair_starts]
+    return {
+        "groups": groups,
+        "spans": [(group[0][0], group[-1][1]) for group in groups],
+        "blocks": blocks,
+        "stairs": stairs,
+        "pits": pits,
+        "fills": fills,
+        "extra_each": extra_each,
+        "pit_widths": [(b - a) for a, b in pits],
+    }
+
+
+def mix_hard_combinations(difficulty: float) -> list[str]:
+    """图案里其它"难组合"的**只报告**清单（本轮不改几何，只给上层汇报用）。
+
+    由 `segments` 表 ＋ cfg 默认值算出，不含任何实现细节：
+    * ① `height == 0` 的窄段被两块抬高段夹住（可能卡脚）；
+    * ② 最高的那块（`170` 索引）前后都是更矮的抬高段（上-下尖峰）；
+    * ③ 最后一块抬高段之后直接落到 `height = 0`（落差）。
+    """
+    defaults = mix_terrain_defaults()
+    x_unit = float(defaults.get("x_unit", 0.02))
+    z_unit = float(defaults.get("z_unit", 0.002))
+    diff = float(defaults.get("height_scale", 1.1)) * difficulty
+    segments = mix_pattern_segments(difficulty)
+    tops = [height * z_unit * diff for _start, _end, height in segments]
+    widths = [(end - start) * x_unit for start, end, _height in segments]
+    lines: list[str] = []
+    for index in range(1, len(segments) - 1):
+        if tops[index] == 0.0 and tops[index - 1] > 0.0 and tops[index + 1] > 0.0:
+            lines.append(
+                f"① {widths[index] * 100:.0f} cm 窄凹口（{widths[index]:.2f} m，位于 "
+                f"{segments[index][0]:g}:{segments[index][1]:g}）夹在 {tops[index - 1]:.4f} m 与 "
+                f"{tops[index + 1]:.4f} m 两块之间 ⇒ 可能卡脚（**只报告，本轮不改**）"
+            )
+    index = max(range(len(tops)), key=lambda i: tops[i])
+    lines.append(
+        f"② 最高块（{segments[index][0]:g}:{segments[index][1]:g}，顶面 {tops[index]:.4f} m）只有 "
+        f"{widths[index]:.2f} m 长，前接 {tops[index - 1]:.4f} m、后接 {tops[index + 1]:.4f} m ⇒ "
+        f"上-下尖峰（**只报告，本轮不改**）"
+    )
+    last = len(tops) - 1
+    lines.append(
+        f"③ 末尾抬高段（{segments[last][0]:g}:{segments[last][1]:g}）顶面 {tops[last]:.4f} m，之后直接"
+        f"落到 0 ⇒ 落差 {tops[last]:.4f} m（尾段平地，**只报告，本轮不改**）"
+    )
+    return lines
 
 
 def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
@@ -516,6 +705,75 @@ def mix_test_report() -> tuple[int, list[str]]:
                 f"{offset} + 160×{x_unit}×{scale} = {end:.2f} m（占 {100.0 * end / size[0]:.2f} % 的 "
                 f"{size[0]:g} m 道），尾部平地 {tail:.2f} m；乘子上限 "
                 f"({size[0]:g}−{offset})/(160×{x_unit}) = {upper:.5f}（溢出保护**不放宽**：超限直接 raise）")
+
+    # ---------------- 2026-10-04（第六批）：分组语义（组内连续、组间拉大、平地铺在坑的上游）
+    # 本段**只新增检查**：原任务（`--task cmoe-rough`）与 mix-test 既有的每一条判据都一字未动。
+    say("\n  ── 第六批检查：分组语义（组内连续、组间拉大、平地铺在坑的上游）──")
+    scale_value = module_constants().get("MIX_TEST_PATTERN_SPACING_SCALE")
+    layout: dict[str, object] | None = None
+    if not isinstance(scale_value, (int, float)):
+        say("  ❌ 解析不到常量 `MIX_TEST_PATTERN_SPACING_SCALE` ⇒ 无法核算分组几何")
+        problems += 1
+    else:
+        try:
+            layout = mix_group_layout(MIX_TEST_DIFFICULTY_EXPECTED, float(scale_value))
+        except Exception as error:  # pragma: no cover - 正常仓库不会走到
+            say(f"  ❌ 核算分组几何失败（{error}）")
+            problems += 1
+    if layout is not None:
+        spans = list(layout["spans"])  # type: ignore[arg-type]
+        groups = list(layout["groups"])  # type: ignore[arg-type]
+        if len(spans) != MIX_CONTIGUOUS_GROUPS_EXPECTED or tuple(spans) != MIX_GROUP_SPANS_EXPECTED:
+            say(f"  ❌ 分组应为 {MIX_CONTIGUOUS_GROUPS_EXPECTED} 组 {MIX_GROUP_SPANS_EXPECTED}，"
+                f"实测 {spans}（按「原始 units 首尾相接」切）")
+            problems += 1
+        elif not all(abs(after[0] - before[1]) <= 1.0e-9
+                     for group in groups for before, after in zip(group, group[1:])):
+            say("  ❌ 组内必须逐段首尾相接（否则 4 级楼梯又会被拆成孤立小凸块）")
+            problems += 1
+        else:
+            say(f"  ✅ 分组：按原始 units 首尾相接切成 **{len(spans)} 组** —— "
+                + "、".join(f"{a:g}→{b:g}" for a, b in spans) + "（组内逐段首尾相接 ✅）")
+        stairs = list(layout["stairs"])  # type: ignore[arg-type]
+        tops = [round(block[2], 4) for block in stairs]
+        if len(stairs) != MIX_STAIR_LEVELS_EXPECTED or tuple(tops) != MIX_STAIR_TOPS_EXPECTED:
+            say(f"  ❌ 楼梯应为同一组内首尾相接的 {MIX_STAIR_LEVELS_EXPECTED} 级、顶面 "
+                f"{MIX_STAIR_TOPS_EXPECTED}，实测 {len(stairs)} 级、顶面 {tops}")
+            problems += 1
+        elif any(abs(stairs[i + 1][0] - stairs[i][1]) > 1.0e-9 for i in range(len(stairs) - 1)):
+            say("  ❌ 楼梯级间出现了空档（平地/坑）⇒ 楼梯不连续（用户反馈的「台阶似乎只有一级」）")
+            problems += 1
+        else:
+            say(f"  ✅ 楼梯 {MIX_STAIR_LEVELS_EXPECTED} 级连续（同一组内 30:36 / 36:42 / 42:48 / 48:60，"
+                "级间**无平地**）：" + " / ".join(f"[{a:.4f},{b:.4f}] {t:.4f}" for a, b, t in stairs))
+        pit_widths = list(layout["pit_widths"])  # type: ignore[arg-type]
+        pits = list(layout["pits"])  # type: ignore[arg-type]
+        if len(pit_widths) != 2 or any(abs(w - MIX_PIT_WIDTH_EXPECTED) > 1.0e-9 for w in pit_widths):
+            say(f"  ❌ 两处坑宽应恒为 {MIX_PIT_WIDTH_EXPECTED} m，实测 "
+                f"{[round(w, 6) for w in pit_widths]}")
+            problems += 1
+        else:
+            say(f"  ✅ 两处坑宽恒 {MIX_PIT_WIDTH_EXPECTED} m（合计 0.36 m）："
+                + "、".join(f"[{a:.4f},{b:.4f}]" for a, b in pits)
+                + "（各自**紧贴下游组起点** ⇒ 平地铺在坑的上游）")
+        fills = [fill for fill in layout["fills"] if fill[1] - fill[0] > 1.0e-12]  # type: ignore[union-attr]
+        if len(fills) != MIX_GAP_SLOTS_EXPECTED:
+            say(f"  ❌ 可拉伸空档应为 {MIX_GAP_SLOTS_EXPECTED} 个（两处坑所在空档 ＋ 尾段），"
+                f"实测 {len(fills)} 个有长度的补块：{[(round(a, 3), round(b, 3)) for a, b in fills]}")
+            problems += 1
+        else:
+            upstream = [fill[1] - fill[0] for fill in fills[:2]]
+            say(f"  ✅ 补出的平地 = 160×x_unit×(scale−1) 均匀分给 **{len(fills)} 个空档**："
+                f"两处坑**上游**各 {upstream[0]:.4f} m（建议 ≥ {MIX_UPSTREAM_FLAT_MIN_S:g} m）、"
+                f"尾段 {fills[2][1] - fills[2][0]:.4f} m；坑后落点平地 **0.0000 m**"
+                "（坑后直接是下游组第一块）")
+            if any(length < MIX_UPSTREAM_FLAT_MIN_S - 1.0e-9 for length in upstream):
+                say(f"  ❌ 每处坑前的平地必须 ≥ {MIX_UPSTREAM_FLAT_MIN_S:g} m，实测 "
+                    f"{[round(v, 4) for v in upstream]}")
+                problems += 1
+    say("  ── 图案里其它「难组合」（**只报告、本轮不改**，供上层汇报）──")
+    for line in mix_hard_combinations(MIX_TEST_DIFFICULTY_EXPECTED):
+        say(f"    {line}")
 
     # ---------------------------- 2026-10-04（第五批）：单局时长必须够走完 20 m（1.0 m/s ⇒ 20 s）
     episode_length = episode_length_s(MIX_TEST_CLASS)

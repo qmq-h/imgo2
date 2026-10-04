@@ -279,12 +279,52 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
     ⇒ ``fill_stretched_gaps=True`` 时**障碍自身几何（每块宽度/顶面高度/顺序）与坑宽一字不变**，
     被拉开的只是"障碍之间的平地"；整块瓦片的可走面总长 = ``size[0] − 坑总长``（尾廊会吸收拉伸量，
     因此**整块瓦片的可走面总长不随 scale 变**——随 scale 单调增的是**图案区间内**的可走面与补出的平地）。
+    ⚠️ 本段描述的"粒度＝每一段"只在 ``fill_stretched_gaps=False``（默认）时成立；``True`` 时**粒度已由
+    第六批改成"每个连续段组"**（见下面的第六批段落）—— 逐段铺平地会把 4 级楼梯拆成 4 个孤立小凸块，
+    这正是用户看到的"台阶似乎只有一级"；且那时的"坑紧贴上游块末端"会让"高处下来立刻遇到坑"
+    （用户追加反馈："一个较高的台子后紧接 gap"）⇒ 第六批把补出的平地改铺在**坑的上游**。
 
     2026-10-04（第五批，用户："整体地形放大，原本是10m长就改成20m长，还是布满，但是障碍数量不变，
     设置不变，只把间隔改大"）：本函数**一行未改** —— 放大的是瓦片 ``cfg.size = (20, 4)``（评测场景
     显式覆盖 `terrain_generator.size`），乘子按同一套反算式重算为 **6.00**，于是障碍数量/尺寸/高度/
     坑深/走廊宽/难度/顺序全部照旧，只有间隔变大。``size[0]`` 参与的两处都跟着变：
     溢出上限 (20−0.30)/(160×0.02) = **6.15625**（保护不放宽），图案末端 = 0.30+160×0.02×6.00 = **19.50 m**。
+
+    2026-10-04（第六批，用户："台阶似乎只有一级"—— 实测 ``scale=6.00`` 时 4 级楼梯被拆成
+    ``[3.9,4.02] 0.0462 / [4.62,4.74] 0.0924 / [5.34,5.46] 0.1386 / [6.06,6.30] 0.1848`` 四个孤立小凸块，
+    中间各夹 0.60 m 平地）：**第四批的"逐段"粒度就是根因** —— ``segments`` 里那 4 级楼梯
+    （``30:36 / 36:42 / 42:48 / 48:60``，每级仅 0.12 m 宽）在原始 units 上**首尾相接**，而逐段公式给
+    每段**各按自己的起点**加 ``(scale−1)·start·x_unit`` ⇒ 相邻两级之间凭空多出
+    ``(scale−1)·6·x_unit = 0.60 m`` 的空档，被补平地规则铺成平地 ⇒ 楼梯被拆散。本批把拉伸/补平地的
+    粒度改成**每个障碍组**（run of contiguous segments）：
+
+    * **分组**：把非空 ``segments`` 按**原始 units 上是否首尾相接**（``next.start == prev.end``）切成
+      若干组。本图案在 ``d = 0.70`` 时是 **3 组**：``0→60``（起步平台 ＋ 4 级楼梯）、``69→111``、
+      ``120→160``；空段（``end ≤ start``，``gap_shrink`` 很大时才会出现）已被过滤、不参与分组。
+      ⚠️ ``0:30`` 与 ``30:36`` 在 units 上同样首尾相接（``30 == 30``）⇒ 按定义属**同一组**，
+      起步平台与楼梯焊在一起（这正是**训练几何**：出生点 0.75 → 第一级台阶 0.90）；
+      若把它俩当成两组，它们之间的原始空档宽度是 **0** ⇒ 也拿不到任何额外长度、几何完全相同。
+    * **组内**：整组共用**一个**平移量 ⇒ 段与段仍然首尾相接、段宽与顶面不变 ⇒ **4 级楼梯连成楼梯**
+      （真 trimesh 实测：``[0.90,1.02] 0.0462 / [1.02,1.14] 0.0924 / [1.14,1.26] 0.1386 /
+      [1.26,1.50] 0.1848``，相邻级 X 严丝合缝、级间**没有平地**）。
+    * **组间**：可拉伸的空档＝**原始 units 上本来就有空档的组间边界**（本图案两处坑所在位置）
+      ＋图案末尾的**尾段**；每个空档里：
+      1. **原有坑宽原样保留** = ``(next.start − prev.end) · x_unit``（``d = 0.70`` 时两处各
+         **0.18 m**，总 0.36 m）；
+      2. 分到的额外长度一律铺 ``height = 0`` 的 **可走面**，且铺在**坑的上游** —— 即
+         ``[上游组末端, 坑左沿]``，坑**紧贴下游组起点**一侧（2026-10-04 追加：用户实测
+         "一个较高的台子后紧接 gap" ⇒ 让"从高处下来"先有一段平地助跑、再遇坑）。
+         ``d = 0.70, scale = 6.00`` 时每处坑前平地 **5.3333 m**、坑后落点平地 **0 m**
+         （坑后直接就是下游组的抬高块，与 ``scale = 1.0`` 的原始图案一致）；
+      3. 因乘子多出来的总长度 ``160 · x_unit · (scale − 1)`` 在这些空档之间**均匀分配**
+         （``slot = 两处坑所在空档 + 尾段 = 3`` ⇒ ``scale = 6.00`` 时每处 **5.3333 m**）；
+         理由：每处都拿到一段等长平地，既不会让某一处独吞 16 m、也不改变"障碍 → 紧邻坑"的相对位置。
+         （尾段分到的那一份仍是"最后一段末端 → 图案末端"的平地。）
+    * **`fill_stretched_gaps=False` / `scale = 1.0` ⇒ 旧路径逐位不变**：前者（默认，训练侧就是这条）
+      仍是第四批的"逐段"公式（多出来的空间由整宽坑底填充），后者 ``shift`` 精确为 ``+0.0``；
+      分组布局只在 ``fill_stretched_gaps=True`` **且** ``scale > 1`` 时启用。
+    * **溢出保护不放宽**：仍按 ``pattern_start_x + 160 · x_unit · scale ≤ size[0]`` 判、超限
+      ``ValueError``；分组不改变图案末端（仍是 ``offset + 160 · x_unit · scale``）。
 
     **总长保护（不静默溢出）**：图案末端 = ``pattern_start_x + 160 · x_unit · scale``。超过
     ``size[0]`` 时**直接 raise ``ValueError``**（并给出该瓦片上 scale 的上限）——参照问题表 CMOE-13：
@@ -308,15 +348,12 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
             f"{max_spacing:.4f}。三选一：① 减少图案数量（改本函数的 segments）；② 增大 "
             f"terrain_generator.size[0]；③ 把乘子降到 {max_spacing:.4f} 以下。"
         )
+    # 图案结束（索引 160）之后走廊回到 0 高度，从图案末端直铺到瓦片末端
+    tail_x0 = min(pattern_x_end, cfg.size[0])
 
     def _shift(anchor_units: float) -> float:
         """图案起点按乘子后移的增量；``spacing == 1.0`` 时**精确等于 0.0**（保证逐位不变）。"""
         return (spacing - 1.0) * anchor_units * x_unit
-
-    # 坑底：整宽、顶面在 -pit_depth
-    meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1], -cfg.pit_depth)]
-    # 图案之前的起步走廊（到 pattern_start_x）
-    meshes.append(_corridor(0.0, offset, cfg.size[1], cfg.corridor_width, 0.0))
 
     segments = (
         (0.0, 30.0, 0.0),
@@ -332,11 +369,84 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
         (123.0 - gap_shrink, 140.0, 120.0),
         (140.0, 160.0, 60.0),
     )
+    placed = [(start, end, height) for start, end, height in segments if end > start]
+
+    # 2026-10-04（第六批）：**分组** —— 原始 units 上首尾相接（``next.start == prev.end``）的连续段
+    # 属于同一组。本图案在 ``d = 0.70`` 时是 3 组（打印/审计见 `check_terrain_columns.py --task
+    # mix-test` 与 `tests/test_cmoe_mix_test_scene.py`）：
+    #   ① 0 → 60   起步平台 0:30 ＋ **4 级楼梯** 30:36 / 36:42 / 42:48 / 48:60（首尾相接）
+    #   ② 69 → 111 跨第一处坑后的高台/平台/高栏/平台
+    #   ③ 120 → 160 跨第二处坑后的平台/下行台阶
+    # ⚠️ `0:30` 与 `30:36` 也是首尾相接（30 == 30）⇒ 按定义同组（起步平台与楼梯焊在一起，
+    #    与训练几何一致）；把它们拆成两组也不会改变几何：二者之间的原始空档恒为 0。
+    groups: list[list[tuple[float, float, float]]] = []
+    for segment in placed:
+        if groups and abs(segment[0] - groups[-1][-1][1]) <= 1.0e-9:
+            groups[-1].append(segment)
+        else:
+            groups.append([segment])
+
+    # 每个段的平移量：默认路径＝第四批的"逐段"公式（逐位不变）；
+    # 分组路径＝该段所在组的**累计**平移量（组内共用 ⇒ 组内段与段仍然首尾相接）。
+    segment_shifts: dict[tuple[float, float], float] = {}
+    # 组间空档里要补的 `height=0` 可走面 `[(x0, x1), ...]`（坑本身不补、原样留空）。
+    stretched_fills: list[tuple[float, float]] = []
+    if cfg.fill_stretched_gaps and spacing > 1.0:
+        # 可拉伸的空档 = **原始 units 上本来就有空档的组间边界**（本图案两处坑所在位置）＋ 尾段。
+        # ① 坑宽保持原样：每处坑仍占 `(next.start − prev.end)·x_unit`（d=0.70 各 0.18 m）且**紧贴
+        #    下游组起点**（⇒ 补出的平地正好铺在它**上游**）；② 多出来的总长度
+        #    `160·x_unit·(scale−1)` 在这些空档之间**均匀分配**（理由见函数 docstring 与 docs：
+        #    每处都拿到一段等长平地，不让某一处独吞）。
+        stretch_gaps = [
+            (index, group[0][0] - groups[index - 1][-1][1])
+            for index, group in enumerate(groups)
+            if index and group[0][0] - groups[index - 1][-1][1] > 1.0e-9
+        ]
+        slot_count = len(stretch_gaps) + 1  # ＋尾段（最后一段末端 → 图案末端，索引 160）
+        extra_each = (spacing - 1.0) * pattern_end_units * x_unit / slot_count
+        shift = 0.0
+        previous_end_units = groups[0][-1][1]
+        for index, group in enumerate(groups):
+            if index and group[0][0] - previous_end_units > 1.0e-9:
+                # 跨过一个"原始就有空档"的边界：把该空档分到的额外长度加到组平移量上
+                # （坑宽只由图案与难度决定 ⇒ 不受影响；坑相对本组的位置由下面的补块计算固定）。
+                shift += extra_each
+            for start_units, end_units, _height_units in group:
+                segment_shifts[(start_units, end_units)] = shift
+            previous_end_units = group[-1][1]
+        # 补块：**坑的上游**（上游组末端 → 坑左沿）→ 下一组起点；最后一段末端 → 图案末端（尾段）。
+        # 2026-10-04（第六批追加，用户："我似乎有看到一个较高的台子后紧接 gap"）：补出的平地放在
+        # 坑的**上游**（＝坑紧贴**下游组起点**一侧）⇒ 从高处下来先有一段平地助跑/落点，再遇到坑；
+        # 坑宽不变（`(next.start − prev.end)·x_unit`），只是把坑从"紧贴上游组末端"改成"紧贴下游组"。
+        for index, gap_units in stretch_gaps:
+            previous_start, previous_end, _previous_height = groups[index - 1][-1]
+            pit_upstream_x = (
+                offset
+                + previous_end * x_unit
+                + segment_shifts[(previous_start, previous_end)]
+            )
+            first_start, first_end, _first_height = groups[index][0]
+            next_x0 = offset + first_start * x_unit + segment_shifts[(first_start, first_end)]
+            pushed_pit_x0 = next_x0 - gap_units * x_unit
+            stretched_fills.append((pit_upstream_x, pushed_pit_x0))
+        last_start, last_end, _last_height = groups[-1][-1]
+        last_x1 = min(offset + last_end * x_unit + segment_shifts[(last_start, last_end)], cfg.size[0])
+        stretched_fills.append((last_x1, tail_x0))
+    else:
+        for start_units, end_units, _height_units in placed:
+            segment_shifts[(start_units, end_units)] = _shift(start_units)
+
+    # 坑底：整宽、顶面在 -pit_depth
+    meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1], -cfg.pit_depth)]
+    # 图案之前的起步走廊（到 pattern_start_x）
+    meshes.append(_corridor(0.0, offset, cfg.size[1], cfg.corridor_width, 0.0))
+
     for start_units, end_units, height_units in segments:
         if end_units <= start_units:
             continue
-        # 只改"图案之间的 X 推进量"：整段按**自己起点**的增量平移（⇒ 段宽不变 ⇒ 障碍尺寸/高度/顺序都不变）。
-        shift = _shift(start_units)
+        # 只改"图案之间的 X 推进量"：整段按**自己所在组**的增量平移
+        # （⇒ 组内段与段仍首尾相接、段宽不变 ⇒ 4 级楼梯连成楼梯；默认路径＝逐段公式，逐位不变）。
+        shift = segment_shifts[(start_units, end_units)]
         x0 = offset + start_units * x_unit + shift
         x1 = min(offset + end_units * x_unit + shift, cfg.size[0])
         if x1 <= x0:
@@ -348,31 +458,14 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
         )
 
     # 图案结束（索引 160）之后走廊回到 0 高度，直铺到瓦片末端
-    tail_x0 = min(offset + pattern_end_units * x_unit + _shift(pattern_end_units), cfg.size[0])
     if tail_x0 < cfg.size[0]:
         meshes.append(_corridor(tail_x0, cfg.size[0], cfg.size[1], cfg.corridor_width, 0.0))
 
-    # 2026-10-04（第四批）：把"因拉开而多出来的空档"铺成 height=0 的可走面。
-    # 只在**显式开启**且确实拉开了（spacing > 1）时执行 ⇒ 默认分支的网格与顺序一字不动。
-    # 每个间隙 = [上游块末端(拉伸后), 下游块起点(拉伸后)]：其中前 ``next_start − prev_end`` 个索引是
-    # **原图案本来就有的坑**（本图案为 60→(72−k)、111→(123−k) 两处），紧贴上游块末端原样保留；
-    # 其余"拉开余量"铺平。最后再补"最后一段末端 → 图案末端(索引 160)"这段尾段空档。
-    if cfg.fill_stretched_gaps and spacing > 1.0:
-        placed = [(start, end) for start, end, _ in segments if end > start]
-        slack: list[tuple[float, float]] = []
-        for (prev_start, prev_end), (next_start, _next_end) in zip(placed, placed[1:]):
-            prev_x1 = min(offset + prev_end * x_unit + _shift(prev_start), cfg.size[0])
-            next_x0 = min(offset + next_start * x_unit + _shift(next_start), cfg.size[0])
-            # 原图案里这一段本来就空着（＝坑）的宽度：只由图案与难度决定，与 scale 无关。
-            pit_width = max(0.0, next_start - prev_end) * x_unit
-            slack.append((prev_x1 + pit_width, next_x0))
-        # 尾段：最后一段末端 → 图案末端（尾廊从图案末端才开始）
-        last_start, last_end = placed[-1]
-        last_x1 = min(offset + last_end * x_unit + _shift(last_start), cfg.size[0])
-        slack.append((last_x1, tail_x0))
-        for fill_x0, fill_x1 in slack:
-            if fill_x1 - fill_x0 > 1.0e-12:
-                meshes.append(_corridor(fill_x0, fill_x1, cfg.size[1], cfg.corridor_width, 0.0))
+    # 2026-10-04（第四/六批）：把"因拉开而多出来的空档"铺成 `height=0` 可走面（**原有坑原样留空**）。
+    # 默认与 `fill_stretched_gaps=False` 时这个列表为空 ⇒ 网格列表与顺序一字不动（逐位不变）。
+    for fill_x0, fill_x1 in stretched_fills:
+        if fill_x1 - fill_x0 > 1.0e-12:
+            meshes.append(_corridor(fill_x0, fill_x1, cfg.size[1], cfg.corridor_width, 0.0))
 
     origin = np.array([cfg.spawn_x, 0.5 * cfg.size[1], 0.0])
     return meshes, origin
@@ -405,6 +498,9 @@ class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
     pattern_spacing_scale: float = 1.0
     # 2026-10-04（第四批）：把"因 pattern_spacing_scale 拉开而多出来的空档"（段间、尾段）铺成
     # height=0 的可走面（原有坑宽/障碍几何不变）。默认 **False ⇒ 与改动前逐位相同**；训练侧不传它。
+    # 2026-10-04（第六批）：为 True 时**粒度＝每个连续段组**（组内保持首尾相接 ⇒ 4 级楼梯连成楼梯，
+    # 额外长度均匀分到"原有两处坑所在空档 ＋ 尾段"、坑宽恒不变，见 `track_mix_terrain` 的第六批段落）。
+    # False（默认）时仍是第四批的"逐段"公式（多出来的空间由整宽 -pit_depth 坑底填充）⇒ 逐位不变。
     fill_stretched_gaps: bool = False
     spawn_x: float = 0.75
 
