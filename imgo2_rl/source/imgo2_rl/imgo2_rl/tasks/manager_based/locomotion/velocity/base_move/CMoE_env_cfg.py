@@ -859,8 +859,9 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
 #      （＝旧方案"第 14 行"的名义难度 14/20）；
 #   ② 速度指令**只给前进**（默认恒定 **1.0 m/s**）、`heading` 目标恒 0；
 #   ③ 横向与航向改由**指令层 PD 外环**负责（`mdp.MixTestVelocityCommand`）；
-#   ④ mix 图案的**障碍间距乘子 = 1.0**（`pattern_spacing_scale` 取训练默认值 ⇒ 评测几何与训练
-#      **逐位一致**；字段本体与溢出保护保留，2.0 为什么不用见 docs §6/§7）。
+#   ④ mix 图案的**障碍间距乘子**：第三批取 1.0（＝训练默认值、评测几何与训练逐位一致），
+#      **第四批改为反算的 2.25 ＋ `fill_stretched_gaps=True`（让 mix 占满整条 8 m 道、拉开的
+#      空档铺成 height=0 可走面）** —— 现状见本块末尾的第四批段与 docs §6。
 #
 # 2026-10-04（用户第二批要求，原话）：「地形不要按照列排，放在行里面」「都固定到14难度」
 # 「mix 中每个地形间隔大一点 ×1.5~2.0」——第二批落地为"20 道 × 20 行 + 子类钉第 14 行 + 乘子 2.0"。
@@ -871,6 +872,16 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
 #   世界由 160 m(X) × 80 m(Y) 缩到 **8 m(X) × 80 m(Y)**；钉等级的子类 `Imgo2CMoEMixTestTerrainImporter`
 #   **删除**（`num_rows = 1` 时课程天然只有 0 级，见常量与类注释）；乘子由 2.0 回到 **1.0**（用户：
 #   「各个难度间距先不要调整」⇒ 评测沿用训练几何）。
+#
+# 2026-10-04（用户第四批要求，原话）：「mix 还是太小了…课程长度太短：让 mix 占满整条道」
+#   ⇒ `mix` 的障碍序列**铺满整条 8 m 道**，但**障碍自身的尺寸/高度一字不变**（只把障碍之间拉开）：
+#   ① `cmoe_terrains.CMoETrackMixTerrainCfg` 新增布尔字段 `fill_stretched_gaps`（默认 **False**
+#      ⇒ 与改动前**逐位相同**，训练侧不传）：为 True 时把"因拉开而多出来的空档"（段与段之间、尾段）
+#      铺成 `height=0` 的可走面；**原图案本来就有的两处坑（d=0.70 时各 0.18 m）原样保留**，
+#      障碍每块的宽度/顶面高度/顺序与坑宽都只由原图案与难度决定、**与乘子无关**；
+#   ② 评测场景 `pattern_spacing_scale` 取**反算的"刚好占满整条道"值 `2.25`**（≤ 溢出上限 2.40625，
+#      保护仍在、超限直接 `ValueError`）＋ `fill_stretched_gaps = True`；图案末端由 3.50 m 推到
+#      **7.50 m**（占 8 m 道的 93.75 %，尾部留 0.50 m 平地）；出生点前方实心地面由 0.75 m 变为 **1.95 m**。
 #
 # 网格方向的真值（来自 Isaac Lab 源码，不是约定）：`terrain_generator.py:247-261` 逐列逐行用
 # `difficulty = lower + (upper−lower)·(sub_row + U(0,1)) / num_rows` 生成瓦片；`:330` 里
@@ -900,12 +911,26 @@ MIX_TEST_LEVELS = 1
 # （旧方案第 14 行的实际 d ∈ [0.70, 0.75)，只是名义 0.70）。
 MIX_TEST_DIFFICULTY = 0.70
 # mix 图案的**障碍间距乘子**（`CMoETrackMixTerrainCfg.pattern_spacing_scale`）：本评测场景取
-# **1.0 = 训练默认值** ⇒ 评测几何与训练**逐位一致**（2026-10-04 用户：「各个难度间距先不要调整」）。
-# 字段本体（默认 1.0）与 `track_mix_terrain` 的**总长溢出保护**都保留；2.0 会把图案之间的 X 推进量
-# 拉开、把段间空档变成更长的整宽深坑（`-0.50 m`），实测 `spawn_x = 0.75` 前方只剩 0.15 m 实心地面
-# （出生点紧贴 0.60 m 深坑）⇒ 本场景**不用**；详见
-# `docs/cmoe_mix_test_scene_2026-10-04.md` §6/§7 与其中的"三选一"待决项。
-MIX_TEST_PATTERN_SPACING_SCALE = 1.0
+# **反算的"刚好占满整条 8 m 道"值 2.25**（2026-10-04 用户第四批：「让 mix 占满整条道」）。
+# 算式（先定"尾部余量"再解乘子）：
+#     pattern_start_x + 160 · x_unit · scale ≤ size[0] − 尾部余量
+#     ⇒ scale ≤ (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit)
+#            = (8.00 − 0.30 − 0.50) / (160 × 0.02)
+#            = 7.20 / 3.20 = 2.25
+# 取该值 ⇒ 图案末端 = 0.30 + 160 × 0.02 × 2.25 = **7.50 m**（占 8 m 道的 93.75 %，≥ 目标 7.0 m），
+# 尾部余量 = 8.00 − 7.50 = 0.50 m 平地；仍 ≤ 溢出上限 (8 − 0.30)/(160 × 0.02) = 2.40625（保护不放宽）。
+# ⚠️ 单靠乘子会把"段间空档"变成更长的整宽 −0.50 m 深坑（第二批实测：`spawn_x = 0.75` 前方实心地面
+# 只剩 0.15 m）⇒ 本场景同时把 `fill_stretched_gaps` 置 True，把这些空档铺成 height=0 的可走面；
+# 原图案本来就有的两处坑原样保留（d = 0.70 ⇒ 各 0.18 m）。
+MIX_TEST_PATTERN_SPACING_SCALE = 2.25
+# 上式的两个中间量（写成常量便于测试/审计脚本核对，值与 `MIX_TEST_PATTERN_SPACING_SCALE` 一致）：
+# 尾部余量（图案末端 → `size[0]`）= 0.50 m；图案末端 = 7.50 m。见 `CMoETrackMixTerrainCfg` 的
+# `fill_stretched_gaps`（本场景 True）与 docs 的"课程占满整条道"一节。
+MIX_TEST_TAIL_MARGIN = 0.50
+MIX_TEST_PATTERN_END_X = 7.50
+# 是否把"因拉开而多出来的空档"铺成 height=0 的可走面（`CMoETrackMixTerrainCfg.fill_stretched_gaps`）：
+# 本场景 **True**（用户第四批要求"拉开出来的区间铺成 height=0 的可走面，而不是留成 −0.50 m 深坑"）。
+MIX_TEST_FILL_STRETCHED_GAPS = True
 
 
 # 2026-10-04（第三批）：**钉等级的子类 `Imgo2CMoEMixTestTerrainImporter` 已删除**，`class_type` 不覆盖
@@ -935,8 +960,11 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
       d = 0.70**（依据与旧方案对比见常量注释、docs §5）；配套 `max_init_terrain_level = 0`
       （`num_rows = 1` ⇒ 0 是唯一合法等级）且 **`class_type` 保持默认 `TerrainImporter`**
       ⇒ 课程**天然冻结**，不需要自定义子类；
-    * **障碍间距 ×1.0**：`pattern_spacing_scale = MIX_TEST_PATTERN_SPACING_SCALE = 1.0`（＝训练默认值）
-      ⇒ 评测与训练的 mix 几何**逐位一致**；图案 X 总长 = 0.30 + 160×0.02×1.0 = **3.50 m ≤ 8 m**；
+    * **课程占满整条道**：`pattern_spacing_scale = MIX_TEST_PATTERN_SPACING_SCALE = 2.25`（**反算值**：
+      `(8 − 0.30 − 0.50) / (160 × 0.02)`）＋ `fill_stretched_gaps = True` ⇒ 图案 X 总长 =
+      `0.30 + 160×0.02×2.25 = 7.50 m ≤ 8 m`（占 93.75 %，尾部留 0.50 m 平地）；障碍自身宽度/高度/顺序
+      与**原有两处坑宽**（d = 0.70 ⇒ 各 0.18 m）一字不变，只把障碍之间拉开并把空档铺成 `height=0`
+      可走面（用户第四批：「让 mix 占满整条道」＋「拉开出来的区间铺成 height=0 的可走面」）；
     * 速度指令 + 横向/航向 PD 外环（见下）。
 
     **运行示例**（回放，须替换 checkpoint 路径；难度已由 cfg 固定为 0.70，**不需要** `--terrain_level`）::
@@ -957,10 +985,13 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
         # —— 训练侧是 `CMoETrackMixTerrainCfg(proportion=0.10)`，其余字段全部取类默认值，这里把它们
         # 显式展开写死（`tests/test_cmoe_mix_test_scene.py` 会断言这些字面量与 `cmoe_terrains.py` 的
         # 类默认值**逐一相等**，改默认值而不同步这里就会红）。
-        # **唯一有意偏离默认值的一处**（测试里单独断言）：
-        #   * `proportion=1.0`（本场景只有这一类，比例无意义、Isaac 会归一化）。
-        # `pattern_spacing_scale` 与 `spawn_x`/`pattern_start_x` 都取**训练同值**（1.0 / 0.75 / 0.30）
-        # ⇒ 评测几何与训练**逐位一致**（2026-10-04 用户：「各个难度间距先不要调整」）。
+        # **唯一有意偏离默认值的两处**（测试里单独断言）：
+        #   * `proportion=1.0`（本场景只有这一类，比例无意义、Isaac 会归一化）；
+        #   * `pattern_spacing_scale = 2.25`（反算的"占满整条道"值）＋ `fill_stretched_gaps = True`
+        #     （把拉开的空档铺成 height=0 可走面）。
+        # 其余字段（`x_unit`/`z_unit`/`height_scale`/`gap_shrink_units`/`corridor_width`/`pit_depth`/
+        # `pattern_start_x`/`spawn_x`）都取**训练同值**（＝类默认值），⇒ **障碍自身几何与训练逐位相同**，
+        # 评测与训练的唯一几何差异是"障碍之间的间距/平地"，不是障碍本身。
         self.scene.terrain.terrain_generator.sub_terrains.clear()
         self.scene.terrain.terrain_generator.sub_terrains["mix"] = CMoETrackMixTerrainCfg(
             proportion=1.0,
@@ -971,7 +1002,10 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
             corridor_width=0.80,    # 参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4
             pit_depth=0.50,         # 参考坑深 0.5–1.5 m ⇒ ×0.4 后取固定值
             pattern_start_x=0.30,   # 见 `track_mix_terrain` docstring 的"已知偏离"（起步平台装得下 0.75 m 出生点）
-            pattern_spacing_scale=MIX_TEST_PATTERN_SPACING_SCALE,  # 1.0 = 训练默认值（评测与训练几何逐位一致）
+            # **占满整条道**：反算值 2.25 = (8 − 0.30 − 0.50)/(160 × 0.02) ⇒ 图案末端 7.50 m。
+            pattern_spacing_scale=MIX_TEST_PATTERN_SPACING_SCALE,
+            # **拉开的空档铺成 height=0 可走面**（否则段间空档会变成更长的整宽 −0.50 m 深坑）。
+            fill_stretched_gaps=MIX_TEST_FILL_STRETCHED_GAPS,
             spawn_x=0.75,
         )
         # **20 条并列的 mix 道 × 唯一一行难度**（列沿世界 Y、行沿世界 X）：

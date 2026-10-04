@@ -264,9 +264,25 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
       那几段上，段与段之间是整宽的 ``-pit_depth`` 坑底 ⇒ 被拉开的空间会表现为**更长的整宽深坑**（不是
       平地跑道）。"更从容"只是几何意义（障碍之间更远），不是"加了平地"，见 docs 的同名说明。
 
+    2026-10-04（第四批，用户："mix 还是太小了…课程长度太短：让 mix 占满整条道"）：新增
+    ``fill_stretched_gaps``。上一段的"更长的整宽深坑"就是用户看到的"太大/太深"的来源，本字段把它改掉：
+
+    * ``False``（**默认**）＝ 上面那种行为，**与改动前逐位相同**（训练侧不传该字段）；
+    * ``True`` ＝ 在 ``scale > 1`` 时，把**因拉开而多出来的空档**（段与段之间、最后一段末端 → 图案末端
+      的"尾段"）铺成 ``height=0`` 的可走面 ``_corridor``；**领先段**（``0 → pattern_start_x``，其
+      图案锚点恒为 0 ⇒ 不随 scale 变化）与原有尾廊本来就在 0 高度，不需额外处理。
+      每个间隙里**原图案本来就有的坑**（相邻两段的原始索引差 ``next_start − prev_end > 0``，本图案是
+      ``60 → (72−k)`` 与 ``111 → (123−k)`` 两处）**原样保留为坑**，且坑紧贴**上游**那一块的末端
+      （⇒ 坑宽 ``= (next_start − prev_end) · x_unit`` 只由图案与难度决定，**与 scale 无关**，位置相对
+      上游障碍也不变），余下的"拉开余量"才铺平。
+
+    ⇒ ``fill_stretched_gaps=True`` 时**障碍自身几何（每块宽度/顶面高度/顺序）与坑宽一字不变**，
+    被拉开的只是"障碍之间的平地"；整块瓦片的可走面总长 = ``size[0] − 坑总长``（尾廊会吸收拉伸量，
+    因此**整块瓦片的可走面总长不随 scale 变**——随 scale 单调增的是**图案区间内**的可走面与补出的平地）。
+
     **总长保护（不静默溢出）**：图案末端 = ``pattern_start_x + 160 · x_unit · scale``。超过
     ``size[0]`` 时**直接 raise ``ValueError``**（并给出该瓦片上 scale 的上限）——参照问题表 CMOE-13：
-    ``track_gap_terrain`` 缺这层保护，超长时会静默截断/与邻块重叠。
+    ``track_gap_terrain`` 缺这层保护，超长时会静默截断/与邻块重叠。该保护**不因 fill 模式而放宽**。
     """
     diff = cfg.height_scale * difficulty
     gap_shrink = round(cfg.gap_shrink_units * (1.0 - difficulty))
@@ -330,6 +346,28 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
     if tail_x0 < cfg.size[0]:
         meshes.append(_corridor(tail_x0, cfg.size[0], cfg.size[1], cfg.corridor_width, 0.0))
 
+    # 2026-10-04（第四批）：把"因拉开而多出来的空档"铺成 height=0 的可走面。
+    # 只在**显式开启**且确实拉开了（spacing > 1）时执行 ⇒ 默认分支的网格与顺序一字不动。
+    # 每个间隙 = [上游块末端(拉伸后), 下游块起点(拉伸后)]：其中前 ``next_start − prev_end`` 个索引是
+    # **原图案本来就有的坑**（本图案为 60→(72−k)、111→(123−k) 两处），紧贴上游块末端原样保留；
+    # 其余"拉开余量"铺平。最后再补"最后一段末端 → 图案末端(索引 160)"这段尾段空档。
+    if cfg.fill_stretched_gaps and spacing > 1.0:
+        placed = [(start, end) for start, end, _ in segments if end > start]
+        slack: list[tuple[float, float]] = []
+        for (prev_start, prev_end), (next_start, _next_end) in zip(placed, placed[1:]):
+            prev_x1 = min(offset + prev_end * x_unit + _shift(prev_start), cfg.size[0])
+            next_x0 = min(offset + next_start * x_unit + _shift(next_start), cfg.size[0])
+            # 原图案里这一段本来就空着（＝坑）的宽度：只由图案与难度决定，与 scale 无关。
+            pit_width = max(0.0, next_start - prev_end) * x_unit
+            slack.append((prev_x1 + pit_width, next_x0))
+        # 尾段：最后一段末端 → 图案末端（尾廊从图案末端才开始）
+        last_start, last_end = placed[-1]
+        last_x1 = min(offset + last_end * x_unit + _shift(last_start), cfg.size[0])
+        slack.append((last_x1, tail_x0))
+        for fill_x0, fill_x1 in slack:
+            if fill_x1 - fill_x0 > 1.0e-12:
+                meshes.append(_corridor(fill_x0, fill_x1, cfg.size[1], cfg.corridor_width, 0.0))
+
     origin = np.array([cfg.spawn_x, 0.5 * cfg.size[1], 0.0])
     return meshes, origin
 
@@ -352,10 +390,14 @@ class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
     # 见函数 docstring 的「已知偏离」：图案整体平移，保证 0.75 m 出生点落在起步平台上
     pattern_start_x: float = 0.30
     # 2026-10-04：相邻图案之间的 **X 推进量**乘子（只改间距，不改障碍自身尺寸/高度/顺序）。
-    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 2.0。
+    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 2.25
+    # （＝"刚好占满整条 8 m 道"的反算值，算法见 `CMoE_env_cfg.py::MIX_TEST_PATTERN_SPACING_SCALE`）。
     # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（size[0]=8 m、x_unit=0.02
     # ⇒ scale ≤ 2.40625）；超出会在 `track_mix_terrain` 里直接 raise（不静默溢出）。
     pattern_spacing_scale: float = 1.0
+    # 2026-10-04（第四批）：把"因 pattern_spacing_scale 拉开而多出来的空档"（段间、尾段）铺成
+    # height=0 的可走面（原有坑宽/障碍几何不变）。默认 **False ⇒ 与改动前逐位相同**；训练侧不传它。
+    fill_stretched_gaps: bool = False
     spawn_x: float = 0.75
 
 

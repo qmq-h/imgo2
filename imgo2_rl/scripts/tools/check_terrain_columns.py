@@ -38,6 +38,13 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 **2026-10-04（第三批）**：mix-test 的网格由 20 行缩到 **1 行**（用户："不需要还保持那么多行"），
 难度改由 `terrain_generator.difficulty_range = (0.70, 0.70)` **精确固定**（等价旧"第 14 行"的名义
 0.70）⇒ 本工具对 mix-test 增加这一项的检查（`MIX_TEST_DIFFICULTY_EXPECTED`）。
+
+**2026-10-04（第四批）**：mix-test 的 `mix` 图案要**占满整条 8 m 道**（用户："mix 还是太小了…让 mix
+占满整条道"）⇒ 本工具对 mix-test 再增加三项检查（**原任务 `cmoe-rough` 的判据一字未动**）：
+① `MIX_TEST_PATTERN_SPACING_SCALE` 必须等于**反算值 2.25**（`(size[0] − pattern_start_x − 尾部余量)
+/ (160·x_unit) = (8 − 0.30 − 0.50)/(160×0.02)`）；② mix 调用必须显式 `fill_stretched_gaps=True`
+（把拉开出来的空档铺成 `height=0` 可走面）；③ 图案末端 `pattern_start_x + 160·x_unit·scale` 必须
+`≥ 7.0 m`（目标：≥ 85 % 的道长）且 `≤ size[0]`（溢出保护在运行期仍会 raise，上限 2.40625 未放宽）。
 """
 
 from __future__ import annotations
@@ -98,6 +105,14 @@ MIX_TEST_LEVELS_EXPECTED = 1
 # 唯一一行的难度：由 `terrain_generator.difficulty_range = (d, d)` 精确固定（等价旧"第 14 行"的
 # 名义 14/20 = 0.70）。工具解析 `difficulty_range` 并要求上下界都等于该值。
 MIX_TEST_DIFFICULTY_EXPECTED = 0.70
+# 2026-10-04（第四批）：`mix` 图案要**占满整条道** ⇒ 乘子必须是"刚好占满"的反算值
+#   (size[0] − pattern_start_x − 尾部余量) / (160 · x_unit) = (8 − 0.30 − 0.50)/(160 × 0.02) = 2.25
+# 与目标下界 `图案末端 ≥ 7.0 m`（≥ 85 % 的 8 m 道）。值在此**写死**，以便"常量被改错"能被工具发现
+# （常量的字面值由 `tests/test_check_terrain_columns.py` 单独钉住）。
+MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 2.25
+MIX_TEST_PATTERN_END_MIN_X = 7.0
+# `track_mix_terrain` 的图案最后一个索引（`pattern_start_x + 160·x_unit·scale` = 图案末端）
+MIX_PATTERN_END_UNITS = 160.0
 
 # 类作用域的目标匹配（`ast.unparse` 用单引号，正则同时接受两种引号）
 _SUB_PROP = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion$")
@@ -105,6 +120,7 @@ _SUB_TERRAIN = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]$")
 _NUM_COLS = re.compile(r"terrain_generator\.num_cols$")
 _NUM_ROWS = re.compile(r"terrain_generator\.num_rows$")
 _DIFFICULTY_RANGE = re.compile(r"terrain_generator\.difficulty_range$")
+_TERRAIN_SIZE = re.compile(r"terrain_generator\.size$")
 
 
 def module_constants() -> dict[str, object]:
@@ -158,20 +174,25 @@ def class_post_init(class_name: str) -> ast.FunctionDef | None:
 
 
 def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
-    """只解析指定类的 `__post_init__`，返回 ``{props, num_cols, num_rows, difficulty_range, cleared}``。
+    """只解析指定类的 `__post_init__`，返回 ``{props, num_cols, num_rows, difficulty_range,
+    sub_terrain_calls, cleared}``。
 
     2026-10-04：从"整文件 `ast.walk`"改成"类作用域"，因为同一文件里的 mix-test 类也会写
     `sub_terrains["mix"] = ...(proportion=1.0)`；不隔离就会污染训练侧的解析结果（且是静默的）。
     2026-10-04（第三批）：额外解析 `terrain_generator.difficulty_range`（mix-test 用它精确固定难度）。
+    2026-10-04（第四批）：额外记录每个 `sub_terrains[name] = <Cfg>(...)` 调用的**全部 kwargs**
+    （`sub_terrain_calls`），用于核对 mix-test 的 `pattern_spacing_scale` / `fill_stretched_gaps`。
     """
     info: dict[str, object] = {
-        "props": {}, "num_cols": None, "num_rows": None, "difficulty_range": None, "cleared": False,
+        "props": {}, "num_cols": None, "num_rows": None, "difficulty_range": None,
+        "sub_terrain_calls": {}, "cleared": False,
     }
     fn = class_post_init(class_name)
     if fn is None:
         return info
     ns = module_constants()
     props: dict[str, float] = info["props"]  # type: ignore[assignment]
+    calls: dict[str, dict[str, object]] = info["sub_terrain_calls"]  # type: ignore[assignment]
     for node in ast.walk(fn):
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
             # `self.scene.terrain.terrain_generator.sub_terrains.clear()` ⇒ 清空基类地形
@@ -187,9 +208,10 @@ def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
             continue
         m = _SUB_TERRAIN.search(target)
         if m and isinstance(node.value, ast.Call):
-            for kw in node.value.keywords:
-                if kw.arg == "proportion":
-                    props[m.group(1)] = float(ast.literal_eval(kw.value))
+            kwargs = {kw.arg: literal(kw.value, ns) for kw in node.value.keywords if kw.arg is not None}
+            calls[m.group(1)] = kwargs
+            if "proportion" in kwargs:
+                props[m.group(1)] = float(kwargs["proportion"])  # type: ignore[arg-type]
             continue
         if _NUM_COLS.search(target):
             info["num_cols"] = int(literal(node.value, ns))  # type: ignore[arg-type]
@@ -203,6 +225,24 @@ def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
                 info["difficulty_range"] = (float(value[0]), float(value[1]))
             continue
     return info
+
+
+def terrain_size(default: tuple[float, float] = (8.0, 4.0)) -> tuple[float, float]:
+    """单块瓦片尺寸 `terrain_generator.size`（全文件扫描：mix-test 类**不设**它，父类/训练类设）。
+
+    2026-10-04（第四批）：mix-test 的"图案是否占满整条道"要用它核算 ⇒ 从源码里真读，不用猜。
+    """
+    tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
+    ns = module_constants()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        if not _TERRAIN_SIZE.search(ast.unparse(node.targets[0])):
+            continue
+        value = literal(node.value, ns)
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            return (float(value[0]), float(value[1]))
+    return default
 
 
 def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
@@ -362,6 +402,46 @@ def mix_test_report() -> tuple[int, list[str]]:
             f"⇒ 网格 **20 道 × 1 难度行**（世界 8 m(X) × 80 m(Y)），难度由 difficulty_range="
             f"({difficulty_range[0]}, {difficulty_range[1]}) 精确固定 ⇒ `--num_envs ≤ 20` 时环境 i → 第 i 道")
 
+
+    # ------------------------------------------------- 2026-10-04（第四批）：图案占满整条道
+    size = terrain_size()
+    mix_kwargs = (info.get("sub_terrain_calls") or {}).get("mix", {})  # type: ignore[union-attr]
+    scale = module_constants().get("MIX_TEST_PATTERN_SPACING_SCALE")
+    say(f"\n  ── 第四批检查：`mix` 图案占满整条道（瓦片 size[0] = {size[0]:g} m）──")
+    if scale is None:
+        say("  ❌ 解析不到常量 `MIX_TEST_PATTERN_SPACING_SCALE`")
+        problems += 1
+    elif abs(float(scale) - MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED) > 1.0e-9:  # type: ignore[arg-type]
+        say(f"  ❌ `MIX_TEST_PATTERN_SPACING_SCALE` 应为 {MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED}"
+            f"（＝「刚好占满整条道」的反算值），实测 {scale}")
+        problems += 1
+    if mix_kwargs.get("fill_stretched_gaps") is not True:
+        say(f"  ❌ mix 调用必须显式 `fill_stretched_gaps=True`（把拉开的空档铺成 height=0 可走面），"
+            f"实测 {mix_kwargs.get('fill_stretched_gaps')!r}")
+        problems += 1
+    offset = mix_kwargs.get("pattern_start_x")
+    x_unit = mix_kwargs.get("x_unit")
+    if not isinstance(offset, (int, float)) or not isinstance(x_unit, (int, float)):
+        say(f"  ❌ 解析不到 mix 的 `pattern_start_x` / `x_unit`（实测 {offset!r} / {x_unit!r}）"
+            "⇒ 无法核算图案长度")
+        problems += 1
+    elif isinstance(scale, (int, float)):
+        end = float(offset) + MIX_PATTERN_END_UNITS * float(x_unit) * float(scale)
+        tail = size[0] - end
+        upper = (size[0] - float(offset)) / (MIX_PATTERN_END_UNITS * float(x_unit))
+        if end > size[0] + 1.0e-9:
+            say(f"  ❌ 图案末端 {end:.4f} m 超出瓦片长 {size[0]:g} m（`track_mix_terrain` 的溢出保护"
+                f"会在运行期直接 raise；上限 = {upper:.5f}）")
+            problems += 1
+        elif end < MIX_TEST_PATTERN_END_MIN_X:
+            say(f"  ❌ 图案末端 {end:.4f} m < 目标 {MIX_TEST_PATTERN_END_MIN_X:g} m（未占满整条道）")
+            problems += 1
+        else:
+            say(f"  ✅ `pattern_spacing_scale` = {scale}（反算值：({size[0]:g} − {offset} − "
+                f"{tail:.2f})/(160×{x_unit})）＋ `fill_stretched_gaps=True` ⇒ 图案末端 = "
+                f"{offset} + 160×{x_unit}×{scale} = {end:.2f} m（占 {100.0 * end / size[0]:.2f} % 的 "
+                f"{size[0]:g} m 道），尾部平地 {tail:.2f} m；乘子上限 "
+                f"({size[0]:g}−{offset})/(160×{x_unit}) = {upper:.5f}（溢出保护**不放宽**：超限直接 raise）")
 
     absent = sorted({n for refs in MASKED_NAMES.values() for n in refs} - set(names))
     say("  ⚠️ 本场景**只有 mix**；掩码引用但本场景**不存在**的地形名（原任务判据**不放宽**，"

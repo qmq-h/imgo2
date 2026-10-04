@@ -181,17 +181,119 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertAlmostEqual(chk.MIX_TEST_DIFFICULTY_EXPECTED, 0.70, places=9)
 
     def test_num_cols_is_read_from_the_module_constant(self):
-        """`num_cols`/`num_rows`/难度都写成可读常量 ⇒ 工具必须能求值模块常量。"""
+        """`num_cols`/`num_rows`/难度/间距乘子都写成可读常量 ⇒ 工具必须能求值模块常量。"""
         consts = chk.module_constants()
         self.assertEqual(consts["MIX_TEST_LANES"], 20)
         self.assertEqual(consts["MIX_TEST_LEVELS"], 1)
         self.assertAlmostEqual(consts["MIX_TEST_DIFFICULTY"], 0.70, places=9)
-        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], 1.0, places=9)
+        # 2026-10-04（第四批）：乘子改成"占满整条道"的反算值 2.25（原来 1.0 = 训练默认值）
+        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], 2.25, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_TAIL_MARGIN"], 0.50, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_END_X"], 7.50, places=9)
+        self.assertIs(consts["MIX_TEST_FILL_STRETCHED_GAPS"], True)
         self.assertNotIn("MIX_TEST_PINNED_LEVEL", consts,
                          "旧的'钉第 14 行'常量必须随子类一起删掉（难度改由 difficulty_range 固定）")
         # 字面量与常量两种写法都要能读（`literal` 先字面量、后常量命名空间）
         self.assertEqual(chk.literal(ast.parse("7", mode="eval").body, consts), 7)
         self.assertEqual(chk.literal(ast.parse("MIX_TEST_LANES", mode="eval").body, consts), 20)
+        self.assertEqual(chk.literal(ast.parse("MIX_TEST_FILL_STRETCHED_GAPS", mode="eval").body, consts), True)
+
+    # ------------------------------------------- 2026-10-04（第四批）：图案占满整条道
+    def test_mix_call_kwargs_are_parsed(self):
+        """工具要能从 `sub_terrains['mix'] = <Cfg>(...)` 里读出 `pattern_spacing_scale` 与
+        `fill_stretched_gaps`（新字段是常量名，必须走模块常量求值）。"""
+        calls = self.info["sub_terrain_calls"]
+        self.assertEqual(list(calls.keys()), ["mix"])
+        kwargs = calls["mix"]
+        self.assertAlmostEqual(kwargs["pattern_spacing_scale"], 2.25, places=9)
+        self.assertIs(kwargs["fill_stretched_gaps"], True)
+        self.assertAlmostEqual(kwargs["pattern_start_x"], 0.30, places=9)
+        self.assertAlmostEqual(kwargs["x_unit"], 0.02, places=9)
+
+    def test_terrain_size_is_read_from_the_source(self):
+        """`terrain_generator.size` 由父类/训练类设定 ⇒ 工具要真读源码（不猜）。"""
+        self.assertEqual(chk.terrain_size(), (8.0, 4.0))
+
+    def test_report_checks_the_pattern_fills_the_lane(self):
+        """第四批：工具必须核算"图案末端 ≥ 7.0 m"、乘子 = 反算值、`fill_stretched_gaps=True`。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems, lines = chk.mix_test_report()
+        text = "\n".join(lines)
+        self.assertEqual(problems, 0, text)
+        self.assertIn("第四批检查", text)
+        self.assertIn("pattern_spacing_scale", text)
+        self.assertIn("7.50 m", text)
+        self.assertIn("93.75", text)
+        self.assertIn("2.40625", text, "上限（溢出保护）必须打印出来")
+        self.assertIn("fill_stretched_gaps=True", text)
+        self.assertNotIn("❌", text)
+        # 常量本身的期望值也写死在工具里（防止 cfg 常量被改错而工具沉默）
+        self.assertAlmostEqual(chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED, 2.25, places=9)
+        self.assertAlmostEqual(chk.MIX_TEST_PATTERN_END_MIN_X, 7.0, places=9)
+        self.assertAlmostEqual(chk.MIX_PATTERN_END_UNITS, 160.0, places=9)
+
+    def test_report_flags_a_wrong_spacing_scale(self):
+        """负向对照：期望乘子被改成别的值时必须报 ❌（"2.25"是被检查的，不是打印而已）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED
+        chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = 2.0
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("应为 2.0", text)
+        finally:
+            chk.MIX_TEST_PATTERN_SPACING_SCALE_EXPECTED = original
+
+    def test_report_flags_a_pattern_that_does_not_fill_the_lane(self):
+        """负向对照：目标下界抬到 7.6 m 时，7.50 m 的图案必须被判"未占满整条道"。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_PATTERN_END_MIN_X
+        chk.MIX_TEST_PATTERN_END_MIN_X = 7.6
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("未占满整条道", text)
+        finally:
+            chk.MIX_TEST_PATTERN_END_MIN_X = original
+
+    def test_report_flags_a_missing_fill_flag(self):
+        """负向对照：`fill_stretched_gaps` 不是 True 时必须报 ❌（"铺成可走面"同样被检查）。"""
+        import contextlib
+        import io
+
+        original = chk.scene_overrides
+
+        def patched(class_name=chk.TRAIN_CLASS):
+            info = original(class_name)
+            if class_name == chk.MIX_TEST_CLASS:
+                info["sub_terrain_calls"]["mix"]["fill_stretched_gaps"] = False
+            return info
+
+        chk.scene_overrides = patched
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("fill_stretched_gaps=True", text)
+            self.assertIn("❌", text)
+        finally:
+            chk.scene_overrides = original
 
     def test_mix_gets_all_columns(self):
         """只 mix 一类 ⇒ 20 列**全部**是 mix（每道 1 列）。"""
