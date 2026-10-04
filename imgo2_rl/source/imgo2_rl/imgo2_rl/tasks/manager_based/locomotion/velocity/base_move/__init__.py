@@ -35,6 +35,19 @@ gym.register(
     },
 )
 
+# 2026-10-04（用户）：**只在 `mix` 一种地形上评测的受控测试场景**，按 `-play` 同族注册
+# （同一 `entry_point` 与同一 agent cfg ⇒ 既有 CMoE checkpoint 可直接加载；动作/观测契约不变）。
+# 场景差异只有三处：地形只留 mix、速度只给前进（恒定 1.0 m/s）、横向与航向由指令层 PD 外环控制。
+gym.register(
+    id="Imgo2-basemove-rough-cmoe-mix-test",
+    entry_point="rl_lab.envs:CMoEManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.CMoE_env_cfg:Imgo2CMoEMixTestEnvCfg",
+        "cmoe_rsl_rl_cfg": f"{agents.__name__}.CMoE_rsl_rl_cfg:Imgo2CMoERoughRunnerCfg",
+    },
+)
+
 
 gym.register(
     id="Imgo2-basemove-rough-ppo",

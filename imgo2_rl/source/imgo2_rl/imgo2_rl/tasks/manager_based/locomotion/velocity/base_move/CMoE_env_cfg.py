@@ -849,6 +849,93 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
         self.events.randomize_push_robot = None
 
 
+# ======================================================================================
+# 2026-10-04（用户）：**只在 `mix` 一种地形上评测的受控测试场景**（**继承 play 任务**）。
+#
+# 用途：在受控条件下评估策略通过 `mix`（复合障碍：窄走廊+台阶+深坑+高台+高栏）的能力，把
+# **横向漂移**与**航向漂移**从评测里剔除。因此本场景只改三件事：
+#   ① 地形只留 `mix`（`num_cols=1`、`num_rows=20` ⇒ `--terrain_level=N` 就是难度 N/20）；
+#   ② 速度指令**只给前进**（默认恒定 **1.0 m/s**）、`heading` 目标恒 0；
+#   ③ 横向与航向改由**指令层 PD 外环**负责（`mdp.MixTestVelocityCommand`）。
+# **动作空间与观测契约一字未改** ⇒ 既有 CMoE checkpoint 可直接加载（这不是新策略任务）。
+# ⚠️ 本类是"评测场景"，不参与训练；注册 id 见 `base_move/__init__.py`。
+# ======================================================================================
+@configclass
+class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
+    """`mix`-only 受控测试场景：前进 1.0 m/s + 横向 PD + 航向 PD（继承 play 的确定性设定）。
+
+    继承 `Imgo2CMoERoughPlayEnvCfg` ⇒ 自动保留它的确定性设定（`pose_range` 全 0、`velocity_range`
+    全 0、关闭全部域随机化事件、关闭观测噪声、`max_init_terrain_level=5`），本类只覆盖下面三组值。
+
+    **运行示例**（回放，须替换 checkpoint 路径）::
+
+        python scripts/rl_lab/cmoe/play.py \\
+            --task=Imgo2-basemove-rough-cmoe-mix-test --num_envs=20 --headless \\
+            --terrain_level=10 --checkpoint="/absolute/path/to/model.pt"
+
+    ``--terrain_level=N`` 把全部环境的地形等级钉在第 N 行 ⇒ 难度 ``N/20``（0.05 一档）。
+    ⚠️ 不传 `--terrain_level` 时沿用继承来的 ``max_init_terrain_level=5`` ⇒ 初始等级在 **0–5 随机抽**
+    （**不是** 20 个环境各占一行）；要扫完 20 档就逐档传 `--terrain_level`，或另改
+    `self.scene.terrain.max_init_terrain_level`（本类**有意不动**它，见 docs 的"未验证项/冲突"一节）。
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        # ------------------------------------------------------------ ① 地形：只留 `mix` 一类
+        # 先清空（play 类刚把所有 proportion 设成 1.0），再只放 mix。**逐字沿用训练实例化时的 mix 值**
+        # —— 训练侧是 `CMoETrackMixTerrainCfg(proportion=0.10)`，其余字段全部取类默认值，这里把它们
+        # 显式展开写死（`tests/test_cmoe_mix_test_scene.py` 会断言这些字面量与 `cmoe_terrains.py` 的
+        # 类默认值**逐一相等**，改默认值而不同步这里就会红）。唯一不同处：`proportion=1.0`（本场景
+        # 只有这一类，比例无意义、Isaac 会归一化；`num_cols=1` 下 mix 恰好拿满 1 列）。
+        self.scene.terrain.terrain_generator.sub_terrains.clear()
+        self.scene.terrain.terrain_generator.sub_terrains["mix"] = CMoETrackMixTerrainCfg(
+            proportion=1.0,
+            x_unit=0.02,            # = _MIX_X_UNIT = 0.05 × REFERENCE_SCALE(0.4)
+            z_unit=0.002,           # = _MIX_Z_UNIT = 0.005 × REFERENCE_SCALE(0.4)
+            height_scale=1.1,       # 参考 diff = hurdle_height_range[0] × 1.1
+            gap_shrink_units=10.0,  # 参考 round(10 − 10·d)
+            corridor_width=0.80,    # 参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4
+            pit_depth=0.50,         # 参考坑深 0.5–1.5 m ⇒ ×0.4 后取固定值
+            pattern_start_x=0.30,   # 见 `track_mix_terrain` docstring 的"已知偏离"（起步平台装得下 0.75 m 出生点）
+            spawn_x=0.75,
+        )
+        # 每行一个 mix（行＝难度 level），只有 1 列 ⇒ 20 行 × 1 列 = 20 格。
+        # 于是 `--terrain_level=N` 即"难度 N/20"；配合 `--num_envs=20` 时网格刚好 20 格。
+        self.scene.terrain.terrain_generator.num_cols = 1
+        self.scene.terrain.terrain_generator.num_rows = 20
+        # 默认 20 个环境（可被命令行 `--num_envs` 覆盖）。
+        self.scene.num_envs = 20
+
+        # ------------------------------------------------- ②③ 速度指令 + 横向/航向 PD 外环
+        # **整项替换**（而不是只改 ranges）：新命令项类需要 PD 增益字段，量纲与语义都与
+        # `UniformThresholdVelocityCommandCfg` 不同，逐字段覆盖容易漏（参见 CMOE-04 的"晚赋值覆盖"教训）。
+        # 观察/动作契约不受影响：命令项只换 `class_type`，`vel_command_b` 仍是 (num_envs, 3)。
+        self.commands.base_velocity = mdp.MixTestVelocityCommandCfg(
+            asset_name="robot",
+            # 不做指令重采样 ⇒ 整个 episode 指令恒定（vx 只在首次 resample 采样一次）。
+            resampling_time_range=(1.0e9, 1.0e9),
+            # 规格 ②：heading_command 必须为 True（也是 `ranges.heading` 的合法性前提）。
+            # 但本命令项**不使用**内置 heading P 控制器，而是自己用 PD 写 wz（见 mix_test_command.py
+            # docstring 第 4 点）—— 因为 `ranges.ang_vel_z=(0,0)` 会把内置控制器的输出恒夹成 0。
+            heading_command=True,
+            rel_heading_envs=1.0,
+            rel_standing_envs=0.0,
+            # 与 play 任务一致（`CommandsCfg` 里显式 `debug_vis=True`）；20 环境 ⇒ 40 个速度箭头 marker。
+            debug_vis=True,
+            ranges=mdp.MixTestVelocityCommandCfg.Ranges(
+                # **前进速度**：默认恒定 1.0 m/s（2026-10-04 用户规格修正）。
+                # 可调：改这一行即可（例如扫速度用 `(0.5, 1.0)` + 缩短 `resampling_time_range`）。
+                lin_vel_x=(1.0, 1.0),
+                # 横向与航向由 PD 外环写（此处只留 0 作初值/占位，PD 每步覆盖第 1/2 列）。
+                lin_vel_y=(0.0, 0.0),
+                ang_vel_z=(0.0, 0.0),
+                # heading 目标恒 0（航向保持）；本项不读这个范围，只用于合法性与自文档。
+                heading=(0.0, 0.0),
+            ),
+        )
+
+
 @configclass
 class Imgo2CMoEGaitFreeEnvCfg(Imgo2CMoERoughEnvCfg):
     """**步态交给先验**的配方：五项手工步态 shaping 全部归零，其余奖励一项不动。

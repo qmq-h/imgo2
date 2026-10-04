@@ -14,12 +14,24 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 
 用法::
 
-    python3 imgo2_rl/scripts/tools/check_terrain_columns.py            # 训练／play 当前的 num_cols=40 列数
+    python3 imgo2_rl/scripts/tools/check_terrain_columns.py            # 默认任务（cmoe-rough）当前的列数
     python3 imgo2_rl/scripts/tools/check_terrain_columns.py --cols 20 40
+    python3 imgo2_rl/scripts/tools/check_terrain_columns.py --task cmoe-rough
+    python3 imgo2_rl/scripts/tools/check_terrain_columns.py --task mix-test
+    python3 imgo2_rl/scripts/tools/check_terrain_columns.py --task Imgo2-basemove-rough-cmoe-mix-test
+
+**2026-10-04 起支持"按任务区分"**：新增 `--task`（默认 `cmoe-rough`＝训练/play 的 11 类按比例场景）。
+`mix-test`（`Imgo2-basemove-rough-cmoe-mix-test`）是**只有 `mix` 一种地形**的受控测试场景：
+上面那张 `MASKED_NAMES` 判据里的其它地形名在该场景**根本不存在** ⇒ 引用它们的掩码项在该场景
+**恒为 0**，这是**预期**而不是配置错误。因此该任务走**单独的分支**：仍然要求"唯一地形 `mix` 必须
+≥1 列"、`num_cols=1`、`num_rows=20`、`sub_terrains.clear()`，但把"其它地形名 0 列"**明确标注为预期**，
+而不是报 ❌。**原任务的判据一字未放宽**（`--task cmoe-rough` 仍要求每一项都 ≥1 列）。
 
 比例来源：基类顺序与默认比例读**已安装的 Isaac Lab** `isaaclab/terrains/config/rough.py`
 （`ROUGH_TERRAINS_CFG`）；读不到时退回下面记录的默认值。任务侧的覆盖从
 `CMoE_env_cfg.py` 的 `sub_terrains[...]` 赋值里解析（含新增键，新增键按赋值顺序追加到末尾）。
+**2026-10-04 起解析按类作用域**（只走指定类的 `__post_init__`）：否则同一文件里
+`Imgo2CMoEMixTestEnvCfg` 的 `sub_terrains["mix"] = ...(proportion=1.0)` 会污染训练侧的解析结果。
 """
 
 from __future__ import annotations
@@ -60,6 +72,25 @@ MASKED_NAMES = {
 # 注意：`lin_pos_y` / `yaw_abs` 的 `terrain_names=()` 表示**全局生效**（2026-09-24 用户决定
 # "所有场景都给脱离中心的惩罚"），因此不在上面这张"必须 ≥1 列"的名单里。
 
+# ------------------------------------------------------------------ 2026-10-04：按任务区分
+TRAIN_CLASS = "Imgo2CMoERoughEnvCfg"
+MIX_TEST_CLASS = "Imgo2CMoEMixTestEnvCfg"
+MIX_TEST_TASK = "Imgo2-basemove-rough-cmoe-mix-test"
+# 任务 id（或短名）→ 规范任务 id
+TASK_ALIASES = {
+    "cmoe": "cmoe-rough",
+    "cmoe-rough": "cmoe-rough",
+    "mix-test": MIX_TEST_TASK,
+    MIX_TEST_TASK: MIX_TEST_TASK,
+}
+TASK_CLASS = {"cmoe-rough": TRAIN_CLASS, MIX_TEST_TASK: MIX_TEST_CLASS}
+
+# 类作用域的目标匹配（`ast.unparse` 用单引号，正则同时接受两种引号）
+_SUB_PROP = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion$")
+_SUB_TERRAIN = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]$")
+_NUM_COLS = re.compile(r"terrain_generator\.num_cols$")
+_NUM_ROWS = re.compile(r"terrain_generator\.num_rows$")
+
 
 def base_sub_terrains() -> list[tuple[str, float]]:
     """从已安装的 Isaac Lab 读基类顺序/比例；失败则用兜底值。"""
@@ -75,36 +106,84 @@ def base_sub_terrains() -> list[tuple[str, float]]:
     return [(name, float(p)) for name, p in zip(names, props)]
 
 
-def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
-    """返回 (任务侧 proportion 覆盖, num_cols 覆盖)。"""
+def class_post_init(class_name: str) -> ast.FunctionDef | None:
+    """取 `CMoE_env_cfg.py` 里指定类的 `__post_init__` 节点（类作用域解析的入口）。"""
     tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
-    props: dict[str, float] = {}
-    cols: dict[str, float] = {}
-    for node in ast.walk(tree):
+    cls = next((n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name), None)
+    if cls is None:
+        return None
+    return next((n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__post_init__"), None)
+
+
+def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
+    """只解析指定类的 `__post_init__`，返回 ``{props, num_cols, num_rows, cleared}``。
+
+    2026-10-04：从"整文件 `ast.walk`"改成"类作用域"，因为同一文件里的 mix-test 类也会写
+    `sub_terrains["mix"] = ...(proportion=1.0)`；不隔离就会污染训练侧的解析结果（且是静默的）。
+    """
+    info: dict[str, object] = {"props": {}, "num_cols": None, "num_rows": None, "cleared": False}
+    fn = class_post_init(class_name)
+    if fn is None:
+        return info
+    props: dict[str, float] = info["props"]  # type: ignore[assignment]
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            # `self.scene.terrain.terrain_generator.sub_terrains.clear()` ⇒ 清空基类地形
+            if ast.unparse(node.value.func).endswith("sub_terrains.clear"):
+                info["cleared"] = True
+            continue
         if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
             continue
         target = ast.unparse(node.targets[0])
-        # 注意：`ast.unparse` 用单引号，正则必须同时接受两种引号
-        m = re.fullmatch(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]", target)
+        m = _SUB_PROP.search(target)
+        if m:
+            props[m.group(1)] = float(ast.literal_eval(node.value))
+            continue
+        m = _SUB_TERRAIN.search(target)
         if m and isinstance(node.value, ast.Call):
             for kw in node.value.keywords:
                 if kw.arg == "proportion":
                     props[m.group(1)] = float(ast.literal_eval(kw.value))
             continue
-        m = re.fullmatch(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion", target)
-        if m:
-            props[m.group(1)] = float(ast.literal_eval(node.value))
+        if _NUM_COLS.search(target):
+            info["num_cols"] = int(ast.literal_eval(node.value))
             continue
-        m = re.fullmatch(r"self\.scene\.terrain\.terrain_generator\.num_cols", target)
-        if m:
-            cols["num_cols"] = int(ast.literal_eval(node.value))
-    return props, cols
+        if _NUM_ROWS.search(target):
+            info["num_rows"] = int(ast.literal_eval(node.value))
+    return info
 
 
-def forward_only_names() -> tuple[str, ...] | None:
-    """读 `CMoE_env_cfg.py` 里 `self.commands.base_velocity.forward_only_terrain_names`（没写则 None）。"""
-    tree = ast.parse(CMOE_CFG.read_text(encoding="utf-8-sig"))
-    for node in ast.walk(tree):
+def cmoe_overrides() -> tuple[dict[str, float], dict[str, float]]:
+    """返回 (任务侧 proportion 覆盖, num_cols 覆盖)。保持旧签名（＝训练/play 那条链）。"""
+    info = scene_overrides(TRAIN_CLASS)
+    cols: dict[str, float] = {}
+    if info["num_cols"] is not None:
+        cols["num_cols"] = info["num_cols"]  # type: ignore[assignment]
+    return info["props"], cols  # type: ignore[return-value]
+
+
+def merged_scene(class_name: str = TRAIN_CLASS) -> tuple[list[tuple[str, float]], dict[str, object]]:
+    """基类地形（Isaac Lab rough）+ 任务侧覆盖；若该类 `sub_terrains.clear()` 过 ⇒ 只用覆盖项。"""
+    info = scene_overrides(class_name)
+    props: dict[str, float] = info["props"]  # type: ignore[assignment]
+    if info["cleared"]:
+        return [(name, value) for name, value in props.items()], info
+    merged: list[tuple[str, float]] = []
+    base = base_sub_terrains()
+    for name, default in base:
+        merged.append((name, props.get(name, default)))
+    for name, value in props.items():          # 新增键（如 gap/flat）按赋值顺序追加
+        if name not in [n for n, _ in merged]:
+            merged.append((name, value))
+    return merged, info
+
+
+def forward_only_names(class_name: str = TRAIN_CLASS) -> tuple[str, ...] | None:
+    """读指定类里 `self.commands.base_velocity.forward_only_terrain_names`（没写则 None）。"""
+    fn = class_post_init(class_name)
+    if fn is None:
+        return None
+    for node in ast.walk(fn):
         if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
             continue
         if ast.unparse(node.targets[0]) != "self.commands.base_velocity.forward_only_terrain_names":
@@ -149,24 +228,126 @@ def report(sub_terrains: list[tuple[str, float]], num_cols: int, label: str) -> 
     return counts
 
 
+def check_mask_columns(counts: dict[str, int], num_cols: int) -> int:
+    """原判据（**不放宽**）：掩码引用的每个地形名都必须存在且 ≥1 列。"""
+    problems = 0
+    for key, names in MASKED_NAMES.items():
+        for name in names:
+            if name not in counts:
+                print(f"\n❌ 掩码 {key} 引用的地形名 '{name}' 不在 sub_terrains 里 ⇒ 静默失效")
+                problems += 1
+            elif counts[name] == 0:
+                print(f"\n❌ 掩码 {key} 引用的 '{name}' 在 num_cols={num_cols} 时只有 0 列 ⇒ 静默失效")
+                problems += 1
+    return problems
+
+
+def mix_test_report() -> tuple[int, list[str]]:
+    """`Imgo2-basemove-rough-cmoe-mix-test`（只 mix）的**单独**判定。
+
+    与原判据的区别只有一处、且是**新增的标注**而不是放宽：本场景**只有 mix** ⇒ 其它地形名不在
+    `sub_terrains` 里、引用它们的掩码项在本场景**恒为 0**（`is_env_assigned_to_terrain` 对未登记的
+    名字返回全 False），这里把每一处**逐条打印成"预期"**；同时仍然强制：`sub_terrains.clear()` 过、
+    只有 mix、mix ≥1 列、`num_cols=1`、`num_rows=20`。原任务（`--task cmoe-rough`）走
+    :func:`check_mask_columns`，判据一字未改。
+    """
+    info = scene_overrides(MIX_TEST_CLASS)
+    props: dict[str, float] = info["props"]  # type: ignore[assignment]
+    num_cols = info["num_cols"] if info["num_cols"] is not None else 1
+    lines: list[str] = []
+    problems = 0
+
+    def say(text: str = ""):
+        lines.append(text)
+        print(text)
+
+    say(f"\n=== [{MIX_TEST_TASK}] 受控测试场景（只 mix；cfg 类 {MIX_TEST_CLASS}）===")
+    if not info["cleared"]:
+        say("  ❌ 该任务必须先 `sub_terrains.clear()` 再只放 mix（否则会继承基类的 11 类地形）")
+        problems += 1
+    if list(props.keys()) != ["mix"]:
+        say(f"  ❌ 该任务的 sub_terrains 必须**有且只有** mix，实测 {list(props.keys())}")
+        problems += 1
+    elif props["mix"] != 1.0:
+        say(f"  ❌ mix 的 proportion 应为 1.0，实测 {props['mix']}")
+        problems += 1
+    if info["num_cols"] != 1:
+        say(f"  ❌ num_cols 应为 1（只 mix 一类），实测 {info['num_cols']}")
+        problems += 1
+    if info["num_rows"] != 20:
+        say(f"  ❌ num_rows 应为 20（`--terrain_level=N` ⇒ 难度 N/20），实测 {info['num_rows']}")
+        problems += 1
+
+    names = list(props.keys())
+    counts = report([(n, props[n]) for n in names], num_cols, f"{MIX_TEST_TASK}｜只 mix")
+    for name in names:
+        if counts[name] < 1:
+            say(f"  ❌ 唯一地形 '{name}' 在 num_cols={num_cols} 下 0 列 ⇒ 命令与掩码都会静默失效")
+            problems += 1
+    if not problems:
+        say(f"  ✅ 唯一地形 mix 有 {counts.get('mix', 0)} 列（num_cols={num_cols}、num_rows={info['num_rows']}）")
+
+    absent = sorted({n for refs in MASKED_NAMES.values() for n in refs} - set(names))
+    say("  ⚠️ 本场景**只有 mix**；掩码引用但本场景**不存在**的地形名（原任务判据**不放宽**，"
+        "这些项在本场景恒为 0 属**预期**）：")
+    if not absent:
+        say("    （无）")
+    for key, refs in MASKED_NAMES.items():
+        for name in refs:
+            if name in absent:
+                say(f"    - {key} → {name}：本场景无该地形 ⇒ 该项本场景恒为 0（预期，不是配置错误）")
+
+    inherited = False
+    fwd = forward_only_names(MIX_TEST_CLASS)
+    if fwd is None:
+        inherited = True
+        fwd = forward_only_names(TRAIN_CLASS)
+    if fwd is None:
+        say("  ❌ 继承链里找不到 `forward_only_terrain_names`（掩码/命令会静默退化）")
+        problems += 1
+    elif "mix" not in fwd:
+        say(f"  ❌ `forward_only_terrain_names` 未覆盖唯一的 mix：{fwd}")
+        problems += 1
+    else:
+        tag = "（继承父类）" if inherited else ""
+        extra = [n for n in fwd if n not in names]
+        note = ""
+        if extra:
+            note = (f"；另含 {len(extra)} 个本场景不存在的地形名（{', '.join(extra)}）—— 命令项"
+                    " `MixTestVelocityCommand` 根本不读这张表，且 `is_env_assigned_to_terrain` 对未登记"
+                    " 的名字返回全 False ⇒ 在这里是**惰性**的，属预期")
+        say(f"  ✅ `forward_only_terrain_names`{tag} 覆盖 mix{note}")
+
+    say("\n结论：" + ("test 任务只有 mix 一种地形；掩码引用的其它地形名在本场景恒为 0，属**预期** ✅"
+                      if problems == 0 else f"test 任务有 {problems} 处问题 ❌"))
+    return problems, lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cols", nargs="*", type=int, default=None,
                         help="要算的 num_cols（默认＝CMoE_env_cfg 里配置的值，2026-09-28 起为 40）")
+    parser.add_argument("--task", default="cmoe-rough",
+                        help="要检查的任务：cmoe-rough（默认，训练/play 的 11 类按比例）或 "
+                             f"mix-test（＝{MIX_TEST_TASK}，只有 mix）")
     args = parser.parse_args(argv)
 
-    base = base_sub_terrains()
-    props, col_over = cmoe_overrides()
-    merged: list[tuple[str, float]] = []
-    for name, default in base:
-        merged.append((name, props.get(name, default)))
-    for name, value in props.items():          # 新增键（如 gap/flat）按赋值顺序追加
-        if name not in [n for n, _ in merged]:
-            merged.append((name, value))
+    if args.task not in TASK_ALIASES:
+        parser.error(f"未知任务 {args.task!r}；可选：{', '.join(sorted(TASK_ALIASES))}")
+    task = TASK_ALIASES[args.task]
+
+    if task == MIX_TEST_TASK:
+        if args.cols:
+            print(f"提示：`--task {args.task}` 只有 1 列，`--cols` 被忽略")
+        return 1 if mix_test_report()[0] else 0
+
+    merged, info = merged_scene(TRAIN_CLASS)
+    col_over = {k: v for k, v in {"num_cols": info["num_cols"]}.items() if v is not None}
 
     print("CMoE rough 的 sub_terrains 比例（基类 + 任务侧覆盖）：")
+    props = info["props"]
     for name, value in merged:
-        mark = "  ←覆盖" if name in props else ""
+        mark = "  ←覆盖" if name in props else ""  # type: ignore[operator]
         print(f"  {name:22s} {value:.4f}{mark}")
 
     default_cols = [int(col_over["num_cols"])] if col_over.get("num_cols") else [40]
@@ -177,22 +358,15 @@ def main(argv: list[str] | None = None) -> int:
         counts_by_cols[num_cols] = report(merged, num_cols, label)
 
     problems = 0
-    for key, names in MASKED_NAMES.items():
-        for num_cols, counts in counts_by_cols.items():
-            for name in names:
-                if name not in counts:
-                    print(f"\n❌ 掩码 {key} 引用的地形名 '{name}' 不在 sub_terrains 里 ⇒ 静默失效")
-                    problems += 1
-                elif counts[name] == 0:
-                    print(f"\n❌ 掩码 {key} 引用的 '{name}' 在 num_cols={num_cols} 时只有 0 列 ⇒ 静默失效")
-                    problems += 1
+    for num_cols, counts in counts_by_cols.items():
+        problems += check_mask_columns(counts, num_cols)
     if col_over:
         print(f"\n提示：配置里显式覆盖过 num_cols = {col_over['num_cols']}（训练与 play 都是）")
 
     # 2026-09-24 用户决定「所有场景都只给超前的速度」⇒ `forward_only_terrain_names` 必须覆盖
     # **全部** sub_terrains（漏一项，那一列就会静默退回全向命令）。
     names = [n for n, _ in merged]
-    fwd = forward_only_names()
+    fwd = forward_only_names(TRAIN_CLASS)
     if fwd is None:
         print("\n（配置未设置 forward_only_terrain_names，跳过覆盖率校验）")
     else:

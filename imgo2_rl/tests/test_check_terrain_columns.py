@@ -8,7 +8,13 @@
 * 11 类地形**每一类都 ≥1 列** —— 0 列时引用它的掩码会静默失效、不报错，这正是本工具存在的理由
   （旧配置在 `num_cols=10` 时 `hf_pyramid_slope_inv` 就是 0 列）。
 
-逐项对照见 `docs/cmoe_terrain_alignment_2026-09-28.md`。
+2026-10-04 追加：工具新增 `--task`（按任务区分）。测试场景 `Imgo2-basemove-rough-cmoe-mix-test`
+**只有 `mix` 一种地形** ⇒ 掩码引用的其它地形名在该场景恒为 0、属**预期**。本文件因此分两个类：
+`TestTerrainColumns` = **原判据原样保留**（11 类各 ≥1 列、比例、40 列、forward_only 全覆盖）；
+`TestMixTestTerrainColumns` = test 任务的**单独**断言（清空后只有 mix、1 列 20 行、工具给出
+明确的"预期"标注），外加**负向对照**证明原判据没有被放宽。
+
+逐项对照见 `docs/cmoe_terrain_alignment_2026-09-28.md` 与 `docs/cmoe_mix_test_scene_2026-10-04.md`。
 """
 
 from __future__ import annotations
@@ -119,6 +125,135 @@ class TestTerrainColumns(unittest.TestCase):
         self.assertIn("num_cols = 40", train, "训练应为 40 列（按比例）")
         self.assertIn("num_cols = 11", play, "play 应为每类一列（11）")
         self.assertIn("_sub.proportion = 1.0", play, "play 应设等比例（否则会有 0 列的地形）")
+
+
+class TestMixTestTerrainColumns(unittest.TestCase):
+    """`Imgo2-basemove-rough-cmoe-mix-test`（**只有 mix** 的受控测试场景）的单独断言。
+
+    2026-10-04 用户要求：这个测试场景只有 `mix` ⇒ 掩码引用的其它地形名在本场景**恒为 0**（预期）。
+    处理方式必须是"给工具加**按任务区分**的能力并**明确标注**"，而**不是**放宽原判据：
+    ① 原任务（`--task cmoe-rough`）的"每一项 ≥1 列"判据在本文件里原样保留（见
+    `TestTerrainColumns.test_every_masked_terrain_name_has_columns` 与下面的负向对照）；
+    ② test 任务走**单独分支**，仍然强制 `sub_terrains.clear()` + 只有 mix + mix ≥1 列 +
+    `num_cols=1` + `num_rows=20`，并把"其它地形名 0 列"**逐条打印成预期**。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.info = chk.scene_overrides(chk.MIX_TEST_CLASS)
+        cls.props = cls.info["props"]
+        cls.task = chk.MIX_TEST_TASK
+
+    # ------------------------------------------------------------- test 任务自身
+    def test_task_id_and_class_are_wired_to_the_tool(self):
+        self.assertEqual(chk.TASK_ALIASES["mix-test"], chk.MIX_TEST_TASK)
+        self.assertEqual(chk.TASK_CLASS[chk.MIX_TEST_TASK], chk.MIX_TEST_CLASS)
+
+    def test_sub_terrains_are_cleared(self):
+        self.assertTrue(self.info["cleared"], "test 任务必须先清空基类地形，否则会继承 11 类")
+
+    def test_mix_is_the_only_sub_terrain(self):
+        self.assertEqual(list(self.props.keys()), ["mix"], f"只允许 mix，实测 {list(self.props)}")
+        self.assertAlmostEqual(self.props["mix"], 1.0, places=9)
+
+    def test_num_cols_one_and_num_rows_twenty(self):
+        self.assertEqual(self.info["num_cols"], 1, "--terrain_level=N ⇒ 难度 N/20；每行一个 mix")
+        self.assertEqual(self.info["num_rows"], 20)
+
+    def test_mix_gets_exactly_one_column(self):
+        counts = chk.allocate([("mix", 1.0)], 1)
+        self.assertEqual(counts, ["mix"])
+
+    def test_mix_test_report_is_clean_and_annotates_absence(self):
+        """test 任务判定必须通过（0 问题），并把"其它地形名恒为 0"明确标为预期。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems, lines = chk.mix_test_report()
+        text = "\n".join(lines)
+        self.assertEqual(problems, 0, f"test 任务不应报错：{text}")
+        self.assertIn("属**预期**", text)
+        self.assertIn("mix", text)
+        self.assertNotIn("❌", text)
+        # 每一条被引用的"本场景不存在"的地形名都要**逐条**标注
+        absent = sorted({n for refs in chk.MASKED_NAMES.values() for n in refs} - {"mix"})
+        self.assertTrue(absent, "本测试的前提是掩码引用了 mix 之外的地形名")
+        for name in absent:
+            self.assertIn(name, text, f"缺少对 '{name}' 的预期标注")
+
+    def test_absent_terrain_names_are_all_annotated(self):
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            _, lines = chk.mix_test_report()
+        text = "\n".join(lines)
+        for key, refs in chk.MASKED_NAMES.items():
+            for name in refs:
+                if name != "mix":
+                    self.assertIn(f"{key} → {name}", text)
+
+    def test_forward_only_covers_the_only_terrain(self):
+        fwd = chk.forward_only_names(chk.MIX_TEST_CLASS) or chk.forward_only_names(chk.TRAIN_CLASS)
+        self.assertIn("mix", fwd)
+
+    # ------------------------------------------------- 原判据不放宽（负向对照）
+    def test_original_criteria_still_fail_on_absent_names(self):
+        """负向对照：把"只有 mix"的场景丢给**原判据**，必须仍然报错（证明没被放宽）。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems = chk.check_mask_columns({"mix": 1}, 1)
+        self.assertGreater(problems, 0, "原判据必须继续对'掩码引用的地形名不存在'报错")
+        self.assertIn("不在 sub_terrains 里", buffer.getvalue())
+
+    def test_original_criteria_still_fail_on_zero_columns(self):
+        """负向对照：存在但 0 列时原判据也必须报错。"""
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            problems = chk.check_mask_columns({"mix": 1, "boxes": 0, "gap": 0, "flat": 0}, 1)
+        self.assertGreater(problems, 0)
+        self.assertIn("只有 0 列", buffer.getvalue())
+
+    def test_masked_names_table_is_unchanged(self):
+        """`MASKED_NAMES` 是本工具的原判据，按任务区分**不得**改它。"""
+        self.assertEqual(chk.MASKED_NAMES["joint_mirror.free_terrain_names"], ("boxes",))
+        self.assertEqual(chk.MASKED_NAMES["joint_mirror.bound_terrain_names"], ("gap",))
+        self.assertEqual(chk.MASKED_NAMES["feet_gait.free_terrain_names"], ("boxes", "gap"))
+        self.assertEqual(chk.MASKED_NAMES["base_height_flat_l2.active_terrain_names"], ("flat",))
+
+    # ------------------------------------------------- 类作用域解析：不污染默认任务
+    def test_default_task_parse_is_not_contaminated_by_the_test_scene(self):
+        """mix-test 类里也写了 `sub_terrains["mix"]`；默认任务必须仍按训练值解析（比例 0.10、40 列）。"""
+        props, cols = chk.cmoe_overrides()
+        self.assertAlmostEqual(props["mix"], 0.10, places=9)
+        self.assertEqual(cols["num_cols"], 40)
+        merged, _info = chk.merged_scene(chk.TRAIN_CLASS)
+        self.assertEqual(len(merged), 11, "默认任务仍是 11 类地形（不被 test 场景污染）")
+
+    # ------------------------------------------------- CLI
+    def test_cli_task_flag(self):
+        import contextlib
+        import io
+
+        for task in ("cmoe-rough", "mix-test", chk.MIX_TEST_TASK):
+            with self.subTest(task=task):
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    code = chk.main(["--task", task])
+                self.assertEqual(code, 0, buffer.getvalue())
+
+    def test_cli_rejects_unknown_task(self):
+        with self.assertRaises(SystemExit):
+            chk.main(["--task", "no-such-task"])
 
 
 if __name__ == "__main__":
