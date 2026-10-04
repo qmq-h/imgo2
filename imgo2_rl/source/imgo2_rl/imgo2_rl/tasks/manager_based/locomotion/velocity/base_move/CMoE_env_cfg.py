@@ -853,30 +853,115 @@ class Imgo2CMoERoughPlayEnvCfg(Imgo2CMoERoughEnvCfg):
 # 2026-10-04（用户）：**只在 `mix` 一种地形上评测的受控测试场景**（**继承 play 任务**）。
 #
 # 用途：在受控条件下评估策略通过 `mix`（复合障碍：窄走廊+台阶+深坑+高台+高栏）的能力，把
-# **横向漂移**与**航向漂移**从评测里剔除。因此本场景只改三件事：
-#   ① 地形只留 `mix`（`num_cols=1`、`num_rows=20` ⇒ `--terrain_level=N` 就是难度 N/20）；
+# **横向漂移**与**航向漂移**从评测里剔除。本场景只改四件事：
+#   ① 地形只留 `mix`；网格 = **20 条并排的 mix 道（沿世界 Y）× 20 档难度（沿世界 X）**，
+#      且**全部环境固定在第 14 行 ⇒ 名义难度 d = 14/20 = 0.70**；
 #   ② 速度指令**只给前进**（默认恒定 **1.0 m/s**）、`heading` 目标恒 0；
-#   ③ 横向与航向改由**指令层 PD 外环**负责（`mdp.MixTestVelocityCommand`）。
+#   ③ 横向与航向改由**指令层 PD 外环**负责（`mdp.MixTestVelocityCommand`）；
+#   ④ mix 图案的**障碍间距乘子 = 2.0**（`pattern_spacing_scale`，只影响本评测场景；训练侧不传
+#      该字段 ⇒ 取默认 1.0 ⇒ 训练几何**逐位不变**）。
+#
+# 2026-10-04（用户第二批要求，原话）：「地形不要按照列排，放在行里面」「都固定到14难度」
+# 「mix 中每个地形间隔大一点 ×1.5~2.0」。
+#
+# 网格方向的真值（来自 Isaac Lab 源码，不是约定）：`terrain_generator.py:247-261` 逐列逐行用
+# `difficulty = (sub_row + U(0,1)) / num_rows` 生成瓦片；`:330` 里 `terrain_origins[row, col]`
+# 的平移量是 `((row+0.5)·size[0], (col+0.5)·size[1])` ⇒ **行（难度）沿世界 +X、列（地形类型/道）
+# 沿世界 +Y**；整片地形再按 `(-size[0]·num_rows/2, -size[1]·num_cols/2)` 居中（`:176-182`）。
+# 本场景 size=(8,4)（父类设定）、num_rows=20、num_cols=20 ⇒
+#   * 世界 X ∈ [-80, +80]：20 行 × 8 m；第 14 行占 [112, 120] − 80 = **[+32, +40]**；
+#   * 世界 Y ∈ [-40, +40]：20 道 × 4 m；第 i 道占 [4i − 40, 4(i+1) − 40]（第 0 道 [-40,-36]）。
 # **动作空间与观测契约一字未改** ⇒ 既有 CMoE checkpoint 可直接加载（这不是新策略任务）。
 # ⚠️ 本类是"评测场景"，不参与训练；注册 id 见 `base_move/__init__.py`。
 # ======================================================================================
+# 道数 = `num_cols` = **可同时评估的环境数上限**（20 条并排的 mix 道；每条道一个环境 —— 见下面
+# `Imgo2CMoEMixTestTerrainImporter` 里 `terrain_types` 的确定性分配说明）。
+MIX_TEST_LANES = 20
+# 难度档数 = `num_rows`（难度 = 行号 / num_rows）。行沿世界 +X 排。
+MIX_TEST_LEVELS = 20
+# **固定难度行**：全部环境钉在第 14 行 ⇒ 名义难度 d = MIX_TEST_PINNED_LEVEL / MIX_TEST_LEVELS = 0.70。
+MIX_TEST_PINNED_LEVEL = 14
+# mix 图案的**障碍间距乘子**（`CMoETrackMixTerrainCfg.pattern_spacing_scale`）：只影响本评测场景
+# （训练侧不传该字段 ⇒ 取默认 1.0，训练几何逐位不变）。用户给的范围 1.5~2.0，取上限 2.0。
+MIX_TEST_PATTERN_SPACING_SCALE = 2.0
+
+
+class Imgo2CMoEMixTestTerrainImporter(terrain_gen.TerrainImporter):
+    """把课程难度**钉死**在 :data:`MIX_TEST_PINNED_LEVEL` 行、并**冻结升降级**的地形导入器。
+
+    为什么需要一个子类：Isaac Lab 的 `_compute_env_origins_curriculum`
+    （`isaaclab/terrains/terrain_importer.py:329-348`）在课程模式下的初始等级是
+    ``terrain_levels = randint(0, min(max_init_terrain_level, num_rows-1) + 1)`` ⇒
+    `max_init_terrain_level` 只表达"**上限**"、无法表达"全部钉在第 N 行"；而
+    `update_env_origins`（`:308-323`）每回合还会按课程判据升降级（到顶时甚至 `randint_like`
+    随机重开）。本子类做两件事（**只用于 mix-test 任务**：训练/play 的 `class_type` 仍是
+    `TerrainImporter`，行为一字未改）：
+
+    ① `configure_env_origins` 之后把 `terrain_levels[:]` 全部设为 `pinned_level` 并重算 `env_origins`；
+    ② `update_env_origins` 变成空操作 ⇒ 一局之内难度与出生点都不变。
+
+    这等价于 `play.py` 的 `--terrain_level=N`（钉死 + 冻结课程），但**不依赖 CLI**：不传参时默认就是
+    第 14 行；传 `--terrain_level=M` 仍可覆盖（CLI 在 env 建好后直接改 `terrain_levels`，本子类不再干预）。
+
+    **道（`terrain_types`）不需要改**：Isaac Lab 的分配是**确定性**的
+    ``terrain_types[i] = floor(i · num_cols / num_envs)``（同文件 `:342-344`）⇒ 本场景
+    `num_envs == num_cols == 20` 时恰好 **环境 i → 第 i 道**，一条道一个环境、不会两块瓦片挤一起。
+    ⚠️ 该式只在 `num_envs ≤ num_cols` 时严格递增（`terrain_types[i+1] ≥ terrain_types[i] + 1`）；
+    一旦 `--num_envs > 20` 就会出现重复取值 ⇒ 多个环境落在**同一条道的同一行**、出生点重叠（构造时告警）。
+    """
+
+    pinned_level: int = MIX_TEST_PINNED_LEVEL
+
+    def configure_env_origins(self, origins=None):
+        super().configure_env_origins(origins)
+        if self.terrain_origins is None:
+            return  # 非课程地形（plane / usd）⇒ 没有"等级"可钉
+        num_envs = int(self.cfg.num_envs)
+        num_cols = int(self.terrain_origins.shape[1])
+        if num_envs > num_cols:
+            print(
+                f"[WARN] {type(self).__name__}: num_envs={num_envs} > num_cols={num_cols} ⇒ "
+                "terrain_types 会重复（多个环境挤在同一条道、同一行 ⇒ 出生点重叠）；"
+                f"请让 --num_envs ≤ {num_cols}（= MIX_TEST_LANES）。"
+            )
+        self.terrain_levels[:] = int(self.pinned_level)
+        self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
+
+    def update_env_origins(self, env_ids, move_up, move_down):
+        """课程升降级对本场景是 **no-op**：难度固定 ⇒ 等级与出生点都不再变。"""
+        return
+
+
 @configclass
 class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
-    """`mix`-only 受控测试场景：前进 1.0 m/s + 横向 PD + 航向 PD（继承 play 的确定性设定）。
+    """`mix`-only 受控测试场景：**20 条并排的 mix 道 × 固定难度 14** + 前进 1.0 m/s + 横向/航向 PD。
 
     继承 `Imgo2CMoERoughPlayEnvCfg` ⇒ 自动保留它的确定性设定（`pose_range` 全 0、`velocity_range`
-    全 0、关闭全部域随机化事件、关闭观测噪声、`max_init_terrain_level=5`），本类只覆盖下面三组值。
+    全 0、关闭全部域随机化事件、关闭观测噪声），本类覆盖：
 
-    **运行示例**（回放，须替换 checkpoint 路径）::
+    * **网格**：`num_cols = MIX_TEST_LANES = 20`（20 条并排的 mix 道 ⇒ 沿世界 Y 展开）×
+      `num_rows = MIX_TEST_LEVELS = 20`（难度 ⇒ 沿世界 X）；每道一个环境（`num_envs = 20`）；
+    * **难度固定 = 14**：`max_init_terrain_level = MIX_TEST_PINNED_LEVEL = 14` ＋
+      `class_type = Imgo2CMoEMixTestTerrainImporter`（钉死等级、冻结升降级）⇒ 名义 d = 14/20 = 0.70；
+    * **障碍间距 ×2.0**：`pattern_spacing_scale = MIX_TEST_PATTERN_SPACING_SCALE = 2.0`
+      ⇒ 图案 X 总长 = 0.30 + 160×0.02×2.0 = **6.70 m ≤ 8 m**（该瓦片上的乘子上限 2.40625）；
+    * 速度指令 + 横向/航向 PD 外环（见下）。
+
+    **运行示例**（回放，须替换 checkpoint 路径；难度已由 cfg 固定为 14，**不需要** `--terrain_level`
+    —— 只有要扫别的难度时才传）::
 
         python scripts/rl_lab/cmoe/play.py \\
             --task=Imgo2-basemove-rough-cmoe-mix-test --num_envs=20 --headless \\
-            --terrain_level=10 --checkpoint="/absolute/path/to/model.pt"
+            --checkpoint="/absolute/path/to/model.pt"
 
-    ``--terrain_level=N`` 把全部环境的地形等级钉在第 N 行 ⇒ 难度 ``N/20``（0.05 一档）。
-    ⚠️ 不传 `--terrain_level` 时沿用继承来的 ``max_init_terrain_level=5`` ⇒ 初始等级在 **0–5 随机抽**
-    （**不是** 20 个环境各占一行）；要扫完 20 档就逐档传 `--terrain_level`，或另改
-    `self.scene.terrain.max_init_terrain_level`（本类**有意不动**它，见 docs 的"未验证项/冲突"一节）。
+        # 想覆盖难度（例如扫到最容易的一档）：--terrain_level=0
+        # `--terrain_level=N` ⇒ 全部环境钉在第 N 行 ⇒ 名义难度 N/20（0 ≤ N ≤ 19，**不会**被夹到 9）。
+
+    ⚠️ **名义 vs 实际难度**：Isaac Lab 的课程生成器给同一行内每个瓦片加 ``U(0,1)`` 抖动
+    （`difficulty = (row + U(0,1)) / num_rows`）⇒ 第 14 行的实际 ``d ∈ [0.70, 0.75)``，0.70 是**下界/
+    名义值**。要**精确** 0.70 需把 `terrain_generator.difficulty_range` 收成 `(0.70, 0.70)`，但那会让
+    20 行的难度全部相同、`--terrain_level` 失去"扫难度"的意义 ⇒ 本类**有意不做**（见 docs 的
+    "未验证项/与设计冲突之处"一节）。
     """
 
     def __post_init__(self):
@@ -886,8 +971,10 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
         # 先清空（play 类刚把所有 proportion 设成 1.0），再只放 mix。**逐字沿用训练实例化时的 mix 值**
         # —— 训练侧是 `CMoETrackMixTerrainCfg(proportion=0.10)`，其余字段全部取类默认值，这里把它们
         # 显式展开写死（`tests/test_cmoe_mix_test_scene.py` 会断言这些字面量与 `cmoe_terrains.py` 的
-        # 类默认值**逐一相等**，改默认值而不同步这里就会红）。唯一不同处：`proportion=1.0`（本场景
-        # 只有这一类，比例无意义、Isaac 会归一化；`num_cols=1` 下 mix 恰好拿满 1 列）。
+        # 类默认值**逐一相等**，改默认值而不同步这里就会红）。
+        # **有意偏离默认值的两处**（测试里单独断言）：
+        #   * `proportion=1.0`（本场景只有这一类，比例无意义、Isaac 会归一化）；
+        #   * `pattern_spacing_scale=2.0`（间距乘子，**评测专用**；训练取默认 1.0）。
         self.scene.terrain.terrain_generator.sub_terrains.clear()
         self.scene.terrain.terrain_generator.sub_terrains["mix"] = CMoETrackMixTerrainCfg(
             proportion=1.0,
@@ -898,14 +985,19 @@ class Imgo2CMoEMixTestEnvCfg(Imgo2CMoERoughPlayEnvCfg):
             corridor_width=0.80,    # 参考走廊半宽 20 索引 = 1.0 m ⇒ ×0.4
             pit_depth=0.50,         # 参考坑深 0.5–1.5 m ⇒ ×0.4 后取固定值
             pattern_start_x=0.30,   # 见 `track_mix_terrain` docstring 的"已知偏离"（起步平台装得下 0.75 m 出生点）
+            pattern_spacing_scale=MIX_TEST_PATTERN_SPACING_SCALE,  # 2.0：只放宽本评测场景的障碍间距
             spawn_x=0.75,
         )
-        # 每行一个 mix（行＝难度 level），只有 1 列 ⇒ 20 行 × 1 列 = 20 格。
-        # 于是 `--terrain_level=N` 即"难度 N/20"；配合 `--num_envs=20` 时网格刚好 20 格。
-        self.scene.terrain.terrain_generator.num_cols = 1
-        self.scene.terrain.terrain_generator.num_rows = 20
-        # 默认 20 个环境（可被命令行 `--num_envs` 覆盖）。
-        self.scene.num_envs = 20
+        # **20 条并排的 mix 道 × 20 档难度**（列沿世界 Y、行沿世界 X）：
+        # 道数 = 可同时评估的环境数上限 ⇒ 默认 20 个环境时"一道一个环境"，`terrain_types` 恰为 0..19。
+        self.scene.terrain.terrain_generator.num_cols = MIX_TEST_LANES
+        self.scene.terrain.terrain_generator.num_rows = MIX_TEST_LEVELS
+        # ② **难度固定 14**（不依赖 CLI）：`max_init_terrain_level` 与 importer 的 `pinned_level`
+        # 一致 ⇒ 初始等级就是 14、且课程升降级被冻结（见 `Imgo2CMoEMixTestTerrainImporter`）。
+        self.scene.terrain.max_init_terrain_level = MIX_TEST_PINNED_LEVEL
+        self.scene.terrain.class_type = Imgo2CMoEMixTestTerrainImporter
+        # 默认 20 个环境（可被命令行 `--num_envs` 覆盖；⚠️ 超过 20 会与别的环境共享同一条道 ⇒ 出生点重叠）。
+        self.scene.num_envs = MIX_TEST_LANES
 
         # ------------------------------------------------- ②③ 速度指令 + 横向/航向 PD 外环
         # **整项替换**（而不是只改 ranges）：新命令项类需要 PD 增益字段，量纲与语义都与

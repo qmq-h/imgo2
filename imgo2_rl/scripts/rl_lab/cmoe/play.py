@@ -34,8 +34,10 @@ parser.add_argument(
     "--terrain_level",
     type=int,
     default=None,
-    help="把回放环境的**课程等级**钉死在 N（0–9）并冻结课程升降级，用于检查指定难度下的地形。"
-         "默认 None＝沿用 play 配置（`max_init_terrain_level=5`，即随机落在 0–5 级）。",
+    help="把回放环境的**课程等级**钉死在 N（N ∈ 0..num_rows−1，本仓 num_rows=20 ⇒ 0..19；"
+         "等级本身**不会**被夹到 9）并冻结课程升降级，用于检查指定难度下的地形（如 mix-test 用 14）。"
+         "默认 None＝沿用任务配置（`Imgo2CMoERoughPlayEnvCfg` 是 `max_init_terrain_level=5`，"
+         "即随机落在 0–5 级；`...-mix-test` 已在 cfg 里固定为 14）。",
 )
 parser.add_argument(
     "--prior",

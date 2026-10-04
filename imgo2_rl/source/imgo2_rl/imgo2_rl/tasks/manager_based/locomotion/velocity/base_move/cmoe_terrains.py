@@ -251,11 +251,45 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
     **已知偏离**：参考的起步平台缩比后只有 0.60 m，装不下我们 0.75 m 的出生点 ⇒ 图案整体平移
     ``pattern_start_x = 0.30``（起步平台变 0.90 m），其余形状逐段一致；坑深取固定 0.50 m
     （参考为 0.5–1.5 m 随机，缩比区间 0.02–0.60 m）。
+
+    2026-10-04（用户："mix 中每个地形间隔大一点 ×1.5~2.0"）：新增 ``pattern_spacing_scale`` —— 把
+    **相邻图案（＝下面 ``segments`` 里的每一段）之间的 X 推进量**乘上该乘子，**图案自身宽度、高度与
+    顺序一律不变**：
+
+        x0 = pattern_start_x + start_units · x_unit · scale
+        x1 = x0 + (end_units − start_units) · x_unit            # 宽度与 scale 无关
+
+    * ``scale = 1.0``（默认，＝训练用值）时增量**精确为 ``+0.0``** ⇒ 生成结果与加这个字段之前**逐位相同**；
+    * ``scale > 1`` 时相邻图案之间空出来的 X 区间仍由**原有几何**填充 —— 本图案的走廊只在 ``segments``
+      那几段上，段与段之间是整宽的 ``-pit_depth`` 坑底 ⇒ 被拉开的空间会表现为**更长的整宽深坑**（不是
+      平地跑道）。"更从容"只是几何意义（障碍之间更远），不是"加了平地"，见 docs 的同名说明。
+
+    **总长保护（不静默溢出）**：图案末端 = ``pattern_start_x + 160 · x_unit · scale``。超过
+    ``size[0]`` 时**直接 raise ``ValueError``**（并给出该瓦片上 scale 的上限）——参照问题表 CMOE-13：
+    ``track_gap_terrain`` 缺这层保护，超长时会静默截断/与邻块重叠。
     """
     diff = cfg.height_scale * difficulty
     gap_shrink = round(cfg.gap_shrink_units * (1.0 - difficulty))
     offset = cfg.pattern_start_x
     x_unit, z_unit = cfg.x_unit, cfg.z_unit
+    spacing = cfg.pattern_spacing_scale
+
+    # 图案最后一个索引（见下面 segments 的末段 140:160）+ 溢出保护。
+    pattern_end_units = 160.0
+    pattern_x_end = offset + pattern_end_units * x_unit * spacing
+    if pattern_x_end > cfg.size[0] + 1.0e-9:
+        max_spacing = (cfg.size[0] - offset) / (pattern_end_units * x_unit)
+        raise ValueError(
+            f"track_mix_terrain: 图案总长 {pattern_x_end:.4f} m 超出瓦片长 size[0]={cfg.size[0]:.4f} m"
+            f"（pattern_start_x={offset} + {pattern_end_units:g} 索引 × x_unit={x_unit}"
+            f" × pattern_spacing_scale={spacing}）。本瓦片上 pattern_spacing_scale 最大可取 "
+            f"{max_spacing:.4f}。三选一：① 减少图案数量（改本函数的 segments）；② 增大 "
+            f"terrain_generator.size[0]；③ 把乘子降到 {max_spacing:.4f} 以下。"
+        )
+
+    def _shift(anchor_units: float) -> float:
+        """图案起点按乘子后移的增量；``spacing == 1.0`` 时**精确等于 0.0**（保证逐位不变）。"""
+        return (spacing - 1.0) * anchor_units * x_unit
 
     # 坑底：整宽、顶面在 -pit_depth
     meshes: list[trimesh.Trimesh] = [_platform(0.0, cfg.size[0], cfg.size[1], -cfg.pit_depth)]
@@ -279,8 +313,10 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
     for start_units, end_units, height_units in segments:
         if end_units <= start_units:
             continue
-        x0 = offset + start_units * x_unit
-        x1 = min(offset + end_units * x_unit, cfg.size[0])
+        # 只改"图案之间的 X 推进量"：整段按**自己起点**的增量平移（⇒ 段宽不变 ⇒ 障碍尺寸/高度/顺序都不变）。
+        shift = _shift(start_units)
+        x0 = offset + start_units * x_unit + shift
+        x1 = min(offset + end_units * x_unit + shift, cfg.size[0])
         if x1 <= x0:
             continue
         meshes.append(
@@ -290,7 +326,7 @@ def track_mix_terrain(difficulty: float, cfg: CMoETrackMixTerrainCfg):
         )
 
     # 图案结束（索引 160）之后走廊回到 0 高度，直铺到瓦片末端
-    tail_x0 = min(offset + 160.0 * x_unit, cfg.size[0])
+    tail_x0 = min(offset + pattern_end_units * x_unit + _shift(pattern_end_units), cfg.size[0])
     if tail_x0 < cfg.size[0]:
         meshes.append(_corridor(tail_x0, cfg.size[0], cfg.size[1], cfg.corridor_width, 0.0))
 
@@ -315,6 +351,11 @@ class CMoETrackMixTerrainCfg(SubTerrainBaseCfg):
     pit_depth: float = 0.50
     # 见函数 docstring 的「已知偏离」：图案整体平移，保证 0.75 m 出生点落在起步平台上
     pattern_start_x: float = 0.30
+    # 2026-10-04：相邻图案之间的 **X 推进量**乘子（只改间距，不改障碍自身尺寸/高度/顺序）。
+    # ⚠️ 默认 **1.0 ⇒ 训练用几何逐位不变**（增量精确为 +0.0）；评测用的 mix-test 场景取 2.0。
+    # 上限受瓦片长度约束：pattern_start_x + 160·x_unit·scale ≤ size[0]（size[0]=8 m、x_unit=0.02
+    # ⇒ scale ≤ 2.40625）；超出会在 `track_mix_terrain` 里直接 raise（不静默溢出）。
+    pattern_spacing_scale: float = 1.0
     spawn_x: float = 0.75
 
 
