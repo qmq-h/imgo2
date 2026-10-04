@@ -11,8 +11,13 @@
 2026-10-04 追加：工具新增 `--task`（按任务区分）。测试场景 `Imgo2-basemove-rough-cmoe-mix-test`
 **只有 `mix` 一种地形** ⇒ 掩码引用的其它地形名在该场景恒为 0、属**预期**。本文件因此分两个类：
 `TestTerrainColumns` = **原判据原样保留**（11 类各 ≥1 列、比例、40 列、forward_only 全覆盖）；
-`TestMixTestTerrainColumns` = test 任务的**单独**断言（清空后只有 mix、**20 列**（20 条并排的 mix 道）
-× 20 行难度、工具给出明确的"预期"标注），外加**负向对照**证明原判据没有被放宽。
+`TestMixTestTerrainColumns` = test 任务的**单独**断言（清空后只有 mix、**20 列**（20 条并列的 mix 道）
+× **1 行难度**、`difficulty_range=(0.70, 0.70)` 精确固定难度、工具给出明确的"预期"标注），外加
+**负向对照**证明原判据没有被放宽。
+
+2026-10-04（第三批，用户："我不需要还保持那么多行，我需要他们并列"）：test 任务的网格由 20 行缩到
+**1 行**（世界 X 160 m → 8 m），难度改由 `difficulty_range` 固定 ⇒ 本类的期望值同步改成
+`num_rows=1`，并新增"难度固定被工具检查"的断言与**负向对照**。
 
 逐项对照见 `docs/cmoe_terrain_alignment_2026-09-28.md` 与 `docs/cmoe_mix_test_scene_2026-10-04.md`。
 """
@@ -136,10 +141,12 @@ class TestMixTestTerrainColumns(unittest.TestCase):
     ① 原任务（`--task cmoe-rough`）的"每一项 ≥1 列"判据在本文件里原样保留（见
     `TestTerrainColumns.test_every_masked_terrain_name_has_columns` 与下面的负向对照）；
     ② test 任务走**单独分支**，仍然强制 `sub_terrains.clear()` + 只有 mix + mix 占满全部列 +
-    `num_cols=20`（＝`MIX_TEST_LANES`：20 条**并排**的 mix 道）+ `num_rows=20`，并把"其它地形名 0 列"
-    **逐条打印成预期**。
+    `num_cols=20`（＝`MIX_TEST_LANES`：20 条**并列**的 mix 道）+ `num_rows=1`（唯一一行难度）+
+    `difficulty_range=(0.70, 0.70)`，并把"其它地形名 0 列"**逐条打印成预期**。
     2026-10-04（第二批，用户："地形不要按照列排，放在行里面"）：列数 **1 → 20**（20 条道沿世界 Y
-    并排）⇒ 本类的期望值同步改成 20；同时加"模块级可读常量能被工具解析"的断言。
+    并列）⇒ 本类的期望值同步改成 20；同时加"模块级可读常量能被工具解析"的断言。
+    2026-10-04（第三批，用户："我不需要还保持那么多行，我需要他们并列"）：行数 **20 → 1**、
+    难度改由 `difficulty_range` 精确固定 ⇒ 本类期望改成 `num_rows=1` 并检查难度范围。
     """
 
     @classmethod
@@ -160,20 +167,28 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         self.assertEqual(list(self.props.keys()), ["mix"], f"只允许 mix，实测 {list(self.props)}")
         self.assertAlmostEqual(self.props["mix"], 1.0, places=9)
 
-    def test_num_cols_twenty_and_num_rows_twenty(self):
-        """20 条**并排**的 mix 道（列、沿世界 Y）× 20 档难度（行、沿世界 X）。"""
-        self.assertEqual(self.info["num_cols"], 20, "20 条并排的 mix 道（＝可同时评估的环境数上限）")
-        self.assertEqual(self.info["num_rows"], 20, "行＝难度 level（沿世界 X）；固定用第 14 行")
+    def test_num_cols_twenty_and_num_rows_one(self):
+        """20 条**并列**的 mix 道（列、沿世界 Y）× **唯一一行**难度（行、沿世界 X）。"""
+        self.assertEqual(self.info["num_cols"], 20, "20 条并列的 mix 道（＝可同时评估的环境数上限）")
+        self.assertEqual(self.info["num_rows"], 1, "只留唯一一行难度 ⇒ 世界 X 只有 8 m（旧方案 20 行）")
         self.assertEqual(chk.MIX_TEST_LANES_EXPECTED, 20)
-        self.assertEqual(chk.MIX_TEST_LEVELS_EXPECTED, 20)
+        self.assertEqual(chk.MIX_TEST_LEVELS_EXPECTED, 1)
+
+    def test_difficulty_range_is_exactly_pinned(self):
+        """难度由 `difficulty_range = (0.70, 0.70)` 精确固定（＝旧"第 14 行"的名义难度）。"""
+        self.assertEqual(self.info["difficulty_range"], (0.70, 0.70),
+                         f"上下界必须同值（否则行内 U(0,1) 抖动会回来）：{self.info['difficulty_range']}")
+        self.assertAlmostEqual(chk.MIX_TEST_DIFFICULTY_EXPECTED, 0.70, places=9)
 
     def test_num_cols_is_read_from_the_module_constant(self):
-        """`num_cols` 现在写成可读常量 `MIX_TEST_LANES` ⇒ 工具必须能求值模块常量。"""
+        """`num_cols`/`num_rows`/难度都写成可读常量 ⇒ 工具必须能求值模块常量。"""
         consts = chk.module_constants()
         self.assertEqual(consts["MIX_TEST_LANES"], 20)
-        self.assertEqual(consts["MIX_TEST_LEVELS"], 20)
-        self.assertEqual(consts["MIX_TEST_PINNED_LEVEL"], 14)
-        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], 2.0, places=9)
+        self.assertEqual(consts["MIX_TEST_LEVELS"], 1)
+        self.assertAlmostEqual(consts["MIX_TEST_DIFFICULTY"], 0.70, places=9)
+        self.assertAlmostEqual(consts["MIX_TEST_PATTERN_SPACING_SCALE"], 1.0, places=9)
+        self.assertNotIn("MIX_TEST_PINNED_LEVEL", consts,
+                         "旧的'钉第 14 行'常量必须随子类一起删掉（难度改由 difficulty_range 固定）")
         # 字面量与常量两种写法都要能读（`literal` 先字面量、后常量命名空间）
         self.assertEqual(chk.literal(ast.parse("7", mode="eval").body, consts), 7)
         self.assertEqual(chk.literal(ast.parse("MIX_TEST_LANES", mode="eval").body, consts), 20)
@@ -182,7 +197,7 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         """只 mix 一类 ⇒ 20 列**全部**是 mix（每道 1 列）。"""
         self.assertEqual(chk.allocate([("mix", 1.0)], 20), ["mix"] * 20)
 
-    def test_report_shows_twenty_mix_columns(self):
+    def test_report_shows_twenty_mix_columns_and_one_row(self):
         import contextlib
         import io
 
@@ -192,6 +207,8 @@ class TestMixTestTerrainColumns(unittest.TestCase):
         text = buffer.getvalue()
         self.assertIn("num_cols=20，共 20 列", text)
         self.assertIn("mix                     20 列", text)
+        self.assertIn("网格 **20 道 × 1 难度行**", text)
+        self.assertIn("世界 8 m(X) × 80 m(Y)", text)
 
     def test_report_flags_a_wrong_lane_count(self):
         """负向对照：把期望道数改成别的值，判定必须报 ❌（证明"20 列"是被**检查**的，不是打印而已）。"""
@@ -209,6 +226,40 @@ class TestMixTestTerrainColumns(unittest.TestCase):
             self.assertIn("❌", text)
         finally:
             chk.MIX_TEST_LANES_EXPECTED = original
+
+    def test_report_flags_a_wrong_row_count(self):
+        """负向对照：期望行数被改错时必须报 ❌（"1 行"同样是被检查的）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_LEVELS_EXPECTED
+        chk.MIX_TEST_LEVELS_EXPECTED = 20
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("num_rows 应为 20", text)
+        finally:
+            chk.MIX_TEST_LEVELS_EXPECTED = original
+
+    def test_report_flags_a_wrong_difficulty(self):
+        """负向对照：期望难度被改错时必须报 ❌（难度固定这一条同样是被检查的）。"""
+        import contextlib
+        import io
+
+        original = chk.MIX_TEST_DIFFICULTY_EXPECTED
+        chk.MIX_TEST_DIFFICULTY_EXPECTED = 0.5
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                problems, lines = chk.mix_test_report()
+            text = "\n".join(lines)
+            self.assertGreater(problems, 0, text)
+            self.assertIn("difficulty_range 应为", text)
+        finally:
+            chk.MIX_TEST_DIFFICULTY_EXPECTED = original
 
     def test_mix_test_report_is_clean_and_annotates_absence(self):
         """test 任务判定必须通过（0 问题），并把"其它地形名恒为 0"明确标为预期。"""

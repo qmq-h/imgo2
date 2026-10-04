@@ -7,6 +7,12 @@
 2026-10-04（第二批，用户："地形不要按照列排，放在行里面" ＋ "都固定到14难度"）：排布改成
 **20 条并排的 `mix` 道**（`num_cols=20`，沿世界 Y）× **20 档难度**（`num_rows=20`，沿世界 X），
 且全部环境**固定在第 14 行**（名义 `d = 0.70`），不再依赖 `--terrain_level`。
+2026-10-04（第三批，用户："分居了，但是我不需要还保持那么多行，我需要他们并列"）：**行数 20 → 1**
+（19 行原本永远用不到），世界由 160 m(X) × 80 m(Y) 缩到 **8 m(X) × 80 m(Y)**；难度不再靠"把等级钉在
+第 14 行"，改由 `terrain_generator.difficulty_range = (0.70, 0.70)` **精确固定**（课程公式里
+"行内 `U(0,1)` 抖动"被 `upper − lower = 0` 消掉）；钉等级的子类 `Imgo2CMoEMixTestTerrainImporter`
+**删除**（`num_rows = 1` ⇒ 课程天然只有 0 级，`max_init_terrain_level = 0`）；间距乘子 2.0 → **1.0**
+（用户："各个难度间距先不要调整" ⇒ 评测几何与训练**逐位一致**）。
 
 写法沿用仓库既有做法（`test_masked_terrain_terms.py` / `test_track_geometry.py`）：
 `CMoE_env_cfg.py` 与 `mdp/mix_test_command.py` 顶层都 `import isaaclab`（缺 `omni.log`）无法整模块
@@ -14,17 +20,22 @@ import，所以 ① 纯 PD 数学从**只依赖 torch** 的 `mdp/mix_test_pd.py`
 ② 命令项类用 AST 抽出真实源码、在桩环境里 exec；③ 配置级与注册级断言读**真实源码**（AST）。
 
 覆盖：PD 纯函数（零点/符号/四象限/夹取/默认增益）、命令项在桩 env 上的行为（恒定 vx、PD 写
-`vel_command_b`、世界系镜像 `vel_command_w`、站立环境归零）、配置级（只 mix、**20 条并排的 mix 道**
-（`num_cols=20`）× 20 行难度、难度**固定在第 14 行**（cfg 内钉死 + 冻结课程，不依赖 CLI）、速度与
-heading 范围、不重采样、20 环境、命令项用新类）、mix 地形参数与 `cmoe_terrains.py` 默认值**逐一相等**
-（防漂移；**唯一有意偏离项**是 `pattern_spacing_scale=2.0`）、任务注册、以及"观测/动作契约未改"。
+`vel_command_b`、世界系镜像 `vel_command_w`、站立环境归零）、配置级（只 mix、**20 条并列的 mix 道**
+（`num_cols=20`）× **唯一一行**难度（`num_rows=1`）、难度**精确固定 0.70**（`difficulty_range=(0.70,0.70)`，
+不依赖 CLI、也不再需要子类）、世界坐标 X ∈ [−4,+4] / Y ∈ [−40,+40]、速度与 heading 范围、
+不重采样、20 环境、命令项用新类）、mix 地形参数与 `cmoe_terrains.py` 默认值**逐一相等**
+（防漂移；**唯一有意偏离项**是 `proportion=1.0`）、任务注册、以及"观测/动作契约未改"。
 
-2026-10-04（第二批，用户："地形不要按照列排，放在行里面" ＋ "都固定到14难度" ＋
-"mix 中每个地形间隔大一点 ×1.5~2.0"）：新增 **`TestMixTerrainGeometry`** —— 用桩 `isaaclab` ＋
-**真 `trimesh`** 把 `cmoe_terrains.track_mix_terrain` **真跑起来**，断三件事：
+2026-10-04（第二批）：新增 **`TestMixTerrainGeometry`** —— 用桩 `isaaclab` ＋ **真 `trimesh`** 把
+`cmoe_terrains.track_mix_terrain` **真跑起来**，断三件事：
 ① 默认 `pattern_spacing_scale=1.0` 时逐块几何与改动前（`b2caad1`）公式**逐位一致**（"训练不受影响"）；
 ② `=2.0` 时每块障碍**宽度/高度/顺序不变**、只是间距变大，且图案总长 **6.70 m ≤ 8 m**（含上限 2.40625）；
 ③ 超过瓦片长度时**直接 raise**（不静默溢出，对照问题表 CMOE-13）。
+2026-10-04（第三批）：新增 **`TestMixTestDifficultyPinning`**（难度确实被固定在 0.70，含 Isaac Lab
+源码级依据与"生成器会传进去的 difficulty"两条路径）与 **`TestMixTestSpawnGeometry`**（用真几何量化
+"`scale=2.0` 时出生点紧贴深坑、`scale=1.0` 落在一块 0.60 m 平台上"⇒ 这就是评测场景取 1.0 的原因），
+以及 **`TestTrainingSpawnHazard`**（把训练侧 `spawn_x=0.75` ＋ `pose_range` 的同类隐患量化并**钉住**，
+**本轮不改训练**，见 README 问题表 CMOE-17）。
 """
 
 from __future__ import annotations
@@ -53,20 +64,40 @@ MIX_TEST_PD = MDP / "mix_test_pd.py"
 MIX_TEST_COMMAND = MDP / "mix_test_command.py"
 PLAY_SCRIPT = ROOT / "scripts/rl_lab/cmoe/play.py"
 
+# Isaac Lab 的课程地形生成器源码（核实 `difficulty_range` 的字段名与语义用；缺失则 skip 那一组）
+ISAACLAB_TERRAINS = Path("/root/IsaacLab/source/isaaclab/isaaclab/terrains")
+ISAAC_GENERATOR = ISAACLAB_TERRAINS / "terrain_generator.py"
+ISAAC_GENERATOR_CFG = ISAACLAB_TERRAINS / "terrain_generator_cfg.py"
+ISAAC_IMPORTER = ISAACLAB_TERRAINS / "terrain_importer.py"
+
 TASK_ID = "Imgo2-basemove-rough-cmoe-mix-test"
 CFG_CLASS = "Imgo2CMoEMixTestEnvCfg"
 PLAY_CLASS = "Imgo2CMoERoughPlayEnvCfg"
-IMPORTER_CLASS = "Imgo2CMoEMixTestTerrainImporter"
+TRAIN_CLASS = "Imgo2CMoERoughEnvCfg"
+# 2026-10-04（第三批）：钉等级的子类已删除（`num_rows=1` ⇒ 课程天然冻结）
+REMOVED_IMPORTER_CLASS = "Imgo2CMoEMixTestTerrainImporter"
 
 # mix-test 网格的期望值（与 `CMoE_env_cfg.py` 里的可读常量逐一对应）
 MIX_TEST_LANES = 20
-MIX_TEST_LEVELS = 20
-MIX_TEST_PINNED_LEVEL = 14
-MIX_TEST_PATTERN_SPACING_SCALE = 2.0
+MIX_TEST_LEVELS = 1
+MIX_TEST_DIFFICULTY = 0.70
+MIX_TEST_PATTERN_SPACING_SCALE = 1.0
 TILE_SIZE = (8.0, 4.0)
+# 世界范围 = 单块尺寸 × 网格（行沿 X、道沿 Y）；地形整体按 (-size0·rows/2, -size1·cols/2) 居中
+WORLD_X = (-0.5 * TILE_SIZE[0] * MIX_TEST_LEVELS, 0.5 * TILE_SIZE[0] * MIX_TEST_LEVELS)
+WORLD_Y = (-0.5 * TILE_SIZE[1] * MIX_TEST_LANES, 0.5 * TILE_SIZE[1] * MIX_TEST_LANES)
 MIX_PATTERN_END_UNITS = 160.0
 MIX_PATTERN_START_X = 0.30
 MIX_X_UNIT = 0.02
+# `track_mix_terrain` 的 mix 图案前 5 段（0→30→36→42→48→60 索引）是**首尾相接**的 ⇒ 第一处
+# 原始深坑的左沿恒为 `pattern_start_x + 60 · x_unit = 1.50 m`（与 difficulty / scale 无关，scale=1.0）。
+MIX_FIRST_PIT_X = MIX_PATTERN_START_X + 60.0 * MIX_X_UNIT
+# 出生点（瓦片局部 x）与走廊半宽（`corridor_width=0.80` ⇒ ±0.40 m；走廊外是 -0.50 m 坑底）
+MIX_SPAWN_X = 0.75
+MIX_CORRIDOR_HALF_WIDTH = 0.40
+# 训练侧 `Imgo2CMoERoughEnvCfg` 的 reset 平移范围（`pose_range`），用于量化出生点隐患
+TRAIN_POSE_RANGE_X = (-0.5, 0.5)
+TRAIN_POSE_RANGE_Y = (-0.5, 0.5)
 
 try:
     import torch
@@ -462,15 +493,15 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         kwargs = _kwargs(call)
         self.assertAlmostEqual(_literal(kwargs["proportion"]), 1.0, places=9)
 
-    def test_num_cols_twenty_and_num_rows_twenty(self):
-        """**20 条并排的 mix 道**（列 ⇒ 沿世界 Y）× 20 档难度（行 ⇒ 沿世界 X）。"""
+    def test_num_cols_twenty_and_num_rows_one(self):
+        """**20 条并列的 mix 道**（列 ⇒ 沿世界 Y）× **唯一一行**难度（行 ⇒ 沿世界 X）。"""
         self.assertEqual(
             _literal(self.assign["self.scene.terrain.terrain_generator.num_cols"]), "MIX_TEST_LANES"
         )
         self.assertEqual(
             _literal(self.assign["self.scene.terrain.terrain_generator.num_rows"]), "MIX_TEST_LEVELS"
         )
-        # 常量本身必须是 20/20（可读常量只是名字，值要钉住）
+        # 常量本身必须是 20/1（可读常量只是名字，值要钉住）
         self.assertEqual(_module_constants()["MIX_TEST_LANES"], MIX_TEST_LANES)
         self.assertEqual(_module_constants()["MIX_TEST_LEVELS"], MIX_TEST_LEVELS)
 
@@ -492,69 +523,99 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         self.assertEqual(_module_constants()["MIX_TEST_LANES"], 20,
                          "默认环境数 = 道数 ⇒ 环境 i → 第 i 道（一条道一个环境）")
 
-    # --------------------------------------------------- 难度固定 14（不依赖 CLI）
-    def test_max_init_terrain_level_is_pinned_to_fourteen(self):
+    # --------------------------------------------------- 难度精确固定 0.70（不依赖 CLI）
+    def test_difficulty_range_is_pinned_to_the_constant(self):
+        """`terrain_generator.difficulty_range = (d, d)`（上下界同值 ⇒ 抖动被消掉）。"""
+        node = self.assign["self.scene.terrain.terrain_generator.difficulty_range"]
         self.assertEqual(
-            _literal(self.assign["self.scene.terrain.max_init_terrain_level"]), "MIX_TEST_PINNED_LEVEL"
+            ast.unparse(node), "(MIX_TEST_DIFFICULTY, MIX_TEST_DIFFICULTY)",
+            "必须是常量名对（不是字面量）以便一处改、两处生效",
         )
-        self.assertEqual(_module_constants()["MIX_TEST_PINNED_LEVEL"], MIX_TEST_PINNED_LEVEL)
+        self.assertAlmostEqual(_module_constants()["MIX_TEST_DIFFICULTY"], MIX_TEST_DIFFICULTY, places=9)
 
-    def test_terrain_importer_is_the_pinning_subclass(self):
-        """`scene.terrain.class_type` 指向本仓的钉子类 ⇒ 等级固定 + 课程冻结（都不依赖 CLI）。"""
-        self.assertEqual(
-            ast.unparse(self.assign["self.scene.terrain.class_type"]), IMPORTER_CLASS
-        )
-        klass = _class_def(CMOE_CFG, IMPORTER_CLASS)
-        self.assertIsNotNone(klass, f"{IMPORTER_CLASS} 不存在")
-        bases = [ast.unparse(b) for b in klass.bases]
-        self.assertEqual(bases, ["terrain_gen.TerrainImporter"],
-                         f"必须继承 Isaac Lab 的 TerrainImporter，实测 {bases}")
+    def test_max_init_terrain_level_is_zero(self):
+        """`num_rows = 1` ⇒ 0 是**唯一**合法等级；显式写 0 让"课程无从升级"自文档。"""
+        self.assertEqual(_literal(self.assign["self.scene.terrain.max_init_terrain_level"]), 0)
 
-    def test_importer_pins_levels_and_freezes_the_curriculum(self):
-        """子类的两条关键语义：把 `terrain_levels` 全设成 `pinned_level`；`update_env_origins` 空操作。"""
-        body = ast.get_source_segment(self.src, _class_def(CMOE_CFG, IMPORTER_CLASS))
-        self.assertIn("self.terrain_levels[:] = int(self.pinned_level)", body)
-        self.assertIn("pinned_level: int = MIX_TEST_PINNED_LEVEL", body)
-        self.assertIsNotNone(_method_def(CMOE_CFG, IMPORTER_CLASS, "configure_env_origins"),
-                             "子类必须重写 configure_env_origins")
-        method = _method_def(CMOE_CFG, IMPORTER_CLASS, "update_env_origins")
-        self.assertIsNotNone(method, "子类必须重写 update_env_origins（否则难度会在一局内漂走）")
-        stmts = [n for n in method.body if not isinstance(n, ast.Expr)]
-        self.assertEqual(len(stmts), 1, f"update_env_origins 应只有一条 return，实测 {len(stmts)} 条")
-        self.assertIsInstance(stmts[0], ast.Return)
+    def test_terrain_importer_subclass_is_gone_and_class_type_untouched(self):
+        """旧"钉第 14 行"的子类已删；`class_type` 不再被本类覆盖（沿用默认 `TerrainImporter`）。"""
+        self.assertNotIn("class_type", self.assign, "本类不得再设 `scene.terrain.class_type`")
+        self.assertIsNone(_class_def(CMOE_CFG, REMOVED_IMPORTER_CLASS),
+                          f"{REMOVED_IMPORTER_CLASS} 必须已删除")
+        # 注释里保留"已删除"的说明是可以的（`ast` 看不见注释）；但代码里不得再**引用**这个名字
+        tree = ast.parse(self.src)
+        referenced = [n.id for n in ast.walk(tree)
+                      if isinstance(n, ast.Name) and n.id == REMOVED_IMPORTER_CLASS]
+        referenced += [n.attr for n in ast.walk(tree)
+                       if isinstance(n, ast.Attribute) and n.attr == REMOVED_IMPORTER_CLASS]
+        self.assertEqual(referenced, [], f"代码里不得再引用旧子类：{referenced}")
 
-    def test_importer_warns_when_envs_exceed_lanes(self):
-        """`num_envs > num_cols` 时 `terrain_types` 会重复（出生点重叠）⇒ 子类必须告警。"""
-        body = ast.get_source_segment(self.src, _class_def(CMOE_CFG, IMPORTER_CLASS))
-        self.assertIn("num_envs > num_cols", body)
-        self.assertIn("[WARN]", body)
+    def test_single_row_makes_the_curriculum_inherently_frozen(self):
+        """`num_rows = 1` 时课程**只有一个合法等级**，逐字复现 Isaac Lab 的两段逻辑来证明。
 
+        * `_compute_env_origins_curriculum`（`terrain_importer.py:334-341`）：
+          `max_init_level = min(max_init_terrain_level, num_rows−1) = 0` ⇒ `randint(0, 1) = 0`；
+        * `update_env_origins`（`:308-323`）：`level += move_up − move_down` 后
+          `where(level >= max_terrain_level(= num_rows = 1), randint_like(level, 1), clip(level, 0))`
+          ⇒ **只会得到 0**（`randint_like(..., 1)` 的取值域是 [0, 1)）⇒ 下标 `terrain_origins[0, col]` 恒合法。
+        """
+        num_rows, max_init = MIX_TEST_LEVELS, 0
+        max_init_level = min(max_init, num_rows - 1)
+        self.assertEqual(max_init_level, 0)
+        self.assertEqual(list(range(0, max_init_level + 1)), [0], "初始等级只能是 0（不是 0..19）")
+
+        max_terrain_level = num_rows  # `self.max_terrain_level = num_rows`
+        for level_after_move in (0, 1, 2):
+            with self.subTest(level_after_move=level_after_move):
+                if level_after_move >= max_terrain_level:
+                    wrapped = list(range(0, max_terrain_level))  # randint_like(..., num_rows)
+                else:
+                    wrapped = [max(level_after_move, 0)]
+                self.assertEqual(wrapped, [0], f"升级后仍必须是 0，实测 {wrapped}")
+        self.assertLess(0, max_terrain_level, "唯一行下标 0 必须在 [0, num_rows) 内 ⇒ 不会越界")
+
+    def test_isaac_level_logic_matches_the_source(self):
+        """上面那条推理必须与**已安装的 Isaac Lab 源码**逐字一致（文件缺失则跳过）。"""
+        if not ISAAC_IMPORTER.is_file():
+            self.skipTest(f"未安装 Isaac Lab 源码：{ISAAC_IMPORTER}")
+        source = ISAAC_IMPORTER.read_text(encoding="utf-8")
+        self.assertIn("max_init_level = min(self.cfg.max_init_terrain_level, num_rows - 1)", source)
+        self.assertIn("self.terrain_levels = torch.randint(0, max_init_level + 1,", source)
+        self.assertIn("self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down", source)
+        self.assertIn("self.terrain_levels[env_ids] >= self.max_terrain_level", source)
+        self.assertIn("torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level)", source)
 
     def test_class_type_is_not_touched_for_train_or_play(self):
-        """训练/play 的 `class_type` 仍是 Isaac Lab 的默认 `TerrainImporter`（本改动只影响评测 cfg）。"""
-        for name, label in (("Imgo2CMoERoughEnvCfg", "训练"), (PLAY_CLASS, "play")):
-            self.assertNotIn("class_type", _class_source(name), f"{label} 链不得改 class_type")
+        """训练/play/评测的 `class_type` 都保持 Isaac Lab 的默认 `TerrainImporter`（本改动不引入子类）。"""
+        for name, label in ((TRAIN_CLASS, "训练"), (PLAY_CLASS, "play"), (CFG_CLASS, "mix-test")):
+            assigned = _assignments(_post_init(CMOE_CFG, name))
+            touched = sorted(t for t in assigned if t.endswith("class_type"))
+            self.assertEqual(touched, [], f"{label} 链不得改 class_type，实测 {touched}")
         self.assertIn("max_init_terrain_level = 5", _class_source(PLAY_CLASS),
                       "play 的初始等级上限必须保持 5")
 
     # --------------------------------------------------- 障碍间距乘子
-    def test_pattern_spacing_scale_is_two(self):
+    def test_pattern_spacing_scale_is_one(self):
+        """评测场景的间距乘子 = **1.0 = 训练默认值**（用户："各个难度间距先不要调整"）。"""
         call = self.assign[
             next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
         ]
         kwargs = _kwargs(call)
-        self.assertIn("pattern_spacing_scale", kwargs, "间距乘子必须显式写出")
+        self.assertIn("pattern_spacing_scale", kwargs, "间距乘子必须显式写出（= 1.0，与训练一致）")
         self.assertEqual(ast.unparse(kwargs["pattern_spacing_scale"]),
                          "MIX_TEST_PATTERN_SPACING_SCALE")
         self.assertEqual(
             _module_constants()["MIX_TEST_PATTERN_SPACING_SCALE"],
             MIX_TEST_PATTERN_SPACING_SCALE,
         )
+        self.assertEqual(MIX_TEST_PATTERN_SPACING_SCALE, 1.0)
+        self.assertEqual(_mix_defaults()["pattern_spacing_scale"], MIX_TEST_PATTERN_SPACING_SCALE,
+                         "评测场景必须与训练默认值同值 ⇒ mix 几何逐位一致")
 
     def test_default_spacing_scale_stays_one_for_training(self):
         """硬要求：`CMoETrackMixTerrainCfg` 的默认乘子必须是 **1.0**；训练实例化**不传**它。"""
         self.assertEqual(_mix_defaults()["pattern_spacing_scale"], 1.0)
-        train = _class_source("Imgo2CMoERoughEnvCfg")
+        train = _class_source(TRAIN_CLASS)
         call = next(
             node for node in ast.walk(ast.parse(train))
             if isinstance(node, ast.Call) and ast.unparse(node.func) == "CMoETrackMixTerrainCfg"
@@ -573,21 +634,31 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
         scale = MIX_TEST_PATTERN_SPACING_SCALE
         size_x = TILE_SIZE[0]
         end = offset + MIX_PATTERN_END_UNITS * x_unit * scale
-        self.assertAlmostEqual(end, 6.70, places=9, msg="scale=2.0 时图案末端应在 6.70 m")
+        self.assertAlmostEqual(end, 3.50, places=9, msg="scale=1.0 时图案末端应在 3.50 m")
         self.assertLess(end, size_x, f"图案总长 {end} m 必须装得进 {size_x} m 瓦片")
-        self.assertAlmostEqual(size_x - end, 1.30, places=9, msg="尾部走廊应剩 1.30 m")
+        self.assertAlmostEqual(size_x - end, 4.50, places=9, msg="尾部走廊应剩 4.50 m")
         max_scale = (size_x - offset) / (MIX_PATTERN_END_UNITS * x_unit)
         self.assertAlmostEqual(max_scale, 2.40625, places=9,
                                msg="该瓦片上乘子上限 = (8 − 0.30) / (160 × 0.02)")
         self.assertGreaterEqual(max_scale, scale, "选定乘子必须 ≤ 上限（否则 raise）")
-        # 用户给的区间是 1.5~2.0；取的是上限
-        self.assertGreaterEqual(scale, 1.5)
-        self.assertLessEqual(scale, 2.0)
+
+    def test_world_extent_is_eight_by_eighty(self):
+        """世界范围 = 单块尺寸 × 网格：**8 m(X) × 80 m(Y)**（旧方案 20 行时是 160 m × 80 m）。"""
+        self.assertNotIn("terrain_generator.size", _class_source(CFG_CLASS),
+                         "单块尺寸由父类设定，本类不得改")
+        self.assertEqual(WORLD_X, (-4.0, 4.0), "唯一一行 × 8 m ⇒ X ∈ [−4, +4]")
+        self.assertEqual(WORLD_Y, (-40.0, 40.0), "20 道 × 4 m ⇒ Y ∈ [−40, +40]")
+        rows = _literal(self.assign["self.scene.terrain.terrain_generator.num_rows"])
+        cols = _literal(self.assign["self.scene.terrain.terrain_generator.num_cols"])
+        self.assertEqual((rows, cols), ("MIX_TEST_LEVELS", "MIX_TEST_LANES"))
+        # 出生点在瓦片局部 x = spawn_x；瓦片被 `_get_terrain_mesh` 按 −size/2 居中、整片再按
+        # −size·rows/2 居中 ⇒ 唯一一行的世界 X 起点 = −4 ⇒ 出生点 X = spawn_x − 4 = −3.25。
+        self.assertAlmostEqual(MIX_SPAWN_X - 4.0, -3.25, places=9)
 
     def test_tile_size_is_unchanged(self):
-        """`size=(8, 4)` 由父类设定，本类不得改（世界范围：X 20×8=160 m、Y 20×4=80 m）。"""
+        """`size=(8, 4)` 由父类设定，本类不得改（训练侧仍是 20 行 ⇒ X 20×8=160 m）。"""
         self.assertNotIn("terrain_generator.size", _class_source(CFG_CLASS))
-        train = _class_source("Imgo2CMoERoughEnvCfg")
+        train = _class_source(TRAIN_CLASS)
         self.assertIn("self.scene.terrain.terrain_generator.size = (8.0, 4.0)", train)
         self.assertIn("self.scene.terrain.terrain_generator.num_rows = 20", train)
         self.assertIn("self.scene.terrain.terrain_generator.num_cols = 40", train)
@@ -595,8 +666,10 @@ class TestMixTestEnvCfgSource(unittest.TestCase):
     def test_mix_terrain_params_match_training_defaults(self):
         """mix 的地形参数**逐字沿用训练值**（＝ `cmoe_terrains.py` 的类默认值），防两处漂移。
 
-        唯一两处**有意偏离**：`proportion=1.0`（本场景只有这一类）与
-        `pattern_spacing_scale=2.0`（评测专用的间距乘子）—— 两者都单独断言。
+        唯一**有意偏离**的是 `proportion=1.0`（本场景只有这一类）—— 单独断言。
+        `pattern_spacing_scale` 虽然显式写出，但取值 **= 训练默认 1.0**（值来自常量名，故仍在
+        `deviations` 里以免 `float("MIX_TEST_PATTERN_SPACING_SCALE")` 报错）；`spawn_x`/`pattern_start_x`
+        也都是训练同值 ⇒ **评测几何与训练逐位一致**。
         """
         call = self.assign[
             next(k for k in self.assign if re.search(r"\.sub_terrains\['mix'\]$", k))
@@ -763,9 +836,51 @@ def _mesh_rows(meshes) -> list[tuple]:
     return rows
 
 
+def _walkable_and_pits(meshes, pit_depth: float = 0.50):
+    """把真网格切成**沿 X 的可走面区间**与**坑区间**。
+
+    第 0 块是整宽坑底（`_platform(0, size[0], size[1], -pit_depth)`，顶面 = `-pit_depth`），其余块是
+    `_corridor`（可走面，顶面 ≥ 0 或台阶高度）。返回 ``(walkable, pits)``：
+
+    * ``walkable``：``[(x0, x1, top), ...]``，按 x0 升序（相邻可走块相接时仍各自成段）；
+    * ``pits``：相邻可走块之间**空出来的** X 区间 ``[(x0, x1), ...]``（顶面 = `-pit_depth` 的坑）。
+    """
+    rows = sorted(_mesh_rows(meshes), key=lambda r: r[0])
+    # 只有整宽坑底那一块的下表面/顶面在 -pit_depth（走道块的顶面恒 ≥ 0）⇒ 用它把两类分开
+    walk = [r for r in rows if abs(r[4] + pit_depth) > 1.0e-9]
+    walk.sort(key=lambda r: r[0])
+    pits = []
+    for before, after in zip(walk, walk[1:]):
+        if after[0] - before[1] > 1.0e-9:
+            pits.append((before[1], after[0]))
+    return [(r[0], r[1], r[4]) for r in walk], pits
+
+
+def _spawn_probe(meshes, spawn_x: float = MIX_SPAWN_X, pit_depth: float = 0.50):
+    """出生点的真几何读数：``{on_solid, piece, solid_ahead, first_pit_x, walkable_total}``。"""
+    walk, pits = _walkable_and_pits(meshes, pit_depth)
+    holders = [w for w in walk if w[0] - 1.0e-9 <= spawn_x <= w[1] + 1.0e-9]
+    next_pits = [p for p in pits if p[0] >= spawn_x - 1.0e-9]
+    first_pit_x = min(p[0] for p in next_pits) if next_pits else None
+    return {
+        "on_solid": bool(holders),
+        "piece": holders[0] if holders else None,
+        "first_pit_x": first_pit_x,
+        "solid_ahead": (first_pit_x - spawn_x) if first_pit_x is not None else TILE_SIZE[0] - spawn_x,
+        "walkable_total": sum(b - a for a, b, _ in walk),
+        "pit_total": sum(b - a for a, b in pits),
+        "pits": pits,
+        "walkable": walk,
+    }
+
+
 @unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
 class TestMixTerrainGeometry(unittest.TestCase):
-    """**真跑** `track_mix_terrain`（桩 isaaclab ＋ 真 trimesh）核对间距乘子与溢出保护。"""
+    """**真跑** `track_mix_terrain`（桩 isaaclab ＋ 真 trimesh）核对间距乘子与溢出保护。
+
+    2026-10-04（第三批）：评测场景的乘子已设回 **1.0**（与训练同值），但 `pattern_spacing_scale`
+    字段本体与 `=2.0` 的行为**保留并继续在这里锁定**（中性基础设施：默认 1.0 ⇒ 训练几何逐位不变）。
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -773,11 +888,14 @@ class TestMixTerrainGeometry(unittest.TestCase):
         cls.function = staticmethod(namespace["track_mix_terrain"])
         cls.cfg_class = namespace["CMoETrackMixTerrainCfg"]
 
-    def _build(self, spacing, difficulty, size=TILE_SIZE):
+    def _build(self, spacing, difficulty, size=TILE_SIZE, spawn_x=MIX_SPAWN_X,
+               pattern_start_x=MIX_PATTERN_START_X):
         cfg = self.cfg_class()
         cfg.size = size
         cfg.proportion = 1.0
         cfg.pattern_spacing_scale = spacing
+        cfg.spawn_x = spawn_x
+        cfg.pattern_start_x = pattern_start_x
         return self.function(difficulty, cfg)[0]
 
     def _assert_matches_reference(self, meshes, spacing, difficulty, size=TILE_SIZE):
@@ -886,6 +1004,271 @@ class TestMixTerrainGeometry(unittest.TestCase):
         self.assertIn("pattern_spacing_scale: float = 1.0", source)
 
 
+# ============================================ ③.6 难度"确实被固定在 0.70"（离线可核）
+def _isaac_curriculum_difficulty(row: int, num_rows: int, difficulty_range, eta: float) -> float:
+    """**逐字复现** `terrain_generator.py:255-257`（`_generate_curriculum_terrains`）的难度公式：
+
+        lower, upper = self.cfg.difficulty_range
+        difficulty = (sub_row + self.np_rng.uniform()) / self.cfg.num_rows
+        difficulty = lower + (upper - lower) * difficulty
+    """
+    lower, upper = difficulty_range
+    difficulty = (row + eta) / num_rows
+    return lower + (upper - lower) * difficulty
+
+
+class TestMixTestDifficultyPinning(unittest.TestCase):
+    """难度**确实**被固定在 0.70：两条路径（生成器会传进去的 difficulty / 真跑 `track_mix_terrain`）。
+
+    路径① ＝ 用 cfg 里的 `num_rows = 1` 与 `difficulty_range = (0.70, 0.70)` 走 Isaac Lab 的课程公式
+    （把 `U(0,1)` 抽成变量扫描）⇒ 要求**逐块精确 0.70**；
+    路径② ＝ 把该 difficulty 真的喂给 `cmoe_terrains.track_mix_terrain`（桩 isaaclab ＋ 真 trimesh），
+    核对生成出的几何就是 d = 0.70 那一套（栏高 0.2618 m、第一处坑左沿 1.50 m、坑宽 0.18 m）。
+    另有一条**源码级**断言：字段名与语义必须与已安装的 Isaac Lab 一致（缺失则 skip）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.assign = _assignments(_post_init(CMOE_CFG, CFG_CLASS))
+
+    def _pinned_range(self):
+        node = self.assign["self.scene.terrain.terrain_generator.difficulty_range"]
+        self.assertEqual(ast.unparse(node), "(MIX_TEST_DIFFICULTY, MIX_TEST_DIFFICULTY)")
+        d = _module_constants()["MIX_TEST_DIFFICULTY"]
+        return (d, d)
+
+    # ---------------------------------------------------------------- 路径 ①：公式
+    def test_curriculum_formula_yields_exactly_the_constant(self):
+        num_rows = MIX_TEST_LEVELS
+        difficulty_range = self._pinned_range()
+        for eta in (0.0, 1.0e-9, 0.25, 0.5, 0.75, 1.0 - 1.0e-12):
+            with self.subTest(eta=eta):
+                got = _isaac_curriculum_difficulty(0, num_rows, difficulty_range, eta)
+                self.assertAlmostEqual(got, MIX_TEST_DIFFICULTY, places=15,
+                                       msg=f"η={eta} 时难度必须精确 {MIX_TEST_DIFFICULTY}，实测 {got}")
+
+    def test_random_branch_is_pinned_too(self):
+        """另一条分支（`curriculum=False` 时走 `_generate_random_terrains`）同样精确：
+        `U(lower, upper) = U(0.70, 0.70) = 0.70` ⇒ **两条生成路径都不会抖动**。"""
+        lower, upper = self._pinned_range()
+        self.assertEqual(lower, upper)
+        self.assertAlmostEqual(float(np.random.default_rng(0).uniform(lower, upper)), 0.70, places=15)
+
+    def test_formula_jitter_is_eliminated_by_the_zero_width_range(self):
+        """抖动被消掉的**机制**：`upper − lower = 0` ⇒ η 对结果**完全没有影响**。"""
+        num_rows = MIX_TEST_LEVELS
+        difficulty_range = self._pinned_range()
+        values = [_isaac_curriculum_difficulty(0, num_rows, difficulty_range, eta)
+                  for eta in (0.0, 0.4999, 0.9999)]
+        self.assertEqual(len(set(values)), 1, f"同一行内的 η 不应改变难度，实测 {values}")
+        # 对照：旧方案（20 行 + 默认 (0,1) 的第 14 行）**有**抖动 ⇒ 实际 d ∈ [0.70, 0.75)
+        old = [_isaac_curriculum_difficulty(14, 20, (0.0, 1.0), eta) for eta in (0.0, 0.9999)]
+        self.assertAlmostEqual(old[0], 0.70, places=9)
+        self.assertGreater(old[1], 0.70)
+        self.assertLess(old[1], 0.75)
+
+    def test_generator_difficulty_source_is_the_curriculum_formula(self):
+        """**源码级依据**：字段名 `difficulty_range` 与两条分支的公式在已安装的 Isaac Lab 里逐字存在。"""
+        if not (ISAAC_GENERATOR.is_file() and ISAAC_GENERATOR_CFG.is_file()):
+            self.skipTest(f"未安装 Isaac Lab 源码：{ISAAC_GENERATOR}")
+        cfg_src = ISAAC_GENERATOR_CFG.read_text(encoding="utf-8")
+        gen_src = ISAAC_GENERATOR.read_text(encoding="utf-8")
+        self.assertIn("difficulty_range: tuple[float, float] = (0.0, 1.0)", cfg_src,
+                      "字段名/默认值必须还是 `difficulty_range`（本方案的前提）")
+        self.assertIn("curriculum: bool = False", cfg_src, "`curriculum` 字段（本仓在 runtime 置 True）")
+        self.assertIn("difficulty = (sub_row + self.np_rng.uniform()) / self.cfg.num_rows", gen_src,
+                      "课程模式的逐行映射（num_rows=1 ⇒ 0/1 = 0）")
+        self.assertIn("lower, upper = self.cfg.difficulty_range", gen_src)
+        self.assertIn("difficulty = lower + (upper - lower) * difficulty", gen_src,
+                      "上下界同值 ⇒ 这一项恒等于 lower ⇒ 行内 U(0,1) 抖动被消掉")
+        self.assertIn("difficulty = self.np_rng.uniform(*self.cfg.difficulty_range)", gen_src,
+                      "随机分支同样被 (0.70, 0.70) 钉住")
+        # 本仓在 `terrain_levels` 课程存在时会把 `curriculum` 置 True ⇒ 走上面那条课程公式
+        vel = (ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/"
+               "velocity_env_cfg.py").read_text(encoding="utf-8")
+        self.assertIn("self.scene.terrain.terrain_generator.curriculum = True", vel)
+        self.assertIn('getattr(self.curriculum, "terrain_levels", None) is not None', vel)
+
+    # ------------------------------------------------- 路径 ②：真跑 track_mix_terrain
+    @unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
+    def test_track_mix_terrain_at_the_pinned_difficulty(self):
+        """把"生成器会传进去的 difficulty"真喂给 `track_mix_terrain`，核对就是 d = 0.70 那套几何。"""
+        namespace = _load_cmoe_terrains()
+        function, cfg_class = namespace["track_mix_terrain"], namespace["CMoETrackMixTerrainCfg"]
+        num_rows, difficulty_range = MIX_TEST_LEVELS, self._pinned_range()
+        difficulty = _isaac_curriculum_difficulty(0, num_rows, difficulty_range, 0.5)
+
+        def build(d):
+            cfg = cfg_class()
+            cfg.size = TILE_SIZE
+            cfg.proportion = 1.0
+            cfg.pattern_spacing_scale = MIX_TEST_PATTERN_SPACING_SCALE
+            return function(d, cfg)[0]
+
+        rows = sorted(_mesh_rows(build(difficulty)), key=lambda r: r[0])
+        walkable = [r for r in rows if abs(r[4] + 0.50) > 1.0e-9]
+        # d = 0.70 的签名：栏（170 索引）顶面 = 170 × 0.002 × 1.1 × 0.70 = 0.2618 m
+        self.assertAlmostEqual(difficulty, 0.70, places=15)
+        self.assertAlmostEqual(max(r[4] for r in walkable), 0.2618, places=9,
+                               msg="高栏顶面 = 170·z_unit·height_scale·d")
+        # 第一处原始深坑：前 5 段首尾相接 ⇒ 左沿 = pattern_start_x + 60·x_unit = 1.50 m；
+        # d = 0.70 ⇒ gap_shrink = round(10·0.3) = 3 ⇒ 右沿 = 0.30 + (72−3)·0.02 = 1.68 m
+        self.assertAlmostEqual(MIX_FIRST_PIT_X, 1.50, places=9)
+        self.assertIn((1.50, 1.68), [(round(a, 4), round(b, 4)) for a, b in _walkable_and_pits(build(difficulty))[1]])
+        # 与 d = 0.0 / 1.0 明显不同 ⇒ "固定成 0.70"是**有意义**的（不是恰好都一样）
+        self.assertNotAlmostEqual(max(r[4] for r in sorted(_mesh_rows(build(0.0)), key=lambda r: r[0])
+                                      if abs(r[4] + 0.50) > 1.0e-9), 0.2618, places=9)
+        self.assertNotAlmostEqual(max(r[4] for r in sorted(_mesh_rows(build(1.0)), key=lambda r: r[0])
+                                      if abs(r[4] + 0.50) > 1.0e-9), 0.2618, places=9)
+
+
+# ================================= ③.7 出生点真几何（为什么评测场景把乘子设回 1.0）
+@unittest.skipIf(trimesh is None, f"trimesh unavailable: {TRIMESH_ERROR}")
+class TestMixTestSpawnGeometry(unittest.TestCase):
+    """用真网格量化 `spawn_x = 0.75` 的位置与"前方实心地面"（用户实测反馈："出生点在一个很大的 gap 上"）。
+
+    实测结论（`d = 0.70`，`size = (8,4)`，`pattern_start_x = 0.30`）：
+
+    | scale | 出生点落在 | 前方实心地面 | 第一处坑 |
+    |---|---|---|---|
+    | 1.0（**本场景选用** = 训练同值） | `[0.30, 0.90]` 顶面 0.00 m | **0.75 m** | `[1.50, 1.68]`（宽 0.18） |
+    | 1.5 | 同上 | 0.15 m | `[0.90, 1.20]`（宽 0.30） |
+    | 2.0 | 同上 | 0.15 m | `[0.90, 1.50]`（宽 **0.60**） |
+
+    即：乘子 2.0 时出生点**仍然踩在实心面上**（不是"悬在坑里"），但它离平台前缘只有 0.15 m ——
+    机器人机身前缘/前足（约 +0.2 m）已经探进 0.60 m 的整宽深坑 ⇒ 观感与实测都像"出生在一个大 gap 上"。
+    本轮**不改几何**（用户："各个难度间距先不要调整"）⇒ 评测场景固定用 1.0；`scale ≥ 1.5` 的读数在此
+    作为**回归锁定**保留（改 `track_mix_terrain` 的间距语义会让这些数字变化）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        namespace = _load_cmoe_terrains()
+        cls.function = staticmethod(namespace["track_mix_terrain"])
+        cls.cfg_class = namespace["CMoETrackMixTerrainCfg"]
+
+    def _spawn(self, spacing, difficulty=0.70):
+        cfg = self.cfg_class()
+        cfg.size = TILE_SIZE
+        cfg.proportion = 1.0
+        cfg.pattern_spacing_scale = spacing
+        return _spawn_probe(self.function(difficulty, cfg)[0])
+
+    def test_scene_scale_one_keeps_the_spawn_on_a_flat_platform(self):
+        """评测场景（scale = 1.0）：出生点在一块 0.60 m 的平平台上，前方 0.75 m 才是第一处坑。"""
+        probe = self._spawn(MIX_TEST_PATTERN_SPACING_SCALE)
+        self.assertTrue(probe["on_solid"])
+        self.assertAlmostEqual(probe["piece"][0], 0.30, places=9)
+        self.assertAlmostEqual(probe["piece"][1], 0.90, places=9)
+        self.assertAlmostEqual(probe["piece"][2], 0.0, places=9, msg="平台顶面 = 0（可走）")
+        self.assertAlmostEqual(probe["first_pit_x"], MIX_FIRST_PIT_X, places=9)
+        self.assertAlmostEqual(probe["solid_ahead"], 0.75, places=9)
+        self.assertAlmostEqual(probe["pits"][0][1] - probe["pits"][0][0], 0.18, places=9)
+
+    def test_scale_two_puts_the_spawn_at_the_lip_of_a_sixty_centimetre_pit(self):
+        """scale = 2.0（本轮**不采用**）：出生点仍在实心面上，但前方只剩 0.15 m，且第一处坑宽 0.60 m。"""
+        probe = self._spawn(2.0)
+        self.assertTrue(probe["on_solid"], "2.0 时出生点仍踩在 [0.30, 0.90] 的实心面上")
+        self.assertAlmostEqual(probe["piece"][1], 0.90, places=9)
+        self.assertAlmostEqual(probe["first_pit_x"], 0.90, places=9, msg="深坑从 0.90 m 就开始")
+        self.assertAlmostEqual(probe["solid_ahead"], 0.15, places=9)
+        self.assertAlmostEqual(probe["pits"][0][1] - probe["pits"][0][0], 0.60, places=9)
+        # 0.15 m < 机器人半长（约 0.2 m）⇒ 前足/机身前缘已经探进坑里：这就是"出生点在一个大 gap 上"的读数
+        self.assertLess(probe["solid_ahead"], 0.20)
+
+    def test_scale_one_point_five_is_only_slightly_better(self):
+        probe = self._spawn(1.5)
+        self.assertAlmostEqual(probe["solid_ahead"], 0.15, places=9)
+        self.assertAlmostEqual(probe["pits"][0][1] - probe["pits"][0][0], 0.30, places=9)
+
+    def test_walkable_total_shrinks_and_pit_total_grows_with_scale(self):
+        """乘子越大 ⇒ 可走面总长越小、坑总长越大（"拉开间距"实际是"更多/更长的深坑"，与 docs §6.2 一致）。"""
+        probes = [self._spawn(s) for s in (1.0, 1.5, 2.0)]
+        self.assertEqual([round(p["walkable_total"], 4) for p in probes], [7.64, 6.04, 4.44])
+        self.assertEqual([round(p["pit_total"], 4) for p in probes], [0.36, 1.96, 3.56])
+        for smaller, bigger in zip(probes, probes[1:]):
+            self.assertLess(bigger["walkable_total"], smaller["walkable_total"])
+            self.assertGreater(bigger["pit_total"], smaller["pit_total"])
+
+
+# ================================= ③.8 训练侧出生点隐患（**本轮不改训练**，只量化+登记）
+class TestTrainingSpawnHazard(unittest.TestCase):
+    """训练侧 mix 的**同类**出生点隐患：`spawn_x = 0.75` ＋ `pose_range`（默认 ±0.5）—— 待决，本轮不改。
+
+    量化（结论来自真几何 + 训练 cfg 的 `pose_range`，见 README 问题表 CMOE-17）：
+
+    * **X**：训练 `scale = 1.0` ⇒ 第一处坑左沿恒为 **1.50 m**（前 5 段首尾相接，与 d 无关）；
+      `pose_range x = ±0.5` ⇒ 出生 x ∈ **[0.25, 1.25]** ⇒ **永远不会落在坑上**（越界阈值是
+      `spawn_x > 1.00`，即现行 0.75 还差 0.25 m 余量）；但 **x > 0.90（占 35%）会落在抬高的台阶段上**
+      （顶面 0.0462 / 0.0924 / 0.1386 m @ d=0.70，d=1.0 时最高 0.198 m），而 `reset_root_state_uniform`
+      的 z 只用 `env_origins.z(=0) + pose_range.z(=0)`（**不看局部地形高度**）⇒ 足端会**嵌进台阶**；
+      最坏情况 x = 1.25 距坑沿只剩 **0.25 m**（约等于机身半长）。
+    * **Y**：mix 走廊只有 **0.80 m** 宽（半宽 0.40 m），而 `pose_range y = ±0.5` 超出半宽 ⇒
+      **|Δy| > 0.40 的 20% 重置会让机器人基座横向落在 -0.50 m 的坑底上方**（下落 0.5 m）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.assign = _assignments(_post_init(CMOE_CFG, TRAIN_CLASS))
+
+    def _train_pose_range(self):
+        key = next(k for k in self.assign if k.endswith("params['pose_range']"))
+        return _dict_items(self.assign[key])
+
+    def test_training_pose_range_is_plus_minus_half_a_metre(self):
+        ranges = {k: _literal(v) for k, v in self._train_pose_range().items()}
+        self.assertEqual(ranges["x"], TRAIN_POSE_RANGE_X, "训练侧 x 抖动 ±0.5（隐患的来源）")
+        self.assertEqual(ranges["y"], TRAIN_POSE_RANGE_Y, "训练侧 y 抖动 ±0.5 超出走廊半宽 0.40 m")
+        self.assertEqual(ranges["z"], (0.0, 0.0), "z 不做抖动 ⇒ 出生高度完全由 env_origins.z(=0) 决定")
+
+    def test_first_pit_x_is_independent_of_difficulty_at_scale_one(self):
+        """第一处坑左沿 = `pattern_start_x + 60·x_unit = 1.50 m`（前 5 段首尾相接），与 d 无关。"""
+        self.assertAlmostEqual(MIX_FIRST_PIT_X, 1.50, places=9)
+        if trimesh is None:
+            self.skipTest(f"trimesh unavailable: {TRIMESH_ERROR}")
+        namespace = _load_cmoe_terrains()
+        function, cfg_class = namespace["track_mix_terrain"], namespace["CMoETrackMixTerrainCfg"]
+        for d in (0.0, 0.70, 1.0):
+            with self.subTest(difficulty=d):
+                cfg = cfg_class()
+                cfg.size = TILE_SIZE
+                cfg.proportion = 1.0
+                walk, pits = _walkable_and_pits(function(d, cfg)[0])
+                self.assertAlmostEqual(pits[0][0], MIX_FIRST_PIT_X, places=9)
+
+    def test_randomised_x_never_reaches_the_pit_but_does_enter_raised_segments(self):
+        """x ∈ [0.25, 1.25]：**到不了坑**（阈值 spawn_x > 1.00），但 35% 会落在台阶段上。"""
+        max_x = MIX_SPAWN_X + TRAIN_POSE_RANGE_X[1]
+        min_x = MIX_SPAWN_X + TRAIN_POSE_RANGE_X[0]
+        self.assertAlmostEqual((min_x, max_x), (0.25, 1.25), places=9)
+        self.assertLess(max_x, MIX_FIRST_PIT_X, "x 抖动到不了第一处坑（1.50 m）")
+        self.assertAlmostEqual(MIX_FIRST_PIT_X - max_x, 0.25, places=9,
+                               msg="最坏情况的余量只有 0.25 m（≈机身半长）")
+        # 落在抬高段（x > 0.90，第一段 0→30 索引的右沿）上的比例
+        frac_on_step = (max_x - (MIX_PATTERN_START_X + 30.0 * MIX_X_UNIT)) / (max_x - min_x)
+        self.assertAlmostEqual(frac_on_step, 0.35, places=9)
+        # 越界阈值：要真的出生在坑上，需要 spawn_x + 0.5 > 1.50 ⇒ spawn_x > 1.00
+        self.assertAlmostEqual(MIX_FIRST_PIT_X - TRAIN_POSE_RANGE_X[1], 1.00, places=9)
+
+    def test_randomised_y_can_leave_the_eighty_centimetre_corridor(self):
+        """走廊半宽 0.40 m < y 抖动 0.5 m ⇒ 20% 的重置让基座横向落在 -0.50 m 坑底上方。"""
+        half = MIX_CORRIDOR_HALF_WIDTH
+        span = TRAIN_POSE_RANGE_Y[1] - TRAIN_POSE_RANGE_Y[0]
+        frac_outside = 2.0 * (TRAIN_POSE_RANGE_Y[1] - half) / span
+        self.assertAlmostEqual(half, 0.40, places=9)
+        self.assertAlmostEqual(frac_outside, 0.20, places=9,
+                               msg="P(|Δy| > 0.40) = 20% ⇒ 基座悬在坑底上方（下落 0.5 m）")
+        self.assertGreater(TRAIN_POSE_RANGE_Y[1], half, "y 抖动必须超出走廊半宽才谈得上隐患")
+
+    def test_mix_test_scene_disables_that_randomisation(self):
+        """评测场景不继承这个隐患：play 链把 `pose_range` 全设成 0 ⇒ 出生点就是走廊中心。"""
+        play = _class_source(PLAY_CLASS)
+        self.assertIn('"x": (0.0, 0.0)', play)
+        self.assertIn('"y": (0.0, 0.0)', play)
+        self.assertIn('"z": (0.0, 0.0)', play)
+        self.assertNotIn("(-0.5, 0.5)", play)
+
+
 # ================================================================== ④ 注册级
 class TestMixTestTaskRegistration(unittest.TestCase):
     @classmethod
@@ -928,6 +1311,8 @@ class TestMixTestTerrainLevelCli(unittest.TestCase):
     用户要求先查清它能否直接钉 14（其 help 原写 0–9）：实测 argparse 是 `type=int` + **无 choices**，
     代码是 `terrain.terrain_levels[:] = int(args_cli.terrain_level)` ⇒ **不做任何夹取/截断**，
     `num_rows=20` 时 14 合法（0..19）。本类把"帮助文本不得再写 0–9"钉住。
+    2026-10-04（第三批）：mix-test 的难度改由 `difficulty_range` 固定（`num_rows=1` ⇒ `--terrain_level`
+    只有 0 合法）⇒ 帮助文本同步改成"本参数对该任务**不要**再传"，并写明难度来源。
     """
 
     @classmethod
@@ -954,7 +1339,10 @@ class TestMixTestTerrainLevelCli(unittest.TestCase):
         self.assertNotIn("0–9", help_text, "帮助文本里的 0–9 是旧值（现在等级可达 num_rows−1=19）")
         self.assertIn("被夹到 9", help_text, "必须写明等级不会被夹到 9")
         self.assertIn("不会", help_text)
-        self.assertIn("14", help_text, "应写明 mix-test 固定 14")
+        # 2026-10-04（第三批）：mix-test 的难度不再靠这个参数
+        self.assertIn("difficulty_range", help_text, "必须写明 mix-test 的难度来源")
+        self.assertIn("0.70", help_text)
+        self.assertIn("只有 0 合法", help_text, "num_rows=1 ⇒ 该任务只有等级 0 合法")
 
     def test_help_matches_the_source_behaviour(self):
         """帮助文本说"不夹取"，源码里就必须**没有** clip/choices 之类的夹取（双向一致）。"""

@@ -24,9 +24,9 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 `mix-test`（`Imgo2-basemove-rough-cmoe-mix-test`）是**只有 `mix` 一种地形**的受控测试场景：
 上面那张 `MASKED_NAMES` 判据里的其它地形名在该场景**根本不存在** ⇒ 引用它们的掩码项在该场景
 **恒为 0**，这是**预期**而不是配置错误。因此该任务走**单独的分支**：仍然要求"唯一地形 `mix` 必须
-≥1 列"、`num_cols=20`（＝`MIX_TEST_LANES`，20 条并排的 mix 道）、`num_rows=20`、`sub_terrains.clear()`，
-但把"其它地形名 0 列"**明确标注为预期**，而不是报 ❌。**原任务的判据一字未放宽**
-（`--task cmoe-rough` 仍要求每一项都 ≥1 列）。
+占满全部列"、`num_cols=20`（＝`MIX_TEST_LANES`，20 条**并列**的 mix 道）、`num_rows=1`（**唯一一行
+难度**）、`difficulty_range=(0.70, 0.70)`、`sub_terrains.clear()`，但把"其它地形名 0 列"**明确标注为
+预期**，而不是报 ❌。**原任务的判据一字未放宽**（`--task cmoe-rough` 仍要求每一项都 ≥1 列）。
 
 比例来源：基类顺序与默认比例读**已安装的 Isaac Lab** `isaaclab/terrains/config/rough.py`
 （`ROUGH_TERRAINS_CFG`）；读不到时退回下面记录的默认值。任务侧的覆盖从
@@ -35,6 +35,9 @@ Isaac Lab 的规则是（`isaaclab/terrains/terrain_generator.py:240`）：
 `Imgo2CMoEMixTestEnvCfg` 的 `sub_terrains["mix"] = ...(proportion=1.0)` 会污染训练侧的解析结果。
 **2026-10-04（第二批）起还会解析模块级常量**：`num_cols`/`num_rows` 现在写成可读常量
 （`MIX_TEST_LANES`/`MIX_TEST_LEVELS`），工具用顶层 `NAME = <字面量>` 求值后再读。
+**2026-10-04（第三批）**：mix-test 的网格由 20 行缩到 **1 行**（用户："不需要还保持那么多行"），
+难度改由 `terrain_generator.difficulty_range = (0.70, 0.70)` **精确固定**（等价旧"第 14 行"的名义
+0.70）⇒ 本工具对 mix-test 增加这一项的检查（`MIX_TEST_DIFFICULTY_EXPECTED`）。
 """
 
 from __future__ import annotations
@@ -90,13 +93,18 @@ TASK_CLASS = {"cmoe-rough": TRAIN_CLASS, MIX_TEST_TASK: MIX_TEST_CLASS}
 # mix-test 的期望网格（道沿 Y、难度行沿 X；顺序与 `CMoE_env_cfg.py` 的常量名一致，值在此**写死**
 # 以便"常量被改错"能被工具发现；常量的字面值由 `tests/test_check_terrain_columns.py` 单独钉住）。
 MIX_TEST_LANES_EXPECTED = 20
-MIX_TEST_LEVELS_EXPECTED = 20
+# 2026-10-04（第三批）：行数 20 → **1**（只留唯一一行难度；19 行原本永远用不到）。
+MIX_TEST_LEVELS_EXPECTED = 1
+# 唯一一行的难度：由 `terrain_generator.difficulty_range = (d, d)` 精确固定（等价旧"第 14 行"的
+# 名义 14/20 = 0.70）。工具解析 `difficulty_range` 并要求上下界都等于该值。
+MIX_TEST_DIFFICULTY_EXPECTED = 0.70
 
 # 类作用域的目标匹配（`ast.unparse` 用单引号，正则同时接受两种引号）
 _SUB_PROP = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]\.proportion$")
 _SUB_TERRAIN = re.compile(r"sub_terrains\[['\"]([a-z_0-9]+)['\"]\]$")
 _NUM_COLS = re.compile(r"terrain_generator\.num_cols$")
 _NUM_ROWS = re.compile(r"terrain_generator\.num_rows$")
+_DIFFICULTY_RANGE = re.compile(r"terrain_generator\.difficulty_range$")
 
 
 def module_constants() -> dict[str, object]:
@@ -150,12 +158,15 @@ def class_post_init(class_name: str) -> ast.FunctionDef | None:
 
 
 def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
-    """只解析指定类的 `__post_init__`，返回 ``{props, num_cols, num_rows, cleared}``。
+    """只解析指定类的 `__post_init__`，返回 ``{props, num_cols, num_rows, difficulty_range, cleared}``。
 
     2026-10-04：从"整文件 `ast.walk`"改成"类作用域"，因为同一文件里的 mix-test 类也会写
     `sub_terrains["mix"] = ...(proportion=1.0)`；不隔离就会污染训练侧的解析结果（且是静默的）。
+    2026-10-04（第三批）：额外解析 `terrain_generator.difficulty_range`（mix-test 用它精确固定难度）。
     """
-    info: dict[str, object] = {"props": {}, "num_cols": None, "num_rows": None, "cleared": False}
+    info: dict[str, object] = {
+        "props": {}, "num_cols": None, "num_rows": None, "difficulty_range": None, "cleared": False,
+    }
     fn = class_post_init(class_name)
     if fn is None:
         return info
@@ -185,6 +196,12 @@ def scene_overrides(class_name: str = TRAIN_CLASS) -> dict[str, object]:
             continue
         if _NUM_ROWS.search(target):
             info["num_rows"] = int(literal(node.value, ns))  # type: ignore[arg-type]
+            continue
+        if _DIFFICULTY_RANGE.search(target):
+            value = literal(node.value, ns)
+            if isinstance(value, (tuple, list)) and len(value) == 2:
+                info["difficulty_range"] = (float(value[0]), float(value[1]))
+            continue
     return info
 
 
@@ -283,11 +300,16 @@ def mix_test_report() -> tuple[int, list[str]]:
     与原判据的区别只有一处、且是**新增的标注**而不是放宽：本场景**只有 mix** ⇒ 其它地形名不在
     `sub_terrains` 里、引用它们的掩码项在本场景**恒为 0**（`is_env_assigned_to_terrain` 对未登记的
     名字返回全 False），这里把每一处**逐条打印成"预期"**；同时仍然强制：`sub_terrains.clear()` 过、
-    只有 mix、mix ≥1 列、`num_cols=20`（＝`MIX_TEST_LANES`，20 条并排的 mix 道）、`num_rows=20`。
+    只有 mix、mix 占满全部道、`num_cols=20`（＝`MIX_TEST_LANES`，20 条**并列**的 mix 道）、
+    `num_rows=1`（**唯一一行难度**，2026-10-04 第三批：19 行原本永远用不到）、
+    `difficulty_range=(0.70, 0.70)`（精确固定该行难度）。
     原任务（`--task cmoe-rough`）走 :func:`check_mask_columns`，判据一字未改。
 
     2026-10-04（第二批）：`num_cols` 由 **1 → 20**（用户："地形不要按照列排，放在行里面"）——20 条
-    mix 道沿世界 Y 并排，难度（20 行）沿世界 X；因此这里期望的列数也改成 20，且要求"每道恰好 1 列"。
+    mix 道沿世界 Y 并排，难度沿世界 X；因此这里期望的列数也改成 20，且要求"每道恰好 1 列"。
+    2026-10-04（第三批，用户："我不需要还保持那么多行，我需要他们并列"）：行数 **20 → 1**、世界
+    X 由 160 m 缩到 8 m；难度不再靠"钉第 14 行"，改为本函数新检查的
+    `difficulty_range = (0.70, 0.70)`。
     """
     info = scene_overrides(MIX_TEST_CLASS)
     props: dict[str, float] = info["props"]  # type: ignore[assignment]
@@ -310,16 +332,23 @@ def mix_test_report() -> tuple[int, list[str]]:
         say(f"  ❌ mix 的 proportion 应为 1.0，实测 {props['mix']}")
         problems += 1
     if info["num_cols"] != MIX_TEST_LANES_EXPECTED:
-        say(f"  ❌ num_cols 应为 {MIX_TEST_LANES_EXPECTED}（＝`MIX_TEST_LANES`：20 条并排的 mix 道，"
+        say(f"  ❌ num_cols 应为 {MIX_TEST_LANES_EXPECTED}（＝`MIX_TEST_LANES`：20 条并列的 mix 道，"
             f"道数＝可同时评估的环境数上限），实测 {info['num_cols']}")
         problems += 1
     if info["num_rows"] != MIX_TEST_LEVELS_EXPECTED:
-        say(f"  ❌ num_rows 应为 {MIX_TEST_LEVELS_EXPECTED}（行＝难度 level，沿世界 +X），"
-            f"实测 {info['num_rows']}")
+        say(f"  ❌ num_rows 应为 {MIX_TEST_LEVELS_EXPECTED}（＝`MIX_TEST_LEVELS`：只留**唯一一行**难度，"
+            f"沿世界 +X ⇒ 世界 X 只有 8 m），实测 {info['num_rows']}")
+        problems += 1
+    difficulty_range = info["difficulty_range"]
+    if difficulty_range != (MIX_TEST_DIFFICULTY_EXPECTED, MIX_TEST_DIFFICULTY_EXPECTED):
+        say(f"  ❌ difficulty_range 应为 ({MIX_TEST_DIFFICULTY_EXPECTED}, "
+            f"{MIX_TEST_DIFFICULTY_EXPECTED})（上下界同值 ⇒ 课程公式里 `upper−lower = 0`，"
+            f"行内 U(0,1) 抖动被消掉 ⇒ 每块瓦片精确 d = "
+            f"{MIX_TEST_DIFFICULTY_EXPECTED}），实测 {difficulty_range}")
         problems += 1
 
     names = list(props.keys())
-    counts = report([(n, props[n]) for n in names], num_cols, f"{MIX_TEST_TASK}｜只 mix（20 道并排）")
+    counts = report([(n, props[n]) for n in names], num_cols, f"{MIX_TEST_TASK}｜只 mix（20 道并列）")
     for name in names:
         if counts[name] < 1:
             say(f"  ❌ 唯一地形 '{name}' 在 num_cols={num_cols} 下 0 列 ⇒ 命令与掩码都会静默失效")
@@ -330,7 +359,8 @@ def mix_test_report() -> tuple[int, list[str]]:
             problems += 1
     if not problems:
         say(f"  ✅ 唯一地形 mix 有 {counts.get('mix', 0)} 列（num_cols={num_cols}、num_rows={info['num_rows']}）"
-            f"⇒ 网格 20 道 × 20 难度行，`--num_envs ≤ 20` 时环境 i → 第 i 道")
+            f"⇒ 网格 **20 道 × 1 难度行**（世界 8 m(X) × 80 m(Y)），难度由 difficulty_range="
+            f"({difficulty_range[0]}, {difficulty_range[1]}) 精确固定 ⇒ `--num_envs ≤ 20` 时环境 i → 第 i 道")
 
 
     absent = sorted({n for refs in MASKED_NAMES.values() for n in refs} - set(names))
