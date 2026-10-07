@@ -12,12 +12,12 @@ from isaaclab.assets.articulation import ArticulationCfg
 # 从哪个工作目录启动，路径都成立；前提是安装方式为 `pip install -e`（可编辑安装），
 # 非可编辑安装会把包拷进 site-packages，届时数据与模型目录都不在上溯路径上。
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]  # <repo>/imgo2_rl/
-_REPO_ROOT = Path(__file__).resolve().parents[5]     # <repo>/
+_REPO_ROOT = Path(__file__).resolve().parents[5]  # <repo>/
 _DEFAULT_MOTION_DIR = _PROJECT_ROOT / "datasets" / "imgo2_motion"
 # 模型唯一源（2026-09-17 统一到 imgo2_description，见 README MODEL-02）：
 # urdf/imgo2.urdf 是纯 URDF 生成物（core.xacro 的内核，无 Gazebo/transmission/IMU），
 # 物理参数与训练侧的旧副本逐项相同，FK 复现录制数据。
-_DEFAULT_URDF_PATH = _REPO_ROOT / "imgo2_description" / "urdf" / "imgo2.urdf"
+_DEFAULT_URDF_PATH = _REPO_ROOT / "imgo2_description" / "urdf" / "imgo2_real.urdf"
 
 
 def _resolve_motion_dir() -> Path:
@@ -57,10 +57,14 @@ IMGO2_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False, solver_position_iteration_count=4, solver_velocity_iteration_count=1
+            enabled_self_collisions=False,
+            solver_position_iteration_count=4,
+            solver_velocity_iteration_count=1,
         ),
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
-            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
+            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
+                stiffness=0, damping=0
+            )
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
