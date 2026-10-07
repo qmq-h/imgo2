@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-22。已在 Windows／Python 3.14.6 完成本轮离线检查；上层拖曳采用 dynamics decoder＋recurrent PPO：51 维本体帧经 GRU 估计机器人速度、负载质量和牵引力，估计值 detach 后进入 actor，预测误差不进入 reward。自有 `rl_lab` recurrent runner 已接线，当前仍缺 Isaac Lab 训练机运行验证。详见 [离线检查记录](docs/offline_check_2026-09-22.md)、[拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md) 与 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md)。
+> 最后核对：2026-09-24（补充仿真结构与启动链路的静态核对，见 [入门记录](docs/isaaclab_basics_2026-09-24.md)；本次仅核对指定 AMP 训练产物与查看入口，见 [查看记录](docs/amp_viewing_2026-09-24.md)）。已在 Windows／Python 3.14.6 完成本轮离线检查；上层拖曳采用 dynamics decoder＋recurrent PPO：51 维本体帧经 GRU 估计机器人速度、负载质量和牵引力，估计值 detach 后进入 actor，预测误差不进入 reward。自有 `rl_lab` recurrent runner 已接线，当前仍缺 Isaac Lab 训练机运行验证。详见 [离线检查记录](docs/offline_check_2026-09-22.md)、[拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md) 与 [AMP 配置收缩记录](docs/amp_config_cleanup_2026-09-22.md)。
 >
 > 2026-09-22 又在**训练机本机**（`/opt/conda/envs/isaaclab`：Isaac Lab `0.45.9`、RSL-RL `2.3.3`、torch `2.7.0+cu128`）做了一轮训练前置核查：拖曳离线测试 **210 项全通过**（本机有 torch，此前因缺 torch 跳过的项已实跑），51 维帧／56 维 actor 契约与冻结 AMP 策略依赖均自洽。该 GPU 在本机**可用**（用户实测 `run_isaaclab.sh --check` → `cuda available: True`、`CUDA solve: OK`；agent 会话进程曾观察到不可见，属该进程视角，见 TOW-04）。已为用户执行训练落地两项代码改动：加入任务注册 `Imgo2-towing-upper-rl-lab`（`--agent=rl_lab_cfg_entry_point`）、修掉 `train.py` 的 `--agent` 默认值；注册表解析与环境构造已由 4 环境 × 10 轮冒烟实跑验证通过。修法与执行清单见 [拖曳训练前置记录](docs/towing_training_prep_2026-09-22.md)。
 >
@@ -62,6 +62,8 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 | 真机部署 | 有 `rl_real_imgo2.cpp` 和状态机代码 | Unitree SDK2 目录当前为空，CMake 会跳过真机目标；硬件通信适配未验证 |
 
 ## 3. 代码阅读导航
+
+首次学习 Isaac Lab：先读 [仿真最小结构与运行链路](docs/isaaclab_basics_2026-09-24.md)，区分模型资源、资产配置、环境和算法。
 
 底层运动任务位于 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/`；拖曳任务包 [towing/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/) 与 `locomotion/` 同级。小车直接维护 [cart.urdf](imgo2_description/cart/cart.urdf)，离线与仿真端的完成状态见 [拖曳仿真验证](docs/towing_simulation_validation.md)。
 
@@ -473,6 +475,8 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| LAB-LEARN-01 | P1 | **静态链路已核对；运行一致性待确认** | 当前模型默认路径与 PPO 依赖要求存在相对于历史说明的变化，见 [入门记录](docs/isaaclab_basics_2026-09-24.md) §4 | 确认实际解释器依赖、模型与 checkpoint 一致性，再做短运行；本轮未运行仿真或升级依赖 |
+| AMP-VIEW-01 | P1 | **查看入口与日志已核对；GUI 效果待确认** | 已定位 xiaoji_real1 的 model_24000.pt，确认本机 env_isaaclab 与 TensorBoard 可用；日志摘要及命令见 [查看记录](docs/amp_viewing_2026-09-24.md) | 在本机桌面运行指定 checkpoint，确认加载、步态与速度表现；本地模型有用户未提交修改，训练模型与回放模型一致性尚待确认 |
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
@@ -575,6 +579,11 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-09-24 | 补充 Isaac Lab 仿真结构与运行链路入门 | 已补齐学习文档，无运行代码修复；核对实际注册、配置继承及零动作入口。待确认模型与依赖一致性见 LAB-LEARN-01；未启动仿真或训练。详见 [入门记录](docs/isaaclab_basics_2026-09-24.md) |
+| 2026-09-24 | 定位 Isaac Sim 电机与摩擦配置 | 已静态核对 DCMotor、地面材料、机器人材料/增益随机化及 AMP play 覆盖；实际物理参数读取仍待运行验证。详见 [查看记录](docs/amp_viewing_2026-09-24.md)参数位置节，无代码改动。 |
+| 2026-09-24 | 再次核查：AMP 默认模型已切到 real | 最新源码默认引用 imgo2_description/urdf/imgo2_real.urdf，覆盖前次默认路径结论；仅静态确认，运行时加载待验证，历史 checkpoint 模型不随之改变。详见 [查看记录](docs/amp_viewing_2026-09-24.md)末节。 |
+| 2026-09-24 | 明确 AMP 当前与历史模型引用 | 已确认默认使用 imgo2_description/urdf/imgo2.urdf，指定 run 保存的路径也指向该文件名；未默认使用 imgo2_real.urdf。训练时文件内容与当前资产一致性仍待确认，详见 [查看记录](docs/amp_viewing_2026-09-24.md)补充节；未运行仿真。 |
+| 2026-09-24 | AMP 第 24000 轮查看指引（已解决入口路径；效果待确认） | 只读解析 xiaoji_real1 event、核对 checkpoint 哈希与配置快照；TensorBoard 2.21.0 版本命令通过。补充本机解释器覆盖与 GUI 命令，未启动服务／仿真、未修改模型。详见 [查看记录](docs/amp_viewing_2026-09-24.md) |
 | 2026-09-22 | 修复控制台输出被条件吞掉（用户误判为「慢」） | 用户澄清「慢」其实是条件语句导致没有 log 输出。**根因**：`learn()` 里 `if self.writer is not None: self._log(...)`，而 `_log` 内部既写 TensorBoard 又 `print`；`writer` 仅在 `log_dir is not None` 时创建，条件不成立时控制台**一行进度都不输出**（这是我上一轮重构引入的）。**修**：解耦——`_log` 无条件调用，内部只在 writer 可用时调 `_write_scalars`，`print` 一定执行并加 `flush=True`（重定向到文件时按块缓冲同样会掩盖输出）。另在 `learn()` 开头加启动行，说明环境数／总轮数／日志目录，并提示「第一条进度需等首次 rollout 完成」（256 环境约 2.5 分钟静默，容易被再次误读为卡死）。**验证**：桩对象实测 writer 为 None 时仍输出完整进度（修复前该情形零输出），writer 存在时 TB 写入次数不变；用户确认现在可直接运行。详见 [观测指标记录](docs/towing_observability_2026-09-22.md) |
 | 2026-09-22 | 消除每物理步的 PhysX 回读（性能） | 用户报告启动/运行慢。用历次 tfevents 拆开：启动 256 env 约 135 s；每轮拟合出**约 4.6 s 固定开销**，两段独立拟合（4→256 env 与 256→4096 env）得到同一值，说明与算力无关。**来源**：`ActionManager.apply_action()` 每物理步调用（每 5 ms），而 `_apply_towing_physics` 每步都 `get_masses()`／`get_inertias()` 回读 PhysX（`_body_properties` 内还有一次），4096 env 下每轮各约 **196 万次**设备往返。**修**：新增 `_refresh_mass_cache()` 缓存机器人／小车质量与对角惯量、四轮惯量；`reset_towing_episode` 在 `set_masses`／`set_inertias` 后调 `_invalidate_mass_cache()`（质量每回合随机化，不失效会用错值）；`_body_properties` 增加 `inertia_diag`／`mass_total` 参数。注意 `inverse_inertia_world` 依赖姿态，**不能**缓存，只缓存常量部分。**验证**：新增 `test_per_step_physics_does_not_readback_physx`（AST 断言热路径无回读、缓存失效顺序在 set_masses 之后），两组负向测试确认会失败；拖曳测试 216 通过、契约 25 通过。**实测结果（用户反馈）**：**无可观测提升**——故「每轮 4.6 s 固定开销」的来源判断未获证实（回读确实冗余、已消除且比原实现更正确，但不是主因；「慢」实为下述输出被吞的误判）。**教训**：不应由拟合出的固定开销直接断定瓶颈。详见 [观测指标记录](docs/towing_observability_2026-09-22.md) |
 | 2026-09-22 | 修碰撞传感器 filter 通配（碰撞判据静默失效）与 USD 缓存路径 | 训练时反复报 `Filter pattern '/World/envs/env_*/Robot/*' did not match the correct number of entries (expected 256, found 4864)`。**根因**：Isaac Lab `ContactSensorCfg` 要求每个 filter 项在每个环境里只解析出**一个** prim，而 5 个车体传感器都用 `filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"]`，每环境展开 19 个 prim（17 link + 根 prim 等）⇒ 4864。**危害**：过滤后的接触上报不工作 ⇒ `force_matrix_w` 拿不到真实接触力 ⇒ `cart_collision` 恒假 ⇒ 碰撞 reward（−50）与碰撞终止全部失效，策略可随意撞车不受罚。**修**：新增 `_robot_link_names_from_urdf()` 从训练 URDF 读 17 个 link 名，`_robot_body_filters()` 逐个构造 filter（5 个传感器共用 `_ROBOT_BODY_FILTERS`）。**顺带修既有路径 bug**：`upper_env_cfg.py` 的 `_USD_CACHE` 原用 `parents[6]`，而本文件在 `tasks/manager_based/towing/` 下、仓库根应为 `parents[7]`（`assets/imgo2.py` 在浅两层，那里是 `parents[5]`），原写法使缓存落到 `<repo>/imgo2_rl/logs/usd/`；已引入 `_REPO_ROOT` 统一。**验证**：新增 `test_collision_filters_resolve_one_prim_per_environment`（AST 剥字符串后断言无 `Robot/.*`、5 个传感器都用显式列表、`_REPO_ROOT` 为 `parents[7]`）与 `test_collision_filter_matches_urdf_link_count`；负向测试确认改回通配即失败；同时修正了原本断言旧通配设计的既有测试。拖曳离线测试 216 通过。**未验证**：未实测 `force_matrix_w` 是否恢复、`found` 是否变为 256 × 17（机器人 17 body 为何匹配 19 prim 仍未解开）。详见 [观测指标记录](docs/towing_observability_2026-09-22.md) |
