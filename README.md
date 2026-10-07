@@ -1,6 +1,8 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-25。`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md)。
+> 最后核对：2026-10-07（本轮完成分支 rebase、验证原模型改动保留；资源路径检查通过，模型同步检查未通过，待处理见 MODEL-05 与 [记录](docs/rebase_main_2026-10-07.md)）。
+
+> 2026-09-25 状态摘要：`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md)。
 >
 > 2026-09-25 本机（训练机）已有一次**完整的上层拖曳 run**：`logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/`，4096 环境 × 2000 轮跑满，TensorBoard 含全部分项奖励、三类终止原因与 `cart_present`／绳力诊断（读数与限制见 [回放指令与前置核对](docs/towing_play_2026-09-25.md)）。该 run 的 `model_2000.pt` 已离线核对：56 维 actor／65 维 critic／3 维动作与 `TowingVecEnvWrapper` 的 51 维帧契约一致。**确定性回放已由用户执行**（2026-09-25 15:36，`--num_envs=1`、2000 步 = 10 回合跑满）：`err_cmd=0.339`、`err_track=0.387`、`err_low=0.065` m/s；下层把上层自己的 `ref` 执行到 0.065 m/s，剩余误差仍主要来自上层积分指令本身（`err_cmd` 比旧 run 的 0.498 降 32%，详见 [回放记录](docs/towing_play_2026-09-25.md)）。注：单环境单次采样，统计意义有限。`main` 同时快进到 `962094f`（MuJoCo 小车场景），不触碰该回放链路。
 >
@@ -504,6 +506,7 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| DOC-02 | P1 | 待整理 | 原 real 提交包含 imgo2_description/README.md，本轮为保留改动未删除；见 [记录](docs/rebase_main_2026-10-07.md) | 核对引用，将有效说明合入根 README 或 docs 后移除子目录 README |
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
@@ -538,7 +541,7 @@ bash build.sh --cmake
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
 | DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
 | EXP-01 | P1 | 待补充 | 已记录 PPO 验证与 AMP 贴地现象的用户反馈，尚缺对应日志、命令和模型路径 | 按第 8 节补充真实实验与产物路径 |
-| MODEL-05 | P1 | 新 URDF 已生成，模型接入待确认 | 用户指定的 `imgo2_description_real` 已从其 xacro 生成纯 URDF 与 Gazebo 版；Gazebo 网格仍引用原 `imgo2_description` 包 | 需确认 real 模型的 ROS 包/网格映射并登记模型检查；生成前全仓检查已有 3 个 real URDF 未登记，新生成两份后也需登记。未运行 Isaac Lab/Gazebo 导入验证 |
+| MODEL-05 | P1 | real 改动已保留，模型一致性待修复 | 2026-10-07 rebase 后检查：网格 14 文件／指纹 66c496556453，与登记基线不符；两份 real URDF 未登记。详细依据见 [记录](docs/rebase_main_2026-10-07.md) | 确认新网格与模型族的设计基线、ROS 包映射；从当前 xacro 重新生成并验证对应 URDF，登记检查后复跑；Isaac Lab／Gazebo 尚未验证 |
 | MODEL-04 | P1 | 已修复并验证 | `sorted(Path)` 在 Windows 与 Linux 对大小写排序不同导致同一套网格指纹不同；改为按文件名字符串排序，恢复原预期值，未改网格 | 大小写混合排序与内容篡改回归通过；全模型检查通过，指纹 `8dc5b5995a11` |
 
 问题表只放结论与状态，依据、根因和未修项的细节见 [代码复审记录](docs/code_review_2026-09-15.md) 与 [AMP 对齐与参考项目对照](docs/amp_alignment_review.md)。**代码改了不等于修好**：只有经过编译、运行或测试验证的项才改状态，仅改代码未验证的写成「已修，待验证」并保留条目（见 AGENTS.md 的同名约定）。
@@ -608,6 +611,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-07 | 临时代理解决 fetch；real 分支 rebase 到最新 main | README 两处冲突合并，主分支最新记录与原模型历史均保留；12 个模型文件 Git blob 与 f1742db 一致，origin/main 为祖先且分支领先 1 提交。资源路径检查通过；模型同步检查未通过，MODEL-05 保留待处理。详见 [rebase 记录](docs/rebase_main_2026-10-07.md) 与 [代理记录](docs/git_fetch_proxy_2026-10-07.md) |
 | 2026-09-25 | 拖曳 `model_2000` 权重入库占位，并提交本机此前未提交的改动 | 按用户决定（"直接先放 pt，暂时不导出也没事"）把 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` **原样拷**到 `imgo2_deploy/policy/imgo2/towing/policy.pt`：两处 `sha256 = a4d800a26c1d1a50eee220da44a32b51111c3ce475f28c8e25b421b32a1f6ab2`、9761119 B，`cp` 后逐字节一致；`.gitignore` 的例外 `!imgo2_deploy/policy/imgo2/**/policy.pt` 使其可入库（`git check-ignore -q` 退出 1，即未被忽略）。同一次提交带上 5 个此前的未提交文件：`upper_env_cfg.py`（奖励定义，含 `reference_tracking`／`action_magnitude`）、`upper_mdp.py`（`velocity_tracking_exp` 改用 `reference_command` 等）、`towing_on_policy_runner.py` 与 `train.py`（`--compact-log`）及其契约测试 —— 这 5 个文件就是 `2026-09-23_22-19-00` 那次 run 实际用的那份（已与 run 的 `params/env.yaml` 逐项对照）。**重要限制**：该 `policy.pt` 是**训练态 checkpoint**（三套 GRU + 两个优化器 + normalizer + `iter`），**不是** `play.py` 的 TorchScript 导出件，部署侧 libtorch 加载器读不了，目录内也没有 `config.yaml`、FSM 无对应按键 ⇒ 这是"权重留档"而非"可部署策略"，已在 §4.3、§5.4、TOW-05 与 [回放记录](docs/towing_play_2026-09-25.md) §9 写清。**验证**：提交前 `imgo2_rl/tests` 297 通过、`check_towing_mjcf.py`／`check_model_sync.py`／`check_asset_paths.py` 通过、`git diff --check` 与 tracked-ignore 干净、拷贝 sha256 一致。**未验证**：libtorch 实际加载（预期失败）、MuJoCo／Gazebo 回放与 51 维双 GRU 接线，仍待 TOW-05 |
 
 | 2026-09-25 | 回答"上层指令还在抖吗"：推翻本轮早先的"抖动仍明显"判断 | 只用 checkpoint 与 TensorBoard 标量做离线分析（无新回放）。**① `ref` 结构上不能高频抖**：`HierarchicalVelocityAction.process_actions` 把动作经 `acceleration_max=(0.5,0.5,1.0)`／`min=(-1.0,-0.5,-1.0)` 映射成加速度、再乘 `upper_control_dt=0.05 s` 积分并限幅到 `reference_(min,max)`，故每步 `ref_x` 变化 ≤ `[-0.05,+0.025]` m/s、`yaw≤±0.05` rad/s ⇒ 高频抖动振幅上限 0.025 m/s，约为实测 `err_cmd=0.339` 的 5%。**② 训练日志的抖动数字是探索噪声**：奖励对**采样动作**求值，checkpoint 的 `std=(0.2975,0.2670,0.2805)` ⇒ 纯噪声即给出 `E‖Δa‖²=2Σσ²=0.477`，而末轮实测 `E‖Δa‖²=0.429`（由 `action_rate` 按 `value×10/(abs(w)·0.05·N)` 展开）、`E‖a‖²=0.578` ⇒ 减去噪声后确定性均值动作的逐步变化为负残差（第 500 轮起 −0.20～0.00），即**均值动作近似分段常值**，之前 `RMS‖Δa‖≈0.65/步` 的读数被误当成策略抖动。**③ 顺带发现设计问题**：这两项奖励惩罚的是采样动作，会附带激励"压小 σ"（`mean_noise_std` 0.504→0.282 的部分成因，自适应 KL 未分离），要约束确定性抖动应改用均值动作。**未验证**：仍无法区分 `err_cmd` 是"起步 1–2 s 暂态滞后"还是"整段稳态缺口"（摘要不分阶段、无逐帧序列），需要一次 `--cmd-interval=1` 的回放；本轮**未改任何代码**，README TOW-03 与 [回放记录](docs/towing_play_2026-09-25.md) §7.2／§8 已同步更正 |
