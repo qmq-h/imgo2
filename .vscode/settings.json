@@ -1,0 +1,4 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}/imgo2_description",
+    "C_Cpp.default.configurationProvider": ""
+}

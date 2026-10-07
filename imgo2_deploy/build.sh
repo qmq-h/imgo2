@@ -73,7 +73,7 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/imgo2_deploy/ -B cmake_build -DUSE_CMAKE=ON
+    cmake src/imgo2_deploy/ -B cmake_build -DUSE_CMAKE=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     cmake --build cmake_build -j$(nproc 2>/dev/null || echo 4)
 
     print_success "CMake build completed!"
@@ -84,7 +84,7 @@ run_mujoco_build() {
     print_info "Building with MuJoCo simulator support..."
     print_separator
 
-    cmake src/imgo2_deploy/ -B cmake_build -DUSE_CMAKE=ON -DUSE_MUJOCO=ON
+    cmake src/imgo2_deploy/ -B cmake_build -DUSE_CMAKE=ON -DUSE_MUJOCO=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     cmake --build cmake_build -j$(nproc 2>/dev/null || echo 4)
 
     print_success "MuJoCo build completed!"
@@ -118,7 +118,7 @@ run_ros_build() {
         else
             print_header "[Using colcon build]"
             print_info "Building all packages..."
-            colcon build --merge-install --symlink-install
+            colcon build --merge-install --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         fi
     else
         if [[ "$ROS_DISTRO" == "noetic" ]]; then
@@ -128,7 +128,7 @@ run_ros_build() {
         else
             print_header "[Using colcon build]"
             print_info "Building specific packages: $package_list"
-            colcon build --merge-install --symlink-install --packages-select $package_list
+            colcon build --merge-install --symlink-install --packages-select $package_list --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         fi
     fi
 

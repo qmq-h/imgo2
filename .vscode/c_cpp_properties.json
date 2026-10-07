@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "name": "Linux ROS 2 Humble",
+            "compilerPath": "/usr/bin/c++",
+            "intelliSenseMode": "linux-gcc-x64",
+            "cppStandard": "gnu++17",
+            "compileCommands": [
+                "${workspaceFolder}/imgo2_deploy/build/robot_joint_controller/compile_commands.json"
+            ],
+            "includePath": [
+                "${workspaceFolder}/imgo2_deploy/src/robot_joint_controller/ros2/include",
+                "${workspaceFolder}/imgo2_deploy/install/include/**",
+                "/opt/ros/humble/include/**"
+            ],
+            "defines": ["ROS_DISTRO_HUMBLE"]
+        }
+    ],
+    "version": 4
+}

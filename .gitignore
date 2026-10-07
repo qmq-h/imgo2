@@ -108,6 +108,11 @@ temp_extract*/
 
 # ---------- 编辑器与系统 ----------
 .vscode/
+# 根工作区共享 C++ 路径配置；其它编辑器状态与子树配置仍忽略。
+!/.vscode/
+/.vscode/*
+!/.vscode/settings.json
+!/.vscode/c_cpp_properties.json
 .idea/
 .DS_Store
 Thumbs.db

@@ -1,6 +1,8 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-09-25。`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md)。
+> 最后核对：2026-10-07。ROS 2 控制器路径配置与本机编译已验证，编辑器红线刷新待确认，见 [路径修复记录](docs/cpp_include_paths_2026-10-07.md)。
+>
+> 2026-09-25 状态：`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md)。
 >
 > 2026-09-25 本机（训练机）已有一次**完整的上层拖曳 run**：`logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/`，4096 环境 × 2000 轮跑满，TensorBoard 含全部分项奖励、三类终止原因与 `cart_present`／绳力诊断（读数与限制见 [回放指令与前置核对](docs/towing_play_2026-09-25.md)）。该 run 的 `model_2000.pt` 已离线核对：56 维 actor／65 维 critic／3 维动作与 `TowingVecEnvWrapper` 的 51 维帧契约一致。**确定性回放已由用户执行**（2026-09-25 15:36，`--num_envs=1`、2000 步 = 10 回合跑满）：`err_cmd=0.339`、`err_track=0.387`、`err_low=0.065` m/s；下层把上层自己的 `ref` 执行到 0.065 m/s，剩余误差仍主要来自上层积分指令本身（`err_cmd` 比旧 run 的 0.498 降 32%，详见 [回放记录](docs/towing_play_2026-09-25.md)）。注：单环境单次采样，统计意义有限。`main` 同时快进到 `962094f`（MuJoCo 小车场景），不触碰该回放链路。
 >
@@ -363,6 +365,10 @@ python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 20   # �
 - 因此「JIT 更适合」不等于「训练也该 JIT」：JIT 消除的是 Python 逐 op 开销，批处理决定的是
   并行度，两者是不同问题，而后者在本链路已经做到。
 
+### 5.6 VS Code C++ 头文件路径
+
+以仓库根目录打开 VS Code；共享配置在 `.vscode/c_cpp_properties.json`，当前适用 Linux x64／ROS 2 Humble。控制器源文件读取 `imgo2_deploy/build/robot_joint_controller/compile_commands.json` 的实际编译器、搜索路径与宏；头文件回退使用 ROS 安装目录、部署生成消息目录和 `ros2/include`。`build.sh` 的 CMake／colcon 构建已默认导出编译数据库。新机器应先生成 `robot_msgs` 再构建控制器，最小复现命令与编辑器刷新步骤见 [路径修复记录](docs/cpp_include_paths_2026-10-07.md)；不要复制其他机器生成的编译数据库。
+
 ## 6. 部署流程
 
 下面为现有 Bash 构建脚本对应的命令，面向具备相关依赖的 Linux 环境；本次未在 Windows PowerShell 中执行。
@@ -504,6 +510,7 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| CPP-01 | P1 | **路径与编译已验证；编辑器显示待确认** | 控制器缺少工作区 C++ 配置与生成消息头文件；ROS 2 还声明了未使用的 `control_toolbox` 依赖。已修复，Humble 下两个包编译安装通过，详见 [记录](docs/cpp_include_paths_2026-10-07.md) | 在 VS Code 刷新 IntelliSense，确认截图中的 include 红线消失；尚未通过 UI 观察，不影响已验证的编译结论 |
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
 | TOW-02 | P1 | **边界扫描脚本已实现，待实跑** | `scan_towing_boundary.py` 默认扫描速度 0.2–1.0、质量 5–25 kg 和两档轮阻，并区分“稳态拉不动”与“可拖但 Direct Stop 追尾”。地面摩擦默认固定 0.8，可在边界附近追加 0.4/0.8/1.2 复核 | 在训练机先跑 compliant 主网格，根据 `boundary.json` 缩小摩擦复核范围；之后再确定 v0.1 训练域。当前未实现 breakaway/Coulomb 阻力，不能把地面摩擦当成它的替代 |
@@ -607,6 +614,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-07 | 修复 ROS 2 控制器库／头文件路径（CPP-01） | 已修复：共享 GCC／ROS 2 路径配置、构建导出编译数据库、生成消息头文件、移除 ROS 2 未使用依赖；`robot_msgs` 与 `robot_joint_controller` 编译安装通过，库依赖无缺失，JSON／脚本语法／tracked-ignore 检查通过。待确认：VS Code 红线刷新；未运行 Gazebo、真机或训练。配置及验证哈希见 [记录](docs/cpp_include_paths_2026-10-07.md) |
 | 2026-09-25 | 拖曳 `model_2000` 权重入库占位，并提交本机此前未提交的改动 | 按用户决定（"直接先放 pt，暂时不导出也没事"）把 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` **原样拷**到 `imgo2_deploy/policy/imgo2/towing/policy.pt`：两处 `sha256 = a4d800a26c1d1a50eee220da44a32b51111c3ce475f28c8e25b421b32a1f6ab2`、9761119 B，`cp` 后逐字节一致；`.gitignore` 的例外 `!imgo2_deploy/policy/imgo2/**/policy.pt` 使其可入库（`git check-ignore -q` 退出 1，即未被忽略）。同一次提交带上 5 个此前的未提交文件：`upper_env_cfg.py`（奖励定义，含 `reference_tracking`／`action_magnitude`）、`upper_mdp.py`（`velocity_tracking_exp` 改用 `reference_command` 等）、`towing_on_policy_runner.py` 与 `train.py`（`--compact-log`）及其契约测试 —— 这 5 个文件就是 `2026-09-23_22-19-00` 那次 run 实际用的那份（已与 run 的 `params/env.yaml` 逐项对照）。**重要限制**：该 `policy.pt` 是**训练态 checkpoint**（三套 GRU + 两个优化器 + normalizer + `iter`），**不是** `play.py` 的 TorchScript 导出件，部署侧 libtorch 加载器读不了，目录内也没有 `config.yaml`、FSM 无对应按键 ⇒ 这是"权重留档"而非"可部署策略"，已在 §4.3、§5.4、TOW-05 与 [回放记录](docs/towing_play_2026-09-25.md) §9 写清。**验证**：提交前 `imgo2_rl/tests` 297 通过、`check_towing_mjcf.py`／`check_model_sync.py`／`check_asset_paths.py` 通过、`git diff --check` 与 tracked-ignore 干净、拷贝 sha256 一致。**未验证**：libtorch 实际加载（预期失败）、MuJoCo／Gazebo 回放与 51 维双 GRU 接线，仍待 TOW-05 |
 
 | 2026-09-25 | 回答"上层指令还在抖吗"：推翻本轮早先的"抖动仍明显"判断 | 只用 checkpoint 与 TensorBoard 标量做离线分析（无新回放）。**① `ref` 结构上不能高频抖**：`HierarchicalVelocityAction.process_actions` 把动作经 `acceleration_max=(0.5,0.5,1.0)`／`min=(-1.0,-0.5,-1.0)` 映射成加速度、再乘 `upper_control_dt=0.05 s` 积分并限幅到 `reference_(min,max)`，故每步 `ref_x` 变化 ≤ `[-0.05,+0.025]` m/s、`yaw≤±0.05` rad/s ⇒ 高频抖动振幅上限 0.025 m/s，约为实测 `err_cmd=0.339` 的 5%。**② 训练日志的抖动数字是探索噪声**：奖励对**采样动作**求值，checkpoint 的 `std=(0.2975,0.2670,0.2805)` ⇒ 纯噪声即给出 `E‖Δa‖²=2Σσ²=0.477`，而末轮实测 `E‖Δa‖²=0.429`（由 `action_rate` 按 `value×10/(abs(w)·0.05·N)` 展开）、`E‖a‖²=0.578` ⇒ 减去噪声后确定性均值动作的逐步变化为负残差（第 500 轮起 −0.20～0.00），即**均值动作近似分段常值**，之前 `RMS‖Δa‖≈0.65/步` 的读数被误当成策略抖动。**③ 顺带发现设计问题**：这两项奖励惩罚的是采样动作，会附带激励"压小 σ"（`mean_noise_std` 0.504→0.282 的部分成因，自适应 KL 未分离），要约束确定性抖动应改用均值动作。**未验证**：仍无法区分 `err_cmd` 是"起步 1–2 s 暂态滞后"还是"整段稳态缺口"（摘要不分阶段、无逐帧序列），需要一次 `--cmd-interval=1` 的回放；本轮**未改任何代码**，README TOW-03 与 [回放记录](docs/towing_play_2026-09-25.md) §7.2／§8 已同步更正 |
