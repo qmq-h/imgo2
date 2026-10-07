@@ -56,11 +56,11 @@
     <!--!!!!!!!!!!!! Front Left Leg !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-->
     <link name="FL_HIP">
         <inertial>
-            <origin xyz="0.05776150 0.01631658 0.00001927"/>
-            <mass value="0.66982842"/>
-            <inertia ixx="0.00047165" ixy="-0.00002152" ixz="-0.00000604" 
-                    iyy="0.00094023" iyz="0.00000025" 
-                    izz="0.00063679"/>
+            <origin xyz="0.05502 0.01629 0.00008"/>
+            <mass value="0.66"/>
+            <inertia ixx="0.00048724823" ixy="-0.00002083480" ixz="-0.00000122317" 
+                    iyy="0.00090893629" iyz="0.00000075580" 
+                    izz="0.000577702"/>
         </inertial>
         <visual>
             <geometry>
@@ -85,11 +85,11 @@
 
     <link name="FL_THIGH">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.00429543 0.04392351 -0.03236426"/>
-            <mass value="0.96995719"/>
-            <inertia ixx="0.00506421" ixy="0.00008162" ixz="-0.00034748" 
-                    iyy="0.00527087" iyz="0.00062882" 
-                    izz="0.00088197"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.002105 0.044398 -0.032405"/>
+            <mass value="1.044"/>
+            <inertia ixx="0.005502341" ixy="0.000037296" ixz="0.000245651" 
+                    iyy="0.005694337" iyz="0.000658207" 
+                    izz="0.000950721"/>
         </inertial>
         <visual>
             <geometry>
@@ -186,12 +186,13 @@
     <!--!!!!!!!!!!!! Front Right Leg !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-->
     <link name="FR_HIP">
         <inertial>
-            <origin xyz="0.05776150 -0.01631658 0.00001927"/>
-            <mass value="0.66982842"/>
-            <inertia ixx="0.00047165" ixy="0.00002152" ixz="-0.00000604" 
-                    iyy="0.00094023" iyz="-0.00000025" 
-                    izz="0.00063679"/>
+            <origin xyz="0.05502 -0.01629 -0.00008"/>
+            <mass value="0.66"/>
+            <inertia ixx="0.00048724823" ixy="0.00002083480" ixz="0.00000122317" 
+                    iyy="0.00090893629" iyz="0.00000075580" 
+                    izz="0.000577702"/>
         </inertial>
+
         <visual>
             <geometry>
                 <mesh filename="${mesh_prefix}FR_hip.STL" scale="1 1 1"/>
@@ -215,12 +216,13 @@
 
     <link name="FR_THIGH">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="-0.00429543 -0.04392351 -0.03236426"/>
-            <mass value="0.96995719"/>
-            <inertia ixx="0.00506421" ixy="-0.00008162" ixz="-0.00034748" 
-                    iyy="0.00527087" iyz="-0.00062882" 
-                    izz="0.00088197"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.002105 -0.044398 -0.032405"/>
+            <mass value="1.044"/>
+            <inertia ixx="0.005502341" ixy="-0.000037296" ixz="-0.000245651" 
+                    iyy="0.005694337" iyz="-0.000658207" 
+                    izz="0.000950721"/>
         </inertial>
+
         <visual>
             <geometry>
                 <mesh filename="${mesh_prefix}R_thigh.STL"/>
@@ -316,12 +318,13 @@
     <!--!!!!!!!!!!!! Back Left Leg !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-->
      <link name="RL_HIP">
         <inertial>
-            <origin xyz="-0.05776150 0.01631658 0.00001927"/>
-            <mass value="0.66982842"/>
-            <inertia ixx="0.00047165" ixy="0.00002152" ixz="0.00000604" 
-                    iyy="0.00094023" iyz="0.00000025" 
-                    izz="0.00063679"/>
+            <origin xyz="-0.05502 0.01629 -0.00008"/>
+            <mass value="0.66"/>
+            <inertia ixx="0.00047490383" ixy="0.00002083480" ixz="-0.00000122317" 
+                    iyy="0.00090893629" iyz="-0.00000075580" 
+                    izz="0.000577702"/>
         </inertial>
+
         <visual>
             <geometry>
                 <mesh filename="${mesh_prefix}RL_hip.STL" scale="1 1 1"/>
@@ -345,12 +348,13 @@
 
     <link name="RL_THIGH">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="0.00429543 0.04392351 -0.03236426"/>
-            <mass value="0.96995719"/>
-            <inertia ixx="0.00506421" ixy="0.00008162" ixz="-0.00034748" 
-                    iyy="0.00527087" iyz="0.00062882" 
-                    izz="0.00088197"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.002105 0.044398 -0.032405"/>
+            <mass value="1.044"/>
+            <inertia ixx="0.005502341" ixy="0.000037296" ixz="0.000245651" 
+                    iyy="0.005694337" iyz="0.000658207" 
+                    izz="0.000950721"/>
         </inertial>
+
         <visual>
             <geometry>
                 <mesh filename="${mesh_prefix}L_thigh.STL"/>
@@ -446,12 +450,13 @@
     <!--!!!!!!!!!!!! Back Right Leg !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-->
     <link name="RR_HIP">
         <inertial>
-            <origin xyz="-0.05776150 -0.01631658 0.00001927"/>
-            <mass value="0.66982842"/>
-            <inertia ixx="0.00047165" ixy="-0.00002152" ixz="0.00000604" 
-                    iyy="0.00094023" iyz="-0.00000025" 
-                    izz="0.00063679"/>
+            <origin xyz="-0.05502 -0.01629 0.00008"/>
+            <mass value="0.66"/>
+            <inertia ixx="0.00047490383" ixy="-0.00002083480" ixz="0.00000122317" 
+                    iyy="0.00090893629" iyz="-0.00000075580" 
+                    izz="0.000577702"/>
         </inertial>
+
         <visual>
             <geometry>
                 <mesh filename="${mesh_prefix}RR_hip.STL" scale="1 1 1"/>
@@ -475,11 +480,11 @@
 
     <link name="RR_THIGH">
         <inertial>
-            <origin rpy="0.0 0.0 0.0" xyz="0.00429543 -0.04392351 -0.03236426"/>
-            <mass value="0.96995719"/>
-            <inertia ixx="0.00506421" ixy="-0.00008162" ixz="-0.00034748" 
-                    iyy="0.00527087" iyz="-0.00062882" 
-                    izz="0.00088197"/>
+            <origin rpy="0.0 0.0 0.0" xyz="-0.002105 -0.044398 -0.032405"/>
+            <mass value="1.044"/>
+            <inertia ixx="0.005502341" ixy="-0.000037296" ixz="-0.000245651" 
+                    iyy="0.005694337" iyz="-0.000658207" 
+                    izz="0.000950721"/>
         </inertial>
         <visual>
             <geometry>
