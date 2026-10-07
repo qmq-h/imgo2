@@ -68,6 +68,8 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 ## 3. 代码阅读导航
 
+首次学习 Isaac Lab：先读 [仿真最小结构与运行链路](docs/isaaclab_basics_2026-09-24.md)，区分模型资源、资产配置、环境和算法。
+
 底层运动任务位于 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/`；拖曳任务包 [towing/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/) 与 `locomotion/` 同级。小车直接维护 [cart.urdf](imgo2_description/cart/cart.urdf)，离线与仿真端的完成状态见 [拖曳仿真验证](docs/towing_simulation_validation.md)。
 
 | 需要理解或修改的内容 | 主要入口 |
