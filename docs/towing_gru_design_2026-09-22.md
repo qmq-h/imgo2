@@ -1,5 +1,7 @@
 # 拖曳 Dynamics Decoder 与 recurrent PPO（2026-09-22）
 
+> **2026-10-08 已被取代**：本文的维数与动作语义（51 维帧、5 维 decoder、56 维 actor、`towing_force_xy` 2 维、3 维加速度动作、`reference_command`）描述的是当时实现。现行契约为 **57 维帧 / 6 维 decoder（vel 2 + force 3）/ 63 维 actor / 72 维 critic / 12 维关节残差动作**，见 [残差动作与三维拉力记录](towing_deltapos_residual_2026-10-08.md) 与 [RL 计划](paper_plan_rl.md) §2–3。本文保留为过程记录，**不要再据此核对维度**。
+
 ## 结论
 
 该结构可行，且比从机器人侧本体感知强行重建小车速度、位置和完整绳参数更合适。环境每个 20 Hz 控制步输出当前 51 维可部署本体帧；decoder 使用 `51→128→GRU(128)`，显式估计机器人机体系 `vx/vy`、小车质量和机器人所受机体系 `Fx/Fy`。5 维估计 detach 后与原始帧组成 56 维 actor 输入。PPO actor、critic 继续使用各自独立的 GRU。

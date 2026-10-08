@@ -1,7 +1,13 @@
 """Manager terms for upper towing RL.
 
-The observation/reward functions are deliberately explicit about privileged data. The task stays
-unregistered until its physics and safety signals are verified against ``tow_drag.py`` in Isaac Lab.
+架构（2026-10-08 起）：冻结 AMP 底层策略的速度指令由**脚本调度**给出（``loco_command``），
+上层网络输出 **12 维关节位置残差**，叠加在冻结策略的关节目标上：
+
+    user cmd(脚本) → 冻结 locomotion → joint targets
+                                          + deltapos(上层 20 Hz) → joint position command
+
+观测／奖励函数对特权数据的取舍是刻意显式的。本文件是**目标函数与动作适配器**的唯一定义处；
+任务注册见同目录 ``__init__.py``，运行验收清单见 ``docs/towing_training_prep_2026-09-22.md``。
 """
 
 from dataclasses import MISSING
@@ -34,20 +40,31 @@ class HierarchicalVelocityAction(ActionTerm):
 
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
-        UpperActionSpec(
-            control_dt=cfg.upper_control_dt,
-            acceleration_min=cfg.acceleration_min,
-            acceleration_max=cfg.acceleration_max,
-            reference_min=cfg.reference_min,
-            reference_max=cfg.reference_max,
-        ).validate()
         self._cart = env.scene[cfg.cart_asset_name]
         self._collision_sensors = tuple(env.scene.sensors[name] for name in cfg.collision_sensor_names)
-        self._raw = torch.zeros(env.num_envs, 3, device=env.device)
+        # 冻结策略契约先加载：残差尺度直接取它的 `action_scale`（与底层动作同量纲），
+        # 动作维数取它的关节数（AMP 为 12）。见 `UpperActionSpec` 的说明。
+        self._policy_cfg = get_policy(cfg.policy_name)
+        self._action_dim = len(self._policy_cfg.joint_names)
+        if len(self._policy_cfg.action_scale) != self._action_dim:
+            raise ValueError(
+                f"{cfg.policy_name} 契约的 action_scale {len(self._policy_cfg.action_scale)} 项与 "
+                f"joint_names {self._action_dim} 项不一致")
+        self._action_spec = UpperActionSpec(
+            residual_scale=tuple(self._policy_cfg.action_scale),
+            control_dt=cfg.upper_control_dt,
+        )
+        self._action_spec.validate()
+        self._residual_scale = torch.tensor(
+            self._policy_cfg.action_scale, dtype=torch.float32, device=env.device)
+        self._raw = torch.zeros(env.num_envs, self._action_dim, device=env.device)
         self._processed = torch.zeros_like(self._raw)
         self._previous = torch.zeros_like(self._raw)
-        self.reference_command = torch.zeros_like(self._raw)
-        self.user_command = torch.zeros_like(self._raw)
+        # 12 维关节位置残差（**策略关节顺序**）。`apply_actions` 每次刷新冻结策略输出时
+        # 把它加到 `joint_targets` 上；两次上层更新之间保持不变。
+        self.delta_joint_pos = torch.zeros_like(self._raw)
+        # 实际送给冻结底层策略的速度指令：脚本调度产生，不再由上层动作积分（v0.1 无 command shaping）。
+        self.loco_command = torch.zeros(env.num_envs, 3, device=env.device)
         self.tow_speed = torch.full((env.num_envs,), cfg.initial_tow_speed, device=env.device)
         self.tow_start_s = torch.full((env.num_envs,), cfg.tow_start_s, device=env.device)
         self.stop_time_s = torch.full((env.num_envs,), cfg.initial_stop_time_s, device=env.device)
@@ -55,10 +72,13 @@ class HierarchicalVelocityAction(ActionTerm):
         # [clearance, tension, extension, taut]. Collision is deliberately separate: tautness is
         # a rope state and must never double as a contact flag.
         self.rope_state = torch.zeros(env.num_envs, 4, device=env.device)
-        self.towing_force_b = torch.zeros(env.num_envs, 2, device=env.device)
+        # 绳子对机器人的力，**base 机体系 3 维**（x 前后 / y 左右 / z 竖直）。
+        # 2026-10-08 由 2 维改为 3 维：两挂点高差 Δz=0.17 m，绷紧时 |Fz| 占张力的
+        # 0.17/L0 = 21–43%，且 Fz 在 -0.16 m 挂点上产生俯仰力矩，丢掉它对 actor／惩罚都不可见。
+        self.towing_force_b = torch.zeros(env.num_envs, 3, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.stop_origin_x = self._asset.data.root_pos_w[:, 0].clone()
-        self._was_stopped = torch.linalg.vector_norm(self.user_command, dim=1) <= 1.0e-4
+        self._was_stopped = torch.linalg.vector_norm(self.loco_command, dim=1) <= 1.0e-4
         self.cart_mass = torch.full((env.num_envs, 1), cfg.initial_cart_mass, device=env.device)
         self.ground_friction = torch.full((env.num_envs, 1), cfg.initial_ground_friction, device=env.device)
         self.wheel_damping = torch.full((env.num_envs, 1), cfg.initial_wheel_damping, device=env.device)
@@ -93,7 +113,6 @@ class HierarchicalVelocityAction(ActionTerm):
         self.rope_damping = torch.tensor(
             [[spec["damping"] if spec["damping"] is not None else placeholder_c]
              for spec in specs], dtype=torch.float32, device=env.device)
-        self._policy_cfg = get_policy(cfg.policy_name)
         if abs(cfg.physics_dt - env.physics_dt) > 1.0e-9:
             raise ValueError(
                 f"physics_dt {cfg.physics_dt} does not match environment {env.physics_dt}")
@@ -182,7 +201,8 @@ class HierarchicalVelocityAction(ActionTerm):
 
     @property
     def action_dim(self):
-        return 3
+        """12：冻结策略每个关节一个归一化残差（策略关节顺序）。"""
+        return self._action_dim
 
     @property
     def raw_actions(self):
@@ -193,27 +213,25 @@ class HierarchicalVelocityAction(ActionTerm):
         return self._processed
 
     def process_actions(self, actions):
+        """每上层控制步（50 ms）更新一次：脚本速度指令 + 12 维关节残差。
+
+        速度指令不再由网络积分产生——上层网络的输出**只是**残差。指令相位与测量台
+        ``tow_drag.py`` 一致：settle 段 0、牵引段 ``tow_speed``、STOP 后 0。
+        """
         elapsed_s = self._env.episode_length_buf * self._env.step_dt
         towing = (elapsed_s >= self.tow_start_s) & (elapsed_s < self.stop_time_s)
-        self.user_command.zero_()
-        self.user_command[:, 0] = torch.where(towing, self.tow_speed, 0.0)
-        stopped = torch.linalg.vector_norm(self.user_command, dim=1) <= 1.0e-4
+        self.loco_command.zero_()
+        self.loco_command[:, 0] = torch.where(towing, self.tow_speed, 0.0)
+        stopped = torch.linalg.vector_norm(self.loco_command, dim=1) <= 1.0e-4
         newly_stopped = stopped & ~self._was_stopped
         self.stop_origin_x[newly_stopped] = self._asset.data.root_pos_w[newly_stopped, 0]
         self._was_stopped.copy_(stopped)
         self._previous.copy_(self._processed)
         self._raw.copy_(actions)
         self._processed.copy_(actions.clamp(-1.0, 1.0))
-        lo = torch.tensor(self.cfg.acceleration_min, device=self.device)
-        hi = torch.tensor(self.cfg.acceleration_max, device=self.device)
-        acceleration = torch.where(self._processed < 0.0,
-                                   -self._processed * lo, self._processed * hi)
-        self.reference_command.add_(acceleration * self.cfg.upper_control_dt)
-        ref_lo = torch.tensor(self.cfg.reference_min, device=self.device)
-        ref_hi = torch.tensor(self.cfg.reference_max, device=self.device)
-        self.reference_command.copy_(torch.maximum(torch.minimum(
-            self.reference_command, ref_hi), ref_lo))
-        self.reference_command[elapsed_s < self.tow_start_s] = 0
+        # 归一化残差 → 逐关节位置增量（rad）。尺度取冻结策略的 action_scale，
+        # 因此等价于在底层动作空间上叠一个同量纲偏移。
+        self.delta_joint_pos.copy_(self._processed * self._residual_scale)
 
     def update_safety_state(self):
         """Refresh the oriented body-surface gap and direct deck-contact collision witness."""
@@ -243,18 +261,22 @@ class HierarchicalVelocityAction(ActionTerm):
         # every 20 ms and hold its joint targets between evaluations.
         low_level_decimation = round(self.cfg.low_level_control_dt / self.cfg.physics_dt)
         if self._physics_step % low_level_decimation == 0:
-            command = self.reference_command
             gravity_world = torch.tensor((0.0, 0.0, -1.0), device=self.device).expand(self.num_envs, 3)
             projected_gravity = math_utils.quat_apply_inverse(
                 self._asset.data.root_quat_w, gravity_world)
             output = self._policy.step(parts_from_robot_state(
                 base_ang_vel=self._asset.data.root_ang_vel_b,
                 projected_gravity=projected_gravity,
-                velocity_command=command,
+                # 冻结策略的输入只有**脚本调度**的速度指令；上层残差不进它的观测，
+                # 否则 45 维冻结契约（含它自己的 last_action）就被污染了。
+                velocity_command=self.loco_command,
                 joint_pos=self._asset.data.joint_pos[:, self._policy_to_asset],
                 joint_vel=self._asset.data.joint_vel[:, self._policy_to_asset]))
             self.last_loco_action.copy_(output.action)
-            self._held_joint_targets[:, self._policy_to_asset] = output.joint_targets
+            # 残差加在**关节位置目标**上（`joint_targets` 与残差同为策略关节顺序），
+            # 每次冻结策略刷新都要重算：残差在两次上层更新之间不变，但底层输出每 20 ms 变。
+            self._held_joint_targets[:, self._policy_to_asset] = (
+                output.joint_targets + self.delta_joint_pos)
         self._asset.set_joint_position_target(
             self._held_joint_targets[:, self._policy_to_asset], joint_ids=self._policy_to_asset)
         self._apply_towing_physics()
@@ -336,7 +358,7 @@ class HierarchicalVelocityAction(ActionTerm):
         self._cart.set_external_force_and_torque(
             force_cart_b, zero_torque, positions=cart_offset.unsqueeze(1),
             body_ids=[self._cart_body_id])
-        self.towing_force_b[:] = force_robot_b[:, 0, :2]
+        self.towing_force_b[:] = force_robot_b[:, 0, :3]
 
         effort = torch.zeros_like(self._cart.data.joint_pos)
         effort[:, self._wheel_joint_ids] = (
@@ -353,8 +375,8 @@ class HierarchicalVelocityAction(ActionTerm):
         self._raw[env_ids] = 0
         self._processed[env_ids] = 0
         self._previous[env_ids] = 0
-        self.reference_command[env_ids] = 0
-        self.user_command[env_ids] = 0
+        self.delta_joint_pos[env_ids] = 0
+        self.loco_command[env_ids] = 0
         self.last_loco_action[env_ids] = 0
         self.rope_state[env_ids] = 0
         self.towing_force_b[env_ids] = 0
@@ -367,14 +389,16 @@ class HierarchicalVelocityAction(ActionTerm):
 
 @configclass
 class HierarchicalVelocityActionCfg(ActionTermCfg):
+    """上层动作 = 12 维归一化关节残差，叠加在冻结策略的关节位置目标上。
+
+    原先的 `acceleration_min/max` 与 `reference_min/max` 已删除：动作不再是加速度积分，
+    残差尺度直接取冻结策略契约的 `action_scale`（见 `UpperActionSpec`）。
+    """
+
     class_type: type[ActionTerm] = HierarchicalVelocityAction
     asset_name: str = "robot"
     cart_asset_name: str = "cart"
     policy_name: str = "amp"
-    acceleration_min: tuple[float, float, float] = (-1.0, -0.5, -1.0)
-    acceleration_max: tuple[float, float, float] = (0.5, 0.5, 1.0)
-    reference_min: tuple[float, float, float] = (0.0, -0.3, -1.0)
-    reference_max: tuple[float, float, float] = (1.0, 0.3, 1.0)
     upper_control_dt: float = 0.05
     low_level_control_dt: float = 0.02
     physics_dt: float = 0.005
@@ -517,9 +541,9 @@ def reset_towing_episode(
         asset.root_physx_view.set_material_properties(materials, ids_cpu)
 
 
-def user_command(env):
-    return _term(env).user_command
-def reference_command(env): return _term(env).reference_command
+def loco_command(env):
+    """送给冻结底层策略的速度指令（脚本调度；与任务指令同值，v0.1 无 command shaping）。"""
+    return _term(env).loco_command
 def upper_last_action(env): return _term(env).processed_actions
 def base_angular_velocity(env): return _term(env)._asset.data.root_ang_vel_b
 def projected_gravity(env):
@@ -533,8 +557,12 @@ def joint_pos_rel_policy_order(env):
 def joint_vel_policy_order(env):
     term = _term(env); return term._asset.data.joint_vel[:, term._policy_to_asset]
 def policy_frame(env):
-    """One complete actor frame; history is applied once to preserve frame-major ordering."""
-    return torch.cat((user_command(env), reference_command(env), upper_last_action(env),
+    """One complete actor frame; history is applied once to preserve frame-major ordering.
+
+    2026-10-08 起为 **57 维**：命令项只留 `loco_command`（原来并列的 `cmd_vel`／
+    `reference_command` 在残差方案下恒等，属冗余），`last_action` 由 3 维变 12 维。
+    """
+    return torch.cat((loco_command(env), upper_last_action(env),
                       base_angular_velocity(env) * 0.25, projected_gravity(env),
                       last_locomotion_action(env), joint_pos_rel_policy_order(env),
                       joint_vel_policy_order(env) * 0.05), dim=1)
@@ -570,9 +598,21 @@ def cart_collision(env):
     term = _term(env); term.update_safety_state(); return term.cart_collision
 def cart_collision_cost(env): return cart_collision(env).float()
 def velocity_tracking_exp(env, linear_std, yaw_std):
+    """**实际速度** vs 命令期望的指数跟踪项（唯一的正奖励）。
+
+    2026-10-08 修正：线性项原先比的是 ``reference_command − user_command``，也就是「上层
+    自己积分出来的指令 vs 任务指令」——这与本函数的名字、以及 `upper_env_cfg` 奖励文档的
+    描述（"实际速度 vs 命令期望"）都不符，而且和 `reference_tracking_l2` 重复。残差方案下
+    指令由脚本给出、`reference_command` 不复存在，故直接改成实测机体系线速度：
+
+        exp(−‖v_meas,xy − cmd_xy‖²/0.5² − (ω_z − cmd_yaw)²/1.0²)
+
+    这也是测量台的验收指标口径（``summarize_tow`` 的 ``steady_tracking_ratio`` =
+    实测 vx ÷ 指令速度）。
+    """
     term = _term(env)
-    linear_error = (term.reference_command[:, :2] - term.user_command[:, :2]) / linear_std
-    yaw_error = (term._asset.data.root_ang_vel_b[:, 2] - term.user_command[:, 2]) / yaw_std
+    linear_error = (term._asset.data.root_lin_vel_b[:, :2] - term.loco_command[:, :2]) / linear_std
+    yaw_error = (term._asset.data.root_ang_vel_b[:, 2] - term.loco_command[:, 2]) / yaw_std
     return torch.exp(-(linear_error.square().sum(1) + yaw_error.square()))
 def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
@@ -623,28 +663,16 @@ def post_stop_distance(env):
     elapsed_s = env.episode_length_buf * env.step_dt
     post_stop = (elapsed_s >= term.stop_time_s).float()
     return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
-def reference_tracking_l2(env):
-    """上层速度指令 `reference_command` 相对命令期望 `user_command` 的偏差平方（m²/s²）。
-
-    2026-09-23 用户要求「跟随实际输入的指令」。与 `velocity_tracking_exp` 的分工：
-    - `velocity_tracking_exp` 比**实际速度 vs user**：穿过底层动力学，误差归因不清
-      （可能是上层没给对指令，也可能是底层跟不上）；
-    - 本项比**上层的 speed 指令 ref vs user**：**只落在上层的责任边界内**，且是平方形式
-      ——全域有梯度（`exp` 在误差 >1 m/s 后梯度归零，而牵引段起步瞬间正落在那个死区）。
-
-    实测背景：牵引段 `err_cmd = |ref − user|` 平均约 0.425 m/s，`ref` 只到目标的 17%；
-    上层动作长期饱和在 ±1 且符号随机翻转，积分后正负抵消，`ref` 上不去。本项直接惩罚该现象。
-    """
-    term = _term(env)
-    return (term.reference_command[:, :2] - term.user_command[:, :2]).square().sum(dim=1)
-
-
 def action_magnitude_l2(env):
     """上层动作幅值平方（裁剪后），用于抑制动作抖动。
 
     与 `action_rate_l2` 的区别：后者罚"动作变化量"（平滑性），本项罚"动作绝对值"
     （幅值）。策略长期输出 ±1 饱和随机方波时，两项都会变大，但本项能直接压住幅值，
-    为 `reference_tracking_l2` 留出"用中间值稳定跟踪"的空间。
+    把 12 维关节残差压回小幅度、让冻结步态保持主导。
+
+    2026-10-08 语义变化：动作由 3 维速度指令增量变为 12 维关节残差，`Σ u²` 的上限从 3
+    变成 12（同等逐维幅值下惩罚约 ×4），权重 `-0.05` 是否仍合适**尚未实跑验证**。
+    原先配套的 `reference_tracking_l2` 已随 `reference_command` 一起删除（残差方案下恒为 0）。
     """
     return _term(env).processed_actions.square().sum(dim=1)
 
@@ -653,7 +681,7 @@ def heading_deviation(env):
     """机体系朝向偏离「初始朝向」的 yaw 误差（rad）。
 
     2026-09-23 用户报告「机器人开始就在自转」：原奖励里**没有任何朝向约束**——
-    `tracking_velocity` 只惩罚 yaw **角速度**误差（`user_command` 的 yaw 恒为 0），
+    `tracking_velocity` 只惩罚 yaw **角速度**误差（`loco_command` 的 yaw 恒为 0），
     因此「原地匀速自转」在 settle 阶段几乎不受罚（角速度也接近 0），
     而 STOP 后持续缓转同样不易被察觉。
 

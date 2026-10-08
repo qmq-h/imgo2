@@ -1,7 +1,9 @@
-"""Class-based configuration skeleton for the hierarchical towing RL environment.
+"""Class-based configuration for the hierarchical towing RL environment.
 
-This module intentionally defines the complete configuration contract but is not registered yet:
-the ManagerBased per-physics-step rope/resistance adapter must first reproduce ``tow_drag.py``.
+架构（2026-10-08 起）：送给冻结 AMP 底层策略的速度指令由脚本调度给出，上层网络输出
+**12 维关节位置残差**叠加在冻结策略的关节目标上。任务已注册为
+``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
+清单见 ``docs/towing_training_prep_2026-09-22.md``。
 """
 
 from dataclasses import MISSING
@@ -95,10 +97,14 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class UpperActionsCfg:
+    """12 维归一化关节残差（2026-10-08 起）。
+
+    残差尺度取冻结策略契约的 `action_scale`，所以这里不再有 `acceleration_*`／
+    `reference_*` 两组限制：送给冻结策略的速度指令由脚本调度产生，不由网络积分。
+    """
+
     high_level_velocity = mdp.HierarchicalVelocityActionCfg(
         asset_name="robot", cart_asset_name="cart", policy_name="amp",
-        acceleration_min=(-1.0, -0.5, -1.0), acceleration_max=(0.5, 0.5, 1.0),
-        reference_min=(0.0, -0.3, -1.0), reference_max=(1.0, 0.3, 1.0),
         upper_control_dt=0.05, low_level_control_dt=0.02,
     )
 
@@ -154,28 +160,25 @@ class UpperRewardsCfg:
     **记录口径**：TensorBoard 的 `Episode_Reward/<项>` = 该回合的加权和 ÷ `max_episode_length_s`，
     量级比"每步值"小约 5~10 倍，不要直接与每步值比较。
 
-    **设计取向（截至 2026-09-23）**：跟踪类先有 `tracking_velocity`（正向驱动），
-    另外两项 `reference_tracking`/`action_magnitude` 用于修「上层动作 ±1 饱和抖动、
-    `ref` 追不上 `cmd`」这一具体失败。
+    **设计取向（截至 2026-10-08）**：跟踪类只有 `tracking_velocity`（实测速度 vs 命令，
+    正向驱动）与 `action_magnitude`／`action_rate`（治抖动）。原先与之并列的
+    `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
+    `reference_command`，该式恒为 0；其"起步即有效、全域有梯度"的作用由
+    `tracking_velocity` 现在真的比较**实测速度**来承担。
     """
 
     # ============================ 跟踪（任务主目标）============================
 
     # 【实际速度 vs 命令期望】唯一的正奖励，是策略的主要驱动。
     # exp(−(Δlin/0.5)² − (Δyaw/1.0)²)：完全跟上给 1.0，误差到 0.5 m/s 掉到 0.37、到 1.0 掉到 0.018。
-    # 全程生效（settle 与 STOP 段 `user_command` 为 0，即"保持零速"）。
+    # 全程生效（settle 与 STOP 段 `loco_command` 为 0，即"保持零速"）。
+    # 2026-10-08 修正：线性项原先误用 `reference_command − user_command`（上层自己的积分指令
+    # vs 任务指令），与函数名和奖励文档都不符，且与 reference_tracking 重复；现在比实测
+    # 机体系线速度，口径与测量台的 `steady_tracking_ratio` 一致。
     # ⚠ 已知缺陷：误差 >1 m/s 后梯度趋零（exp 的尾部），而牵引段起步瞬间正落在该区，
     #   属"探索与奖励脱钩"的来源之一，尚未修改。
     tracking_velocity = RewTerm(func=mdp.velocity_tracking_exp, weight=1.0,
                                 params={"linear_std": 0.5, "yaw_std": 1.0})
-
-    # 【上层指令 vs 命令期望】惩罚 ‖ref − user‖²（m²/s²），单位是"速度误差平方"。
-    # 与 tracking_velocity 的关键区别：比的是**上层自己产生的 speed 指令**，不穿过底层动力学，
-    # 因此误差归因清晰（是"上层没给对指令"还是"底层跟不上"一目了然）。
-    # 平方形式**全域有梯度**（不像 exp 有死区），牵引段起步即有效。
-    # 量级：牵引段实测 err_cmd≈0.425 m/s ⇒ −0.90/步，是当前量级最大的惩罚之一。
-    # 若发现策略为压低它而不敢动，降到 −2.0 左右。
-    reference_tracking = RewTerm(func=mdp.reference_tracking_l2, weight=-5.0)
 
     # ============================ 终止级（稀疏、致命）============================
 
@@ -228,13 +231,14 @@ class UpperRewardsCfg:
 
     # 【动作变化率】‖a_t − a_{t−1}‖²，鼓励平滑。2026-09-23 由 −0.02 提到 −0.1：
     # 原值实测每步仅 −0.026，被跟踪项压住、基本没起作用。±1 抖动时现约 −0.24/步。
+    # ⚠ 2026-10-08 动作由 3 维变 12 维关节残差，同等逐维幅值下本项量级约 ×4，
+    #   权重是否仍合适待实跑确认（见 README 问题表）。
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)
 
-    # 【动作幅值】‖a‖²（裁剪后，≤3）。与 action_rate 互补：一个压"变化量"、一个压"绝对值"。
-    # 目的：策略长期输出 ±1 饱和随机方波时把它压回中间值，为 reference_tracking 留出
-    # "用中等动作稳定跟踪"的空间。饱和时每步约 −0.15。
-    # ⚠ 与"必须用饱和正向动作长时间加速"存在张力（+x 上限仅 0.5 m/s²，到 1.0 m/s 需 40 步饱和），
-    #   若发现策略加速不足应下调。
+    # 【动作幅值】‖a‖²（裁剪后，3 维时 ≤3、12 维时 ≤12）。与 action_rate 互补：
+    # 一个压"变化量"、一个压"绝对值"。目的是把残差压回小幅度、让冻结步态保持主导。
+    # ⚠ 与"必须用饱和正向动作长时间加速"的旧张力已随动作语义变化：现在饱和的是**关节
+    #   残差**，不再直接等于加速度上限。权重 −0.05 待实跑确认。
     action_magnitude = RewTerm(func=mdp.action_magnitude_l2, weight=-0.05)
 
     # ============================ 诊断项（不塑造策略）============================

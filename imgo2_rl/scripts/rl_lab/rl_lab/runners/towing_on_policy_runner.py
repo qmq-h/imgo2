@@ -52,13 +52,25 @@ class TowingOnPolicyRunner:
             mass_coef=self.decoder_cfg["mass_coef"],
         )
 
-        actor_obs_dim = env.num_obs + 5
+        actor_obs_dim = env.num_obs + self.decoder.output_dim
         actor_critic = ActorCriticRecurrent(
             num_actor_obs=actor_obs_dim,
             num_critic_obs=env.num_privileged_obs,
             num_actions=env.num_actions,
             **self.policy_cfg,
         ).to(device)
+        # 上层动作是**叠加在冻结策略关节目标上的残差**，必须从 0 起步：`ActorCritic` 的
+        # 末层默认随机初始化，实测（2026-10-08，torch 默认 init）首拍 |a|max ≈ 0.149
+        # （归一化），按 `action_scale` 折算约 ±0.04 rad 的**系统性关节偏置**——量值不大，
+        # 但它是"每回合开始时冻结步态被固定偏移"的来源，且与残差式 RL 的常规做法相反。
+        # 零初始化后首拍残差精确为 0（有测试守着），即起点严格等于冻结策略自身的步态。
+        # 探索噪声仍由 `std` 提供，所以零初始化只去掉"起点偏置"，不减探索。
+        # **只对 towing runner 生效**：`ActorCriticRecurrent` 由 ppo／amp／himloco 共用，
+        # 不能改模块的默认初始化。
+        actor_last_linear = [layer for layer in actor_critic.actor
+                             if isinstance(layer, torch.nn.Linear)][-1]
+        torch.nn.init.zeros_(actor_last_linear.weight)
+        torch.nn.init.zeros_(actor_last_linear.bias)
         self.alg = PPO(actor_critic, device=device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
@@ -241,9 +253,12 @@ class TowingOnPolicyRunner:
                     f"dec {decoder_loss.item():>7.3f}  std {mean_std:>5.2f}  "
                     f"coll {collection_time:>5.2f}s  lrn {learn_time:>5.2f}s  "
                     f"{fps:>6.0f} sps")
-            # 分项只挑最需要观察的几项，避免又变长（完整分项在 TensorBoard 的 Episode_* 里）
-            picks = ("reference_tracking", "action_magnitude", "yaw_heading",
-                     "tracking_velocity", "min_clearance")
+            # 分项只挑最需要观察的几项，避免又变长（完整分项在 TensorBoard 的 Episode_* 里）。
+            # 2026-10-08：`reference_tracking` 已随残差方案删除（没有 reference_command 了），
+            # 换成停车阶段最该看的 `stop_towing_force`／`extra_distance`。
+            picks = ("action_magnitude", "action_rate", "yaw_heading",
+                     "tracking_velocity", "min_clearance",
+                     "stop_towing_force", "extra_distance")
             detail = "  ".join(
                 f"{k.replace('Episode_Reward/', '')[:9]}={episode_stats[k]:+.3f}"
                 for k in (f"Episode_Reward/{p}" for p in picks) if k in episode_stats)

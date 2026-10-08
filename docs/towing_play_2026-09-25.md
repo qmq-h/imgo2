@@ -1,5 +1,7 @@
 # 拖曳上层策略回放指令、结果与 `model_2000.pt` 前置核对（2026-09-25）
 
+> **2026-10-08 起本文的复现步骤已失效**：动作/观测契约已改为 57 维帧 + 6 维 decoder + 12 维关节残差动作，`model_2000.pt`（56 维 actor／5 维 decoder）与新契约不兼容，按本文命令回放会因维数不符而失败。本文保留为该次 run 的记录，现行契约见 [残差动作与三维拉力记录](towing_deltapos_residual_2026-10-08.md) 与 README TOW-06。
+
 关联问题：TOW-03（上层训练／验收）、TOW-05（导出件与 sim2sim 闭环）。
 任务 ID：`Imgo2-towing-upper-rl-lab`（`--agent=rl_lab_cfg_entry_point`）。
 目标 checkpoint：`logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt`（本地产物，`logs/` 被 `.gitignore` 忽略，不入库）。

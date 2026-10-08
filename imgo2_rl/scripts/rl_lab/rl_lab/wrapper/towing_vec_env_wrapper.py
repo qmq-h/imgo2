@@ -33,9 +33,16 @@ class TowingVecEnvWrapper(VecEnv):
         self.num_obs = _flat_dim(groups["policy"])
         self.num_privileged_obs = _flat_dim(groups["critic"])
         self.num_decoder_obs = _flat_dim(groups["decoder"])
-        if self.num_obs != 51 or self.num_decoder_obs != 6:
+        # 契约字面量（与 `upper_logic` 的 UpperObservationSpec / DecoderSpec 对应）：
+        # policy 帧 57 = loco_command 3 + last_action 12 + ang_vel 3 + gravity 3 +
+        #                 last_loco_action 12 + joint_pos 12 + joint_vel 12；
+        # decoder 组 7 = targets 6（vel 2 + mass 1 + force 3）+ mass_weight 1。
+        # 两处字面量都由 `test_towing_rl_lab_dimension_contract_matches_upper_logic` 交叉校验，
+        # 避免 rl_lab 侧静默漂移（本模块不导入 isaac 侧包，以保持离线可导入）。
+        if self.num_obs != 57 or self.num_decoder_obs != 7:
             raise ValueError(
-                f"Towing contract requires policy=51 and decoder=6, got {self.num_obs} and {self.num_decoder_obs}")
+                f"Towing contract requires policy=57 and decoder=7, got "
+                f"{self.num_obs} and {self.num_decoder_obs}")
         self._obs_dict = None
         self.reset()
 
@@ -62,8 +69,9 @@ class TowingVecEnvWrapper(VecEnv):
         return self._obs_dict["critic"]
 
     def get_decoder_supervision(self):
+        # targets（6 = vel 2 + mass 1 + force 3）与质量监督权重（1）在同一组里拼接。
         decoder = self._obs_dict["decoder"]
-        return decoder[:, :5], decoder[:, 5]
+        return decoder[:, :6], decoder[:, 6]
 
     def step(self, actions):
         if self.clip_actions is not None:

@@ -1,16 +1,17 @@
 # 上层拖曳强化学习计划
 
-> 最后维护：2026-09-22。本文是上层 RL 环境的实现规格；类结构和物理 adapter 骨架已经存在，但链路复审发现若干训练阻断项，尚未注册任务或启动训练。现状和修复顺序以 [上层拖曳 RL 链路复审](towing_upper_rl_review_2026-09-22.md) 为准。
+> 最后维护：2026-10-08。本文是上层 RL 环境的实现规格。**2026-10-08 架构改动**（用户决定）：上层动作由「3 维参考加速度」改为 **12 维关节位置残差**，送冻结策略的速度指令改由脚本调度给出；decoder 牵引力由 2 维改为 **3 维**（速度保持 2 维）。改动细节、验证与限制见 [残差动作与三维拉力记录](towing_deltapos_residual_2026-10-08.md)；历史复审结论仍见 [上层拖曳 RL 链路复审](towing_upper_rl_review_2026-09-22.md)。
 
 ## 1. 任务结构
 
-冻结已有 locomotion policy，上层策略只做 command shaping：
+冻结已有 locomotion policy，上层策略只输出叠加在它关节目标上的残差：
 
 ```text
-user cmd → upper action → reference velocity → frozen locomotion → joint targets
+user cmd（脚本调度） → frozen locomotion → joint targets
+                                              + deltapos（上层 20 Hz）→ joint position command
 ```
 
-v0.1 只研究直线停止瞬态。上层频率 20 Hz，物理步长 0.005 s；底层策略保持自己的 0.02 s 控制周期。动作和观测由 class-based config 管理，不修改已有 locomotion 环境。
+速度指令不再由上层网络积分产生：它由 `scheduled_command` 逐拍写成 `loco_command`（settle 0 → tow 速度 → STOP 后 0），与测量台 `tow_drag.py` 的 `user_cmd` 同相位（其记录里 `user_cmd == ref_cmd`）。v0.1 只研究直线停止瞬态。上层频率 20 Hz，物理步长 0.005 s；底层策略保持自己的 0.02 s 控制周期。动作和观测由 class-based config 管理，不修改已有 locomotion 环境。
 
 当前主线只有两个连续阶段：
 
@@ -28,47 +29,46 @@ v0.1 只研究直线停止瞬态。上层频率 20 Hz，物理步长 0.005 s；�
 
 | 顺序 | observation | 维数 | 说明 |
 |---:|---|---:|---|
-| 1 | `cmd_vel` | 3 | 完整用户指令 `[vx, vy, yaw_rate]` |
-| 2 | `reference_command` | 3 | 积分后实际送给冻结底层策略的参考速度 |
-| 3 | `last_action` | 3 | 上一拍上层动作 `[a_x, a_y, a_yaw]` |
-| 4 | `base_ang_vel` | 3 | IMU 机体系角速度，训练缩放为 `0.25` |
-| 5 | `projected_gravity` | 3 | IMU 姿态对应的机体系重力方向 |
-| 6 | `last_loco_action` | 12 | 冻结底层策略上一拍输出 |
-| 7 | `joint_pos` | 12 | 策略关节顺序下的相对位置 |
-| 8 | `joint_vel` | 12 | 策略关节顺序下的速度 |
+| 1 | `loco_command` | 3 | 脚本调度出来、**实际送给冻结底层策略**的速度指令 `[vx, vy, yaw_rate]` |
+| 2 | `last_action` | 12 | 上一拍上层动作：策略关节顺序下的**归一化关节残差** |
+| 3 | `base_ang_vel` | 3 | IMU 机体系角速度，训练缩放为 `0.25` |
+| 4 | `projected_gravity` | 3 | IMU 姿态对应的机体系重力方向 |
+| 5 | `last_loco_action` | 12 | 冻结底层策略上一拍输出 |
+| 6 | `joint_pos` | 12 | 策略关节顺序下的相对位置 |
+| 7 | `joint_vel` | 12 | 策略关节顺序下的速度 |
 
-单帧原始 observation 固定为 51 维，不输入 base 线速度、小车速度／位置、robot-cart distance、绳长、绳刚度／阻尼、负载质量或牵引力。这些量要么难以部署获取，要么属于待估计的隐藏物理量。
+单帧原始 observation 固定为 **57 维**，不输入 base 线速度、小车速度／位置、robot-cart distance、绳长、绳刚度／阻尼、负载质量或牵引力。这些量要么难以部署获取，要么属于待估计的隐藏物理量。（2026-10-08 前的 51 维版本并列了 `cmd_vel` 与 `reference_command` 两项；残差方案下两者恒等，已合并为一项。）
 
-Dynamics decoder 每步读取当前 51 维帧并维护自己的 GRU hidden state，输出机器人机体系线速度估计 `v_hat=[vx,vy]`、质量估计 `m_hat` 和机器人所受机体系平面牵引力估计 `F_hat=[Fx,Fy]`。这 5 维输出 detach 后与原始帧拼接，因此 PPO actor 实际输入为 56 维：
+Dynamics decoder 每步读取当前 57 维帧并维护自己的 GRU hidden state，输出机器人机体系线速度估计 `v_hat=[vx,vy]`（2 维，不含竖直）、质量估计 `m_hat` 和**三维**牵引力估计 `F_hat=[Fx,Fy,Fz]`（机体系；2026-10-08 由 2 维改为 3 维，理由见 §4）。这 6 维输出 detach 后与原始帧拼接，因此 PPO actor 实际输入为 **63 维**：
 
 ```text
-51D frame -> Linear(128) -> GRU(128)
+57D frame -> Linear(128) -> GRU(128)
                          -> velocity head (2)
                          -> mass head (1)
-                         -> towing-force head (2)
+                         -> towing-force head (3)
 
-actor input = [51D frame, v_hat(2), m_hat(1), F_hat(2)]
+actor input = [57D frame, v_hat(2), m_hat(1), F_hat(3)]
 ```
 
 PPO actor 自身仍使用独立的单层 256 维 GRU，critic 使用另一套 GRU。Decoder、actor、critic 不共享参数或 hidden state。
 
-Actor 不启用经验归一化，保持上表约定的显式缩放和部署契约；仓库自有 `rl_lab` towing runner 只对 critic 特权输入维护 running mean/variance，以处理张力、质量、摩擦和轮阻等尺度差异。该处理不修改 reward，只通过价值拟合与 advantage 间接影响 Actor 更新；critic 及其 normalizer 不导出到部署策略。
-
-上层 action 与用户 command 都是三维。v0.1 的训练分布仍可先固定 `vy=yaw_rate=0`，但接口和网络不能退化为一维，否则后续转向时 observation/action 契约都要重做。
+Actor 不启用经验归一化，保持上表约定的显式缩放和部署契约；仓库自有 `rl_lab` towing runner 只对 critic 特权输入维护 running mean/variance，以处理张力、质量、摩擦和轮阻等尺度差异。该处理不修改 reward，只通过价值拟合与 advantage 间接影响 Actor 更新；critic 及其 normalizer 不导出到部署策略。critic 特权输入当前为 **72 维**（57 帧 + 机器人速度 2 + 小车速度 2 + 绳状态 4 + 机体系拉力 3 + 质量/摩擦/轮阻/有无小车 4）。
 
 GRU 的有效历史由 rollout 序列和 episode 边界决定，不再手工展平固定帧数。训练、回放和部署都必须在单个环境结束时分别清 decoder／actor／critic hidden state。
 
 ## 3. Action
 
-`high_level_velocity` 是三维归一化动作，实际语义是参考加速度／角加速度，不是直接速度：
+`high_level_velocity` 是 **12 维**归一化动作，语义是**叠加在冻结策略关节位置目标上的残差**：
 
 ```text
-u = [u_x, u_y, u_yaw] ∈ [-1, 1]³
-a_ref = [a_x, a_y, a_yaw]
-cmd_ref[t+1] = clip(cmd_ref[t] + a_ref * 0.05, limits)
+u ∈ [-1, 1]¹²                         （上游 clip_actions = 1.0）
+deltapos = action_scale ⊙ u            （逐关节：髋 0.125 rad，大腿/小腿 0.25 rad）
+joint_cmd = default_dof_pos + action_scale · (loco_action + u)
 ```
 
-初始范围：`a_x∈[-1,0.5] m/s²`、`a_y∈[-0.5,0.5] m/s²`、`a_yaw∈[-1,1] rad/s²`；参考指令限制为 `vx∈[0,1] m/s`、`vy∈[-0.3,0.3] m/s`、`yaw_rate∈[-1,1] rad/s`。纵向不允许倒车。`HierarchicalVelocityAction` 负责三维积分、限幅、构造底层 45 维 observation、执行冻结 AMP policy 并写入 12 个关节目标。
+残差尺度直接取冻结策略契约 `LowLevelPolicyCfg.action_scale`，与底层动作同量纲，因此幅值受底层动作范围界定：`clip_actions=1.0` 时残差最多用到底层权限（动作裁剪 ±3.0）的 **1/3**；要放大上层权限就调大 `clip_actions`，并同步复核 `action_magnitude` 权重。`HierarchicalVelocityAction` 负责写 `loco_command`、把归一化残差换算成 `delta_joint_pos`、构造底层 45 维 observation、执行冻结 AMP policy，并在**每次底层刷新（20 ms）**时重算 `joint_targets + delta_joint_pos`（残差 50 ms 变、底层输出 20 ms 变，只在 50 ms 处算一次会用错值）。
+
+**残差绝不能进入冻结策略自己的观测**（尤其它的 `last_action`），否则 45 维冻结契约就被改写成另一个策略；这条由契约测试守着。动作必须从 0 起步，因此 towing runner 对 actor 末层做零初始化（只作用于 towing，ppo／amp／himloco 的共用模块未改）。
 
 ## 4. Critic 与负载 decoder
 
@@ -86,29 +86,29 @@ L_D = lambda_v * Huber(v_hat, v_GT)
 
 初始 `F_min=1 N`、`F_scale=10 N`。无有效拉力时 `w_t=0`，拉力越充分质量监督越强。权重只能由 detach 的 `F_GT` 计算，不能使用 `F_hat`，否则 decoder 可以通过压低自己的力预测逃避质量损失。该权重只作用于质量项，不屏蔽速度或力监督。若实验表明松绳后质量估计迅速遗忘，再把“episode 首次有效牵引后保持监督”的 persistent 版本作为消融，而不是初版默认。
 
-当前 target 归一化约定为：`vx/1.0`、`vy/0.5` 后截到 `[-1,1]`；质量 5–15 kg 线性映射到 `[-1,1]`；每个牵引力分量使用 `F/(|F|+10 N)`。环境的 training-only decoder group 另外直接输出由物理 `Fx/Fy` 计算的 `w_t`，runner 不从归一化 target 反推权重。
+当前 target **直接回归物理量**（m/s、kg、N），不做归一化也不 clamp：2026-09-23 去掉 target 归一化与 head 的 tanh，因为归一化尺度会按 s² 压低力与质量的 loss 权重（力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），且 `v/(1.0,0.5)` 的 clamp 会截断超速真值；稳定性改由 `smooth_l1(β=1)` 提供。环境的 training-only decoder group 另外直接输出由物理 `‖F_GT‖`（**三维**，含竖直分力）计算的 `w_t`，runner 不从 target 反推权重。
 
-预测误差不进入 PPO reward。Decoder 只最小化 `L_D`，PPO 只最大化任务 return。Decoder 输出进入 actor 前 detach，因此第一版不存在 `L_PPO -> decoder` 梯度。rollout 必须保存采样当时的 5 维估计；decoder 只在 PPO 使用完该批数据后更新，不能更新 decoder 后重算旧 rollout 的 actor observation。
+预测误差不进入 PPO reward。Decoder 只最小化 `L_D`，PPO 只最大化任务 return。Decoder 输出进入 actor 前 detach，因此第一版不存在 `L_PPO -> decoder` 梯度。rollout 必须保存采样当时的 **6 维**估计；decoder 只在 PPO 使用完该批数据后更新，不能更新 decoder 后重算旧 rollout 的 actor observation。
 
 **可辨识性限制**：未知绳长、刚度、阻尼、轮阻和摩擦可能产生相近的机器人响应，因此质量与力只能在训练域和充分激励下做条件估计。必须分别报告未见质量／绳参数下的速度 RMSE、质量 MAE／R² 和牵引力 RMSE，并加入 constant-prior、shuffled-label、无 decoder 以及 Oracle 真值输入对照。
 
 ### 4.1 可行性评估与训练约束
 
-整体方案可行。机器人速度估计与已有腿式机器人本体速度估计问题相近，51 维输入包含 IMU、关节状态、底层动作、用户指令和实际 reference command，GRU 可以利用步态周期与跟踪残差恢复机体系 `vx/vy`。缺少足端接触标志会使打滑工况更难，因此必须单独报告未见摩擦、低附着和扰动下的速度误差。
+整体方案可行。机器人速度估计与已有腿式机器人本体速度估计问题相近，57 维输入包含 IMU、关节状态、底层动作、脚本速度指令与上一拍关节残差，GRU 可以利用步态周期与跟踪残差恢复机体系 `vx/vy`。缺少足端接触标志会使打滑工况更难，因此必须单独报告未见摩擦、低附着和扰动下的速度误差。
 
 牵引力可看作冻结 locomotion 在已知 reference command 下受到的外部扰动，但质量、轮阻、摩擦与未知绳参数之间存在等效性，质量不是任何时刻都可辨识。连续力权重避免绳尚未受力时强迫网络猜质量，并让强交互样本承担更高监督权重；它不能消除训练域外的不可辨识性。
 
-Decoder 输出进入 actor 会造成一个新的非平稳来源：decoder 每次更新后，同一 51 维输入可能产生不同估计。第一版采用以下约束：
+Decoder 输出进入 actor 会造成一个新的非平稳来源：decoder 每次更新后，同一 57 维输入可能产生不同估计。第一版采用以下约束：
 
-1. 先用 scripted／随机安全策略预训练 decoder；
-2. rollout 内冻结 decoder，并保存采样时的 5 维 estimate；
+1. 先用 scripted／随机安全策略预训练 decoder（**尚未实现**，当前 runner 是每个 PPO 迭代后更新一次 decoder）；
+2. rollout 内冻结 decoder，并保存采样时的 **6 维** estimate；
 3. PPO 使用完该批数据后再更新 decoder，不用新 decoder 重算旧 observation；
 4. actor 输入中的 estimate 全部 detach；
 5. 评估时分别报告 estimator 精度和最终控制指标，不能用训练 loss 代替安全收益。
 
 PPO actor 再使用 GRU 是合理的：decoder hidden 压缩动力学辨识信息，actor hidden 负责控制阶段、动作平滑和停止过程记忆。代价是训练和部署必须维护两套状态；若消融显示 actor GRU 无收益，可将 actor 降为 MLP，但 decoder GRU 保留。
 
-STOP 目标在现有动作接口上可表达：用户 `cmd_vel=0` 后，actor 可以暂时保持 `reference_command>0`，再平滑降到零。当前 tracking reward、`stop_towing_force` 和 `extra_distance` 倾向尽快卸载并停止，而 clearance／collision 项倾向避免追尾；正式训练前必须确认 scripted return 排序满足“安全前移必要距离 > 立即停死后追尾 > 持续前进”。若排序不成立，优先调整停车后距离项的死区和安全项，并复核拉力惩罚尺度，而不是加入 prediction reward。
+STOP 目标在现有动作接口上可表达：到 `t_stop` 时脚本把 `loco_command` 置 0（冻结策略被要求站定），上层残差仍可在这段瞬态里改变姿态与蹬地方式，从而决定"前移必要距离后卸载"还是"立刻停死"。当前 tracking reward（**实测**速度 vs 指令）、`stop_towing_force` 和 `extra_distance` 倾向尽快卸载并停止，而 clearance／collision 项倾向避免追尾；正式训练前必须确认 scripted return 排序满足“安全前移必要距离 > 立即停死后追尾 > 持续前进”。若排序不成立，优先调整停车后距离项的死区和安全项，并复核拉力惩罚尺度，而不是加入 prediction reward。
 
 ## 5. Reward 与 termination
 
@@ -158,15 +158,15 @@ v0 reset event 已按 episode 采样以下工况：
 | `rl_lab/runners/towing_on_policy_runner.py` | 已建：三套 GRU 状态、detached estimate rollout、critic-only normalizer、PPO 后 decoder 更新及联合 checkpoint |
 | `rl_lab/wrapper/towing_vec_env_wrapper.py` | 已建：适配 Isaac Lab 的 `policy/critic/decoder` observation groups 与五元 step 接口 |
 | `scripts/rl_lab/towing/train.py` | 已建：自有 towing runner 训练入口。2026-09-22 修掉其 `--agent` 默认值（原值全仓无对应注册项），改为与 `rl_lab_cfg_entry_point` 推导一致的 `rl_lab`（**已修，待验证**） |
-| `rl_lab/modules/towing_decoder.py` | 已建：`51→128→GRU(128)` dynamics decoder、三个 prediction heads、连续力加权质量监督和梯度隔离 |
-| `tests/test_towing_upper_rl_contract.py` | 已完成：五维 decoder target、56 维 actor 拼接、force-weighted mass supervision 和梯度隔离契约 |
+| `rl_lab/modules/towing_decoder.py` | 已建：`57→128→GRU(128)` dynamics decoder、三个 prediction heads（vel 2 / mass 1 / force 3）、连续力加权质量监督和梯度隔离；head 宽度与 loss 切片由模块内 `VELOCITY_DIM/MASS_DIM/FORCE_DIM/FORCE_SLICE` 常量推导 |
+| `tests/test_towing_upper_rl_contract.py` | 已完成：六维 decoder target（vel 2 + mass 1 + force 3）、63 维 actor 拼接、57 维帧、12 维残差动作、force-weighted mass supervision 和梯度隔离契约；另守「残差不进冻结策略观测」「actor 末层零初始化」「rl_lab 侧维数字面量与 `upper_logic` 一致」 |
 | Gym task registration | **已注册（2026-09-22 用户决定）**：`Imgo2-towing-upper-rl-lab`，`--agent=rl_lab_cfg_entry_point`。这显式翻过了原先「物理 adapter 未与测量台对齐前禁止注册」的保护，故运行验收项仍未完成。注册接线与验收清单见 [训练前置记录](towing_training_prep_2026-09-22.md) |
 
 ## 8. 下一步与注册门槛
 
 1. 在训练机运行环境构造冒烟，验证每物理步 compliant／inextensible／rigid 连接力（含刚体连杆的压缩推力）、逐环境轮阻和底层 50 Hz 保持；两套绳的代码已接但未运行，刚体连杆（2026-10-08 新增）连静态检查之外都未实跑。
 2. 在训练机核对车体表面间隙代理，以及车斗／四轮过滤机器人接触的判据，并与测量台 FK 间隙、车斗／车轮记录交叉验证。
-3. 在训练机验证自有 recurrent runner：在线保存 5 维 decoder estimate 并拼成 56 维 actor observation；检查三套 GRU reset、GT-force mass weight、episode 边界切分、PPO 后 decoder 更新及 checkpoint 恢复。
+3. 在训练机验证自有 recurrent runner：在线保存 6 维 decoder estimate 并拼成 63 维 actor observation；检查三套 GRU reset、GT-force mass weight、episode 边界切分、PPO 后 decoder 更新及 checkpoint 恢复，并确认**同一速度指令下残差=0 时关节指令与改造前逐位一致**（验证残差通路而非整回合等效：指令已由积分斜坡改为脚本阶跃）、残差从 0 起步。
 4. 用 scripted action 在单环境复现 `tow_drag.py` 的跟速、稳态张力、停车滑行和间隙指标。
 5. 任务已于 2026-09-22 注册为 `Imgo2-towing-upper-rl-lab`（`--agent=rl_lab_cfg_entry_point`），用于在训练机执行训练；第 1–4 项运行验收仍未完成，不得因任务可启动而视为通过。
 6. 注册后先跑单工况短训练，排查持续前进、故意碰撞／跌倒等 reward hacking，再扩展课程。
@@ -186,8 +186,8 @@ v0 reset event 已按 episode 采样以下工况：
 
 ### 9.2 Sim2sim 部署
 
-1. 在部署侧实现与训练完全一致的 51 维单帧 observation，顺序执行 decoder 和 actor，并在 reset 时清两套 hidden state。
-2. 保持上层 20 Hz、冻结底层策略 50 Hz；command 积分、缩放、限幅和初始化逐项对齐。
+1. 在部署侧实现与训练完全一致的 57 维单帧 observation，顺序执行 decoder 和 actor，并在 reset 时清两套 hidden state；关节指令必须按 `冻结策略输出 + action_scale ⊙ clip(u)` 合成，且残差不得回灌冻结策略的观测。
+2. 保持上层 20 Hz、冻结底层策略 50 Hz；脚本速度指令的相位、残差缩放／限幅和初始化逐项对齐。
 3. 将小车、轮阻和连接模型加入 MuJoCo／Gazebo 对照场景，不读取训练期质量、间隙或连接状态真值。**当前只有两套单边绳场景**：刚体球铰连杆是 2026-10-08 的训练侧新增，sim2sim 第三场景（双边约束）尚未实现，见 TOW-05。
 4. 先做同输入网络数值一致性，再跑站定、牵引、速度置零、低／高质量和各连接工况；刚体连杆需在 MuJoCo 场景补齐后才纳入。
 5. 对比 Isaac Lab 与 sim2sim 的跟速、停车距离、最小间隙、碰撞、姿态和 action-rate；偏差必须按模型、控制或 observation 分类记录。
@@ -204,4 +204,5 @@ sim2sim 完成标准：导出网络与训练 actor 在确定性输入上数值�
 - GRU decoder、监督 loss、连续力加权质量监督、detached actor augmentation 和 `rl_lab` recurrent rollout／PPO runner 已接线，尚未训练机运行。
 - ManagerBased 绳力／轮阻 adapter、双频控制、event、stop schedule、安全 producer 已接入代码，但尚未在 Isaac Lab 运行；间隙当前是 base 后表面到车斗前表面的有向代理，腿部几何由车斗和四轮对机器人过滤接触的终止信号兜底，仍需与离线 FK 指标交叉验证。
 - 2026-09-22 已把 actor 改为 51 维单帧 GRU 输入，加入 `reference_command`，修复 per-env 底层 history／rope state reset 并改用逐环境 Bernoulli 绳模型采样；随后将 towing recurrent PPO、decoder 更新和 critic-only normalizer 全部移入仓库 `rl_lab`，不再依赖外部 RSL-RL runner/config API。任务仍未注册，训练机 rollout 尚未执行。
+- 2026-10-08 动作改为 12 维关节位置残差、送冻结策略的速度指令改由脚本调度给出，decoder 牵引力改为 3 维（帧 51→57、decoder 5→6、actor 56→63、critic 65→72）；离线契约与守卫测试通过，但**未在 Isaac Lab 运行验证**，旧 run 的 checkpoint 与 TensorBoard 对照作废。详见 [记录](towing_deltapos_residual_2026-10-08.md)。
 - 最大可拖质量仍待边界扫描实跑，不能从配置范围直接推断。
