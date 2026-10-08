@@ -27,6 +27,8 @@ def load(name, path):
 
 
 logic = load("towing_upper_logic_test", PKG / "upper_logic.py")
+# 场景网格是纯算术模块（无 torch / Isaac Lab 依赖），可离线加载
+grid = load("towing_connection_grid_test", PKG / "mdp/connection_grid.py")
 
 
 class UpperLogicTests(unittest.TestCase):
@@ -369,57 +371,58 @@ class UpperLogicTests(unittest.TestCase):
         self.assertGreater(float(parts[2]), float(parts[0]))
 
     def test_min_clearance_reward_is_ratio_based_and_gated(self):
-        """最小间距奖励：阈值按绳长比例给出，且对无小车环境屏蔽。
+        """最小间距奖励：阈值按**逐 env 连接长度**比例给出，且对无小车环境屏蔽。
 
-        2026-09-23 用户要求「维持小车与机器人距离不低于绳长的 0.6 倍」。注意实测几何：
-        初始「后表面→车斗」间隙约 0.349 m < 0.6×0.8=0.48 m，故该项一开局即激活
-        （docstring 已记录该事实与两种可选处理）。
+        2026-09-23 用户要求「维持小车与机器人距离不低于连接长度的 ratio 倍」。2026-10-08
+        场景改成 20 行长度 0.4–0.8 m 的网格后，阈值必须逐 env 取 `term.connection_length`，
+        否则短绳行（L0=0.4 时 spawn 间隙仅约 0.108 m）一开局就满额惩罚；ratio 相应由 0.40
+        调到 0.25。
         """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         self.assertIn("def min_clearance_violation(", mdp)
-        # 阈值必须是 ratio × rope_length，而不是写死的绝对量
-        self.assertIn("threshold = ratio * rope_length", mdp)
+        # 阈值必须是 ratio × 本 env 连接长度，而不是写死的绝对量
+        self.assertIn("threshold = ratio * term.connection_length[:, 0]", mdp)
         # 无小车环境必须屏蔽（与 clearance/collision 同一约定）
         self.assertIn("return violation * term.cart_present[:, 0]", mdp)
-        # 注册项存在且 ratio=0.6、权重为负
         self.assertIn("min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0", cfg)
-        self.assertIn('"ratio": 0.40', cfg)
-        self.assertIn('"rope_length": 0.8', cfg)
+        self.assertIn('"ratio": 0.25', cfg)
 
-    def test_min_clearance_matches_rope_length_config(self):
-        """阈值参数必须与 action term 的 rope_length 一致，避免两处漂移。"""
-        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
-        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        import re as _re
-        rope_in_term = _re.search(r"rope_length: float = ([0-9.]+)", mdp).group(1)
-        rope_in_reward = _re.search(r'"rope_length": ([0-9.]+)', cfg).group(1)
-        self.assertEqual(rope_in_term, rope_in_reward,
-                         f"rope_length 不一致：term={rope_in_term} reward={rope_in_reward}")
+    def test_min_clearance_is_inactive_at_spawn_for_every_grid_row(self):
+        """意图守卫：**所有行**的 spawn 间隙都必须高于 min_clearance 阈值。
 
-    def test_min_clearance_is_inactive_at_spawn(self):
-        """意图守卫：spawn 时间的「后表面→车斗」间隙必须**高于** min_clearance 阈值。
-
-        用户 2026-09-23 明确要求「初始的时候这个奖励不生效」。初始间隙 0.349 m，
-        故 ratio 取 0.40（阈值 0.32 m）而不是 0.6（0.48 m）——后者会让该奖励开局即满额
-        惩罚（约 −0.26/步，按 200 步约 −52/回合，比原有全部惩罚之和还大两个量级）。
-
-        本测试从源码读出各常数自行验算，避免把数值重新硬编码一遍。
+        用户 2026-09-23 明确要求「初始的时候这个奖励不生效」。网格里 L=0.4 m 那一行
+        间隙最小（绳：target=0.5L；刚体：target=L），故只要两种最短行都高于阈值即可。
+        本测试从源码与网格常数自行验算，避免把数值重新硬编码一遍。
         """
-        import re as _re
+        import math
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        cart_x = float(_re.search(r"cart\.init_state\.pos = \((-?[0-9.]+),", cfg).group(1))
-        rear = float(_re.search(r"robot_rear_surface_x: float = ([0-9.]+)", mdp).group(1))
-        front = float(_re.search(r"cart_front_surface_x: float = ([0-9.]+)", mdp).group(1))
-        rope = float(_re.search(r"rope_length: float = ([0-9.]+)", mdp).group(1))
-        ratio = float(_re.search(r'"ratio": ([0-9.]+)', cfg).group(1))
-        gap0 = abs(cart_x) - rear - front
-        threshold = ratio * rope
-        self.assertGreater(
-            gap0, threshold,
-            f"初始间隙 {gap0:.4f} m 未高于阈值 {threshold:.4f} m；"
-            f"用户要求 spawn 时该奖励不生效")
+        assets = (RL / "source/imgo2_rl/imgo2_rl/assets/imgo2.py").read_text("utf-8")
+
+        def one(pattern, text=cfg):
+            return float(re.search(pattern, text).group(1))
+
+        ratio = one(r'"ratio": ([0-9.]+)')
+        # 机器人出生高度来自训练侧 `IMGO2_CFG.init_state.pos`（upper 场景直接用该配置）
+        robot_z = one(r"pos=\(0\.0, 0\.0, ([0-9.]+)\)", assets)
+        cart_z = one(r"cart\.init_state\.pos = \(-?[0-9.]+, [0-9.]+, ([0-9.]+)\)")
+        rear = one(r"robot_rear_surface_x: float = ([0-9.]+)", mdp)
+        front = one(r"cart_front_surface_x: float = ([0-9.]+)", mdp)
+        robot_attach_x = one(r"robot_attachment: tuple\[float, float, float\] = \((-?[0-9.]+)", mdp)
+        cart_attach_x = one(r"cart_attachment: tuple\[float, float, float\] = \((-?[0-9.]+)", mdp)
+        final_z = robot_z - cart_z
+        # clearance = (robot_x − rear) − (cart_x + front)，而 cart_x 由 target 反解，
+        # 化简后 = h + (−rear − robot_attach_x + cart_attach_x − front)
+        base_offset = -rear - robot_attach_x + cart_attach_x - front
+        for label, target in (("最短绳行", grid.SLACK_RATIO * grid.LENGTH_MIN_M),
+                              ("最短刚体行", grid.LENGTH_MIN_M)):
+            horizontal = math.sqrt(target ** 2 - final_z ** 2)
+            gap = horizontal + base_offset
+            threshold = ratio * grid.LENGTH_MIN_M
+            self.assertGreater(gap, threshold,
+                               f"{label}（L={grid.LENGTH_MIN_M}）spawn 间隙 {gap:.4f} m "
+                               f"未高于阈值 {threshold:.4f} m；用户要求 spawn 时该奖励不生效")
 
     def test_min_clearance_hinge_is_exactly_zero_above_threshold(self):
         """阈值上方必须**精确为 0**（不能留 softplus 偏置）。
@@ -509,12 +512,14 @@ class UpperLogicTests(unittest.TestCase):
             self.assertIn(fragment, cfg)
         self.assertIn("default_masses[ids_cpu] * scale[:, None]", mdp)
         self.assertIn("default_inertias[ids_cpu] * scale[:, None, None]", mdp)
-        self.assertIn("torch.randint(0, 2, (count,)", mdp)
+        # 类型/长度来自确定性网格，不再是逐 env 随机采样
+        self.assertIn("specs = [env_spec(index) for index in range(env.num_envs)]", mdp)
+        self.assertNotIn("torch.randint(0, len(CONNECTION_MODELS)", mdp)
         self.assertIn("elapsed_s < self.stop_time_s", mdp)
         self.assertIn("self._apply_towing_physics()", mdp)
         self.assertIn("self._physics_step % low_level_decimation", mdp)
         self.assertIn("-self.wheel_damping * self._cart.data.joint_vel", mdp)
-        self.assertIn("SplitRopeModel(", mdp)
+        self.assertIn("MultiRopeModel(", mdp)
         # target 改为物理量后不再有归一化；断言 decoder_targets 直接返回原始量
         self.assertIn("return torch.cat((robot_velocity_xy, mass, force), dim=1)", mdp)
         self.assertNotIn("force / (force.abs() + 10.0)", mdp)
@@ -532,6 +537,41 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("cart_state[~cart_present, 1] += no_cart_lateral_offset", mdp)
         self.assertIn("* term.cart_present[:, 0]", mdp)
         self.assertIn("term.cart_present.float()", mdp)
+
+    def test_three_connection_types_are_fixed_by_the_column_grid(self):
+        """三类连接（弹性绳 / 低弹性绳 / 刚体球铰连杆）必须逐 env 共存，且由**列**决定。
+
+        刚体连杆是**双边**模型，所以 `ROPE_MODELS` 仍只含两套绳，`CONNECTION_MODELS` 才是
+        三类的完整集合——避免把「绳只能拉」的单边不变量套到连杆上（见 rope_model.py）。
+        2026-10-08 起类型不再逐 env 随机，而是 `connection_grid` 按 env index 的列映射。
+        """
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("from .mdp.connection_grid import", mdp)
+        self.assertIn("models=(compliant, inextensible, rigid)", mdp)
+        self.assertIn("[[spec[\"model_index\"]] for spec in specs]", mdp)
+        # 类型张量在 __init__ 里一次算好、reset 不再改写
+        self.assertNotIn("term.rope_model_id[env_ids, 0] =", mdp)
+
+    def test_grid_spawn_places_the_cart_by_connection_length(self):
+        """三类连接都按**本 env 的目标挂点距**摆放小车，且先摆位、后叠加无小车横移。
+
+        否则第一物理步就有初始力（绳预张紧、刚体初始压缩/拉伸）。目标值来自网格：
+        绳 = 0.5·L0（留松弛）、刚体 = L，由 `initial_distance` 张量提供。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("num_envs=COLUMNS * ROWS", cfg)
+        self.assertIn("self.initial_distance = torch.tensor(", mdp)
+        self.assertIn("target_distance = term.initial_distance[env_ids, 0]", mdp)
+        # spawn 摆放：水平分量 = sqrt(target² − Δz²)（纯几何函数），方向沿机器人正后方，
+        # 挂点用实际 spawn 位姿算
+        self.assertIn("attachment_horizontal_gap(target_distance, delta_z=delta_z)", mdp)
+        self.assertIn("robot_attach_w = math_utils.quat_apply(", mdp)
+        # 顺序：先按连接长度摆放，再加无小车横移（反了会覆盖横向停放）
+        self.assertLess(mdp.index("horizontal = attachment_horizontal_gap("),
+                        mdp.index("cart_state[~cart_present, 1] += no_cart_lateral_offset"))
+        # 旧的「只在刚体分支里摆放」已被三类统一摆放取代
+        self.assertNotIn("rigid_link_horizontal_gap", mdp)
 
     def test_safety_and_history_producers_are_live(self):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")

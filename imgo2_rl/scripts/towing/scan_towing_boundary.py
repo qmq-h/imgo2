@@ -49,8 +49,9 @@ def parse_args(argv=None):
     parser.add_argument("--ground-frictions", nargs="+", type=float,
                         default=list(DEFAULT_FRICTIONS),
                         help="机器人/小车共享地面摩擦；默认先固定 0.8，边界复核可用 0.4 0.8 1.2")
-    parser.add_argument("--rope-model", choices=("compliant", "inextensible"),
-                        default="compliant", help="一次扫描一种绳，便于解释边界")
+    parser.add_argument("--rope-model", choices=("compliant", "inextensible", "rigid"),
+                        default="compliant",
+                        help="一次扫描一种连接模型，便于解释边界；rigid = 双边球铰连杆")
     parser.add_argument("--duration", type=float, default=10.0)
     parser.add_argument("--stop-at", type=float, default=5.0)
     parser.add_argument("--tracking-min", type=float, default=0.8,

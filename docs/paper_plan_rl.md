@@ -124,7 +124,7 @@ v0 启用一个主任务项、两个安全终止、一个碰撞前预警、一�
 | `extra_distance` | `t ≥ t_stop` | `(x_robot−x_at_stop)_+` | −0.1 | 轻量限制继续前进；显式按停止时刻门控，初始站定阶段不生效 |
 | `action_rate` | 全程 | `||u_t−u_{t−1}||²` | −0.02 | 平滑三维上层动作；action 表示加速度，因此也是离散 jerk 代理，只保留这一项 |
 
-不进入总 reward、只记录／必要时做消融的量：closing speed、姿态、足端滑移、停止时间、绳冲量／峰值、质量预测误差。只有观测到明确失败模式后才增加对应项。两类绳的主比较使用冲量、间隙、碰撞和机器人稳定性，不用单步峰值张力作为主指标。
+不进入总 reward、只记录／必要时做消融的量：closing speed、姿态、足端滑移、停止时间、绳冲量／峰值、质量预测误差。只有观测到明确失败模式后才增加对应项。三类连接（两套单边绳 + 双边刚体球铰连杆，见 [刚体连杆记录](towing_rigid_link_2026-10-08.md)）的主比较使用冲量、间隙、碰撞和机器人稳定性，不用单步峰值张力作为主指标。
 
 终止项：episode timeout、机器人跌倒、小车碰撞。绳松弛不是失败。`collision/fall` 是否在终止步被 reward manager 计入必须用一条 scripted 单步测试确认。
 
@@ -164,7 +164,7 @@ v0 reset event 已按 episode 采样以下工况：
 
 ## 8. 下一步与注册门槛
 
-1. 在训练机运行环境构造冒烟，验证每物理步 compliant／inextensible 绳力、逐环境轮阻和底层 50 Hz 保持；当前代码已接但未运行。
+1. 在训练机运行环境构造冒烟，验证每物理步 compliant／inextensible／rigid 连接力（含刚体连杆的压缩推力）、逐环境轮阻和底层 50 Hz 保持；两套绳的代码已接但未运行，刚体连杆（2026-10-08 新增）连静态检查之外都未实跑。
 2. 在训练机核对车体表面间隙代理，以及车斗／四轮过滤机器人接触的判据，并与测量台 FK 间隙、车斗／车轮记录交叉验证。
 3. 在训练机验证自有 recurrent runner：在线保存 5 维 decoder estimate 并拼成 56 维 actor observation；检查三套 GRU reset、GT-force mass weight、episode 边界切分、PPO 后 decoder 更新及 checkpoint 恢复。
 4. 用 scripted action 在单环境复现 `tow_drag.py` 的跟速、稳态张力、停车滑行和间隙指标。
@@ -178,7 +178,7 @@ v0 reset event 已按 episode 采样以下工况：
 1. 完成绳力、轮阻、碰撞见证和 50 Hz／20 Hz 双频 physics adapter。
 2. 用 scripted policy 复现测量台，完成环境注册和短 rollout。
 3. 接入 dynamics decoder、force-weighted mass supervision、detached actor augmentation 和批间序列更新；decoder error 不进入 reward。
-4. 先在单一安全工况训练，再扩展速度、质量、摩擦、轮阻和两类绳课程。
+4. 先在单一安全工况训练，再扩展速度、质量、摩擦、轮阻课程；连接类型与长度已由 20×20 确定性网格（列 = 弹性绳 8 / 刚体 8 / 普通绳 4，行 = 长度 0.4→0.8 m）固定，不再作为课程维度。
 5. 对 Direct、Fixed Ramp、无 decoder、decoder estimate 和 Oracle 真值输入做统一评估。
 6. 冻结最终 checkpoint，联合导出 decoder 与 actor；部署保留 decoder／actor 两套 hidden state，不导出 critic 或训练期真值。
 
@@ -188,8 +188,8 @@ v0 reset event 已按 episode 采样以下工况：
 
 1. 在部署侧实现与训练完全一致的 51 维单帧 observation，顺序执行 decoder 和 actor，并在 reset 时清两套 hidden state。
 2. 保持上层 20 Hz、冻结底层策略 50 Hz；command 积分、缩放、限幅和初始化逐项对齐。
-3. 将小车、轮阻和两类绳加入 MuJoCo／Gazebo 对照场景，不读取训练期质量、间隙或绳状态真值。
-4. 先做同输入网络数值一致性，再跑站定、牵引、速度置零、低／高质量和两类绳工况。
+3. 将小车、轮阻和连接模型加入 MuJoCo／Gazebo 对照场景，不读取训练期质量、间隙或连接状态真值。**当前只有两套单边绳场景**：刚体球铰连杆是 2026-10-08 的训练侧新增，sim2sim 第三场景（双边约束）尚未实现，见 TOW-05。
+4. 先做同输入网络数值一致性，再跑站定、牵引、速度置零、低／高质量和各连接工况；刚体连杆需在 MuJoCo 场景补齐后才纳入。
 5. 对比 Isaac Lab 与 sim2sim 的跟速、停车距离、最小间隙、碰撞、姿态和 action-rate；偏差必须按模型、控制或 observation 分类记录。
 
 sim2sim 完成标准：导出网络与训练 actor 在确定性输入上数值一致，两个仿真器都能完成完整牵引—置零 episode，且关键安全指标的差异有记录和解释。

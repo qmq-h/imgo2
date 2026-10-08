@@ -161,6 +161,11 @@ def _elasticity(tow_rows, taut_rows, steady_tension, config):
         result["elasticity_note"] = "未提供 config（缺 rope/cart_model），只能报峰值张力"
         return result
     rope = config.get("rope") or {}
+    if rope.get("model") == "rigid":
+        # 刚体球铰连杆没有 k/c：弹性诊断（伸长/固有频率/步长上限）不适用，按不适用报告，
+        # 而不是拿 config 里残留的 compliant 默认 k=4000 算出一组假的弹性指标。
+        result["elasticity_note"] = "rigid 连杆无 k/c，弹性诊断不适用（见 mdp/rope_model.py）"
+        return result
     stiffness = rope.get("stiffness_n_per_m")
     damping = rope.get("damping_ns_per_m")
     model = config.get("cart_model") or {}

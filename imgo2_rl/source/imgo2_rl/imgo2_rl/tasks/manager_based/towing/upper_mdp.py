@@ -12,8 +12,15 @@ from isaaclab.utils import configclass
 from isaaclab.utils import math as math_utils
 
 from .upper_logic import UpperActionSpec
+from .mdp.connection_grid import ELASTIC_KC, GRID_SIZE, env_spec, is_full_grid
 from .mdp.rope import point_velocity
-from .mdp.rope_model import BodyProperties, SplitRopeModel, make_rope_model, world_inverse_inertia
+from .mdp.rope_model import (
+    BodyProperties,
+    MultiRopeModel,
+    attachment_horizontal_gap,
+    make_rope_model,
+    world_inverse_inertia,
+)
 from .utils.low_level_policy import FrozenLowLevelPolicy, parts_from_robot_state
 from .utils.policy_cfg import get_policy
 
@@ -59,8 +66,33 @@ class HierarchicalVelocityAction(ActionTerm):
         # articulation still exists in the replicated scene but is parked laterally and masked
         # out of towing physics, safety costs, termination, and decoder supervision.
         self.cart_present = torch.ones(env.num_envs, 1, dtype=torch.bool, device=env.device)
-        # 0 = compliant, 1 = inextensible. Reset samples each environment independently.
-        self.rope_model_id = torch.zeros(env.num_envs, 1, device=env.device)
+        # 场景是「列 × 行」确定性网格（见 `mdp/connection_grid.py`）：列 = 连接类型/弹性档、
+        # 行 = 连接长度。类型与长度不再逐 env 随机，整段训练按 env index 固定映射；因此这三
+        # 个张量在 `__init__` 里一次算好，之后**不再改写**（模型直接持有它们的视图）。
+        # 0 = compliant（弹性绳）, 1 = inextensible（低弹性绳）, 2 = rigid（双边球铰连杆）。
+        if not is_full_grid(env.num_envs):
+            # 允许非整倍数（例如 4 环境冒烟）跑通，但只覆盖网格前缀、不是平衡设计。
+            print(f"[WARN] num_envs={env.num_envs} 不是网格 {GRID_SIZE} 的整数倍，"
+                  f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（20 列 × 20 行）的整数倍")
+        specs = [env_spec(index) for index in range(env.num_envs)]
+        self.rope_model_id = torch.tensor(
+            [[spec["model_index"]] for spec in specs], dtype=torch.float32, device=env.device)
+        # 连接长度：绳是 L0、刚体是杆长 L（同一行的数值相同）。
+        self.connection_length = torch.tensor(
+            [[spec["length"]] for spec in specs], dtype=torch.float32, device=env.device)
+        # spawn 时的目标三维挂点距：绳 = 0.5·L0（留松弛）、刚体 = L。摆放小车时用。
+        self.initial_distance = torch.tensor(
+            [[spec["initial_distance"]] for spec in specs],
+            dtype=torch.float32, device=env.device)
+        # 弹性档 k/c：非弹性环境填第一档占位值（会被 MultiRopeModel 的掩码忽略），
+        # 但不能填 0——`CompliantRope` 要求 k > 0。
+        placeholder_k, placeholder_c = ELASTIC_KC[0]
+        self.rope_stiffness = torch.tensor(
+            [[spec["stiffness"] if spec["stiffness"] is not None else placeholder_k]
+             for spec in specs], dtype=torch.float32, device=env.device)
+        self.rope_damping = torch.tensor(
+            [[spec["damping"] if spec["damping"] is not None else placeholder_c]
+             for spec in specs], dtype=torch.float32, device=env.device)
         self._policy_cfg = get_policy(cfg.policy_name)
         if abs(cfg.physics_dt - env.physics_dt) > 1.0e-9:
             raise ValueError(
@@ -95,14 +127,18 @@ class HierarchicalVelocityAction(ActionTerm):
         self._wheel_body_ids = wheel_body_ids
         self._robot_attach = torch.tensor(cfg.robot_attachment, device=env.device).view(1, 3)
         self._cart_attach = torch.tensor(cfg.cart_attachment, device=env.device).view(1, 3)
-        compliant = make_rope_model("compliant", rest_length=cfg.rope_length,
-                                    stiffness=cfg.rope_stiffness, damping=cfg.rope_damping)
-        inextensible = make_rope_model("inextensible", rest_length=cfg.rope_length,
+        # 三套模型都按**逐 env** 的长度/弹性张量构造（网格里每个 env 不同）。
+        compliant = make_rope_model("compliant", rest_length=self.connection_length[:, 0],
+                                    stiffness=self.rope_stiffness[:, 0],
+                                    damping=self.rope_damping[:, 0])
+        inextensible = make_rope_model("inextensible", rest_length=self.connection_length[:, 0],
                                        position_gain=cfg.rope_position_gain,
                                        max_correction_rate=cfg.rope_max_correction_rate)
-        self._rope_model = SplitRopeModel(
-            compliant=compliant, inextensible=inextensible,
-            inextensible_mask=self.rope_model_id[:, 0])
+        rigid = make_rope_model("rigid", rest_length=self.connection_length[:, 0],
+                                position_gain=cfg.rigid_position_gain,
+                                max_correction_rate=cfg.rigid_max_correction_rate)
+        self._rope_model = MultiRopeModel(
+            models=(compliant, inextensible, rigid), model_ids=self.rope_model_id[:, 0])
 
         # 质量与惯量只在 reset 时被随机化，但同一回合内的每个物理步都要用。原来的实现每个
         # 物理步都 `root_physx_view.get_masses()/get_inertias()` 回读一次——那是一次 GPU→CPU→
@@ -356,11 +392,12 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
         "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr")
     robot_attachment: tuple[float, float, float] = (-0.16, 0.0, 0.0)
     cart_attachment: tuple[float, float, float] = (0.25, 0.0, 0.0)
-    rope_length: float = 0.8
-    rope_stiffness: float = 4000.0
-    rope_damping: float = 100.0
+    # 连接长度 L0（绳）/ L（刚体）与弹性绳的 k/c 都来自场景网格 `mdp/connection_grid.py`，
+    # 逐 env 不同，不再是这里的标量配置。这里只留两类约束共用的回拉增益。
     rope_position_gain: float = 0.2
     rope_max_correction_rate: float = 0.2
+    rigid_position_gain: float = 0.2
+    rigid_max_correction_rate: float = 0.2
     wheel_radius: float = 0.08
     collision_sensor_names: tuple[str, ...] = (
         "cart_deck_robot_contacts",
@@ -377,7 +414,7 @@ def reset_towing_episode(
     wheel_damping_range, robot_x_range, robot_y_range, robot_yaw_range,
     no_cart_fraction, no_cart_lateral_offset,
 ):
-    """Reset the v0 towing work condition and keep its parameters fixed for one episode."""
+    """Reset the per-episode random work condition；连接类型/长度来自确定性网格。"""
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device, dtype=torch.long)
     else:
@@ -409,9 +446,10 @@ def reset_towing_episode(
     cart_present = torch.rand(count, device=env.device) >= no_cart_fraction
     term.cart_present[env_ids, 0] = cart_present
 
-    # Independent Bernoulli sampling remains valid for asynchronous singleton resets.
-    model_ids = torch.randint(0, 2, (count,), device=env.device).float()
-    term.rope_model_id[env_ids, 0] = model_ids
+    # 连接类型与长度来自确定性网格（`term.rope_model_id` / `term.connection_length`，在
+    # `__init__` 里按 env index 一次算好），**不再逐 env 随机**；这里只按 env 取回本回合
+    # spawn 摆位需要的目标挂点距。
+    target_distance = term.initial_distance[env_ids, 0]
 
     robot = term._asset
     cart = term._cart
@@ -430,8 +468,22 @@ def reset_towing_episode(
 
     cart_state = cart.data.default_root_state[env_ids].clone()
     cart_state[:, :3] += env.scene.env_origins[env_ids]
+    # 三类连接都按本 env 的目标三维挂点距摆放小车（**不再依赖场景里写死的 cart.init_state.pos**）：
+    # 绳 = 0.5·L0（留松弛）、刚体 = L（杆正好是 L）。否则第一物理步就有初始约束力（绳预张紧、
+    # 刚体初始压缩）。解析解：水平分量 = sqrt(target² − Δz²)，方向取机器人正后方；机器人挂点用
+    # **实际** spawn 位姿（含 x/y/yaw 随机化）算，故初始违反量与抖动无关。
+    robot_attach_w = math_utils.quat_apply(
+        robot_state[:, 3:7], term._robot_attach.expand(count, 3))
+    delta_z = robot_state[:, 2] - cart_state[:, 2]
+    if bool((target_distance ** 2 <= delta_z ** 2).any()):
+        raise ValueError("连接长度必须大于两挂点高差，否则水平摆放无解")
+    horizontal = attachment_horizontal_gap(target_distance, delta_z=delta_z)
+    cart_state[:, 0] = (robot_state[:, 0] + robot_attach_w[:, 0]
+                        - horizontal - term.cfg.cart_attachment[0])
+    cart_state[:, 1] = robot_state[:, 1] + robot_attach_w[:, 1]
     # Isaac Lab replicates one cart articulation per environment. For zero-load environments,
     # park it inside the 6 m cell but well outside the robot's reachable path.
+    # 注意顺序：必须在按连接长度摆放**之后**再加横移，否则会把无小车环境的横向停放覆盖掉。
     cart_state[~cart_present, 1] += no_cart_lateral_offset
     cart_state[:, 7:13] = 0
     cart.write_root_pose_to_sim(cart_state[:, :7], env_ids=env_ids)
@@ -526,22 +578,26 @@ def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
     return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
             * term.cart_present[:, 0])
-def min_clearance_violation(env, rope_length, ratio, softness=0.02):
-    """铰链式「最小间距」惩罚：间隙低于 `ratio × rope_length` 时线性加大。
+def min_clearance_violation(env, ratio, softness=0.02):
+    """铰链式「最小间距」惩罚：间隙低于 `ratio × 本 env 的连接长度` 时线性加大。
 
     为什么单独加一项（而不是复用 `clearance_barrier`）：`clearance_barrier` 是
     softplus 软障碍，其"警戒距离"是绝对量（0.20 m）且线性区在警戒线**下方**；本项是
-    按**绳长比例**给出的硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是
+    按**连接长度比例**给出的硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是
     「不得拉得太近」，与「近了要缓」互补。
 
-    注意（2026-09-23 实测几何）：初始「后表面→车斗」间隙约 0.349 m，而 0.6×0.8=0.48 m
-    ⇒ **初始状态已低于阈值**，本项一开局即激活。若本意是"靠近时才罚"，应调低 ratio
-    或把初始间距拉开到阈值以上（否则策略学到的是"远离小车"）。
+    **阈值必须逐 env 用连接长度**（2026-10-08 起）：场景是 20 行长度 0.4–0.8 m 的网格，
+    写死 `rope_length=0.8` 会让短绳行（L0=0.4 时 spawn 间隙只有约 0.108 m）一开局就低于
+    阈值 0.32 m 而满额惩罚。用逐 env 的 L0/L 后，ratio=0.25 在**所有行**的 spawn 都低于
+    实际间隙（最小行 0.108 m > 0.1 m），保持「初始不生效」。
+
+    历史（2026-09-23，单一 L0=0.8 时）：初始「后表面→车斗」间隙约 0.349 m，ratio 由
+    0.6 降到 0.40 才让 spawn 不触发；这次随网格改为 0.25。
     """
     term = _term(env)
     term.update_safety_state()
     clearance = term.rope_state[:, 0]
-    threshold = ratio * rope_length
+    threshold = ratio * term.connection_length[:, 0]
     gap = threshold - clearance
     if softness > 0:
         # 平滑只在**阈值下方**过渡：减去 softplus(0)*softness 使缺口 ≤ 0 时精确为 0，

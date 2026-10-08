@@ -44,11 +44,13 @@ def parse_args(argv=None):
                              "留 0.28 m 余量不会追到机器人（L0=1.0 时间距更大但看不出追尾趋势）。"
                              "注意 L0 必须与速度和轮阻一起定：v=1.0 m/s、b=0.016 时滑行 1.06 m，"
                              "L0=1.0 就已经会撞（启动时会打印预测）")
-    parser.add_argument("--rope-model", nargs="+", choices=("compliant", "inextensible"),
+    parser.add_argument("--rope-model", nargs="+",
+                        choices=("compliant", "inextensible", "rigid"),
                         default=["compliant"],
-                        help="绳索模型：compliant = 单边弹簧-阻尼（P3/P4 已有，靠伸长储能）；"
+                        help="连接模型：compliant = 单边弹簧-阻尼（靠伸长储能）；"
                              "inextensible = 单边距离约束（不可伸长，绷直靠约束冲量，"
-                             "**不是**把 k 调大）。默认 compliant，现有实验不受影响。")
+                             "**不是**把 k 调大）；rigid = 双边球铰连杆（固定挂点距，可拉可推，"
+                             "压缩时提供反驱）。默认 compliant，现有实验不受影响。")
     parser.add_argument("--stiffness", type=float, default=4000.0,
                         help="绳刚度 k，N/m（仅 compliant 用）")
     parser.add_argument("--damping", type=float, default=100.0,
@@ -85,7 +87,7 @@ def parse_args(argv=None):
                              "所以改摩擦主要影响起步/打滑等瞬态，而不是滑行距离")
     parser.add_argument("--num-envs", type=int, default=1,
                         help="并行环境数。>1 时按 `--rope-model` **逐 env 分配**（1:1），"
-                             "每个 env 写一份自己的记录与 summary ⇒ 可视化时能把两套绳索模型"
+                             "每个 env 写一份自己的记录与 summary ⇒ 可视化时能把各连接模型"
                              "并排看，同时产物还能逐 env 离线判读。默认 1（单环境，行为不变）。")
     parser.add_argument("--env-spacing", type=float, default=6.0,
                         help="多环境时相邻 env 原点的间距，m（Isaac Lab 按网格摆放）。"
@@ -259,7 +261,7 @@ def sweep_cases(cart_masses, wheel_dampings, rope_models=("compliant",)):
     """把 `--cart-mass` × `--wheel-damping` × `--rope-model` 做笛卡尔积，得到顺序固定的 case 列表。
 
     一个进程内顺序跑完所有 case（省掉每个组合重启一次 Isaac Sim）；`None` 表示用 URDF 名义质量。
-    绳索模型也是一维：`--rope-model compliant inextensible` 就能在**同一条件**下把两套模型
+    绳索模型也是一维：`--rope-model compliant inextensible rigid` 就能在**同一条件**下把各模型
     各跑一遍（同样的初始条件、同样的随机性），便于逐项对比（延长量/冲量/稳态张力/扰动）。
     """
     if not cart_masses or not wheel_dampings or not rope_models:
@@ -330,7 +332,7 @@ def case_label(case_index: int, mass_target, damping: float, nominal_total_kg: f
                rope_model: str = "compliant") -> str:
     """case 目录名：绳索模型 + 质量（kg，None 表示名义值）+ 阻尼。
 
-    模型名放进目录名是必要的：两套模型可以跑同一个 case 编号序列，不写进名字会互相覆盖。
+    模型名放进目录名是必要的：不同模型可以跑同一个 case 编号序列，不写进名字会互相覆盖。
     """
     mass = nominal_total_kg if mass_target is None else mass_target
     return f"case_{case_index:02d}_{rope_model}_m{mass:g}_b{damping:g}"
@@ -417,7 +419,7 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
         from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
-            ROPE_MODELS, BodyProperties, SplitRopeModel, make_rope_model,
+            RIGID_MODEL, BodyProperties, MultiRopeModel, make_rope_model,
             world_inverse_inertia)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
@@ -546,28 +548,35 @@ def main(args):
         policy = FrozenLowLevelPolicy(policy_cfg, device=args.device)
 
         def build_rope_model(name):
-            """按名字建单个模型。"""
-            return make_rope_model(name, rest_length=args.rope_length,
+            """按名字建单个模型。
+
+            刚体连杆的长度取**初始挂点距**（= `--rope-length` − `--slack`），不是绳长：
+            杆是刚性的，spawn 时若按绳布局留 0.4 m 松弛，就等于把它压缩 0.4 m，开局会
+            猛地弹开。测量台里连杆长度因此由 `--rope-length`/`--slack` 决定（默认 0.4 m）；
+            训练侧才按 env 在 0.4–0.8 m 之间随机化（见 `upper_mdp.py`）。
+            """
+            rest_length = (args.rope_length - args.slack) if name == RIGID_MODEL \
+                else args.rope_length
+            return make_rope_model(name, rest_length=rest_length,
                                    stiffness=args.stiffness, damping=args.damping,
                                    position_gain=args.position_gain,
                                    max_correction_rate=args.max_correction_rate)
 
         def build_rope_model_for_envs(model_names):
-            """按**逐 env** 的模型名建模型：全同就单模型，混合就用 `SplitRopeModel`。
+            """按**逐 env** 的模型名建模型：全同就单模型，混合就用 `MultiRopeModel`。
 
-            混合时用 0/1 掩码逐 env 混合（不是近似）——这正是训练侧 1:1 分配要走的那条路径，
-            在这里先用起来也就顺带验证了它。
+            混合时按**整数 id** 逐 env 选择（不是近似）——这正是训练侧三类环境分配走的路径，
+            在这里先用起来也就顺带验证了它。各模型长度可以不同（刚体连杆长度在训练侧逐 env
+            随机化），所以不能用只支持「两套同长绳」的 `SplitRopeModel`。
             """
             unique = list(dict.fromkeys(model_names))
             if len(unique) == 1:
                 return build_rope_model(unique[0])
-            if len(unique) > 2 or set(unique) != set(ROPE_MODELS):
-                raise RuntimeError(f"逐 env 混合只支持 {ROPE_MODELS} 这两个模型，收到 {unique}")
-            mask = torch.tensor([1.0 if name == "inextensible" else 0.0 for name in model_names],
-                                dtype=torch.float32, device=args.device)
-            return SplitRopeModel(compliant=build_rope_model("compliant"),
-                                  inextensible=build_rope_model("inextensible"),
-                                  inextensible_mask=mask)
+            indices = {name: index for index, name in enumerate(unique)}
+            model_ids = torch.tensor([indices[name] for name in model_names],
+                                     dtype=torch.long, device=args.device)
+            return MultiRopeModel(models=tuple(build_rope_model(name) for name in unique),
+                                  model_ids=model_ids)
         settle_steps = policy.reset()          # reset 契约：last_action 归零 + 站定步数
         settle_steps = max(settle_steps, int(round(args.settle_time / dt)))
         # 阶段划分必须先于 config 字典算好：上一版把 stop_steps 的赋值放在 config 之后，
@@ -652,7 +661,7 @@ def main(args):
             挂点速度、位置却直接用了刚体原点，于是绳长里混进了机器人与小车的高度差
             （0.35 vs 0.15 m），初始张力被抬到 ~1955 N 直接把机器人拽倒。
 
-            绳模型可切换（`--rope-model`）：两套模型都是「读状态 → 给出挂点力」，
+            连接模型可切换（`--rope-model`）：各模型都是「读状态 → 给出挂点力」，
             所以这里只负责把状态凑齐、把力写进缓冲，物理差异全在模型内部。
             """
             # 全部按 (N, 3) 张量走：N=1 与 N>1 是同一条代码路径（少一个分支就少一处只在
@@ -738,7 +747,11 @@ def main(args):
                 "num_envs": args.num_envs, "env_index": env_index,
                 "env_spacing_m": args.env_spacing,
                 "rope": {"model": rope_name or case.rope_model,
-                         "rest_length_m": args.rope_length, "stiffness_n_per_m": args.stiffness,
+                         # 刚体连杆的长度是初始挂点距（rope_length − slack），记录实际用值
+                         "rest_length_m": ((args.rope_length - args.slack)
+                                           if (rope_name or case.rope_model) == RIGID_MODEL
+                                           else args.rope_length),
+                         "stiffness_n_per_m": args.stiffness,
                          "damping_ns_per_m": args.damping, "initial_slack_m": args.slack,
                          # 仅 inextensible 用；写进产物便于复算与对比
                          "position_gain": args.position_gain,
@@ -746,7 +759,8 @@ def main(args):
                          "model_note": "compliant = unilateral spring-damper (stores elastic energy); "
                                        "inextensible = unilateral distance constraint d<=L0, T>=0, "
                                        "T(L0-d)=0, engagement handled by constraint impulse "
-                                       "(NOT a large k)"},
+                                       "(NOT a large k); rigid = bilateral ball-jointed rod, d==L0, "
+                                       "signed tension (negative = push/back-drive), always engaged"},
                 "wheel_damping_nms_per_rad": case.wheel_damping, "user_command_mps": args.velocity,
                 "cart_mass_target_kg": case.cart_mass, "cart_mass_scale": mass_scale,
                 "cart_mass_actual_kg": model["total_mass_kg"] * mass_scale,
@@ -873,7 +887,7 @@ def main(args):
                         "robot_vx_mps": float(robot.data.root_lin_vel_w[env_index, 0]),
                         "load_vx_mps": float(cart.data.root_lin_vel_w[env_index, 0]),
                         "rope_tension_n": float(state.rope_tension[env_index]),
-                        # 统一日志接口：两套模型字段一致（见 mdp/rope_model.py 的 RopeSample）
+                        # 统一日志接口：各模型字段一致（见 mdp/rope_model.py 的 RopeSample）
                         "rope_extension_m": float(state.rope_extension[env_index]),
                         "rope_length_rate_mps": float(state.rope_length_rate[env_index]),
                         "rope_taut": float(state.is_taut[env_index]),

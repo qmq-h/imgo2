@@ -23,6 +23,7 @@ from isaaclab.utils import configclass
 from imgo2_rl.assets.cart import make_cart_cfg
 from imgo2_rl.assets.imgo2 import IMGO2_CFG
 import imgo2_rl.tasks.manager_based.towing.upper_mdp as mdp
+from imgo2_rl.tasks.manager_based.towing.mdp.connection_grid import COLUMNS, ROWS
 
 
 # 仓库根。本文件在 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/` 下，
@@ -194,14 +195,15 @@ class UpperRewardsCfg:
     # 无小车环境用 cart_present 屏蔽。
     clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
-
-    # 【硬最小间距】间隙低于 `ratio × rope_length` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
+    # 【硬最小间距】间隙低于 `ratio × 本 env 连接长度` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
     # 与上面 clearance 的分工：clearance 是"近了要缓"的软障碍；本项是"不得拉太近"的硬约束，
-    # 且按**绳长比例**给出阈值（不是绝对量）。weight 的单位是"每米缺口扣多少"。
-    # ratio=0.40 ⇒ 阈值 0.32 m；初始间隙 0.349 m 高于它，故 **spawn 时精确为 0**
-    # （用户 2026-09-23 要求初始不生效）。铰链已减掉 softplus 偏置以免阈值上方被误扣分。
+    # 且按**连接长度比例**给出阈值（不是绝对量）。weight 的单位是"每米缺口扣多少"。
+    # **ratio=0.25（2026-10-08 随 20 行长度网格由 0.40 下调）**：阈值逐 env 用
+    # `term.connection_length`，不再是单一 `rope_length`。spawn 间隙 =
+    # sqrt((0.5·L0)² − 0.17²) + 0.0025，最短行 L0=0.4 时约 0.108 m > 0.25×0.4=0.10 m，
+    # 故**网格所有行 spawn 都精确为 0**（用户 2026-09-23 要求初始不生效）。
     min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
-                            params={"rope_length": 0.8, "ratio": 0.40, "softness": 0.02})
+                            params={"ratio": 0.25, "softness": 0.02})
 
     # 【朝向】惩罚偏离**初始 yaw** 的角度平方（rad²）。取相对值而非世界系 0：
     # 初始朝向含 ±0.03 rad 随机化，用绝对基准会把该偏移当成初始误差。
@@ -268,7 +270,8 @@ class UpperEventsCfg:
             "robot_x_range": (-0.03, 0.03),
             "robot_y_range": (-0.02, 0.02),
             "robot_yaw_range": (-0.03, 0.03),
-            # About 32 of 256 environments provide a zero-load anchor each reset batch.
+            # 约 12.5% 环境作为零负载锚点（0.125 × 400 = 50 个）。注意它是**随机**子集，
+            # 会打破网格的 8/8/4 平衡——这是用户明确要求保留的域随机化。
             "no_cart_fraction": 0.125,
             "no_cart_lateral_offset": 2.0,
         },
@@ -277,7 +280,11 @@ class UpperEventsCfg:
 
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
-    scene: UpperTowingSceneCfg = UpperTowingSceneCfg(num_envs=256, env_spacing=6.0)
+    # 场景是 20 列 × 20 行的确定性网格（列 = 类型/弹性档、行 = 长度 0.4–0.8 m），
+    # 所以默认环境数固定为 COLUMNS×ROWS=400；类型与长度按 env index 映射，不再随机。
+    # `--num_envs` 若覆盖成非 400 整数倍只会覆盖网格前缀（可跑冒烟，但不是平衡设计）。
+    scene: UpperTowingSceneCfg = UpperTowingSceneCfg(
+        num_envs=COLUMNS * ROWS, env_spacing=6.0)
     observations: UpperObservationsCfg = UpperObservationsCfg()
     actions: UpperActionsCfg = UpperActionsCfg()
     rewards: UpperRewardsCfg = UpperRewardsCfg()
