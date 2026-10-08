@@ -158,7 +158,8 @@ class TestCmoeEffectiveRewards(unittest.TestCase):
         ⇒ 溢价 **0.264 → 0.698/s**。分类器与奖励不同参数时读数就不再代表奖励 ⇒ 一起钉住。
         """
         steps = chk.CHAINS["cmoe"][0][1]
-        names = ("feet_gait", "gait_metric_trot", "gait_metric_bound", "gait_metric_pace")
+        # feet_gait is disabled; its unused parameter overrides were removed.
+        names = ("gait_metric_trot", "gait_metric_bound", "gait_metric_pace")
         params = _gait_kernel_params(steps, names)
         for name in names:
             self.assertEqual(params.get(name, {}).get("std"), 0.2,
@@ -312,9 +313,10 @@ class TestGaitFreeEffectiveRewards(unittest.TestCase):
     def test_zeroing_is_reported_not_silent(self):
         """归零必须出现在"被清零"提示里（每一项归零都是一次有意识的选择）。"""
         for term in ("joint_mirror", "feet_air_time", "feet_height_body",
-                     "feet_air_time_variance", "feet_gait"):
+                     "feet_air_time_variance"):
             self.assertTrue(any(term in note and "清零" in note for note in self.notes),
                             f"{term} 的归零没有被报出来：{self.notes}")
+        self.assertEqual(self.weights["feet_gait"], 0.0)
 
 
 if __name__ == "__main__":
