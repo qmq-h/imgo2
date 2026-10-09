@@ -2059,6 +2059,8 @@ def main(args):
               f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
               f"重力 {gravity}（世界竖直）", flush=True)
         started = time.time()
+        # 进度打印节拍：全程约 20 行，够看出在走又不刷屏（长跑的黑盒问题见循环内的注释）。
+        progress_every = max(1, args.schedule.total_steps // 20)
         for step in range(args.schedule.total_steps):
             phase = args.schedule.phase_of(step)
             step_in_phase = args.schedule.step_in_phase(step)
@@ -2090,6 +2092,17 @@ def main(args):
             scene.update(dt)
             if not args.headless and (step + 1) % render_interval == 0:
                 sim.render()
+            # 进度：800 环境 × 2200 步的长跑里，逐 case 的判读输出只在**全部步进结束之后**才打印，
+            # 没有这条的话整段运行是黑盒（看不出在走、也估不出还要多久）。
+            if (step + 1) % progress_every == 0 or step + 1 == args.schedule.total_steps:
+                elapsed = time.time() - started
+                rate = (step + 1) / max(1e-9, elapsed)
+                eta = (args.schedule.total_steps - step - 1) / max(1e-9, rate)
+                heights = robot.data.root_pos_w[:, 2]
+                print(f"[progress] {step + 1}/{args.schedule.total_steps} 步（{phase}）"
+                      f"用时 {elapsed:.0f}s、{rate:.1f} 步/s、ETA {eta:.0f}s；"
+                      f"base z 均值 {float(heights.mean()):.3f} m / 最低 "
+                      f"{float(heights.min()):.3f} m", flush=True)
             if step % args.record_every:
                 continue
             joint_err = (robot.data.joint_pos[:, policy_to_asset] - joint_targets)
