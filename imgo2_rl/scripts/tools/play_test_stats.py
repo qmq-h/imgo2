@@ -347,7 +347,11 @@ def main(argv=None) -> int:
                        ("heading_max_deg", "朝向偏差 max (deg)"), ("min_base_z", "最低 base 高 (m)")):
         print(f"- {label:26s} {quantiles([r[key] for r in records])}")
 
+    def cart_label(case):
+        return "拖曳（有负载）" if case["case"].get("cart_present", True) else "无负载（_nocart）"
+
     dims = (
+        ("按是否拖车（无负载对照）", cart_label),
         ("按坡度量级（lane 剖面档）", lambda c: f"{c['case']['grade_deg']:g}°"),
         ("按连接类型", lambda c: c["case"]["connection"]),
         ("按质量档 (kg)", lambda c: f"{c['case']['cart_mass_kg']:g}"),
@@ -360,6 +364,8 @@ def main(argv=None) -> int:
             groups[key_fn(record)].append(record)
         group_table(title, groups, expected)
 
+    cross_table("是否拖车 × 判定码", cases, cart_label,
+                lambda c: c["metrics"]["verdict"]["code"])
     cross_table("连接 × 判定码", cases, lambda c: c["case"]["connection"],
                 lambda c: c["metrics"]["verdict"]["code"])
     cross_table("坡度量级 × 判定码", cases, lambda c: f"{c['case']['grade_deg']:g}°",
