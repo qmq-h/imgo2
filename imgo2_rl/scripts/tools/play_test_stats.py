@@ -301,6 +301,92 @@ def cross_table(title: str, cases: list[dict], row_key, col_key) -> None:
         print(f"{str(key):>12s} " + " ".join(f"{cells[key].get(k, 0):>10d}" for k in col_keys))
 
 
+# ---------------------------------------------------------------- 起步/停车窗口 与 越界率
+
+def print_windows(cases) -> None:
+    """起步/停车窗口（各 1 s）按「是否拖车」和坡度/速度切分 —— 回答「负载有没有带来关节冲击」。
+
+    只读 `summaries/*.json`（不用逐 case 轨迹，秒级）。入参是原始 case summary 列表。
+    注意这里**没有关节过冲**这个量：`joint_max_rad` 是窗口内单点最大 |q − q*|（最大偏差，不是过冲）；
+    唯一叫 overshoot 的是 `startup.overshoot_ratio` = 窗口内 max(体系 vx)/指令 − 1，**是速度**。
+    """
+    print("\n## 起步/停车窗口（各 1 s，判 JNT 的两个窗口）")
+    print("  起步 = 拖曳相位前 1 s；停车 = 滑行相位前 1 s；峰值 = 单点最大 |q − q*|（≠过冲）；"
+          "速度过冲 = max(体系 vx)/指令 − 1（负 = 那 1 s 内没到指令）")
+
+    def median(values):
+        clean = [v for v in values if isinstance(v, (int, float))]
+        return statistics.median(clean) if clean else float("nan")
+
+    def gather(subset, section, key):
+        return [c["metrics"][section].get(key) for c in subset]
+
+    def row(label, subset):
+        if not subset:
+            return
+        print(f"{label:>16s} {len(subset):4d} "
+              f"{median(gather(subset, 'startup', 'joint_rms_rad')):8.3f} "
+              f"{median(gather(subset, 'startup', 'joint_max_rad')):8.3f} "
+              f"{median(gather(subset, 'stop', 'joint_rms_rad')):8.3f} "
+              f"{median(gather(subset, 'stop', 'joint_max_rad')):8.3f} "
+              f"{median(gather(subset, 'startup', 'torque_saturated_frac')):9.4f} "
+              f"{median(gather(subset, 'startup', 'overshoot_ratio')):+9.3f} "
+              f"{median(gather(subset, 'startup', 'time_to_90pct_s')):8.2f} "
+              f"{median(gather(subset, 'startup', 'body_vx_rms_err_mps')):8.3f}")
+
+    print(f"\n{'分组':>16s} {'n':>4s} {'起步RMS':>8s} {'起步峰值':>8s} {'停车RMS':>8s} "
+          f"{'停车峰值':>8s} {'力矩饱和':>9s} {'速度过冲':>9s} {'90%时间':>8s} {'vxRMS误差':>8s}")
+    for presence, label in ((True, "拖曳"), (False, "无负载")):
+        subset = [c for c in cases if bool(c["case"].get("cart_present", True)) is presence]
+        row(f"— {label} 全部", subset)
+        for grade in sorted({c["case"]["grade_deg"] for c in subset}):
+            row(f"{label} {grade:g}°", [c for c in subset if c["case"]["grade_deg"] == grade])
+        for speed in sorted({c["case"]["velocity_mps"] for c in subset}):
+            row(f"{label} {speed:g} m/s", [c for c in subset if c["case"]["velocity_mps"] == speed])
+
+
+def print_crossings(case_dirs, summaries, *, limit=70, phase="tow"):
+    """关节是否**越过设定点**：窗口内 `e = q − q*` 与窗口均值反号的样本占比 + 越界量 p95。
+
+    ⚠️ 这不是经典过冲：`q*` 每 20 ms 被策略改写一次，来回穿越是常态；这套 PD 是 kp=25/kd=0.5，
+    阻尼比很大、不具备欠阻尼振荡条件。要经典阶跃过冲得先用「单拍阶跃」或「瞬态 Mp」定义。
+    需要 run 保留了 `env*/tow.csv`（`--write-csv all`）。
+    """
+    by_slug = {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in summaries}
+    grouped = {True: [], False: []}
+    for case_dir in case_dirs:
+        summary = by_slug.get(case_dir.name)
+        if summary is None:
+            continue
+        present = bool(summary["case"].get("cart_present", "_nocart" not in case_dir.name))
+        if len(grouped[present]) >= limit:
+            continue
+        csv_path = case_dir / "tow.csv"
+        if not csv_path.is_file():
+            continue
+        with csv_path.open(encoding="utf-8") as stream:
+            rows = [row for row in csv.DictReader(stream) if row["phase"] == phase]
+        window = rows[:40]                     # 前 1 s（--record-every 5 ⇒ 40 行）
+        if not window:
+            continue
+        fractions, overshoots = [], []
+        for joint in range(12):
+            errors = [float(r[f"robot_jp_{joint:02d}"]) - float(r[f"robot_jt_{joint:02d}"])
+                      for r in window]
+            mean = sum(errors) / len(errors)
+            opposite = sorted((v for v in errors if v * mean < 0.0), key=abs)
+            fractions.append(len(opposite) / len(errors))
+            overshoots.append(abs(opposite[int(0.95 * (len(opposite) - 1))]) if opposite else 0.0)
+        grouped[present].append((sum(fractions) / 12, sum(overshoots) / 12))
+    print(f"\n## 越过设定点（{phase} 相位前 1 s；反号样本占比与越界量 p95）")
+    for presence, label in ((True, "拖曳"), (False, "无负载")):
+        got = grouped[presence]
+        if not got:
+            continue
+        print(f"- {label}：n={len(got):3d} 越过占比中位 **{statistics.median([g[0] for g in got]) * 100:.1f}%**、"
+              f"越界量 p95 中位 {statistics.median([g[1] for g in got]):.3f} rad")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="必要性测试台 run 的离线统计（标准库，无 Isaac）")
     ap.add_argument("run", nargs="?", type=Path, help="run 目录（缺省配合 --latest）")
@@ -308,6 +394,12 @@ def main(argv=None) -> int:
     ap.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="run 根目录")
     ap.add_argument("--csv", type=Path, default=None, help="把逐 case 关键指标另存为 CSV")
     ap.add_argument("--list-codes", action="store_true", help="额外打印每条失败原因的组合")
+    ap.add_argument("--windows", action="store_true",
+                    help="起步/停车窗口按 是否拖车·坡度·速度 切分（设 JNT 的两个窗口；只读 summaries）")
+    ap.add_argument("--crossings", type=int, default=0, metavar="N",
+                    help="额外统计「越过设定点」占比/越界量（每侧最多 N 个 case，需 env*/tow.csv）")
+    ap.add_argument("--crossings-phase", choices=("tow", "coast", "station"), default="tow",
+                    help="--crossings 用哪个相位的前 1 s（默认 tow）")
     ap.add_argument("--segments", action="store_true",
                     help="额外按剖面分段统计 q−q*（读 env*/tow.csv，需要 run 里保留了逐 case CSV）")
     ap.add_argument("--segments-limit", type=int, default=40,
@@ -376,6 +468,17 @@ def main(argv=None) -> int:
                 lambda c: c["metrics"]["verdict"]["code"])
     cross_table("COL（停车追尾）集中在哪：连接 × 是否 COL", cases, lambda c: c["case"]["connection"],
                 lambda c: "COL" if c["metrics"]["verdict"]["code"] == "COL" else "其它")
+
+    if args.windows:
+        print_windows(cases)
+
+    if args.crossings:
+        case_dirs = sorted(path for path in run.glob("env*") if path.is_dir())
+        if not case_dirs:
+            print("\n（--crossings 需要 env*/tow.csv：用 `--write-csv all` 重跑，或挑一个有轨迹的 run）")
+        else:
+            print_crossings(case_dirs, sorted((run / "summaries").glob("*.json")),
+                            limit=args.crossings, phase=args.crossings_phase)
 
     if args.segments:
         case_dirs = sorted(path for path in run.glob("env*") if path.is_dir())

@@ -468,6 +468,15 @@ python3 imgo2_rl/scripts/tools/play_test_stats.py --latest --segments --segments
 出生平地·上坡·坡顶·下坡·出口平地 5 段）」给。注意 0° lane 的「上坡/坡顶/下坡」只是**剖面位置**
 （坡度是 0、base z 不变），真坡只有 5°/10° lane。
 
+## 「过冲」的口径（避免误读）
+
+本测试台**没有"关节过冲"这个量**：关节字段只有 RMS（`joint_rms_rad`）与窗口内单点最大偏差
+（`joint_max_rad`，**不是**过冲）。唯一叫 overshoot 的 `startup.overshoot_ratio` 是**速度**过冲
+（`max(体系 vx)/指令 − 1`；负值 = 那 1 s 内没到指令）。绳的「绷直过冲」是张力瞬态、gait 文档里的
+「摆动过冲」是足端轨迹，都不是关节。用「越过设定点占比」做的近似统计（拖曳 vs 无负载几乎相同）
+与两种可落地定义见
+[无负载对照归档说明](towingdata/2026-10-09_necessity_800_noload/README.md) 的「过冲到底在哪个字段」。
+
 ## 未验证（缺什么才能完成）
 
 1. **根因修复已实跑验证**（见 ⑥：首拍量级、`fell`、站定段位移/张力全部对上预测），但**剩余指标缺口未查**：
