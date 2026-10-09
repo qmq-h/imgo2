@@ -207,7 +207,25 @@ python scripts/rl_lab/himloco/play.py --task=Imgo2-basemove-rough-himloco-play -
 python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-height-play --num_envs=1 --headless --checkpoint="/absolute/path/to/model.pt"
 ```
 
-以上三条假定当前目录是 `imgo2_rl/`。**拖曳上层**（`--agent` 必须是完整注册键）在仓库根用统一入口跑，并把回放诊断一起打开：
+以上三条假定当前目录是 `imgo2_rl/`。
+
+**拖曳上层训练**（任务已注册，`--agent` 必须是完整注册键）。先看训练场景（去掉 `--headless` 就是 GUI）：
+
+```bash
+cd /root/Desktop/Imgo2
+# 看场景：45 环境 = 网格第 0 行（列 0–19 平地、20–29 ±5°、30–39 ±10°）+ 第 1 行前 5 格
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
+    --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
+    --num_envs 45 --max_iterations 2 --compact-log --run_name scene-look
+
+# 正式训练：默认 800 环境（40 列 × 20 行，长度 0.6→1.2 m），3000 轮 × 48 步/轮
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
+    --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point --headless --compact-log
+```
+
+日志落在 `logs/towing_rl_lab/towing_upper/<时间戳>[_run_name]/`（`params/env.yaml`、`params/agent.yaml` + TensorBoard），默认每 100 轮存一次 checkpoint（`--save_interval` 可改）。**不要 `--resume` 旧 run**：2026-10-09 起 checkpoint 契约是 version=2（57 维帧 → 6 维显式 + 16 维 latent、actor 79 维），旧的 56/63 维 checkpoint 会被明确拒绝加载。`train.py` 没有接 `RecordVideo`，`--video` 只开相机、不会录视频。
+
+**拖曳上层回放**（`--agent` 必须是完整注册键）在仓库根用统一入口跑，并把回放诊断一起打开：
 
 ```bash
 cd /root/Desktop/Imgo2        # 或在任意位置用 --checkpoint 的绝对路径
