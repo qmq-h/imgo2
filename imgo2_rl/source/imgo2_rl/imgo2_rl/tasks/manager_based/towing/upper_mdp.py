@@ -10,7 +10,7 @@
 任务注册见同目录 ``__init__.py``，运行验收清单见 ``docs/towing_training_prep_2026-09-22.md``。
 """
 
-from dataclasses import MISSING
+import math
 
 import torch
 from isaaclab.managers import ActionTerm, ActionTermCfg
@@ -19,7 +19,7 @@ from isaaclab.utils import math as math_utils
 
 from .upper_logic import UpperActionSpec
 from .mdp.connection_grid import ELASTIC_KC, GRID_SIZE, env_spec, is_full_grid
-from .mdp.episode_geometry import GOAL_DISTANCE_M, SETTLE_TIME_S
+from .mdp.episode_geometry import SETTLE_TIME_S, STOP_DISTANCE_M
 from .mdp.profile_torch import profile_height_tensor
 from .mdp.slope_geometry import (
     BACK_M, BOUNDARY_MARGIN_M, FORWARD_M, HALF_WIDTH_M)
@@ -37,6 +37,21 @@ from .utils.policy_cfg import get_policy
 
 def _term(env):
     return env.action_manager.get_term("high_level_velocity")
+
+
+def yaw_from_quat(quat):
+    """从四元数取**世界 yaw**（rad）。
+
+    ⚠ **顺序陷阱**：Isaac Lab 的 `isaaclab.utils.math.euler_xyz_from_quat` 返回
+    **(roll, pitch, yaw)**（源码 Returns 写明 roll-pitch-yaw），所以 yaw 是**第三个**元素。
+
+    2026-10-09 修复：`heading_deviation` 原先写成 `yaw, _pitch, _roll = euler_xyz_from_quat(...)`，
+    实际拿到的是 **roll** ⇒ `yaw_heading`（−2.0）一直在罚**横滚**偏差，而朝向只被
+    `tracking_velocity` 的 yaw **角速度**项间接约束——角速度归零 ≠ 朝向不漂，所以
+    "开始就在自转"那类问题不会被这一项真正压住。抽成单一入口避免再写错。
+    """
+    _roll, _pitch, yaw = math_utils.euler_xyz_from_quat(quat)
+    return yaw
 
 
 class HierarchicalVelocityAction(ActionTerm):
@@ -72,6 +87,12 @@ class HierarchicalVelocityAction(ActionTerm):
         self.tow_speed = torch.full((env.num_envs,), cfg.initial_tow_speed, device=env.device)
         self.tow_start_s = torch.full((env.num_envs,), cfg.tow_start_s, device=env.device)
         self.start_progress = torch.zeros(env.num_envs, device=env.device)
+        # STOP 相位状态（2026-10-09 恢复）：走到 `stop_distance_m`（必须已越过坡）那一刻把指令
+        # 置零，并记下**该时刻**与**该时刻的 x**——两条 post_stop 奖励就靠这两个量定相位。
+        # `stop_time_s` 初值 +inf ⇒ `elapsed_s >= stop_time_s` 恒假，未停车前两条奖励精确为 0。
+        self.stop_time_s = torch.full((env.num_envs,), math.inf, device=env.device)
+        self.stop_origin_x = self._asset.data.root_pos_w[:, 0].clone()
+        self._was_stopped = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.last_loco_action = torch.zeros(env.num_envs, 12, device=env.device)
         # [clearance, tension, extension, taut]. Collision is deliberately separate: tautness is
         # a rope state and must never double as a contact flag.
@@ -142,6 +163,12 @@ class HierarchicalVelocityAction(ActionTerm):
         self._policy_to_asset = torch.tensor(
             [asset_names.index(name) for name in self._policy_cfg.joint_names],
             dtype=torch.long, device=env.device)
+        # 冻结策略**自己**输出的关节位置目标（绝对、策略关节顺序），**不含上层残差**。
+        # 与 `_held_joint_targets` 的区别：后者实际下发的是 `joint_targets + delta_joint_pos`。
+        # 供 `low_level_position_error_l2` 用：它衡量「底层跟不跟得上自己的目标」，
+        # 残差是上层意图、不能混进来（混了就变成"罚上层的动作"，与 action_* 重复）。
+        self.loco_joint_targets = self._asset.data.default_joint_pos[
+            :, self._policy_to_asset].clone()
         robot_body_ids, _ = self._asset.find_bodies([cfg.robot_body_name])
         cart_body_ids, _ = self._cart.find_bodies([cfg.cart_body_name])
         wheel_joint_ids, _ = self._cart.find_joints(list(cfg.cart_wheel_joint_names), preserve_order=True)
@@ -227,19 +254,66 @@ class HierarchicalVelocityAction(ActionTerm):
     def process_actions(self, actions):
         """每上层控制步（50 ms）更新一次：脚本速度指令 + 12 维关节残差。
 
-        速度指令不再由网络积分产生——上层网络的输出**只是**残差。指令相位与测量台
-        settle 段为 0，之后持续牵引，直到到达目标或终止；测量台保留自己的 STOP 流程。
+        速度指令不再由网络积分产生——上层网络的输出**只是**残差。相位（2026-10-09 恢复
+        三段制，用户要求）：
+
+            0 ── settle（指令 0，静止稳定）── tow（指令 = tow_speed）── STOP（指令 0）
+                tow_start_s                                 stop_distance_m（**已越过坡**）
+
+        STOP 由**进度**触发而不是时间：`progress` 沿 lane 累计，到达 `stop_distance_m`
+        就把指令置零；同时记下 `stop_time_s`（该拍的时间）与 `stop_origin_x`（该拍的 x），
+        供 `post_stop_towing_force`／`post_stop_distance` 定相位。用进度而非固定时间的原因：
+        最慢速度下走到坡出口（9.0 m）就要约 23 s，固定时间阈值无法保证"越过坡之后"。
         """
         elapsed_s = self._env.episode_length_buf * self._env.step_dt
-        towing = (elapsed_s >= self.tow_start_s) & ~goal_reached(self._env)
+        progress = ((self._asset.data.root_pos_w - self._env.scene.env_origins)
+                    * self.terrain_tangent_w).sum(dim=1) - self.start_progress
+        crossed = progress >= self.cfg.stop_distance_m
+        newly_stopped = crossed & ~self._was_stopped
+        if bool(newly_stopped.any()):
+            self.stop_time_s[newly_stopped] = elapsed_s[newly_stopped]
+            self.stop_origin_x[newly_stopped] = self._asset.data.root_pos_w[newly_stopped, 0]
+        self._was_stopped |= crossed
+        towing = (elapsed_s >= self.tow_start_s) & ~self._was_stopped
         self.loco_command.zero_()
         self.loco_command[:, 0] = torch.where(towing, self.tow_speed, 0.0)
+        # 横向/朝向由 **PD 外环**给出（用户 2026-10-09 决定：保持中线和 heading 用 PD，
+        # 不让策略学）。三个通道本来就是冻结策略的 (vx, vy, ω) 指令，所以不改任何观测/动作维数；
+        # 而且 `loco_command` 是 actor 的观测项，PD 的意图对策略可见，它可以据此配合。
+        if self.cfg.lane_keeping:
+            self.loco_command[:, 1] = self._lane_keeping_vy()
+            self.loco_command[:, 2] = self._lane_keeping_wz()
         self._previous.copy_(self._processed)
         self._raw.copy_(actions)
         self._processed.copy_(actions.clamp(-1.0, 1.0))
         # 归一化残差 → 逐关节位置增量（rad）。尺度取冻结策略的 action_scale，
         # 因此等价于在底层动作空间上叠一个同量纲偏移。
         self.delta_joint_pos.copy_(self._processed * self._residual_scale)
+
+    def _lane_keeping_vy(self):
+        """横向 PD → `vy` 指令：把机器人压在 lane 中线（lane 系 `y = 0`）。
+
+        公式与测量台 `play_towing_test.lane_keeping_command` **逐项一致**，这样基线对照才可比：
+        误差向量 `(0, −y, 0)`（lane 系）投到**机体系横向轴** ⇒ `−y·cos(yaw)`；D 项用**机体系**
+        横向速度（冻结策略的 `velocity_commands` 就是机体系，两项必须同坐标系）。
+        """
+        local = self._asset.data.root_pos_w - self._env.scene.env_origins
+        yaw = yaw_from_quat(self._asset.data.root_quat_w)
+        lateral_error = -local[:, 1] * torch.cos(yaw)
+        command = (self.cfg.lane_kp_y * lateral_error
+                   - self.cfg.lane_kd_y * self._asset.data.root_lin_vel_b[:, 1])
+        return torch.clamp(command, -self.cfg.lane_max_vy, self.cfg.lane_max_vy)
+
+    def _lane_keeping_wz(self):
+        """朝向 PD → `ω` 指令：把 yaw 拉回 `lane_yaw_target`（默认 0 = lane 的 +x 方向）。
+
+        D 项用机体系 yaw 角速度；输出限幅在 AMP 训练分布的 `ang_vel_z ±1.57` 内。
+        """
+        yaw = yaw_from_quat(self._asset.data.root_quat_w)
+        heading_error = math_utils.wrap_to_pi(self.cfg.lane_yaw_target - yaw)
+        command = (self.cfg.lane_kp_yaw * heading_error
+                   - self.cfg.lane_kd_yaw * self._asset.data.root_ang_vel_b[:, 2])
+        return torch.clamp(command, -self.cfg.lane_max_wz, self.cfg.lane_max_wz)
 
     def update_safety_state(self):
         """Refresh the oriented body-surface gap and direct deck-contact collision witness."""
@@ -281,6 +355,9 @@ class HierarchicalVelocityAction(ActionTerm):
                 joint_pos=self._asset.data.joint_pos[:, self._policy_to_asset],
                 joint_vel=self._asset.data.joint_vel[:, self._policy_to_asset]))
             self.last_loco_action.copy_(output.action)
+            # 先记下冻结策略**自己**的目标（不含残差），再叠加残差下发。两处顺序不能反：
+            # `loco_joint_targets` 必须是纯底层输出，否则新的跟踪误差惩罚就变成罚上层动作了。
+            self.loco_joint_targets.copy_(output.joint_targets)
             # 残差加在**关节位置目标**上（`joint_targets` 与残差同为策略关节顺序），
             # 每次冻结策略刷新都要重算：残差在两次上层更新之间不变，但底层输出每 20 ms 变。
             self._held_joint_targets[:, self._policy_to_asset] = (
@@ -389,10 +466,17 @@ class HierarchicalVelocityAction(ActionTerm):
         self.rope_state[env_ids] = 0
         self.towing_force_b[env_ids] = 0
         self._held_joint_targets[env_ids] = self._asset.data.default_joint_pos[env_ids]
+        self.loco_joint_targets[env_ids] = self._asset.data.default_joint_pos[
+            env_ids][:, self._policy_to_asset]
         self.cart_collision[env_ids] = False
         progress = ((self._asset.data.root_pos_w - self._env.scene.env_origins)
                     * self.terrain_tangent_w).sum(dim=1)
         self.start_progress[env_ids] = progress[env_ids]
+        # STOP 相位复位：`+inf` 让两条 post_stop 奖励在再次停车前恒为 0；
+        # `stop_origin_x` 先落在当前 x，等 `process_actions` 触发时再写真实值。
+        self.stop_time_s[env_ids] = math.inf
+        self.stop_origin_x[env_ids] = self._asset.data.root_pos_w[env_ids, 0]
+        self._was_stopped[env_ids] = False
         self._policy.reset(env_ids)
 
 
@@ -413,7 +497,22 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     physics_dt: float = 0.005
     initial_tow_speed: float = 0.5
     tow_start_s: float = SETTLE_TIME_S
-    goal_distance_m: float = GOAL_DISTANCE_M
+    # 指令归零的沿 lane 水平距离（m）；必须 > `slope_geometry.FLAT_OUT_START_M`（坡面出口），
+    # 即"越过坡之后"才 STOP。`upper_env_cfg.__post_init__` 有显式断言守着这条。
+    stop_distance_m: float = STOP_DISTANCE_M
+    # ---- 横向/朝向 PD（用户 2026-10-09 决定：保持中线与 heading 用 PD，不让策略学）----
+    # 公式与测量台 `play_towing_test.lane_keeping_command` 逐项一致，默认增益也相同，
+    # 这样"PD 基线 vs 上层策略"的对照才可比。
+    lane_keeping: bool = True
+    lane_yaw_target: float = 0.0       # 目标朝向：0 = lane 的 +x（车道轴向）
+    lane_kp_y: float = 1.0             # 横向 P  [1/s]
+    lane_kd_y: float = 0.3             # 横向 D  [-]
+    lane_kp_yaw: float = 1.5           # 朝向 P  [1/s]
+    lane_kd_yaw: float = 0.3           # 朝向 D  [-]
+    # 限幅在**冻结 AMP 策略的训练分布**内（`amp_env_cfg`：lin_vel_y ±1.0、ang_vel_z ±1.57），
+    # 否则指令出分布、下层跟踪会崩。
+    lane_max_vy: float = 1.0
+    lane_max_wz: float = 1.5708
     initial_cart_mass: float = 10.0
     initial_ground_friction: float = 0.8
     initial_wheel_damping: float = 0.032
@@ -574,6 +673,29 @@ def joint_pos_rel_policy_order(env):
     return term._asset.data.joint_pos[:, ids] - term._asset.data.default_joint_pos[:, ids]
 def joint_vel_policy_order(env):
     term = _term(env); return term._asset.data.joint_vel[:, term._policy_to_asset]
+
+
+def low_level_position_error_l2(env):
+    """冻结底层策略**自己输出**的关节位置目标 vs 实测关节位置的平方误差（不含上层残差）。
+
+    量取的是 `term.loco_joint_targets`（= `output.joint_targets`，即
+    `default_dof_pos + action_scale · clip(action)`，绝对位置、策略关节顺序），**不是**实际
+    下发的 `output.joint_targets + delta_joint_pos`。两者不能混：本项要回答的是
+    「底层这一步跟不跟得上它自己的目标」，残差是上层意图，混进来就退化成罚上层动作、
+    与 `action_magnitude`／`action_rate` 重复。
+
+    与那两项的分工：
+    - `action_magnitude`／`action_rate` 罚**残差本身**（幅值／变化率）；
+    - 本项罚**残差造成的后果**——位置跟踪误差大，通常意味着 PD 饱和、接触约束顶住、
+      或腿被压住，是真实的可控性信号。它不直接限制残差大小，而是限制「残差把腿带离
+      冻结步态的程度」。
+
+    单位是 rad²（12 个关节求和，未取均值）。量级参考：逐关节 RMS 0.05 rad ⇒ Σ≈0.03。
+    权重按此标定（见 `upper_env_cfg.UpperRewardsCfg.low_level_pos_error`），**待实跑复核**。
+    """
+    term = _term(env)
+    actual = term._asset.data.joint_pos[:, term._policy_to_asset]
+    return (actual - term.loco_joint_targets).square().sum(dim=1)
 def policy_frame(env):
     """One complete actor frame; history is applied once to preserve frame-major ordering.
 
@@ -615,23 +737,31 @@ def decoder_mass_weight(env, minimum_force, force_scale):
 def cart_collision(env):
     term = _term(env); term.update_safety_state(); return term.cart_collision
 def cart_collision_cost(env): return cart_collision(env).float()
-def velocity_tracking_exp(env, linear_std, yaw_std):
+def velocity_tracking_exp(env, linear_std, yaw_std, use_lateral_and_heading=False):
     """**实际速度** vs 命令期望的指数跟踪项（唯一的正奖励）。
 
     2026-10-08 修正：线性项原先比的是 ``reference_command − user_command``，也就是「上层
     自己积分出来的指令 vs 任务指令」——这与本函数的名字、以及 `upper_env_cfg` 奖励文档的
     描述（"实际速度 vs 命令期望"）都不符，而且和 `reference_tracking_l2` 重复。残差方案下
-    指令由脚本给出、`reference_command` 不复存在，故直接改成实测机体系线速度：
+    指令由脚本给出、`reference_command` 不复存在，故直接改成实测机体系线速度。
 
-        exp(−‖v_meas,xy − cmd_xy‖²/0.5² − (ω_z − cmd_yaw)²/1.0²)
+    2026-10-09（用户决定）：**横向与朝向改由 PD 外环负责**（`_lane_keeping_vy/_wz`），
+    所以本项默认**只用纵向 `vx`**：
 
-    这也是测量台的验收指标口径（``summarize_tow`` 的 ``steady_tracking_ratio`` =
-    实测 vx ÷ 指令速度）。
+        exp(−(vx_meas − vx_cmd)² / linear_std²)
+
+    即"跟不跟得上横向/朝向指令"不再进回报——那是 PD 的职责；上层策略只对**前进速度**负责。
+    `use_lateral_and_heading=True` 可恢复旧口径（含 `vy` 与 yaw 角速度误差），仅供对照。
     """
     term = _term(env)
-    linear_error = (term._asset.data.root_lin_vel_b[:, :2] - term.loco_command[:, :2]) / linear_std
+    forward_error = ((term._asset.data.root_lin_vel_b[:, 0] - term.loco_command[:, 0])
+                     / linear_std)
+    if not use_lateral_and_heading:
+        return torch.exp(-forward_error.square())
+    lateral_error = ((term._asset.data.root_lin_vel_b[:, 1] - term.loco_command[:, 1])
+                     / linear_std)
     yaw_error = (term._asset.data.root_ang_vel_b[:, 2] - term.loco_command[:, 2]) / yaw_std
-    return torch.exp(-(linear_error.square().sum(1) + yaw_error.square()))
+    return torch.exp(-(forward_error.square() + lateral_error.square() + yaw_error.square()))
 def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
     return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
@@ -644,13 +774,15 @@ def min_clearance_violation(env, ratio, softness=0.02):
     按**连接长度比例**给出的硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是
     「不得拉得太近」，与「近了要缓」互补。
 
-    **阈值必须逐 env 用连接长度**（2026-10-08 起）：场景是 20 行长度 0.4–0.8 m 的网格，
-    写死 `rope_length=0.8` 会让短绳行（L0=0.4 时 spawn 间隙只有约 0.108 m）一开局就低于
-    阈值 0.32 m 而满额惩罚。用逐 env 的 L0/L 后，ratio=0.25 在**所有行**的 spawn 都低于
-    实际间隙（最小行 0.108 m > 0.1 m），保持「初始不生效」。
+    **阈值必须逐 env 用连接长度**（2026-10-08 起）：场景是 40 列 × 20 行的网格，长度行
+    0.6–1.2 m（2026-10-09 由 0.4–0.8 上调）。写死单一长度会让短的行走 spawn 就低于阈值而
+    满额惩罚。用逐 env 的连接长度后，`ratio=0.25` 在**所有行**的 spawn 都低于实际间隙：
+    最短绳行 L0=0.6 时挂点距 0.3 m、间隙 ≈ sqrt(0.3²−0.17²)+0.0025 ≈ **0.250 m**
+    > 0.25×0.6 = **0.15 m** ⇒ 初始精确为 0。
 
     历史（2026-09-23，单一 L0=0.8 时）：初始「后表面→车斗」间隙约 0.349 m，ratio 由
-    0.6 降到 0.40 才让 spawn 不触发；这次随网格改为 0.25。
+    0.6 降到 0.40 才让 spawn 不触发；2026-10-08 随 20×20 网格改为逐 env + ratio 0.25，
+    2026-10-09 网格换成长度 0.6–1.2 m 后该结论按上面的新数值复算仍成立。
     """
     term = _term(env)
     term.update_safety_state()
@@ -695,9 +827,9 @@ def heading_deviation(env):
     随机化只加 ±0.03 rad）。取相对值而非世界系 0，是为了不依赖小车／世界坐标约定。
     """
     term = _term(env)
-    yaw, _pitch, _roll = math_utils.euler_xyz_from_quat(term._asset.data.root_quat_w)
-    yaw_init, _pitch0, _roll0 = math_utils.euler_xyz_from_quat(
-        term._asset.data.default_root_state[:, 3:7])
+    # ⚠ 顺序：euler_xyz_from_quat 返回 (roll, pitch, yaw)，yaw 在第三个（见 yaw_from_quat）
+    yaw = yaw_from_quat(term._asset.data.root_quat_w)
+    yaw_init = yaw_from_quat(term._asset.data.default_root_state[:, 3:7])
     return math_utils.wrap_to_pi(yaw - yaw_init)
 
 
@@ -720,18 +852,96 @@ def robot_fall(env, minimum_height):
 def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()
 
 
-def goal_reached(env):
-    """Robot crosses the target plane, measured from the reset pose along +x.
+def stop_reached(env):
+    """机器人沿 lane 的前进量是否到达 STOP 触发点（**不是**终止条件，只用来置零指令）。
 
-    True termination (no timeout bootstrap). The existing lane bounds constrain
-    lateral drift; this task measures forward distance, not Euclidean odometry.
-    `progress` 是 **lane 局部 x**（平面距离）：剖面里上/下坡段的弧长略长于水平投影
-    （10° 档 10 m 目标对应 10.09 m 弧长，+0.9%），timeout 用的是弧长上界。
+    2026-10-09 由 `goal_reached` 改名并改语义：以前到达该点就**终止**回合；现在到达该点
+    进入 STOP 段（指令 0），回合继续跑到 timeout，让 `post_stop_towing_force` /
+    `post_stop_distance` 有真实相位可用。触发点必须已越过坡面
+    （`stop_distance_m > FLAT_OUT_START_M = 9.0 m`）。
+
+    `progress` 是 **lane 局部 x**（平面距离）：上/下坡段的弧长略长于水平投影
+    （10° 档 10 m 对应 10.09 m 弧长，+0.9%），timeout 用的是弧长上界。
     """
     term = _term(env)
     progress = ((term._asset.data.root_pos_w - env.scene.env_origins)
                 * term.terrain_tangent_w).sum(dim=1)
-    return progress - term.start_progress >= term.cfg.goal_distance_m
+    return progress - term.start_progress >= term.cfg.stop_distance_m
+
+
+def post_stop_towing_force(env, force_scale):
+    """停车之后绳子还绷着就扣分（有界归一化），教「到点了就把拉力卸掉」。
+
+    门控是 `elapsed_s >= term.stop_time_s`：`stop_time_s` 由 `process_actions` 在进度
+    越过 `stop_distance_m`（已越坡）那一拍写入，未停车前是 `+inf` ⇒ 本项精确为 0
+    （不是"一直生效"）。用有界归一化 `‖F‖/(‖F‖+force_scale)` 而不是原始范数，避免远端
+    大拉力把回报尺度拉爆；无小车环境用 `cart_present` 屏蔽。
+
+    与 `extra_distance` 配对，防的是两种相反的极端：「为卸载拉力而继续前冲」与
+    「停死后被追尾」（后者由 `collision` 终止/惩罚兜底）。
+    """
+    term = _term(env)
+    elapsed_s = env.episode_length_buf * env.step_dt
+    post_stop = (elapsed_s >= term.stop_time_s).float()
+    force = torch.linalg.vector_norm(term.towing_force_b, dim=1)
+    normalized_force = force / (force + force_scale)
+    return normalized_force * post_stop * term.cart_present[:, 0]
+
+
+def post_stop_distance(env):
+    """停车之后还往前多走的距离（超过 `stop_origin_x` 的部分），教「说停就停，别继续滑」。
+
+    距离取世界系 x（lane 切向就是 +x），基线 `stop_origin_x` 是**指令归零那一拍**的 x，
+    所以只统计 STOP 之后的滑行量，不含牵引段的前进。同样由 `stop_time_s` 门控，
+    未停车前精确为 0。
+    """
+    term = _term(env)
+    elapsed_s = env.episode_length_buf * env.step_dt
+    post_stop = (elapsed_s >= term.stop_time_s).float()
+    return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
+
+
+def towing_force_y_ratio_sq(env):
+    """拉力方向偏离机体系 **xz 平面**程度的平方：`(F_y / ‖F‖)² = sin²(偏离角)`。
+
+    用户 2026-10-09 要求「运动过程中 3 维拉力在 y 维度保持为 0」。`towing_force_b` 是绳/杆
+    作用在机器人挂点上的力（**base 机体系** 3 维，`T = tension·e` 转过来的），其中
+    F_y 只有在**挂点连线不落在机体矢状面内**时才非零（小车横向偏置、机器人相对绳向有 yaw、
+    或机体有 roll 把 F_z 漏进 y）。
+
+    为什么用**比值**而不是原始 `F_y²`：
+    - 与张力大小无关。原始 `F_y²` 会被起步绷直的百牛级峰值放大（最硬弹性档 + 1.5 m/s 时
+      峰值可达 ~1 kN，见 README 起步峰值表），等价于"变相惩罚大张力"，和拖曳任务对冲；
+    - 有界 `[0, 1]`，权重好标定：`sin²10° = 0.030`、`sin²20° = 0.117`；
+    - 语义干净：**拉力方向必须落在机体系 xz 平面内**。
+
+    绳松弛（`T = 0`）时整个力向量为 0 ⇒ 本项为 0（不会因 0/0 产生 NaN，分母有下限）。
+
+    ⚠ **它不等于"沿车道中心线走"**：F_y ≈ 0 只说明绳在机体矢状面内（小车正后方）。
+    若机器人整体偏航、但小车也跟着偏到正后方，F_y 仍可 ≈ 0。车道中线/朝向要靠**横向偏置与
+    朝向**的观测＋对应奖励（或 PD 外环），二者互补。
+    """
+    term = _term(env)
+    force = term.towing_force_b
+    norm = torch.linalg.vector_norm(force, dim=1).clamp_min(1.0e-6)
+    return (force[:, 1] / norm).square()
+
+
+def stop_reached_flag(env):
+    """本回合**是否走到过 STOP 点**（1.0 = 到过，0.0 = 没到过）。只进 TensorBoard。
+
+    用户要求（2026-10-09）：回合一律由 timeout 收尾，所以"有没有走到 STOP 点"必须靠统计量
+    回答，而不是靠终止原因。取的是 action term 里的**粘性标志** `_was_stopped`：它在进度
+    越过 `stop_distance_m` 那一拍置位，直到本 env 复位才清零，所以
+
+    - `Episode_Reward/obs_stop_reached ÷ 1e-6` = 该回合**处于 STOP 相位的步数占比**（时间占比）；
+    - **占比 > 0 就等价于"走到了"**（到过之后才会计数）；恒 0 的回合就是没走到，
+      它们全部由 `time_out` 收尾（`Episode_Termination/time_out` 里含这部分）。
+
+    与 `cart_present_flag` 一致，用 1e-6 权重注册：不能填 0，否则 `RewardManager` 直接
+    `continue`、连日志都不产生。
+    """
+    return _term(env)._was_stopped.float()
 
 
 def terrain_out_of_bounds(env):

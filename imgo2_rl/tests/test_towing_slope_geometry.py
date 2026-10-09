@@ -93,8 +93,8 @@ class SlopeGeometryTests(unittest.TestCase):
                                    2.25 + 6.0/cosine + 0.75 + (18.0 - geometry.FLAT_OUT_START_M),
                                    places=12)
             self.assertGreaterEqual(geometry.profile_arc_length(grade, 10.0), 10.0 - 1e-12)
-        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.GOAL_DISTANCE_M)
-        # 10 m 目标落在出口平地上（9.0–11.25）⇒ 弧长 = 2.25 + 6/cos10 + 0.75 + 1.0
+        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
+        # STOP 点 10 m 落在出口平地（9.0–11.25）上 ⇒ 弧长 = 2.25 + 6/cos10 + 0.75 + 1.0
         self.assertAlmostEqual(worst, 2.25 + 6.0/math.cos(math.radians(10.0)) + 0.75 + 1.0,
                                places=9)
         self.assertLess(worst, 10.2)
@@ -171,7 +171,7 @@ class SlopeGeometryTests(unittest.TestCase):
             self.assertAlmostEqual(geometry.profile_height(grade, -geometry.BACK_M), 0.0, places=12)
             self.assertAlmostEqual(geometry.profile_height(grade, geometry.FORWARD_M), 0.0, places=12)
 
-    def test_spawn_clearance_attachment_distance_and_goal_stay_on_lane(self):
+    def test_spawn_clearance_attachment_distance_and_stop_point_stay_on_lane(self):
         for index in range(grid.GRID_SIZE):
             spec = grid.env_spec(index)
             grade = spec['slope_degrees']
@@ -187,18 +187,19 @@ class SlopeGeometryTests(unittest.TestCase):
             self.assertGreaterEqual(robot[0], 0.0)
             for root in (robot, cart):
                 self.assertGreater(root[0]-.03, -geometry.BACK_M+geometry.BOUNDARY_MARGIN_M)
-                self.assertLess(root[0]+.03+episode.GOAL_DISTANCE_M,
+                self.assertLess(root[0]+.03+episode.STOP_DISTANCE_M,
                                 geometry.FORWARD_M-geometry.BOUNDARY_MARGIN_M)
-            # 目标点仍落在车道内（10 m 处已是下坡段），弧长给 timeout 用
-            goal_x = robot[0] + 0.03 + episode.GOAL_DISTANCE_M
-            self.assertLess(goal_x, geometry.FORWARD_M-geometry.BOUNDARY_MARGIN_M)
+            # STOP 触发点仍落在车道内、且**已越过坡面出口**（用户要求越过坡后才置零指令）
+            stop_x = robot[0] + 0.03 + episode.STOP_DISTANCE_M
+            self.assertLess(stop_x, geometry.FORWARD_M-geometry.BOUNDARY_MARGIN_M)
+            self.assertGreater(episode.STOP_DISTANCE_M, geometry.FLAT_OUT_START_M)
             self.assertAlmostEqual(geometry.profile_height(grade, 0.0), 0.0, places=12)
-            self.assertGreaterEqual(geometry.profile_arc_length(grade, episode.GOAL_DISTANCE_M),
-                                    episode.GOAL_DISTANCE_M - 1e-12)
+            self.assertGreaterEqual(geometry.profile_arc_length(grade, episode.STOP_DISTANCE_M),
+                                    episode.STOP_DISTANCE_M - 1e-12)
 
     def test_every_speed_arrives_before_the_discretized_timeout(self):
-        # timeout 用**最陡档的坡面弧长**（10 m 水平目标 → 10.093 m 弧长）
-        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.GOAL_DISTANCE_M)
+        # timeout 用**最陡档的坡面弧长**（10 m 水平 STOP 点 → 10.093 m 弧长）
+        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
         limit = episode.episode_timeout_s(worst, episode.SPEED_RANGE[0])
         self.assertLess(abs(limit - 28.2315), 0.01)
         for index in range(111):

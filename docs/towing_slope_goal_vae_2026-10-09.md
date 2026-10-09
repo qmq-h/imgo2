@@ -53,3 +53,50 @@ README 保留 TOW-08/09 为「已修，待验证」。已知残差回放单位�
 桌面工作树属于 imgo2_CMoE，已有 ad04b3b 独立提交（CMoE 配置精简、4 文件，当前相对本地 origin/imgo2_CMoE 超前 1）。该提交应独立审阅并推送到自己的分支；不要合入本轮 main 牵引提交。桌面的 amp_env_cfg.py 未提交修改仅删除旧奖励说明，不必为它额外形成行为变更提交。其余 CMoE 评审、spawn 工具、牵引方案草稿和 drawio 仍保留在桌面；本轮正式结论以 main 本记录为准，先不混入 main。提交推送阶段已重新 fetch；main 与 origin/main 同步，CMoE 仅有上述 1 条待推送提交。
 
 用户指定的 `C:/Users/qmq/Desktop/Imgo2/.towing_slope_edit` 已删除；正式改动已保存到 main 工作树，不再依赖该临时目录。
+## 追加（同日）：目标制反转，恢复 STOP 相位
+
+用户当天判定「改成目标制不对」，要求**保留**两条停车段奖励并改回三段制：
+
+- `post_stop_towing_force`（−1.0）：停车之后绳子还绷着就扣分——"到点了就把拉力卸掉"，
+  别一直拽着、也别把小车当锚；
+- `post_stop_distance`（−0.1）：停车之后还往前多走的距离——"说停就停，别继续滑"。
+
+回合结构回到：**settle（指令 0，静止稳定）→ tow（指令 = tow_speed）→ STOP（指令 0）→ 超时结束**。
+因此本文件第 17 行写的「目标成功为真 termination …… 旧 4–6 s 定时 STOP 与停车阶段奖励移除」
+**已被本追加取代**：`goal_reached` 不再作为终止项，改名为 `stop_reached` 且只用来置零指令
+（`STOP_DISTANCE_M = 10.0 m`，语义由「目标」变「停止触发点」）；target 相关的 VAE 与观测部分不变。
+
+### 「越过坡之后」怎么保证
+
+用户要求「给 cmd vel 一定要在越过坡之后」。坡面出口是 `FLAT_OUT_START_M = 9.0 m`
+（剖面：平地 2.25 → 上坡 3 → 坡顶 0.75 → 下坡 3 → 平地 2.25），触发点取 10.0 m，
+`upper_env_cfg.__post_init__` 里有断言 `stop_distance_m > FLAT_OUT_START_M` 守着。
+
+**触发用进度、不用时间**：最慢速度 0.4 m/s 下，光走到坡出口就要约 23 s（timeout 约 28.2 s），
+固定时间阈值无法保证"越过坡"；进度触发同时也满足"走过一段时间之后"。
+
+### 相位与时限
+
+- `stop_time_s`（初值 `+inf`）与 `stop_origin_x` 在进度越过 `stop_distance_m` 那一拍写入；
+  两条奖励按 `elapsed_s >= stop_time_s` 门控，未停车前**精确为 0**（`inf` 比较恒假）。
+- **正常回合一律由 `time_out` 收尾**（用户 2026-10-09 明确确认）。中途曾加过一个
+  「停车后固定窗口终止」的 `post_stop_timeout`，随后按用户要求去掉：不加停车窗口终止项，
+  timeout = `settle + 到 STOP 点的坡面弧长 / 最小速度 + POST_STOP_WINDOW_S`
+  = 1 + 10.0926/0.4 + 3 = **29.23 s**。副作用是「速度越快、停车尾巴越长」（0.4 m/s 3 s、
+  1.5 m/s 22.5 s），该偏置已向用户说明并被接受。
+- **「走没走到 STOP 点」改用统计量回答**：诊断项 `obs_stop_reached`（权重 1e-6，只进
+  TensorBoard）返回 action term 的粘性标志 `_was_stopped`。读法：
+  `Episode_Reward/obs_stop_reached ÷ 1e-6` = 该回合处于 STOP 相位的步数占比，
+  **> 0 即「走到了」**、恒 0 即「没走到」（这些回合全部由 `time_out` 收尾）。
+- **失败退出保留**：`robot_fall`（离局部坡面高度 < 0.18 m ⇒ **倒地退出**）、
+  `cart_collision`、`terrain_exit`；`time_out` 是正常收尾。
+
+### 验证与限制
+
+全量 `imgo2_rl/tests` **424 项通过 0 失败**：契约测试改成 STOP 制（断言 `goal_reached` 不再是
+DoneTerm、`stop_reached` 存在、两条奖励权重与门控、`stop_time_s`/`stop_origin_x` 的写入与复位），
+几何测试把 `GOAL_DISTANCE_M` 改名为 `STOP_DISTANCE_M` 并加「STOP 点在坡面出口之后」断言。
+
+**未验证**：本机无 Isaac Lab（`omni.kit` 不可 import），未构造环境、未实跑；STOP 触发的运行时
+行为、两条奖励的实际量级、`POST_STOP_WINDOW_S = 3 s` 是否够用，以及 800 环境里平地/5°/10°
+两类坡道的 STOP 是否都落在出口平地，都待训练机确认（README 问题表 TOW-13）。

@@ -1,7 +1,11 @@
 """Class-based configuration for the hierarchical towing RL environment.
 
 架构（2026-10-08 起）：送给冻结 AMP 底层策略的速度指令由脚本调度给出，上层网络输出
-**12 维关节位置残差**叠加在冻结策略的关节目标上。任务已注册为
+**12 维关节位置残差**叠加在冻结策略的关节目标上。
+
+回合结构（2026-10-09 恢复三段制）：settle（指令 0，静止稳定）→ tow（指令 = tow_speed）
+→ **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
+让 `stop_towing_force`／`extra_distance` 有真实相位可用。任务已注册为
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing_training_prep_2026-09-22.md``。
 """
@@ -27,9 +31,10 @@ from imgo2_rl.assets.cart import make_cart_cfg
 from imgo2_rl.assets.imgo2 import IMGO2_CFG
 import imgo2_rl.tasks.manager_based.towing.upper_mdp as mdp
 from imgo2_rl.tasks.manager_based.towing.mdp.connection_grid import COLUMNS, ROWS
-from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import SPEED_RANGE, episode_timeout_s
+from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import (
+    POST_STOP_WINDOW_S, SPEED_RANGE, episode_timeout_s)
 from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
-    BOUNDARY_MARGIN_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
+    BOUNDARY_MARGIN_M, FLAT_OUT_START_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
 from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
     TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter,
 )
@@ -172,9 +177,14 @@ class UpperRewardsCfg:
     **记录口径**：TensorBoard 的 `Episode_Reward/<项>` = 该回合的加权和 ÷ `max_episode_length_s`，
     量级比"每步值"小约 5~10 倍，不要直接与每步值比较。
 
-    **设计取向（截至 2026-10-08）**：跟踪类只有 `tracking_velocity`（实测速度 vs 命令，
-    正向驱动）与 `action_magnitude`／`action_rate`（治抖动）。原先与之并列的
-    `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
+    **设计取向（截至 2026-10-09）**：回合是三段制（settle → tow → STOP/滑行），所以奖励按
+    相位分四组——跟踪类只有 `tracking_velocity`（实测速度 vs 命令，正向驱动，全程生效）；
+    抖动/可控性类三项（`action_magnitude`／`action_rate` 罚**残差本身**，
+    `low_level_pos_error` 罚**残差的后果**：冻结策略的输出目标与实测关节位置的差）；
+    拉力方向一项（`towing_force_y`：机体系 y 分量占比，要求拉力落在矢状面内）；
+    停止类两项（`stop_towing_force`／`extra_distance`，只在指令归零之后生效）。
+    **横向与朝向不在这里**：2026-10-09 用户决定用 PD 外环负责，`tracking_velocity` 也只算纵向 `vx`。
+    原先与之并列的 `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
     `reference_command`，该式恒为 0；其"起步即有效、全域有梯度"的作用由
     `tracking_velocity` 现在真的比较**实测速度**来承担。
     """
@@ -190,7 +200,8 @@ class UpperRewardsCfg:
     # ⚠ 已知缺陷：误差 >1 m/s 后梯度趋零（exp 的尾部），而牵引段起步瞬间正落在该区，
     #   属"探索与奖励脱钩"的来源之一，尚未修改。
     tracking_velocity = RewTerm(func=mdp.velocity_tracking_exp, weight=1.0,
-                                params={"linear_std": 0.5, "yaw_std": 1.0})
+                                params={"linear_std": 0.5, "yaw_std": 1.0,
+                                        "use_lateral_and_heading": False})
 
     # ============================ 终止级（稀疏、致命）============================
 
@@ -220,14 +231,40 @@ class UpperRewardsCfg:
     min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
                             params={"ratio": 0.25, "softness": 0.02})
 
-    # 【朝向】惩罚偏离**初始 yaw** 的角度平方（rad²）。取相对值而非世界系 0：
-    # 初始朝向含 ±0.03 rad 随机化，用绝对基准会把该偏移当成初始误差。
-    # 存在原因：原奖励只惩罚 yaw **角速度**误差，匀速自转在 settle 段几乎不受罚
-    # （角速度也≈0），导致"转着不动"成了不受罚的局部最优（用户报告"开始就在自转"）。
-    # 量级：偏 11° ⇒ −0.074/步、29° ⇒ −0.51、90° ⇒ −4.9（刻意强于其余惩罚）。
-    yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)
+    # 【朝向惩罚：2026-10-09 已关闭】横向与朝向改由 **PD 外环**负责（`upper_mdp` 的
+    # `_lane_keeping_vy/_wz` 写 `loco_command[:,1:3]`，用户决定），所以这里**不再注册**
+    # `yaw_heading = RewTerm(func=mdp.yaw_heading_l2, ...)`：PD 已经是逐拍闭环，再叠一个
+    # 奖励等于同一目标约束两次，还会把"朝向误差"混进策略的回报、掩盖 PD 的效果。
+    # 同时 `tracking_velocity` 也改成只用纵向 `vx`（见其 params 的 `use_lateral_and_heading=False`），
+    # 横向/朝向的跟踪误差不再进回报。
+    # helper 仍保留在 `upper_mdp`（`heading_deviation`／`yaw_heading_l2`），要回开就把下面一行
+    # 取消注释；注意回开后与 PD 的基准相差 ≤0.03 rad（PD 目标是 0，helper 基准是 spawn 朝向）。
+    # yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)
 
-    # Reaching the goal ends the episode; there is no timed STOP reward phase.
+    # ============================ 停止阶段（仅 t ≥ t_stop 生效）============================
+
+    # 【停车后卸力】`‖F‖/(‖F‖+10)`，有界归一化。表达"停车后应松绳"：别一直拽着、
+    # 也别把小车当锚。门控是 `elapsed_s >= stop_time_s`；`stop_time_s` 在进度越过
+    # `stop_distance_m`（**已越过坡**）那一拍写入，未停车前是 `+inf` ⇒ 本项精确为 0。
+    # 与 `extra_distance` 配对，防"为卸载拉力而继续前冲"与"停死后被追尾"两种极端。
+    stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
+                                params={"force_scale": 10.0})
+
+    # 【停车后额外位移】`relu(x − x_stop)`：越过停车点的距离，罚"停不住继续滑"。
+    # 基线 `stop_origin_x` 是指令归零那一拍的 x，所以不含牵引段的前进。
+    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
+
+    # ============================ 拉力方向（机体系 y 分量为 0）============================
+
+    # 【拉力方向偏离矢状面】`(F_y/‖F‖)² = sin²(偏离角)`，用户 2026-10-09 要求
+    # 「运动过程中 3 维拉力在 y 维度保持为 0」。用**比值**而非原始 `F_y²`：与张力大小无关、
+    # 有界 [0,1]，避免被起步绷直的百牛级峰值放大成"变相惩罚大张力"。
+    # 量级：偏 10° → 0.030 ⇒ −10×0.030×0.05 = **−0.015/步**；偏 20° → −0.059/步。
+    # ⚠ 注意它只保证"绳在机体矢状面内（小车正后方）"，**不等于**沿车道中线/朝向对齐：
+    #   机器人整体偏航但小车也跟着偏到正后方时，本项仍可 ≈0。中线/朝向由 **PD 外环**负责
+    #   （`_lane_keeping_vy/_wz`），不是奖励项。actor 目前**观测不到** F_y，只能靠 GRU 历史间接学；
+    #   要真正闭环修正需把 F_y（或比值）加进 actor 帧，见 README 问题表 TOW-14。
+    towing_force_y = RewTerm(func=mdp.towing_force_y_ratio_sq, weight=-10.0)
 
     # ============================ 动作平滑／幅值（治抖动）============================
 
@@ -243,6 +280,17 @@ class UpperRewardsCfg:
     #   残差**，不再直接等于加速度上限。权重 −0.05 待实跑确认。
     action_magnitude = RewTerm(func=mdp.action_magnitude_l2, weight=-0.05)
 
+    # ============================ 底层可控性（残差的后果）============================
+
+    # 【底层跟踪误差】冻结策略**自己输出**的关节位置目标 vs 实测关节位置的 Σ(rad²)，
+    # **不含上层残差**（用 `output.joint_targets`，不是 `joint_targets + delta_joint_pos`）。
+    # 与 `action_magnitude`/`action_rate` 的区别：那两项罚残差本身（幅值/变化率），本项罚
+    # 残差造成的后果——位置误差大意味着 PD 饱和、接触顶住或腿被压住，是真实的可控性信号。
+    # 量级：逐关节 RMS 0.05 rad ⇒ Σ≈0.03 ⇒ 每步 −5.0×0.03×0.05 ≈ −0.0075，约为
+    # `tracking_velocity` 满额（+1.0×0.05）的 15%。**该权重是按此量级估的初值，待实跑标定**：
+    # 若日志里 `Episode_Reward/low_level_pos_error` 长期压过跟踪项，说明残差被过度压制。
+    low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-5.0)
+
     # ============================ 诊断项（不塑造策略）============================
 
     # 只为把"验收时答不出的量"写进 TensorBoard，不参与策略优化。
@@ -253,12 +301,23 @@ class UpperRewardsCfg:
     obs_cart_present = RewTerm(func=mdp.cart_present_flag, weight=1.0e-6)
     obs_towing_force = RewTerm(func=mdp.towing_force_norm, weight=1.0e-6)
     obs_towing_force_active = RewTerm(func=mdp.towing_force_norm_active, weight=1.0e-6)
+    # 【是否走到 STOP 点】0/1 粘性标志：回合一律由 timeout 收尾，所以"走没走到 STOP 点"
+    # 只能靠这个诊断量回答，而不是靠终止原因。读法：`Episode_Reward/obs_stop_reached ÷ 1e-6`
+    # = 处于 STOP 相位的步数占比（时间占比），**> 0 就是走到了**；恒 0 表示没走到
+    # （那些回合全部由 `time_out` 收尾）。
+    obs_stop_reached = RewTerm(func=mdp.stop_reached_flag, weight=1.0e-6)
 
 
 @configclass
 class UpperTerminationsCfg:
+    """终止项（2026-10-09 用户确认：**正常回合一律由 timeout 收尾**）。
+
+    到达 `stop_distance_m` 只把指令置零、进入 STOP 段，**不终止**（否则两条停车奖励没有相位）。
+    因此没有 `goal_reached`／`stop_reached`／`post_stop_timeout` 终止项；"有没有走到 STOP 点"
+    由诊断量 `obs_stop_reached` 回答。剩下的都是**失败**退出：
+    `robot_fall`（离局部坡面高度 < 0.18 m ⇒ 倒地退出）、`cart_collision`、`terrain_exit`。
+    """
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    goal_reached = DoneTerm(func=mdp.goal_reached)
     robot_fall = DoneTerm(func=mdp.robot_fall, params={"minimum_height": 0.18})
     cart_collision = DoneTerm(func=mdp.cart_collision)
     terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)
@@ -305,15 +364,25 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
         action = self.actions.high_level_velocity
-        if action.goal_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
-            raise ValueError("goal distance exceeds the safe lane length")
+        if action.stop_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
+            raise ValueError("stop distance exceeds the safe lane length")
+        # 用户要求「给 cmd vel 一定要在越过坡之后」：STOP 触发点必须落在坡面**出口平地**上。
+        # 坡面出口 = `FLAT_OUT_START_M`（9.0 m），触发点 10.0 m 满足；写成断言防止以后调小。
+        if action.stop_distance_m <= FLAT_OUT_START_M:
+            raise ValueError(
+                f"STOP 触发点 {action.stop_distance_m} m 必须越过坡面出口 "
+                f"{FLAT_OUT_START_M} m，否则停车段落在坡上/坡中")
         minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
-        # timeout 用**坡面弧长**上界（最陡档）：10 m 水平目标在 10° 剖面上是
-        # `profile_arc_length(10, 10) = 10.093 m` → 1 + 10.093/0.4 + 2 = 28.23 s，
-        # 即在最慢速度下理想行走仍然不超时（旧恒定坡度下是 28.0 s）。
-        surface_distance = profile_arc_length(MAX_GRADE_DEG, action.goal_distance_m)
+        # 正常回合一律由 `time_out` 收尾（用户 2026-10-09 确认）：timeout = settle +
+        # （到 STOP 点的**坡面弧长**上界）/ 最小速度 + 停车窗口。弧长上界取最陡档：
+        # 10 m 水平在 10° 剖面上是 `profile_arc_length(10, 10)=10.093 m`
+        # ⇒ 1 + 10.093/0.4 + 3 = 29.23 s。`POST_STOP_WINDOW_S` 是最慢速度下的停车窗口；
+        # 速度越快 STOP 越早、尾巴越长（已与用户确认接受；"有没有走到 STOP 点"看
+        # `obs_stop_reached` 诊断量，不靠终止原因区分）。
+        surface_distance = profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)
         self.episode_length_s = episode_timeout_s(
-            surface_distance, minimum_speed, action.tow_start_s)
+            surface_distance, minimum_speed, action.tow_start_s,
+            margin=POST_STOP_WINDOW_S)
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.viewer.eye = (4.0, 4.0, 2.5)

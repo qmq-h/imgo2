@@ -493,6 +493,32 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
 
+    def test_low_level_position_error_uses_the_frozen_target_not_the_residual_command(self):
+        """底层跟踪误差惩罚必须拿**冻结策略自己**的关节目标，不能用「目标 + 残差」。
+
+        用户要求：惩罚「底层输出的 pos 和真实 pos 的差距」，且明确「是底层输出的 pos 而不是
+        经过残差的 pos」。混淆两者会让该项退化成罚上层动作，与 action_magnitude/action_rate
+        重复。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def low_level_position_error_l2(", mdp)
+        self.assertIn("actual = term._asset.data.joint_pos[:, term._policy_to_asset]", mdp)
+        self.assertIn("return (actual - term.loco_joint_targets).square().sum(dim=1)", mdp)
+        body = mdp[mdp.index("def low_level_position_error_l2("):]
+        body = body[:body.index("\ndef ", 1)]
+        # 只看代码，跳过 docstring（docstring 自己会把 `+ delta_joint_pos` 当反例引用）
+        code = body[body.index('"""', body.index('"""') + 3) + 3:]
+        self.assertNotIn("delta_joint_pos", code)
+        self.assertNotIn("_held_joint_targets", code)
+        # 缓存来自 output.joint_targets，且叠加残差之前先记录，顺序反了就不是"底层输出"了
+        self.assertIn("self.loco_joint_targets.copy_(output.joint_targets)", mdp)
+        self.assertLess(mdp.index("self.loco_joint_targets.copy_(output.joint_targets)"),
+                        mdp.index("output.joint_targets + self.delta_joint_pos"))
+        self.assertIn(
+            "low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-5.0)",
+            cfg)
+
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_decoder_loss_reports_three_weighted_components(self):
         """去掉 target 归一化与 head tanh 后，三项尺度不同（m/s、kg、N），
@@ -596,8 +622,11 @@ class UpperLogicTests(unittest.TestCase):
         # 必须用 default_root_state 的朝向作为基准，而不是写死 0
         self.assertIn("default_root_state[:, 3:7]", mdp)
         self.assertIn("math_utils.wrap_to_pi(yaw - yaw_init)", mdp)
-        # 注册项存在且权重为负
-        self.assertIn("yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)", cfg)
+        # 2026-10-09 用户决定：朝向/横向由 PD 外环负责 ⇒ 该奖励项**已关闭**
+        # （helper 保留以便回开；不得再注册成 RewTerm，否则与 PD 重复约束）
+        active = [line for line in cfg.splitlines()
+                  if line.strip().startswith("yaw_heading = RewTerm")]
+        self.assertEqual(active, [], "朝向奖励必须处于关闭状态（横向/朝向已交给 PD）")
 
     def test_wrap_to_pi_keeps_heading_error_bounded(self):
         """角度误差必须 wrap 到 [-π, π]，否则跨越 ±π 时会出现 2π 跳变。"""
@@ -629,8 +658,16 @@ class UpperLogicTests(unittest.TestCase):
         """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        # 跟踪项：实测机体系线速度 vs 脚本指令
-        self.assertIn("term._asset.data.root_lin_vel_b[:, :2] - term.loco_command[:, :2]", mdp)
+        # 跟踪项：实测机体系**纵向**线速度 vs 脚本指令（2026-10-09 起横向/朝向由 PD 负责，
+        # 所以跟踪误差只留 vx，`use_lateral_and_heading` 默认 False）
+        self.assertIn(
+            "forward_error = ((term._asset.data.root_lin_vel_b[:, 0] - term.loco_command[:, 0])", mdp)
+        self.assertIn("if not use_lateral_and_heading:", mdp)
+        self.assertIn("return torch.exp(-forward_error.square())", mdp)
+        self.assertIn("use_lateral_and_heading=False", cfg)
+        # 恢复旧口径的分支仍在（含 vy 与 yaw 角速度），但只能是显式打开
+        self.assertIn("term._asset.data.root_lin_vel_b[:, 1] - term.loco_command[:, 1]", mdp)
+        self.assertIn("term._asset.data.root_ang_vel_b[:, 2] - term.loco_command[:, 2]", mdp)
         # 注册项必须彻底消失（注释里保留历史说明是允许的）
         self.assertIn("原先与之并列的", cfg)          # 历史说明仍在（防止本次改动被回滚）
         self.assertNotIn("reference_tracking = RewTerm", cfg)
@@ -732,8 +769,8 @@ class UpperLogicTests(unittest.TestCase):
         # 类型/长度来自确定性网格，不再是逐 env 随机采样
         self.assertIn("specs = [env_spec(index) for index in range(env.num_envs)]", mdp)
         self.assertNotIn("torch.randint(0, len(CONNECTION_MODELS)", mdp)
-        self.assertIn("~goal_reached(self._env)", mdp)
-        self.assertNotIn("stop_time_range", cfg)
+        self.assertIn("self._was_stopped", mdp)
+        self.assertNotIn("stop_time_range", cfg)      # STOP 由进度触发，不是随机时刻
         self.assertIn("self._apply_towing_physics()", mdp)
         self.assertIn("self._physics_step % low_level_decimation", mdp)
         self.assertIn("-self.wheel_damping * self._cart.data.joint_vel", mdp)
@@ -861,18 +898,127 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("cfg.upper_control_dt - env.step_dt", mdp)
         self.assertIn("cfg.low_level_control_dt - self._policy_cfg.control_dt", mdp)
 
-    def test_goal_and_timeout_have_distinct_termination_semantics(self):
+    def test_stop_phase_replaces_goal_termination_and_has_its_own_rewards(self):
+        """2026-10-09：目标制改回**三段制**——到点只置零指令、回合继续跑到 timeout，
+        两条 post_stop 奖励因此重新有相位可用（用户明确要求保留这两项）。
+
+        用户还要求「给 cmd vel 一定要在越过坡之后」，所以 STOP 触发点必须严格大于坡面出口
+        `FLAT_OUT_START_M = 9.0 m`，`upper_env_cfg.__post_init__` 有断言守着。
+        """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         self.assertIn("time_out = DoneTerm(func=mdp.time_out, time_out=True)", cfg)
-        self.assertIn("goal_reached = DoneTerm(func=mdp.goal_reached)", cfg)
-        # timeout 用**坡面弧长上界**（连续剖面里坡段比水平投影长），不是水平目标距离
-        self.assertIn("profile_arc_length(MAX_GRADE_DEG, action.goal_distance_m)", cfg)
-        self.assertIn("episode_timeout_s(\n            surface_distance, minimum_speed, "
-                      "action.tow_start_s)", cfg)
-        self.assertIn("progress - term.start_progress >= term.cfg.goal_distance_m", mdp)
-        self.assertNotIn("stop_towing_force = RewTerm", cfg)
-        self.assertNotIn("extra_distance = RewTerm", cfg)
+        # 到点不再终止（否则 STOP 之后没有可评分的步）
+        self.assertNotIn("goal_reached = DoneTerm", cfg)
+        self.assertNotIn("stop_reached = DoneTerm", cfg)
+        self.assertIn("def stop_reached(env):", mdp)
+        self.assertIn("progress - term.start_progress >= term.cfg.stop_distance_m", mdp)
+        # STOP 触发点必须在坡面出口之后
+        self.assertIn("from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import", cfg)
+        self.assertIn("FLAT_OUT_START_M", cfg)
+        self.assertIn("if action.stop_distance_m <= FLAT_OUT_START_M:", cfg)
+        # timeout 用**坡面弧长上界** + 停车窗口，不是水平目标距离
+        self.assertIn("profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)", cfg)
+        self.assertIn("margin=POST_STOP_WINDOW_S)", cfg)
+        # 用户 2026-10-09 确认：正常回合**一律超时退出**，不加停车窗口终止项
+        self.assertNotIn("post_stop_timeout = DoneTerm", cfg)
+        self.assertNotIn("def post_stop_timeout", mdp)
+        self.assertNotIn("goal_reached = DoneTerm", cfg)
+        # "走没走到 STOP 点"改由诊断量回答（0/1 粘性标志，只进 TensorBoard）
+        self.assertIn("obs_stop_reached = RewTerm(func=mdp.stop_reached_flag, weight=1.0e-6)", cfg)
+        self.assertIn("def stop_reached_flag(env):", mdp)
+        self.assertIn("return _term(env)._was_stopped.float()", mdp)
+        # 倒地退出必须在位（失败退出，不算超时）
+        self.assertIn("robot_fall = DoneTerm(func=mdp.robot_fall, params={\"minimum_height\": 0.18})", cfg)
+        # 两条 post_stop 奖励恢复，权重与历史一致
+        self.assertIn("stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0", cfg)
+        self.assertIn("extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)", cfg)
+        self.assertIn('params={"force_scale": 10.0}', cfg)
+        # 相位与状态：触发时记录 stop_time_s / stop_origin_x，复位回 +inf
+        self.assertIn("def post_stop_towing_force(env, force_scale):", mdp)
+        self.assertIn("def post_stop_distance(env):", mdp)
+        self.assertIn("post_stop = (elapsed_s >= term.stop_time_s).float()", mdp)
+        self.assertIn("self.stop_time_s[newly_stopped] = elapsed_s[newly_stopped]", mdp)
+        self.assertIn("self.stop_origin_x[newly_stopped] = self._asset.data.root_pos_w[newly_stopped, 0]", mdp)
+
+    def test_yaw_is_the_third_euler_component_not_the_first(self):
+        """守卫：`euler_xyz_from_quat` 的返回顺序是 **(roll, pitch, yaw)**。
+
+        2026-10-09 发现 `heading_deviation` 原先写成 `yaw, _pitch, _roll = ...`，实际取到的是
+        **roll** ⇒ `yaw_heading`（−2.0）一直在罚横滚偏差，而朝向只被 `tracking_velocity` 的
+        yaw **角速度**项间接约束（角速度归零 ≠ 朝向不漂）。这里用纯 yaw 四元数按 Isaac Lab 的
+        公式复算，把顺序钉死（不需要 torch，纯标准库）。
+        """
+        import math
+        for yaw in (0.0, 0.3, -0.7):
+            qw, qz = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+            qx = qy = 0.0
+            roll = math.atan2(2.0 * (qw * qx + qy * qz), 1 - 2 * (qx * qx + qy * qy))
+            pitch = math.asin(max(-1.0, min(1.0, 2.0 * (qw * qy - qz * qx))))
+            yaw_out = math.atan2(2.0 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+            self.assertAlmostEqual(roll, 0.0, places=12)
+            self.assertAlmostEqual(pitch, 0.0, places=12)
+            self.assertAlmostEqual(yaw_out, yaw, places=12)      # ← 第三个才是 yaw
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def yaw_from_quat(quat):", mdp)
+        self.assertIn("_roll, _pitch, yaw = math_utils.euler_xyz_from_quat(quat)", mdp)
+        # 旧写法不得回潮
+        self.assertNotIn("euler_xyz_from_quat(self._asset.data.root_quat_w)[0]", mdp)
+        self.assertNotIn("yaw, _pitch, _roll = math_utils.euler_xyz_from_quat", mdp)
+        # 朝向奖励仍以 spawn 朝向为基准
+        self.assertIn("yaw_init = yaw_from_quat(term._asset.data.default_root_state[:, 3:7])", mdp)
+
+    def test_lane_keeping_pd_matches_the_measurement_bench(self):
+        """横向/朝向 PD 必须与测量台 `lane_keeping_command` 同式同号，且限幅在训练分布内。
+
+        用户 2026-10-09 决定：**保持中线和 heading 用 PD，不让策略学**。这样不改任何观测/动作
+        维数（`loco_command[:,1:3]` 本来就是冻结策略的 (vy, ω) 指令槽，此前恒 0），也不新增奖励。
+        与测量台一致才能做「PD 基线 vs 上层策略」的对照。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("if self.cfg.lane_keeping:", mdp)
+        self.assertIn("self.loco_command[:, 1] = self._lane_keeping_vy()", mdp)
+        self.assertIn("self.loco_command[:, 2] = self._lane_keeping_wz()", mdp)
+        # 与测量台逐年项同式同号
+        self.assertIn("lateral_error = -local[:, 1] * torch.cos(yaw)", mdp)
+        self.assertIn("heading_error = math_utils.wrap_to_pi(self.cfg.lane_yaw_target - yaw)", mdp)
+        self.assertIn("self.cfg.lane_kp_y * lateral_error", mdp)
+        self.assertIn("self.cfg.lane_kd_y * self._asset.data.root_lin_vel_b[:, 1]", mdp)
+        self.assertIn("self.cfg.lane_kp_yaw * heading_error", mdp)
+        self.assertIn("self.cfg.lane_kd_yaw * self._asset.data.root_ang_vel_b[:, 2]", mdp)
+        self.assertIn("torch.clamp(command, -self.cfg.lane_max_vy, self.cfg.lane_max_vy)", mdp)
+        self.assertIn("torch.clamp(command, -self.cfg.lane_max_wz, self.cfg.lane_max_wz)", mdp)
+        # 默认增益与测量台一致；限幅 = AMP 训练分布（lin_vel_y ±1.0、ang_vel_z ±1.57）
+        for fragment in ("lane_kp_y: float = 1.0", "lane_kd_y: float = 0.3",
+                         "lane_kp_yaw: float = 1.5", "lane_kd_yaw: float = 0.3",
+                         "lane_max_vy: float = 1.0", "lane_max_wz: float = 1.5708",
+                         "lane_yaw_target: float = 0.0"):
+            self.assertIn(fragment, mdp)
+        # PD 不是奖励项：环境配置里不得把它注册成 RewTerm
+        self.assertNotIn("RewTerm(func=mdp.lane_keeping", cfg)
+        self.assertNotIn("RewTerm(func=mdp._lane_keeping", cfg)
+
+    def test_towing_force_y_penalty_is_tension_invariant(self):
+        """拉力 y 分量惩罚：必须用 `(F_y/‖F‖)²` 的**比值**，不是原始 `F_y²`。
+
+        用户 2026-10-09 要求「运动过程中 3 维拉力在 y 维度保持为 0」。用比值的原因：原始
+        `F_y²` 会被起步绷直的百牛级峰值（最硬弹性档 ~1 kN）放大，等价于变相惩罚大张力，
+        与拖曳任务对冲；比值与张力无关、有界 [0,1]，语义是"拉力方向落在机体系 xz 平面内"。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("def towing_force_y_ratio_sq(env):", mdp)
+        self.assertIn("force = term.towing_force_b", mdp)
+        self.assertIn("norm = torch.linalg.vector_norm(force, dim=1).clamp_min(1.0e-6)", mdp)
+        self.assertIn("return (force[:, 1] / norm).square()", mdp)
+        # 守卫：不得退化成原始 F_y²（无归一化）
+        body = mdp[mdp.index("def towing_force_y_ratio_sq("):]
+        body = body[:body.index("\ndef ", 1)]
+        code = body[body.index('"""', body.index('"""') + 3) + 3:]
+        self.assertNotIn("force[:, 1].square()", code)
+        self.assertIn("towing_force_y = RewTerm(func=mdp.towing_force_y_ratio_sq, weight=-10.0)", cfg)
+        self.assertIn("math.inf", mdp)
 
     def test_mesh_origins_and_fall_test_follow_the_profile(self):
         """地形 origin 来自 mesh importer；跌倒判据量的是**离局部剖面**的高度。
