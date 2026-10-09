@@ -38,17 +38,28 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 逐坡度串行 ⇒ 总共 5 次仿真过程，而不是 225 次。每个环境 = 一个固定 case（逐 env 的
 小车质量、连接类型、速度指令都不同），坡度在两次过程之间切换。
 
-## 坡度怎么实现（现有平地 + 旋转重力，物理等价）
+## 坡度怎么实现（两种后端，同一套度量坐标系）
 
-坡度地形**还在实现中**，本脚本默认不动地形：用 `TowSceneCfg` 现有的那块平地，
-把**重力方向转成坡面的法向分解** `g = (−g·sinθ, 0, −g·cosθ)`。在随坡面倾斜的参考系里，
-「水平地面 + 倾斜重力」与「倾斜坡面 + 竖直重力」是**同一组方程**（接触法向、法向力
-`mg·cosθ`、下滑分量 `mg·sinθ` 逐项相同），因此这不是近似替代。冻结策略的观测里本来就
-有 `projected_gravity`，它会自然看到倾斜后的重力。唯一差别是出生高度是竖直 0.35 m
-（坡面上量是 0.35/cosθ），可忽略。
+`--slope-backend`：
 
-`--slope-backend terrain` 是给**将来**的坡面地形资产留的口子：目前直接报错而不是
-静默退回重力方案（要接入时改 `slope_ground_plan()` 与场景的地面 spawn 两处即可）。
+- **`gravity`（默认）**：不动地形，用 `TowSceneCfg` 现有的那块平地，把**重力方向转成
+  坡面的法向分解** `g = (−g·sinθ, 0, −g·cosθ)`。在随坡面倾斜的参考系里，「水平地面 +
+  倾斜重力」与「倾斜坡面 + 竖直重力」是**同一组方程**（接触法向、法向力 `mg·cosθ`、
+  下滑分量 `mg·sinθ` 逐项相同），因此这不是近似替代；冻结策略观测里的
+  `projected_gravity` 会自然看到倾斜后的重力。度量坐标系最简单（行程 = x 位移、
+  离面高度 = 绝对 z、俯仰 = 世界系俯仰），首轮建议先跑这个。
+- **`terrain`**：用 2026-10-09 远端实现的**真实坡面 tile**（`mdp/slope_geometry.tile_mesh`，
+  与训练场景同源：顶面 `z = tanθ·(x − 原点x)`、板厚 `0.35 m`、前 17 m / 后 3 m / 半宽 3 m）。
+  每轮的每个 case 拿一块同坡度的 tile（cell 由 `slope_cells()` 从训练侧 40×20 网格里挑，
+  坡度符号沿用其行列交替规则），平移到本测试台自己的紧凑网格上；出生位姿按训练侧同一套
+  坡面解（机体系 +X 对切向、+Z 对法向，两挂点三维距 = `L0 − slack`）。两种后端的
+  `tangent/normal` 运行时会与 `slope_geometry.slope_frame()` 交叉核对。
+
+两个后端都用同一个**坡面坐标系**做度量：`(原点, 切向, 法向)` 由 `surface_frame()` 给出，
+记录里落成 `robot/load_progress_m`（沿坡切向行程）、`robot/load_surface_height_m`
+（离面法向高度）、`body_pitch_rel_rad`（相对坡面参考姿态的俯仰）。`gravity` 后端上它们
+退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；`terrain` 后端上则是真实坡面量，
+于是「走了多远、离面多高、翻了没有」在平地和各种坡度上是同一个口径。
 
 ## 坡度上的站定段：驻车制动仿真（`--slope-settle`，默认 `hold`）
 
@@ -142,33 +153,53 @@ _JOINT_NAMES_FALLBACK = tuple(
     for part in ("hip", "thigh", "shank"))
 
 # 记录列：`summarize_tow` 需要的列（TOW_FIELDS）+ 本测试新增的列。
-# `recording.py` 是纯标准库模块，按文件路径加载，避免 import 重量级包 __init__。
+# `recording.py` / `mdp/connection_grid.py` / `mdp/slope_geometry.py` 都是纯标准库模块，
+# 按文件路径加载，避免 import 重量级包 `__init__`（那会让 `--dry-run` 失去标准库可运行性）。
 def _load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"无法加载模块 {name}：{path}")
     module = importlib.util.module_from_spec(spec)
+    # 必须先注册进 sys.modules：`slope_geometry` 用 `from connection_grid import ...`
+    # 的顶层回退（按路径加载时没有包上下文），且 dataclass 处理字符串注解也要用到它。
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
+MDP_DIR = RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
 recording = _load_module(
     "imgo2_play_towing_test_recording",
     RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py")
+# 真实坡面网格与几何：本测试台复用训练侧的 tile 生成与坡度符号，不自己写一套坡度表。
+connection_grid = _load_module("connection_grid", MDP_DIR / "connection_grid.py")
+slope_geometry = _load_module("slope_geometry", MDP_DIR / "slope_geometry.py")
 
 JOINT_TARGET_FIELDS = tuple(f"robot_jt_{index:02d}" for index in range(N_JOINTS))
 JOINT_TORQUE_FIELDS = tuple(f"robot_tau_{index:02d}" for index in range(N_JOINTS))
 WHEEL_LEGS = ("fl", "fr", "rl", "rr")
 #: 本测试新增列。`connection` 是字符串列，其余都是数值列。
+#: `*_progress_m` / `*_surface_height_m` / `body_pitch_rel_rad` 是**坡面坐标系**量：
+#: 两个后端都定义 `(原点, 切向, 法向)`，于是「走了多远」「离面多高」「相对面的俯仰」
+#: 在平地和坡上、在重力后端和地形后端上是同一个口径（见 `surface_frame`）。
 EXTRA_FIELDS = (
     "velocity_cmd_mps",     # 本 env 当前的速度指令（体系 x）
     "robot_vx_b_mps",       # 体系 x 速度 = 跟速误差用的口径
     "joint_err_rms_rad",    # 本拍 12 关节跟踪误差的 RMS（在线算，便于画曲线）
     "joint_err_max_rad",
-    "slope_deg", "gravity_x_mps2", "gravity_z_mps2",
+    # 沿坡面切向的行程（起点 = 本 env 的坡面原点）：停车滑移、机器人位移都用它
+    "robot_progress_m", "load_progress_m",
+    # 离坡面的法向高度：跌倒判据用它（gravity 后端退化为绝对 z）
+    "robot_surface_height_m", "load_surface_height_m",
+    # 相对坡面参考姿态的俯仰（terrain 后端扣掉出生时的 −θ，gravity 后端就是世界系俯仰）
+    "body_pitch_rel_rad",
+    "slope_deg", "gravity_x_mps2", "gravity_z_mps2", "slope_backend",
     "connection", "cart_mass_kg",
 )
-EXTRA_NUMERIC_FIELDS = tuple(name for name in EXTRA_FIELDS if name != "connection")
+EXTRA_NUMERIC_FIELDS = tuple(
+    name for name in EXTRA_FIELDS if name not in ("connection", "slope_backend"))
+#: 记录里的非数值列（`make_row` 写字符串，数值完整性检查要跳过它们）。
+STRING_FIELDS = ("phase", "connection", "slope_backend")
 TEST_FIELDS = ("phase", *recording.TOW_NUMERIC_FIELDS,
                *JOINT_TARGET_FIELDS, *JOINT_TORQUE_FIELDS, *EXTRA_FIELDS)
 
@@ -268,10 +299,12 @@ class PhaseSchedule:
 
 
 def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
-    """坡度对应的重力向量（世界系）。
+    """`gravity` 后端用的重力向量（世界系）。
 
     约定 `+slope_deg` = 沿 **+x 上坡**（机器人在前、小车在后，两者都朝 +x）。
     上坡要求重力在 −x 方向有分量，因此 `gx = −g·sinθ`、`gz = −g·cosθ`。
+    这与 `mdp/slope_geometry.py` 的坡面约定同向：`tangent = (cosθ, 0, sinθ)`、
+    `normal = (−sinθ, 0, cosθ)`（tile 顶面 `z = tanθ·x`，沿 +x 升高）。
     """
     if not math.isfinite(slope_deg) or abs(slope_deg) > 45.0:
         raise ValueError(f"坡度必须是 [-45, 45] 内的有限值，收到 {slope_deg!r}")
@@ -281,19 +314,214 @@ def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
     return (-g * math.sin(angle), 0.0, -g * math.cos(angle))
 
 
-def slope_ground_plan(slope_deg: float, backend: str) -> dict:
-    """坡度 → 场景设置方案（现有平地 + 倾斜重力 / 将来的坡面地形）。"""
+def surface_frame(slope_deg: float, backend: str) -> dict:
+    """度量用的坡面坐标系：`(切向, 法向, 俯仰参考偏移)`，只由后端与坡度决定。
+
+    - `terrain`：真实 tile 顶面。切向 = 上坡方向 `(cosθ, 0, sinθ)`，法向 = 面法向
+      `(−sinθ, 0, cosθ)`（与 `slope_geometry.slope_frame` 一致）；出生姿态是 `R_y(−θ)`
+      （机体系 +X 对切向、+Z 对法向），所以参考俯仰是 `−θ`。
+    - `gravity`：现有平地 + 旋转重力。度量就用平地坐标系（切向 +x、法向 +z），
+      机器人站在水平地面上，"离面高度" = 绝对 z、"行程" = x 位移；
+      俯仰参考偏移 0（世界系 = 度量系）。
+
+    两个后端的 `(原点, 切向, 法向)` 定义让「行程 / 离面高度 / 相对俯仰」在三种坡上同口径。
+    """
     if backend == "terrain":
-        raise NotImplementedError(
-            "坡度地形（--slope-backend terrain）在仓库里还没有实现：本脚本默认用"
-            " gravity 后端（现有平地 + 旋转重力，与真实坡面物理等价）。"
-            "要接地形：改 slope_ground_plan() 返回地面 spawn 配置，并让场景按坡度摆出坡面与出生点。")
-    if backend != "gravity":
-        raise ValueError(f"未知的坡度后端 {backend!r}；可选 gravity / terrain")
-    gravity = slope_gravity(slope_deg)
-    return {"backend": backend, "gravity_mps2": gravity,
-            "note": ("现有平地 + 旋转重力：随坡面倾斜的参考系里与真实坡度同解"
-                     "（法向 mg·cosθ、下滑 mg·sinθ 逐项一致）")}
+        angle = math.radians(slope_deg)
+        return {
+            "backend": backend,
+            "tangent": (math.cos(angle), 0.0, math.sin(angle)),
+            "normal": (-math.sin(angle), 0.0, math.cos(angle)),
+            "pitch_offset_rad": -angle,
+            "surface": "真实坡面 tile（mdp/slope_geometry.tile_mesh，与训练场景同源）",
+        }
+    if backend == "gravity":
+        return {
+            "backend": backend,
+            "tangent": (1.0, 0.0, 0.0),
+            "normal": (0.0, 0.0, 1.0),
+            "pitch_offset_rad": 0.0,
+            "surface": "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡面同解）",
+        }
+    raise ValueError(f"未知的坡度后端 {backend!r}；可选 gravity / terrain")
+
+
+def slope_ground_plan(slope_deg: float, backend: str) -> dict:
+    """坡度 → 场景设置方案（重力后端 = 倾斜重力；地形后端 = 真实坡面 tile）。"""
+    frame = surface_frame(slope_deg, backend)
+    gravity = (slope_gravity(slope_deg) if backend == "gravity"
+               else (0.0, 0.0, -GRAVITY_MPS2))
+    note = ("现有平地 + 旋转重力：随坡面倾斜的参考系里与真实坡度同解"
+            "（法向 mg·cosθ、下滑 mg·sinθ 逐项一致）" if backend == "gravity"
+            else "真实闭合坡面 tile（顶面 z = tanθ·(x − 原点 x)）+ 坡面出生姿态 R_y(−θ)")
+    return {"backend": backend, "gravity_mps2": gravity, "note": note, "frame": frame,
+            "surface": frame["surface"]}
+
+
+def slope_cells(slope_deg: float) -> list:
+    """训练侧 40×20 网格里 slope 恰好等于 `slope_deg` 的 `(row, column)` 列表。
+
+    复用 `mdp/connection_grid.slope_degrees`（纯标准库）而不是自己写一张坡度表：
+    坡面朝向随行/列交替（避免弹性档永久绑定上坡或下坡），本测试台按同一映射取 tile，
+    于是「+5° 的 tile」与训练场景里 +5° 的 tile 是同一块几何。
+    """
+    cells = [(row, column)
+             for row in range(connection_grid.ROWS)
+             for column in range(connection_grid.COLUMNS)
+             if connection_grid.slope_degrees(column, row) == slope_deg]
+    if not cells:
+        raise ValueError(f"训练网格里没有坡度 {slope_deg:+g}° 的 cell；"
+                         f"可选 ±5 / ±10 / 0（见 mdp/connection_grid.py）")
+    return cells
+
+
+def compact_tile_origins(count: int, *, row_spacing: float, column_spacing: float,
+                         columns: int | None = None) -> list:
+    """把 `count` 块 tile 摆成以原点为中心的紧凑网格，返回每块的 `(x, y, z)` 原点。
+
+    训练场景用 40×20 的固定 cell 原点（x 跨度 ~200 m），本测试台每轮只用几十块、
+    且同一轮坡度相同，所以自己排布：x 是上下坡方向（按 row_spacing 留出行距，
+    保证 17 m 前进 + 3 m 后退不串场），y 是横向（按 column_spacing）。
+    """
+    if count < 1:
+        raise ValueError("tile 数量必须 ≥ 1")
+    if row_spacing <= 0 or column_spacing <= 0:
+        raise ValueError("tile 间距必须是正数")
+    if columns is None:
+        columns = math.ceil(math.sqrt(count))
+    if columns < 1:
+        raise ValueError("列数必须 ≥ 1")
+    rows = math.ceil(count / columns)
+    span_x = row_spacing * (rows - 1)
+    span_y = column_spacing * (columns - 1)
+    origins = []
+    for index in range(count):
+        row, column = divmod(index, columns)
+        origins.append((row * row_spacing - 0.5 * span_x,
+                        column * column_spacing - 0.5 * span_y, 0.0))
+    return origins
+
+
+def translate_tile(vertices, source_origin, target_origin) -> list:
+    """把一块 tile 的顶点从训练网格原点平移到本测试台的紧凑原点。
+
+    只平移不改形状：顶面 `z = tanθ·(x − source_x)` 平移后是 `z = tanθ·(x − target_x)`，
+    因为 z 分量不动而 x 的参考点跟着原点走 —— 这也保证原点仍落在坡面上（z = 0）。
+    """
+    dx = target_origin[0] - source_origin[0]
+    dy = target_origin[1] - source_origin[1]
+    dz = target_origin[2] - source_origin[2]
+    return [(x + dx, y + dy, z + dz) for x, y, z in vertices]
+
+
+def build_terrain_layout(slopes, num_envs, *, row_spacing=None, column_spacing=None,
+                         block_gap_m: float = 40.0) -> dict:
+    """把各坡度的 tile 铺成「每坡度一块紧凑网格」，并组装出整块 mesh。
+
+    场景只建一次，所以所有坡度的 tile 一次性放进同一块 mesh：每个坡度一块 `num_envs` 个
+    tile 的网格（间距取训练侧的 `ROW_SPACING_M` / `COLUMN_SPACING_M`，保证 17 m 前向 +
+    3 m 后向不串场），块与块沿 y 拉开 `block_gap_m`。每轮只把机器人/小车摆到本轮那一块的
+    原点上。纯标准库（几何来自 `mdp/slope_geometry.tile_mesh`），所以布局与 mesh 的
+    自洽性可以离线核对，不必等仿真。
+    """
+    if not slopes:
+        raise ValueError("至少要有一个坡度")
+    if num_envs < 1:
+        raise ValueError("每轮环境数必须 ≥ 1")
+    rs = slope_geometry.ROW_SPACING_M if row_spacing is None else row_spacing
+    cs = slope_geometry.COLUMN_SPACING_M if column_spacing is None else column_spacing
+    columns = math.ceil(math.sqrt(num_envs))
+    block_y_pitch = cs * max(1, columns - 1) + block_gap_m
+    local_origins = compact_tile_origins(num_envs, row_spacing=rs, column_spacing=cs)
+    blocks, vertices, faces = {}, [], []
+    for block_index, slope in enumerate(slopes):
+        cells = slope_cells(slope)[:num_envs]
+        if len(cells) < num_envs:
+            raise ValueError(
+                f"坡度 {slope:+g}° 在训练网格里只有 {len(cells)} 块 tile，装不下 {num_envs} 个 env")
+        shift_y = block_index * block_y_pitch
+        origins = [(x, y + shift_y, z) for x, y, z in local_origins]
+        blocks[slope] = {"cells": cells, "origins": origins, "block_y_shift_m": shift_y}
+        for cell, target in zip(cells, origins):
+            tile_vertices, tile_faces, source = slope_geometry.tile_mesh(*cell)
+            offset = len(vertices)
+            vertices.extend(translate_tile(tile_vertices, source, target))
+            faces.extend(tuple(offset + index for index in face) for face in tile_faces)
+    return {"blocks": blocks, "vertices": vertices, "faces": faces,
+            "columns": columns, "block_y_pitch_m": block_y_pitch,
+            "row_spacing_m": rs, "column_spacing_m": cs}
+
+
+def frame_coordinates(position, origin, frame) -> tuple:
+    """世界系位置 → 坡面坐标 `(沿切向行程, 法向高度)`。"""
+    relative = tuple(p - o for p, o in zip(position, origin))
+    progress = sum(r * t for r, t in zip(relative, frame["tangent"]))
+    height = sum(r * n for r, n in zip(relative, frame["normal"]))
+    return progress, height
+
+
+def rotation_y(angle_rad: float) -> tuple:
+    """绕 y 轴的旋转四元数 `(w, x, y, z)`（与 Isaac Lab 的 `(w, x, y, z)` 约定一致）。"""
+    return (math.cos(0.5 * angle_rad), 0.0, math.sin(0.5 * angle_rad), 0.0)
+
+
+def rotate_vector(quat, vector) -> tuple:
+    """用四元数旋转向量（纯 Python，只用于离线可测的 spawn 几何）。"""
+    w, qx, qy, qz = quat
+    vx, vy, vz = vector
+    # t = 2 * (q_vec × v)；v' = v + w·t + q_vec × t
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (vx + w * tx + qy * tz - qz * ty,
+            vy + w * ty + qz * tx - qx * tz,
+            vz + w * tz + qx * ty - qy * tx)
+
+
+def spawn_on_surface(*, slope_deg: float, robot_height: float, cart_height: float,
+                     robot_offset, cart_offset, target_distance: float,
+                     robot_along: float = 0.0) -> dict:
+    """坡面上的出生位姿：机体系 +X 对切向、+Z 对法向，两挂点三维距 = `target_distance`。
+
+    与训练侧 `upper_mdp.reset_towing_episode` 同一套几何（只在**坡面切向/法向**里解，
+    不用固定的世界 z 高差）：机器人根在原点上方 `robot_height`，小车沿切向后退
+    `along = sqrt(target² − Δn²)`，其中 `Δn` 是两挂点在法向的净高差（含挂点偏移随
+    出生姿态旋转后的法向分量）。返回的量都是**相对坡面原点**的，纯算术、可离线测。
+    """
+    for name, value in (("robot_height", robot_height), ("cart_height", cart_height),
+                        ("target_distance", target_distance)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} 必须是有限正数，收到 {value!r}")
+    quat = rotation_y(-math.radians(slope_deg))
+    tangent = (math.cos(math.radians(slope_deg)), 0.0, math.sin(math.radians(slope_deg)))
+    normal = (-math.sin(math.radians(slope_deg)), 0.0, math.cos(math.radians(slope_deg)))
+    robot_attach = rotate_vector(quat, tuple(robot_offset))
+    cart_attach = rotate_vector(quat, tuple(cart_offset))
+    normal_difference = (robot_height - cart_height
+                         + sum((r - c) * n for r, c, n in zip(robot_attach, cart_attach, normal)))
+    if target_distance ** 2 <= normal_difference ** 2:
+        raise ValueError(
+            f"目标挂点距 {target_distance:.3f} m ≤ 两挂点法向高差 {abs(normal_difference):.3f} m，"
+            f"坡面上无解（调大 --rope-length 或 --slack）")
+    along = math.sqrt(target_distance ** 2 - normal_difference ** 2)
+    robot_root = tuple(robot_height * n + robot_along * t for n, t in zip(normal, tangent))
+    cart_root = tuple(robot_root[i] + robot_attach[i] - cart_attach[i]
+                      - along * tangent[i] - normal_difference * normal[i]
+                      for i in range(3))
+    # 自检：按返回位姿重算两挂点的三维距离，必须等于目标（否则 spawn 第一拍就有约束力）
+    robot_point = tuple(robot_root[i] + robot_attach[i] for i in range(3))
+    cart_point = tuple(cart_root[i] + cart_attach[i] for i in range(3))
+    distance = math.dist(robot_point, cart_point)
+    return {
+        # `write_root_pose_to_sim` / `root_state[:, 3:7]` 用的是 (w, x, y, z)，
+        # 与 `data.root_quat_w` 同约定（Isaac Lab 的 quat_* 全走 (w,x,y,z)）。
+        "quat_wxyz": quat,
+        "robot_root": robot_root, "cart_root": cart_root,
+        "tangent": tangent, "normal": normal,
+        "normal_difference_m": normal_difference, "along_m": along,
+        "attachment_distance_m": distance,
+        "target_distance_m": target_distance,
+    }
 
 
 def build_case_grid(velocities, connections, cart_masses, slopes) -> list:
@@ -490,20 +718,22 @@ def stop_stats(rows, *, record_dt: float, tow_summary: dict, command_mps: float,
                joint_names=None, torque_limits=None) -> dict:
     """停车段指标：小车滑移距离、间距维持、停车瞬态的关节响应。
 
-    滑移距离用**世界系 x 位移**（坡度方向就是 x），与测量台的 `coast_load_travel_m` 同口径；
-    间距维持优先用车头几何间隙（FK，来自 `summarize_tow`），没有时退回挂点距。
+    滑移距离用**沿坡面切向的行程** `load_progress_m`（`gravity` 后端退化为世界 x 位移，
+    与测量台的 `coast_load_travel_m` 同口径；`terrain` 后端则是沿坡面的真实行程，
+    不是它的水平投影）；间距维持优先用车头几何间隙（FK，来自 `summarize_tow`），
+    没有时退回挂点距。
     """
     coast = phase_rows(rows, "coast")
     if not coast:
         return _nan_summary("coast 段没有记录")
     stop_speed = float(coast[0]["load_vx_mps"])
-    start_x = float(coast[0]["load_x_m"])
-    total = float(coast[-1]["load_x_m"]) - start_x
+    start_x = float(coast[0]["load_progress_m"])
+    total = float(coast[-1]["load_progress_m"]) - start_x
     to_rest = None
     time_to_rest = None
     for row in coast:
         if abs(float(row["load_vx_mps"])) < 0.02:
-            to_rest = float(row["load_x_m"]) - start_x
+            to_rest = float(row["load_progress_m"]) - start_x
             time_to_rest = float(row["time_s"]) - float(coast[0]["time_s"])
             break
     gaps = _col(coast, "rope_distance_m")
@@ -535,7 +765,8 @@ def stop_stats(rows, *, record_dt: float, tow_summary: dict, command_mps: float,
         "cart_coast_distance_m": total,
         "cart_coast_to_rest_m": to_rest,
         "cart_coast_time_to_rest_s": time_to_rest,
-        "robot_travel_after_stop_m": float(coast[-1]["robot_x_m"]) - float(coast[0]["robot_x_m"]),
+        "robot_travel_after_stop_m": (float(coast[-1]["robot_progress_m"])
+                                      - float(coast[0]["robot_progress_m"])),
         "gap_at_stop_m": gaps[0],
         "min_gap_after_stop_m": min(gaps),
         "final_gap_m": gaps[-1],
@@ -561,36 +792,44 @@ def stop_stats(rows, *, record_dt: float, tow_summary: dict, command_mps: float,
 def stability_stats(rows, *, transition_window_s: float, record_dt: float,
                     fall_height_limit_m: float, pitch_limit_rad: float,
                     pitch_fraction_limit: float) -> dict:
-    """稳定性与记录有效性：跌倒判定、最大俯仰、是否出现非有限值。"""
+    """稳定性与记录有效性：跌倒判定、最大俯仰、是否出现非有限值。
+
+    跌倒判据用**坡面法向高度**（`robot_surface_height_m`）与**相对坡面的俯仰**
+    （`body_pitch_rel_rad`）：`terrain` 后端上机器人被出生旋转到与坡面垂直，
+    直接拿世界系 z 或世界系俯仰会把「正常的 10° 站姿」判成跌倒。
+    """
     if not rows:
         return _nan_summary("没有记录")
-    numeric_columns = [name for name in TEST_FIELDS
-                       if name not in ("phase", "connection")]
+    numeric_columns = [name for name in TEST_FIELDS if name not in STRING_FIELDS]
     invalid_samples = 0
     for row in rows:
         for name in numeric_columns:
             if not math.isfinite(float(row[name])):
                 invalid_samples += 1
                 break
-    heights = _col(rows, "robot_z_m")
-    pitches = [abs(float(row["body_pitch_rad"])) for row in rows]
+    heights = _col(rows, "robot_surface_height_m")
+    pitches = [abs(float(row["body_pitch_rel_rad"])) for row in rows]
     pitch_fraction = sum(1 for value in pitches if value > pitch_limit_rad) / len(pitches)
     fell = (min(heights) < fall_height_limit_m) or (pitch_fraction > pitch_fraction_limit)
     fallen_phase = None
     if fell:
         for row in rows:
-            if float(row["robot_z_m"]) < fall_height_limit_m or \
-                    abs(float(row["body_pitch_rad"])) > pitch_limit_rad:
+            if float(row["robot_surface_height_m"]) < fall_height_limit_m or \
+                    abs(float(row["body_pitch_rel_rad"])) > pitch_limit_rad:
                 fallen_phase = row["phase"]
                 break
     return {
         "available": True,
         "invalid_samples": invalid_samples,
         "invalid": invalid_samples > 0,
-        "min_robot_z_m": min(heights),
-        "final_robot_z_m": heights[-1],
-        "max_abs_pitch_rad": max(pitches),
-        "final_abs_pitch_rad": pitches[-1],
+        "min_robot_surface_height_m": min(heights),
+        "final_robot_surface_height_m": heights[-1],
+        # 兼容/交叉核对：世界系绝对高度单列出来（坡上它会随行程线性变化，不是跌倒指标）
+        "min_robot_z_m": min(_col(rows, "robot_z_m")),
+        "final_robot_z_m": float(rows[-1]["robot_z_m"]),
+        "max_abs_pitch_rel_rad": max(pitches),
+        "final_abs_pitch_rel_rad": pitches[-1],
+        "max_abs_pitch_world_rad": max(abs(float(row["body_pitch_rad"])) for row in rows),
         "pitch_over_limit_frac": pitch_fraction,
         "fell": bool(fell),
         "fell_phase": fallen_phase,
@@ -600,7 +839,8 @@ def stability_stats(rows, *, transition_window_s: float, record_dt: float,
 def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connection: str,
                          cart_mass_kg: float, schedule: PhaseSchedule, record_dt: float,
                          tow_summary: dict, thresholds: dict, joint_names=None,
-                         torque_limits=None, transition_window_s: float = 1.0) -> dict:
+                         torque_limits=None, transition_window_s: float = 1.0,
+                         slope_backend: str = "gravity") -> dict:
     """由逐物理步记录算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。"""
     station = phase_rows(rows, "station")
     tow = phase_rows(rows, "tow")
@@ -637,7 +877,8 @@ def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connecti
                                 pitch_fraction_limit=thresholds["pitch_fraction_limit"])
     metrics = {
         "case": {"slope_deg": slope_deg, "velocity_mps": command_mps,
-                 "connection": connection, "cart_mass_kg": cart_mass_kg},
+                 "connection": connection, "cart_mass_kg": cart_mass_kg,
+                 "slope_backend": slope_backend},
         "schedule": schedule.to_dict(),
         "samples": {"station": len(station), "tow": len(tow), "coast": len(coast)},
         "startup": startup,
@@ -713,6 +954,7 @@ def case_report_row(metrics: dict) -> dict:
     return {
         "slope_deg": case["slope_deg"], "velocity_mps": case["velocity_mps"],
         "connection": case["connection"], "cart_mass_kg": case["cart_mass_kg"],
+        "slope_backend": case.get("slope_backend", ""),
         "verdict": verdict["code"], "reasons": "|".join(verdict["reasons"]),
         "startup_joint_rms_rad": startup.get("joint_rms_rad"),
         "startup_joint_max_rad": startup.get("joint_max_rad"),
@@ -735,8 +977,8 @@ def case_report_row(metrics: dict) -> dict:
         "stop_joint_max_rad": stop.get("joint_max_rad"),
         "stop_settle_time_s": stop.get("settle_time_s"),
         "stop_robot_travel_m": stop.get("robot_travel_after_stop_m"),
-        "min_robot_z_m": stability.get("min_robot_z_m"),
-        "max_abs_pitch_rad": stability.get("max_abs_pitch_rad"),
+        "min_robot_surface_height_m": stability.get("min_robot_surface_height_m"),
+        "max_abs_pitch_rel_rad": stability.get("max_abs_pitch_rel_rad"),
         "fell": stability.get("fell"),
         "summarize_tow_valid": metrics.get("summarize_tow", {}).get("valid"),
         "summarize_tow_failures": "|".join(metrics.get("summarize_tow", {}).get("failures", [])),
@@ -861,6 +1103,9 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
              f"- 指令整形：{args_dict['command_shaping']}"
              + (f"（ramp {args_dict['ramp_time_s']:g} s）" if args_dict["command_shaping"] == "ramp" else "")
              + f"；坡度后端：{args_dict['slope_backend']}；站定驻车制动：{args_dict['slope_settle']}",
+             "- 度量坐标系由后端决定：`progress`（沿坡切向行程）、`surface_height`（离面法向高度）、"
+             "`pitch_rel`（相对坡面参考姿态）——`gravity` 后端退化为 x 位移 / 绝对 z / 世界系俯仰；"
+             "`terrain` 后端是真实坡面坐标（出生姿态 `R_y(-θ)`，故参考俯仰是 `-θ`）",
              f"- 每 case：station {schedule.station_steps * schedule.dt:.2f} s + tow "
              f"{schedule.tow_steps * schedule.dt:.2f} s + coast "
              f"{schedule.coast_steps * schedule.dt:.2f} s，共 {schedule.total_steps} 物理步 "
@@ -955,9 +1200,12 @@ def parse_args(argv=None):
                         help="每 N 个物理步记一行（>1 会让接触的速度跃变见证失去 5 ms 标定，"
                              "脚本内部已按步长放大阈值）")
     # 场景
-    parser.add_argument("--spawn-height", type=float, default=None, help="机器人初始高度（m）")
-    parser.add_argument("--cart-drop", type=float, default=0.03, help="小车生成离地高度（m）")
-    parser.add_argument("--env-spacing", type=float, default=16.0, help="并行环境间距（m）")
+    parser.add_argument("--spawn-height", type=float, default=None,
+                        help="机器人的初始离面高度（m）：gravity 后端是初始 z，terrain 后端是沿坡面法向的净空（两者同一含义）")
+    parser.add_argument("--cart-drop", type=float, default=0.03,
+                        help="小车生成离地高度（m）；只对 gravity 后端生效（terrain 后端由坡面出生解给出位姿）")
+    parser.add_argument("--env-spacing", type=float, default=16.0,
+                        help="并行环境间距（m）；只对 --slope-backend gravity 生效，terrain 后端用训练侧的 tile 间距")
     parser.add_argument("--max-envs", type=int, default=128, help="单次仿真的最大环境数（保护）")
     # 输出
     parser.add_argument("--output-dir", type=Path, default=None,
@@ -1035,10 +1283,15 @@ def parse_args(argv=None):
             f"--env-spacing {args.env_spacing:g} m 小于并行环境所需的最小间距 "
             f"{required_spacing:.1f} m（最大速度 {max(args.velocities):g} m/s × "
             f"最长行程）；调大 --env-spacing 或减小速度/时长")
-    try:
-        slope_ground_plan(args.slopes[0], args.slope_backend)
-    except NotImplementedError as exc:
-        parser.error(str(exc))
+    slope_ground_plan(args.slopes[0], args.slope_backend)   # 后端名非法时在这里报错
+    if args.slope_backend == "terrain":
+        # 地形后端每轮给每个 case 一块真实 tile，cell 来自训练网格 ⇒ 每坡度可用的 cell 数有限
+        for slope in args.slopes:
+            available = len(slope_cells(slope))
+            if per_slope > available:
+                parser.error(
+                    f"--slope-backend terrain 下坡度 {slope:+g}° 只有 {available} 个训练 cell，"
+                    f"装不下每轮 {per_slope} 个 case；减小网格或改用 --slope-backend gravity")
     args.cases = cases
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
                                   tow_duration=args.tow_duration,
@@ -1075,6 +1328,11 @@ def planned_grid_lines(args) -> list:
         + (f"（ramp {args.ramp_time_s:g} s）" if args.command_shaping == "ramp" else "（阶跃）")
         + f"；环境间距 {args.env_spacing:g} m",
     ]
+    frame_line = (f"[plan] 坡度后端 {args.slope_backend}："
+                  + ("现有平地 + 旋转重力（与真实坡面同解）" if args.slope_backend == "gravity"
+                     else f"真实坡面 tile（每坡度一个 {per_slope} 块的紧凑网格，"
+                          f"cell 取自训练网格的 mdp/connection_grid）"))
+    lines.append(frame_line)
     return lines
 
 
@@ -1119,7 +1377,13 @@ def main(args):
         "wheel_damping_nms_per_rad": args.wheel_damping,
         "slope": {"backend": args.slope_backend, "settle": args.slope_settle,
                   "hold_damping_nms_per_rad": args.hold_damping,
-                  "realisation_note": "现有平地 + 旋转重力（与真实坡面同解）"},
+                  "frames": {f"{slope:+g}": slope_ground_plan(slope, args.slope_backend)
+                             for slope in args.slopes},
+                  "realisation_note": (
+                      "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡度同解）"
+                      if args.slope_backend == "gravity" else
+                      "真实坡面 tile（mdp/slope_geometry.tile_mesh）+ 坡面出生姿态 R_y(-θ)，"
+                      "与训练场景同源；本测试台把每坡度的 tile 摆成自己的紧凑网格")},
         "connection": {"rope_length_m": args.rope_length, "slack_m": args.slack,
                        "stiffness_n_per_m": args.stiffness, "damping_ns_per_m": args.damping,
                        "position_gain": args.position_gain,
@@ -1155,21 +1419,28 @@ def main(args):
         application = launcher.app
 
         import carb
+        import numpy as np
         import torch
+        import trimesh
         import isaaclab.sim as sim_utils
         import isaaclab.utils.math as math_utils
+        from isaaclab.assets import AssetBaseCfg
         from isaaclab.scene import InteractiveScene
+        from isaaclab.terrains import TerrainGeneratorCfg, TerrainImporter, TerrainImporterCfg
         from imgo2_rl.assets.cart import make_cart_cfg
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
         from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
             RIGID_MODEL, BodyProperties, MultiRopeModel, make_rope_model,
             world_inverse_inertia)
+        from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
+            BACK_M, FORWARD_M, HALF_WIDTH_M, slope_frame)
         from imgo2_rl.tasks.manager_based.towing.towing_env_cfg import (
             ROBOT_ATTACHMENT_OFFSET_M, ROBOT_SPAWN_HEIGHT_M, TowSceneCfg)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
+        from isaaclab.utils import configclass
 
         policy_cfg = get_policy(args.policy)
         spawn_height = args.spawn_height if args.spawn_height is not None else ROBOT_SPAWN_HEIGHT_M
@@ -1193,21 +1464,118 @@ def main(args):
                 static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
                 restitution=0.0, friction_combine_mode="average", restitution_combine_mode="min"))
         sim = sim_utils.SimulationContext(sim_cfg)
-        grid_side = max(1, math.ceil(math.sqrt(num_envs)))
-        span = args.env_spacing * max(1, grid_side - 1)
-        if num_envs > 1:
-            centre = 0.5 * span
-            sim.set_camera_view((centre + 1.6 * span, centre - 1.6 * span, 1.1 * span),
-                                (centre, centre, 0.2))
-        else:
-            sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
+
+        # ------------------------------------------------------------ 坡面 tile 布局（terrain 后端）
+        # 场景只建一次，所以把**所有坡度**的 tile 一次性铺进同一块 mesh：每个坡度一块
+        # `num_envs` 个 tile 的紧凑网格，块与块沿 y 拉开；每轮只把机器人/小车摆到本轮
+        # 那一块的原点上（`pass_origins`），mesh 不重建。几何直接复用训练侧的
+        # `slope_geometry.tile_mesh`（cell 由 `slope_cells` 从训练网格里挑同坡度的），
+        # 只把顶点平移到本测试台的紧凑布局。
+        slope_blocks = {}
+        terrain_layout = None
+        if args.slope_backend == "terrain":
+            terrain_layout = build_terrain_layout(args.slopes, num_envs)
+            slope_blocks = terrain_layout["blocks"]
+            vertices = terrain_layout["vertices"]
+            faces = terrain_layout["faces"]
+            print(f"[INFO] terrain 后端：{len(args.slopes)} 块 × {num_envs} 个真实坡面 tile"
+                  f"（共 {len(vertices)} 顶点 / {len(faces)} 面）；块沿 y 间距 "
+                  f"{terrain_layout['block_y_pitch_m']:g} m", flush=True)
+
+        class PlayTestTileGenerator:
+            """本测试台的地形生成器：一次铺好所有坡度的 tile（`TerrainGeneratorCfg.class_type`）。"""
+
+            def __init__(self, cfg, device="cpu"):
+                self.terrain_mesh = trimesh.Trimesh(
+                    vertices=np.asarray(vertices, dtype=np.float64),
+                    faces=np.asarray(faces, dtype=np.int64), process=False)
+                first = np.asarray(slope_blocks[args.slopes[0]]["origins"], dtype=np.float32)
+                self.terrain_origins = first.reshape(1, -1, 3)
+                self.flat_patches = {}
+
+        class PlayTestTileImporter(TerrainImporter):
+            """env 原点固定成本轮坡度那一块；训练侧的课程/原点更新在这里没有意义。"""
+
+            def configure_env_origins(self, terrain_origins=None):
+                if terrain_origins is None:
+                    raise ValueError("terrain 后端需要生成器给出的 tile 原点")
+                origins = torch.as_tensor(np.asarray(terrain_origins), device=self.device,
+                                          dtype=torch.float32)
+                if tuple(origins.shape) != (1, num_envs, 3):
+                    raise ValueError(
+                        f"tile 原点形状 {tuple(origins.shape)} 与 (1, {num_envs}, 3) 不符")
+                self.terrain_origins = origins
+                self.terrain_levels = torch.zeros(self.cfg.num_envs, dtype=torch.long,
+                                                  device=self.device)
+                self.terrain_types = torch.arange(self.cfg.num_envs, dtype=torch.long,
+                                                  device=self.device)
+                self.max_terrain_level = 1
+                self.env_origins = origins[0].clone()
+
+            def update_env_origins(self, env_ids, move_up, move_down):
+                raise RuntimeError("本测试台的 tile 布局固定，不支持课程/原点更新")
+
+        @configclass
+        class PlayTestTerrainSceneCfg(TowSceneCfg):
+            """terrain 后端：把 `ground` 字段的类型放宽成「平地或地形」。
+
+            为什么复用 `ground` 这个名字而不新增 `terrain` 字段：`InteractiveScene`
+            按**对象类型**分派（`isinstance(asset_cfg, TerrainImporterCfg)` ⇒ 当地形处理），
+            字段名无所谓；而 dataclass 里**新增**字段只能追加到字段序最后，那样地形会比
+            robot/cart 晚建 —— 训练场景与 Isaac Lab 官方地形任务都把 terrain 声明在第一位，
+            所以这里沿用它原位的字段，顺序与训练侧一致（`ground=None` 也不会同时生成平地）。
+            """
+
+            ground: AssetBaseCfg | TerrainImporterCfg | None = None
+
+        # 相机：terrain 后端每轮对准本轮那一块 tile（每轮都会重设），gravity 后端用固定视角。
+        if args.slope_backend == "gravity":
+            grid_side = max(1, math.ceil(math.sqrt(num_envs)))
+            span = args.env_spacing * max(1, grid_side - 1)
+            if num_envs > 1:
+                centre = 0.5 * span
+                sim.set_camera_view((centre + 1.6 * span, centre - 1.6 * span, 1.1 * span),
+                                    (centre, centre, 0.2))
+            else:
+                sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
+
         scene_cfg = TowSceneCfg(num_envs=num_envs, env_spacing=args.env_spacing, cart=cart_cfg)
-        ground = scene_cfg.ground.spawn.physics_material
-        ground.static_friction = args.ground_friction
-        ground.dynamic_friction = args.ground_friction
+        if args.slope_backend == "terrain":
+            scene_cfg = PlayTestTerrainSceneCfg(num_envs=num_envs, env_spacing=args.env_spacing,
+                                                cart=cart_cfg)
+            scene_cfg.ground = TerrainImporterCfg(
+                prim_path="/World/Ground", terrain_type="generator",
+                class_type=PlayTestTileImporter,
+                terrain_generator=TerrainGeneratorCfg(
+                    class_type=PlayTestTileGenerator,
+                    size=(BACK_M + FORWARD_M, 2.0 * HALF_WIDTH_M),
+                    num_rows=1, num_cols=num_envs, sub_terrains={}, curriculum=False),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
+                    restitution=0.0, friction_combine_mode="average",
+                    restitution_combine_mode="min"))
+        else:
+            ground = scene_cfg.ground.spawn.physics_material
+            ground.static_friction = args.ground_friction
+            ground.dynamic_friction = args.ground_friction
         scene_cfg.robot.init_state.pos = (0.0, 0.0, spawn_height)
         scene_cfg.robot.init_state.joint_pos = dict(zip(policy_cfg.joint_names,
                                                         policy_cfg.default_dof_pos))
+        if args.slope_backend == "terrain":
+            experiment["slope"]["terrain_layout"] = {
+                "mesh_vertices": len(terrain_layout["vertices"]),
+                "mesh_faces": len(terrain_layout["faces"]),
+                "columns_per_block": terrain_layout["columns"],
+                "block_y_pitch_m": terrain_layout["block_y_pitch_m"],
+                "row_spacing_m": terrain_layout["row_spacing_m"],
+                "column_spacing_m": terrain_layout["column_spacing_m"],
+                "blocks": {
+                    f"{slope:+g}": {
+                        "tiles": len(slope_blocks[slope]["cells"]),
+                        "cells_row_column": [list(cell) for cell in slope_blocks[slope]["cells"]],
+                        "origins": [list(origin) for origin in slope_blocks[slope]["origins"]]}
+                    for slope in args.slopes}}
+            write_json(output / "experiment.json", experiment)
         scene = InteractiveScene(scene_cfg)
         sim.reset()
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
@@ -1379,11 +1747,30 @@ def main(args):
             physics_sim_view = sim.physics_sim_view
             physics_sim_view.set_gravity(carb.Float3(*[float(value) for value in gravity]))
 
-        def reset_episode():
-            """把一个回合的初始状态写死（`Articulation.reset()` 不写位姿，必须显式重写）。"""
-            for asset in (robot, cart):
-                root = asset.data.default_root_state.clone()
-                root[:, :3] += scene.env_origins
+        def reset_episode(*, origins, spawn_spec=None):
+            """把一个回合的初始状态写死（`Articulation.reset()` 不写位姿，必须显式重写）。
+
+            `spawn_spec` 为 None = `gravity` 后端的平地出生（沿用 `default_root_state` 的
+            x/y/高度偏移，只有姿态是单位四元数）；否则是 `terrain` 后端的坡面出生：
+            `spawn_on_surface()` 给出的**坡面系**偏移 + 出生四元数 `R_y(−θ)`。
+            """
+            robot_root = robot.data.default_root_state.clone()
+            cart_root = cart.data.default_root_state.clone()
+            if spawn_spec is None:
+                robot_root[:, :3] += origins
+                cart_root[:, :3] += origins
+            else:
+                quat = torch.tensor(spawn_spec["quat_wxyz"], dtype=torch.float32,
+                                    device=args.device)
+                robot_offset = torch.tensor(spawn_spec["robot_root"], dtype=torch.float32,
+                                            device=args.device)
+                cart_offset = torch.tensor(spawn_spec["cart_root"], dtype=torch.float32,
+                                           device=args.device)
+                robot_root[:, :3] = origins + robot_offset
+                cart_root[:, :3] = origins + cart_offset
+                robot_root[:, 3:7] = quat
+                cart_root[:, 3:7] = quat
+            for asset, root in ((robot, robot_root), (cart, cart_root)):
                 root[:, 7:] = 0.0
                 asset.write_root_pose_to_sim(root[:, :7])
                 asset.write_root_velocity_to_sim(root[:, 7:])
@@ -1397,7 +1784,9 @@ def main(args):
             scene.update(dt)
 
         def make_row(env_index: int, *, phase: str, step: int, command: float,
-                     gravity, joint_targets, joint_err_rms: float, joint_err_max: float) -> dict:
+                     gravity, joint_targets, joint_err_rms: float, joint_err_max: float,
+                     frame: dict, progress_robot, progress_load,
+                     height_robot, height_load) -> dict:
             quat = robot.data.root_quat_w[env_index]
             qw, qx, qy, qz = (float(value) for value in quat)
             pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
@@ -1432,9 +1821,16 @@ def main(args):
                 "robot_vx_b_mps": float(robot.data.root_lin_vel_b[env_index, 0]),
                 "joint_err_rms_rad": joint_err_rms,
                 "joint_err_max_rad": joint_err_max,
+                # 坡面坐标：两个后端同口径（见 surface_frame / frame_coordinates）
+                "robot_progress_m": progress_robot[env_index],
+                "load_progress_m": progress_load[env_index],
+                "robot_surface_height_m": height_robot[env_index],
+                "load_surface_height_m": height_load[env_index],
+                "body_pitch_rel_rad": pitch - frame["pitch_offset_rad"],
                 "slope_deg": slope_cases[env_index].slope_deg,
                 "gravity_x_mps2": float(gravity[0]),
                 "gravity_z_mps2": float(gravity[2]),
+                "slope_backend": frame["backend"],
                 "connection": slope_cases[env_index].connection,
                 "cart_mass_kg": actual_masses[env_index],
             }
@@ -1455,13 +1851,50 @@ def main(args):
         started = time.time()
         for slope in args.slopes:
             plan = slope_ground_plan(slope, args.slope_backend)
+            frame = plan["frame"]
             gravity = plan["gravity_mps2"]
             gravity_vector = torch.tensor(gravity, dtype=torch.float32, device=args.device)
             gravity_world = gravity_vector / gravity_vector.norm()
             set_gravity(gravity)
-            reset_episode()
+            # 本轮的原点与出生位姿：terrain 后端用本轮 tile 块的原点 + 坡面出生解；
+            # gravity 后端用场景原点 + 平地出生（`default_root_state`）。
+            spawn_spec = None
+            if args.slope_backend == "terrain":
+                origins = torch.tensor(slope_blocks[slope]["origins"], dtype=torch.float32,
+                                       device=args.device)
+                # 交叉核对：本脚本的切向/法向必须与训练侧 `slope_geometry.slope_frame` 一致
+                repo_tangent, repo_normal = slope_frame(slope)
+                for mine, theirs, name in ((frame["tangent"], repo_tangent, "tangent"),
+                                           (frame["normal"], repo_normal, "normal")):
+                    if max(abs(a - b) for a, b in zip(mine, theirs)) > 1e-9:
+                        raise RuntimeError(
+                            f"坡面 {name} 与 slope_geometry.slope_frame 不一致：{mine} vs {theirs}")
+                spawn_spec = spawn_on_surface(
+                    slope_deg=slope, robot_height=spawn_height,
+                    cart_height=model["resting_height_m"] + args.cart_drop,
+                    robot_offset=robot_attachment, cart_offset=cart_attachment,
+                    target_distance=args.rope_length - args.slack)
+                if abs(spawn_spec["attachment_distance_m"]
+                       - (args.rope_length - args.slack)) > 1e-9:
+                    raise RuntimeError("坡面出生的两挂点三维距与目标不一致（spawn 几何自检失败）")
+                xs = [origin[0] for origin in slope_blocks[slope]["origins"]]
+                ys = [origin[1] for origin in slope_blocks[slope]["origins"]]
+                cx, cy = 0.5 * (min(xs) + max(xs)), 0.5 * (min(ys) + max(ys))
+                span_xy = max(max(xs) - min(xs), max(ys) - min(ys), 10.0)
+                sim.set_camera_view((cx + 1.3 * span_xy, cy - 1.3 * span_xy, 0.9 * span_xy),
+                                    (cx, cy, 0.0))
+            else:
+                origins = scene.env_origins
+            tangent_t = torch.tensor(frame["tangent"], dtype=torch.float32, device=args.device)
+            normal_t = torch.tensor(frame["normal"], dtype=torch.float32, device=args.device)
+            reset_episode(origins=origins, spawn_spec=spawn_spec)
             print(f"\n[pass slope {slope:+g} deg] 重力 {tuple(round(v, 4) for v in gravity)} "
-                  f"（{plan['note']}）；{num_envs} 环境并行", flush=True)
+                  f"（{plan['note']}）；{num_envs} 环境并行；度量系 切向="
+                  f"{tuple(round(v, 4) for v in frame['tangent'])} 法向="
+                  f"{tuple(round(v, 4) for v in frame['normal'])}"
+                  + (f"；出生挂点距 {spawn_spec['target_distance_m']:.3f} m（法向高差 "
+                     f"{spawn_spec['normal_difference_m']:+.3f} m、沿坡 {spawn_spec['along_m']:.3f} m）"
+                     if spawn_spec else ""), flush=True)
             case_rows = [[] for _ in range(num_envs)]
             joint_targets = torch.zeros(num_envs, policy_cfg.num_joints,
                                         dtype=torch.float32, device=args.device)
@@ -1493,11 +1926,21 @@ def main(args):
                 err_rms = joint_err.pow(2).mean(dim=1).sqrt().tolist()
                 err_max = joint_err.abs().amax(dim=1).tolist()
                 commands = command_tensor.tolist()
+                # 坡面坐标（一次张量运算，避免逐 env 做设备同步）
+                relative_robot = robot.data.root_pos_w - origins
+                relative_load = cart.data.root_pos_w - origins
+                progress_robot = (relative_robot * tangent_t).sum(dim=1).tolist()
+                progress_load = (relative_load * tangent_t).sum(dim=1).tolist()
+                height_robot = (relative_robot * normal_t).sum(dim=1).tolist()
+                height_load = (relative_load * normal_t).sum(dim=1).tolist()
                 for env_index in range(num_envs):
                     case_rows[env_index].append(make_row(
                         env_index, phase=phase, step=step, command=commands[env_index],
                         gravity=gravity, joint_targets=joint_targets,
-                        joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index]))
+                        joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
+                        frame=frame,
+                        progress_robot=progress_robot, progress_load=progress_load,
+                        height_robot=height_robot, height_load=height_load))
             print(f"[pass slope {slope:+g} deg] 完成，用时 {time.time() - pass_started:.1f} s",
                   flush=True)
 
@@ -1524,7 +1967,8 @@ def main(args):
                     connection=case.connection, cart_mass_kg=actual_masses[env_index],
                     schedule=args.schedule, record_dt=record_dt, tow_summary=tw_summary,
                     thresholds=thresholds, joint_names=list(policy_cfg.joint_names),
-                    torque_limits=torque_limits, transition_window_s=args.transition_window)
+                    torque_limits=torque_limits, transition_window_s=args.transition_window,
+                    slope_backend=args.slope_backend)
                 metrics["summarize_tow"] = tw_summary
                 summary = {
                     "case": case.to_dict(),

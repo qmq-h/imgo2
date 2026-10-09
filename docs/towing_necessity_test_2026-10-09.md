@@ -21,7 +21,7 @@
 | 项 | 路径 |
 |---|---|
 | 测试脚本 | [play_towing_test.py](../imgo2_rl/scripts/towing/play_towing_test.py) |
-| 离线测试（67 项，无需 GPU） | [test_towing_play_test.py](../imgo2_rl/tests/test_towing_play_test.py) |
+| 离线测试（98 项，无需 GPU） | [test_towing_play_test.py](../imgo2_rl/tests/test_towing_play_test.py) |
 
 ```bash
 # ① 只看网格与代价，不启动仿真（标准库即可）
@@ -38,6 +38,10 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 # ④ 对照：把阶跃指令换成固定斜坡（「Fixed Ramp」基线），判断纯脚本 shaping 是否已经够用
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
     --headless --command-shaping ramp --ramp-time-s 1.0
+
+# ⑤ 用远端的真实坡面 tile（与训练场景同源；每坡度需 ≤100 个 case）
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
+    --headless --slope-backend terrain --slopes 0 5 -5 10 -10
 ```
 
 `--dry-run` 的默认输出（脚本会打印实际值）：
@@ -76,10 +80,21 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 - 阈值初值（**未标定**）：关节 RMS ≤ `0.10 rad`、单关节 ≤ `0.30 rad`、跟速 MAE ≤ 指令的 `20%`、
   停车几何间隙 > `0.10 m`、跌倒判据 `base z < 0.15 m` 或 `|pitch| > 0.80 rad` 的样本 > 20%。
 
-## 坡度怎么实现：现有平地 + 旋转重力（物理等价）
+## 坡度怎么实现：两种后端（默认 gravity，terrain 用真实坡面 mesh）
 
-**坡度地形资产还在实现中，本测试台不动地形**，默认用 `TowSceneCfg` 现有的那块平地，
-把重力写成坡面分解：
+2026-10-09 拉取远端 `786e878`（`feat(towing): add slope goals and supervised VAE estimator`）后，
+仓库里已有**真实坡面地形**：`tasks/.../slope_terrain.py`（生成器 + importer）、
+`mdp/slope_geometry.py`（tile 几何与坡面切向/法向）、`mdp/connection_grid.py`（40 列 × 20 行、
+平地/|5°|/|10°| = 20/10/10 列、长度 0.6–1.2 m）。本测试台据此提供两个后端：
+
+| 后端 | 地形 | 重力 | 出生姿态 | 度量坐标系 | 用途 |
+|---|---|---|---|---|---|
+| `gravity`（默认） | `TowSceneCfg` 现有平地 | 旋转重力 `(−g·sinθ, 0, −g·cosθ)` | 平地（单位四元数） | 平地系（行程 = x、离面高度 = z、俯仰 = 世界系） | 首轮；度量最简单、代码路径最短 |
+| `terrain` | **真实 tile mesh**（`slope_geometry.tile_mesh`，每坡度一块紧凑网格） | 世界竖直 | 坡面解 `R_y(−θ)`（机体系 +X 对切向、+Z 对法向） | 坡面系（沿坡行程、离面法向高度、相对坡面俯仰） | 与训练场景对齐复核 |
+
+### gravity 后端（物理等价）
+
+不动地形，把重力写成坡面分解：
 
 ```
 g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
@@ -92,9 +107,27 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
 
 已知的唯一差别：出生高度是竖直 0.35 m（坡面上量是 `0.35/cosθ`），可忽略。
 
-`--slope-backend terrain` 是给将来的坡面地形留的口子：目前 `slope_ground_plan()` 直接抛
-`NotImplementedError`（CLI 会报错退出），而不是静默退回重力方案。接入时要改两处：
-`slope_ground_plan()` 返回地面 spawn 配置，场景按坡度摆出坡面与出生点。
+### terrain 后端（与训练场景同源）
+
+- tile 几何与坡度符号直接取自训练侧：cell 由 `slope_cells()` 在 40×20 网格里按
+  `connection_grid.slope_degrees(column, row)` 挑出同坡度的（0° 有 400 个、±5°/±10° 各 100 个），
+  顶点用 `tile_mesh(row, column)` 生成后**平移到本测试台的紧凑网格**（训练网格 x 跨度 ~200 m，
+  没必要照搬；平移保持顶面 `z = tanθ·(x − 原点x)` 且原点仍在坡面上）。
+- 出生位姿用训练侧同一套坡面解：`spawn_on_surface()` 在切向/法向里解
+  `along = sqrt(target² − Δn²)`，机体系 +X 对切向、+Z 对法向，两挂点三维距 = `L0 − slack`
+  （三类连接在本测试台都用同一个初始挂点距；rigid 的杆长也取 `L0 − slack`，与测量台一致）。
+- 场景只建一次，所以**所有坡度的 tile 一次性铺进同一块 mesh**（每坡度一块、块间沿 y 留 40 m），
+  每轮把机器人/小车摆到本轮那一块的原点上；`build_terrain_layout()` 是这件事的唯一来源，
+  纯标准库、离线有测试（mesh 有限性、面索引范围、原点在坡面上、块不重叠）。
+- 运行时还会交叉核对本脚本的 `tangent/normal` 与 `slope_geometry.slope_frame()` 逐位一致。
+
+### 度量坐标系（两个后端同口径）
+
+记录里新增 `robot/load_progress_m`（沿坡切向行程）、`robot/load_surface_height_m`
+（离面法向高度）、`body_pitch_rel_rad`（相对坡面参考姿态的俯仰），由 `surface_frame()` +
+`frame_coordinates()` 定义。`gravity` 后端上它们退化成 x 位移 / 绝对 z / 世界系俯仰
+（与旧版记录逐位一致）；`terrain` 后端上是真实坡面量。**跌倒判据因此改用离面高度与相对俯仰**
+——直接拿世界系 z 或世界系俯仰会把 10° 坡上的正常站姿判成跌倒（出生姿态本来就转了 −θ）。
 
 ## 坡上站定段：驻车制动仿真（`--slope-settle hold`，默认）
 
@@ -136,22 +169,28 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
 
 - `--dry-run`（标准库即可运行）：默认网格 225 case、每坡度 45 环境、2200 步/case、命令行校验
    （含 `--env-spacing` 下限、`--max-envs` 上限、坡度/质量/速度范围、`rope_length − slack` 几何）；
-- `imgo2_rl/tests/test_towing_play_test.py` **67 项通过**（`/usr/bin/python3` 无 torch 时 66 通过
+- `imgo2_rl/tests/test_towing_play_test.py` **98 项通过**（`/usr/bin/python3` 无 torch 时 96 通过
    + 1 跳过，跳过项是与 `mdp/rope_model.py::CONNECTION_MODELS` 的交叉核对）；覆盖：
-  坡度→重力（含模长不变性与镜像）、网格与顺序、阶段划分与 `phase_of`、指令整形、
-  五项指标在合成轨迹上的数值、接触三路见证（含 `--record-every` 的阈值放大）、判定码严重度、
-  分组统计与结论文案、判定矩阵、人读报告、CLI 校验、记录字段契约（AST 抽取 `make_row`
-  的列集与 `TEST_FIELDS` 逐项比对）；
-- `imgo2_rl/tests` 全量 **390 项通过 0 失败**；
+  坡度→重力（含模长不变性与镜像）、坡面 tile 的 cell 选取与计数、紧凑布局与足迹不重叠、
+  tile 平移后顶面仍过新原点、`surface_frame` 与训练侧 `slope_frame` 逐位一致、坡面坐标投影、
+  坡面出生解（三维挂点距精确、姿态对齐法向、平地档退化为测量台解、无解时报错）、
+  整块 mesh 组装（有限性/面索引/原点在坡面上/块分离）、网格与顺序、阶段划分与 `phase_of`、
+  指令整形、五项指标在合成轨迹上的数值、接触三路见证（含 `--record-every` 的阈值放大）、
+  判定码严重度、分组统计与结论文案、判定矩阵、人读报告、CLI 校验（含 terrain 的 cell 数上限）、
+  记录字段契约（AST 抽取 `make_row` 的列集与 `TEST_FIELDS` 逐项比对）；
+- `imgo2_rl/tests` 全量 **425 项通过 0 失败**（含远端 2026-10-09 新增的坡面/VAE 契约测试）；
 - `python -m compileall`、`git diff --check`、tracked-ignore 检查通过。
 
 ## 未验证（缺什么才能完成）
 
 1. **仿真链路一次都没跑过**：本会话进程看不到 GPU（`NVIDIA_VISIBLE_DEVICES=void`、无
    `/dev/nvidia*`、`torch.cuda.is_available() == False`），Isaac Sim 起不来。要完成必须先跑
-   上面命令 ② 的冒烟（8 环境），确认：环境构造、45/8 env 的逐 env 质量/连接/指令张量、
-   `physics_sim_view.set_gravity()` 生效、记录列与 `TEST_FIELDS` 一致（运行时那条 `RuntimeError`
-   是最后一道闸）、`summarize_tow` 能吃到新记录。
+   上面命令 ② 的冒烟（8 环境，gravity 后端），确认：环境构造、45/8 env 的逐 env 质量/连接/
+   指令张量、`physics_sim_view.set_gravity()` 生效、记录列与 `TEST_FIELDS` 一致（运行时那条
+   `RuntimeError` 是最后一道闸）、`summarize_tow` 能吃到新记录。
+   `terrain` 后端另需一次冒烟（`--slope-backend terrain --slopes 0 5`）：验证
+   `TerrainImporterCfg` + 自定义生成器/importer 能构造、tile mesh 能导入且有碰撞、
+   `PlayTestTerrainSceneCfg` 把地形放进 `ground` 原位字段（不额外生成平地）是否成立、坡面出生的首拍刚体误差小。
 2. **坡度曲线上没有任何数值**：出生下落 + 倾斜重力下的站定、上坡绳被拽直、下坡小车自己
    溜向机器人这三类瞬态都只有推理，没有数据。
 3. **阈值未标定**：关节 RMS/单关节上限是工程占位，首轮数据出来前 `JNT` 不能当定论。
@@ -167,5 +206,7 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
   冻结策略适配器与 `summarize_tow` 判读；
 - `scan_towing_boundary.py`：外层调度器，按速度/质量/轮阻/摩擦多次启动 `tow_drag.py`，
   产出 `boundary.json`；不做坡度、不做关节响应；
-- `mdp/connection_grid.py`：训练场景的 20×20 列×行网格（类型 + 长度），本脚本的网格是
-  另一套（速度 + 质量 + 坡度），只共用三类连接的定义。
+- `mdp/connection_grid.py` + `mdp/slope_geometry.py` + `slope_terrain.py`：训练场景的
+  40×20 网格与真实坡面地形（类型 + 长度 + 坡度/朝向）；本脚本的 case 网格是另一套
+  （速度 + 质量 + 坡度），`terrain` 后端直接复用它们的 tile 几何、坡度映射与坡面出生解，
+  只把 tile 摆到自己的紧凑布局上。

@@ -29,6 +29,7 @@ def _module_at(name, path):
 
 
 play = _module_at("play_towing_test_under_test", RL / "scripts/towing/play_towing_test.py")
+connection_grid = play.connection_grid
 recording = _module_at(
     "play_test_recording",
     RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py")
@@ -51,10 +52,11 @@ def load_rope_model_module():
 
 
 def base_row(**overrides):
-    """一条字段齐全（全是 TEST_FIELDS）的合成记录行，默认数值全 0。"""
+    """一条字段齐全（全是 TEST_FIELDS）的合成记录行，默认数值全 0、字符串列有值。"""
     row = {name: 0.0 for name in play.TEST_FIELDS}
     row["phase"] = "tow"
     row["connection"] = "compliant"
+    row["slope_backend"] = "gravity"
     row["time_s"] = 0.005
     return row | overrides
 
@@ -85,21 +87,26 @@ def build_episode(*, command=1.0, dt=0.005, station_steps=20, tow_steps=100, coa
         row = base_row(phase=phase, time_s=(index + 1) * dt, user_cmd_mps=command,
                        ref_cmd_mps=command, velocity_cmd_mps=command,
                        slope_deg=0.0, gravity_x_mps2=0.0, gravity_z_mps2=-9.81,
-                       cart_mass_kg=10.0, robot_z_m=robot_height, body_pitch_rad=pitch,
-                       rope_taut=1.0)
+                       slope_backend="gravity", cart_mass_kg=10.0,
+                       robot_z_m=robot_height, body_pitch_rad=pitch,
+                       body_pitch_rel_rad=pitch, robot_surface_height_m=robot_height,
+                       load_surface_height_m=0.15, rope_taut=1.0)
         row.update(overrides)
         rows.append(row)
 
     for index in range(station_steps):
         add("station", index, index * dt, robot_vx_b_mps=0.0, robot_vx_mps=0.0,
-            load_vx_mps=0.0, load_x_m=-0.81, robot_x_m=0.0, rope_distance_m=gap_start,
+            load_vx_mps=0.0, load_x_m=-0.81, load_progress_m=-0.81, robot_x_m=0.0, robot_progress_m=0.0,
+            rope_distance_m=gap_start,
             cart_deck_fx_n=0.0, **joint_columns(startup_error, torque=torque))
     for index in range(tow_steps):
         speed = command if robot_vx_b is None else robot_vx_b[index]
         error = startup_error if index < 10 else coast_error
         add("tow", index, index * dt, robot_vx_b_mps=speed, robot_vx_mps=speed,
             load_vx_mps=speed, load_x_m=-0.81 + load_speed * index * dt,
-            robot_x_m=speed * index * dt, rope_distance_m=gap_start,
+            load_progress_m=-0.81 + load_speed * index * dt,
+            robot_x_m=speed * index * dt, robot_progress_m=speed * index * dt,
+            rope_distance_m=gap_start,
             cart_deck_fx_n=deck_fx_tow, **joint_columns(error, torque=torque))
     decay_tau = load_travel / max(1e-9, load_speed)
     for index in range(coast_steps):
@@ -109,7 +116,9 @@ def build_episode(*, command=1.0, dt=0.005, station_steps=20, tow_steps=100, coa
         fraction = min(1.0, travelled / max(1e-9, load_travel))
         add("coast", index, index * dt, robot_vx_b_mps=0.0, robot_vx_mps=0.0,
             load_vx_mps=step_speed, load_x_m=-0.81 + 0.5 + travelled,
-            robot_x_m=0.5, rope_distance_m=gap_start - gap_closed * fraction,
+            load_progress_m=-0.81 + 0.5 + travelled,
+            robot_x_m=0.5, robot_progress_m=0.5,
+            rope_distance_m=gap_start - gap_closed * fraction,
             cart_deck_fx_n=deck_fx_coast, **joint_columns(coast_error, torque=torque))
     return rows
 
@@ -150,8 +159,13 @@ class SlopeTests(unittest.TestCase):
         plan = play.slope_ground_plan(5.0, "gravity")
         self.assertEqual(plan["backend"], "gravity")
         self.assertIn("旋转重力", plan["note"])
-        with self.assertRaises(NotImplementedError):
-            play.slope_ground_plan(5.0, "terrain")
+        self.assertEqual(plan["gravity_mps2"], play.slope_gravity(5.0))
+        terrain = play.slope_ground_plan(5.0, "terrain")
+        self.assertEqual(terrain["backend"], "terrain")
+        # terrain 后端用**世界竖直**重力，坡度由真实 mesh 提供
+        self.assertEqual(terrain["gravity_mps2"], (0.0, 0.0, -play.GRAVITY_MPS2))
+        self.assertIn("坡面", terrain["note"])
+        self.assertEqual(terrain["frame"]["tangent"], terrain["frame"]["tangent"])
         with self.assertRaises(ValueError):
             play.slope_ground_plan(5.0, "nope")
 
@@ -619,9 +633,21 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             play.parse_args(["--rope-length", "0.3", "--slack", "0.3"])
 
-    def test_terrain_backend_errors_clearly(self):
+    def test_terrain_backend_accepts_a_grid_that_fits_the_training_cells(self):
+        args = play.parse_args(["--slope-backend", "terrain", "--slopes", "5",
+                                "--velocities", "1.0", "--connections", "rigid",
+                                "--cart-masses", "10"])
+        self.assertEqual(args.slope_backend, "terrain")
+        self.assertEqual(len(args.cases), 1)
+
+    def test_terrain_backend_rejects_more_envs_than_cells(self):
+        # 每个非零坡度在训练网格里只有 100 块同坡度 tile：8 速度 × 3 连接 × 5 质量 = 120
         with self.assertRaises(SystemExit):
-            play.parse_args(["--slope-backend", "terrain"])
+            play.parse_args(["--slope-backend", "terrain", "--slopes", "5",
+                             "--velocities", "0.3", "0.5", "0.7", "0.9", "1.1", "1.3", "1.5", "1.7",
+                             "--connections", "compliant", "inextensible", "rigid",
+                             "--cart-masses", "5", "10", "15", "20", "25",
+                             "--env-spacing", "20", "--max-envs", "128"])
 
     def test_single_connection_subset_is_allowed(self):
         args = play.parse_args(["--connections", "rigid", "--slopes", "0",
@@ -671,6 +697,15 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertIn("gravity_world = gravity_vector / gravity_vector.norm()", self.source)
         self.assertIn("per_env(gravity_world)", self.source)
 
+    def test_terrain_reuses_the_first_scene_field(self):
+        # 地形必须占住 `ground` 这个**原位**字段，否则 dataclass 会把新增字段排到最后，
+        # 地形就比 robot/cart 晚建（与训练场景的 terrain-first 顺序不一致）。
+        self.assertIn("class PlayTestTerrainSceneCfg(TowSceneCfg):", self.source)
+        self.assertIn("scene_cfg.ground = TerrainImporterCfg(", self.source)
+        self.assertIn("class_type=PlayTestTileImporter", self.source)
+        self.assertIn("terrain_type=\"generator\"", self.source)
+        self.assertNotIn("scene_cfg.terrain =", self.source)
+
     def test_mass_scaling_happens_on_host_buffer(self):
         self.assertIn('scales_host = mass_scales.detach().to("cpu").unsqueeze(1)', self.source)
 
@@ -683,12 +718,266 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertEqual(order, sorted(order))
 
     def test_episode_reset_writes_poses_before_scene_reset(self):
-        body = self.source.split("def reset_episode()")[1].split("def make_row")[0]
+        body = self.source.split("def reset_episode(*")[1].split("def make_row")[0]
         self.assertLess(body.index("write_root_pose_to_sim"), body.index("scene.reset()"))
 
     def test_records_start_at_the_physical_step(self):
         # record_every 默认必须是 1：summarize_tow 的负载速度跃变见证按 5 ms 标定
         self.assertEqual(play.parse_args([]).record_every, 1)
+
+
+class SlopeCellTests(unittest.TestCase):
+    """terrain 后端的 tile 来源：训练侧 40×20 网格里同坡度的 cell（不另写一张坡度表）。"""
+
+    def test_cell_counts_per_slope(self):
+        self.assertEqual(len(play.slope_cells(0.0)), 400)       # 20 平列 × 20 行
+        for slope in (5.0, -5.0, 10.0, -10.0):
+            # 每个坡度 10 列里按行奇偶各取 5 列 ⇒ 每行 5 块 × 20 行
+            self.assertEqual(len(play.slope_cells(slope)), 100)
+        self.assertGreaterEqual(len(play.slope_cells(10.0)), 45)
+
+    def test_every_cell_has_the_requested_slope(self):
+        for slope in (0.0, 5.0, -5.0, 10.0, -10.0):
+            for row, column in play.slope_cells(slope):
+                self.assertEqual(connection_grid.slope_degrees(column, row), slope)
+
+    def test_rejects_slope_outside_the_training_grid(self):
+        for slope in (7.0, -15.0):
+            with self.assertRaises(ValueError):
+                play.slope_cells(slope)
+
+
+class CompactLayoutTests(unittest.TestCase):
+    def test_layout_is_centred_and_spaced(self):
+        origins = play.compact_tile_origins(45, row_spacing=22.0, column_spacing=8.0)
+        self.assertEqual(len(origins), 45)
+        xs = sorted({round(origin[0], 6) for origin in origins})
+        ys = sorted({round(origin[1], 6) for origin in origins})
+        self.assertEqual(len(xs), 7)                    # ceil(sqrt(45)) = 7 列 × 7 行
+        self.assertEqual(len(ys), 7)
+        self.assertAlmostEqual(sum(xs) / len(xs), 0.0, places=9)
+        self.assertAlmostEqual(sum(ys) / len(ys), 0.0, places=9)
+        self.assertAlmostEqual(xs[1] - xs[0], 22.0, places=9)
+        self.assertAlmostEqual(ys[1] - ys[0], 8.0, places=9)
+        self.assertTrue(all(origin[2] == 0.0 for origin in origins))
+
+    def test_layout_keeps_the_forward_lane_clear(self):
+        # 一块 tile 前向 17 m（FORWARD_M），行距必须大于「前进距离 + 后退距离」才不串场
+        origins = play.compact_tile_origins(45, row_spacing=22.0, column_spacing=8.0)
+        xs = sorted({origin[0] for origin in origins})
+        self.assertGreaterEqual(xs[1] - xs[0], 17.0 + 3.0)
+
+    def test_block_footprints_do_not_overlap(self):
+        # 一块 tile 的足迹 = 沿坡 [−3, +17] m、横向 ±3 m；相邻 tile 至少在 x 或 y 上分开
+        origins = play.compact_tile_origins(
+            45, row_spacing=play.slope_geometry.ROW_SPACING_M,
+            column_spacing=play.slope_geometry.COLUMN_SPACING_M)
+        back, forward = play.slope_geometry.BACK_M, play.slope_geometry.FORWARD_M
+        half = play.slope_geometry.HALF_WIDTH_M
+        boxes = [(x - back, x + forward, y - half, y + half) for x, y, _ in origins]
+        for index, first in enumerate(boxes):
+            for second in boxes[index + 1:]:
+                overlap_x = min(first[1], second[1]) - max(first[0], second[0])
+                overlap_y = min(first[3], second[3]) - max(first[2], second[2])
+                self.assertFalse(overlap_x > 0 and overlap_y > 0,
+                                 f"tile 足迹重叠：{first} vs {second}")
+
+    def test_rejects_bad_arguments(self):
+        with self.assertRaises(ValueError):
+            play.compact_tile_origins(0, row_spacing=1.0, column_spacing=1.0)
+        with self.assertRaises(ValueError):
+            play.compact_tile_origins(3, row_spacing=0.0, column_spacing=1.0)
+
+
+class TranslateTileTests(unittest.TestCase):
+    def test_top_surface_passes_through_the_new_origin(self):
+        vertices, faces, source = play.slope_geometry.tile_mesh(0, 30)     # +10° 的一块 tile
+        target = (5.0, -3.0, 0.0)
+        moved = play.translate_tile(vertices, source, target)
+        self.assertEqual(len(moved), len(vertices))
+        # 顶面 4 个顶点（前 4 个）满足 z = tanθ·(x − 原点 x)：新原点恰在坡面上
+        slope = math.tan(math.radians(play.connection_grid.slope_degrees(30, 0)))
+        for x, y, z in moved[:4]:
+            self.assertAlmostEqual(z, slope * (x - target[0]), places=9)
+        # 平移不改变相对几何
+        for old, new in zip(vertices, moved):
+            self.assertAlmostEqual(new[0] - old[0], target[0] - source[0], places=9)
+            self.assertAlmostEqual(new[1] - old[1], target[1] - source[1], places=9)
+            self.assertAlmostEqual(new[2], old[2], places=9)
+
+    def test_mesh_faces_stay_in_range(self):
+        vertices, faces, source = play.slope_geometry.tile_mesh(0, 31)
+        moved = play.translate_tile(vertices, source, (0.0, 0.0, 0.0))
+        for face in faces:
+            for index in face:
+                self.assertLess(index, len(moved))
+
+
+class TerrainLayoutTests(unittest.TestCase):
+    """整块 mesh 的组装（只有仿真里才建，但布局与自洽性可以离线核对）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.layout = play.build_terrain_layout(play.DEFAULT_SLOPES_DEG, 45)
+
+    def test_block_shape_and_counts(self):
+        self.assertEqual(len(self.layout["blocks"]), len(play.DEFAULT_SLOPES_DEG))
+        for slope in play.DEFAULT_SLOPES_DEG:
+            block = self.layout["blocks"][slope]
+            self.assertEqual(len(block["cells"]), 45)
+            self.assertEqual(len(block["origins"]), 45)
+        # 每块 8 顶点 / 12 面
+        self.assertEqual(len(self.layout["vertices"]), len(play.DEFAULT_SLOPES_DEG) * 45 * 8)
+        self.assertEqual(len(self.layout["faces"]), len(play.DEFAULT_SLOPES_DEG) * 45 * 12)
+
+    def test_mesh_is_finite_and_faces_are_in_range(self):
+        for vertex in self.layout["vertices"]:
+            self.assertTrue(all(math.isfinite(value) for value in vertex))
+        face_count = len(self.layout["vertices"])
+        for face in self.layout["faces"]:
+            self.assertEqual(len(face), 3)
+            self.assertTrue(all(0 <= index < face_count for index in face))
+
+    def test_every_origin_lies_on_its_tile_surface(self):
+        for slope in play.DEFAULT_SLOPES_DEG:
+            block = self.layout["blocks"][slope]
+            slope_tan = math.tan(math.radians(slope))
+            for cell, origin in zip(block["cells"], block["origins"]):
+                vertices, _, source = play.slope_geometry.tile_mesh(*cell)
+                moved = play.translate_tile(vertices, source, origin)
+                for x, _, z in moved[:4]:                     # 顶面四点
+                    self.assertAlmostEqual(z, slope_tan * (x - origin[0]), places=9)
+
+    def test_blocks_are_separated_along_y(self):
+        pitch = self.layout["block_y_pitch_m"]
+        half = play.slope_geometry.HALF_WIDTH_M
+        shifts = [self.layout["blocks"][slope]["block_y_shift_m"]
+                  for slope in play.DEFAULT_SLOPES_DEG]
+        self.assertEqual(shifts, sorted(shifts))
+        for previous, following in zip(shifts, shifts[1:]):
+            self.assertGreater(following - previous, 2.0 * half)   # 两块 y 上不重叠
+
+    def test_too_few_cells_is_rejected(self):
+        with self.assertRaises(ValueError):
+            play.build_terrain_layout((5.0,), 200)          # +5° 只有 100 块 tile
+
+    def test_empty_or_zero_env_rejected(self):
+        with self.assertRaises(ValueError):
+            play.build_terrain_layout((), 1)
+        with self.assertRaises(ValueError):
+            play.build_terrain_layout((0.0,), 0)
+
+
+class SurfaceFrameTests(unittest.TestCase):
+    def test_gravity_backend_matches_the_flat_frame(self):
+        frame = play.surface_frame(5.0, "gravity")
+        self.assertEqual(frame["tangent"], (1.0, 0.0, 0.0))
+        self.assertEqual(frame["normal"], (0.0, 0.0, 1.0))
+        self.assertEqual(frame["pitch_offset_rad"], 0.0)
+
+    def test_terrain_frame_matches_the_training_slope_frame(self):
+        for slope in (0.0, 5.0, -5.0, 10.0, -10.0):
+            frame = play.surface_frame(slope, "terrain")
+            tangent, normal = play.slope_geometry.slope_frame(slope)
+            for mine, theirs in zip(frame["tangent"], tangent):
+                self.assertAlmostEqual(mine, theirs, places=12)
+            for mine, theirs in zip(frame["normal"], normal):
+                self.assertAlmostEqual(mine, theirs, places=12)
+            self.assertAlmostEqual(frame["pitch_offset_rad"], -math.radians(slope), places=12)
+
+    def test_frame_is_orthonormal(self):
+        for slope in (-10.0, 0.0, 10.0):
+            frame = play.surface_frame(slope, "terrain")
+            tangent, normal = frame["tangent"], frame["normal"]
+            self.assertAlmostEqual(math.dist(tangent, (0, 0, 0)), 1.0, places=12)
+            self.assertAlmostEqual(math.dist(normal, (0, 0, 0)), 1.0, places=12)
+            self.assertAlmostEqual(sum(t * n for t, n in zip(tangent, normal)), 0.0, places=12)
+
+    def test_unknown_backend_rejected(self):
+        with self.assertRaises(ValueError):
+            play.surface_frame(5.0, "ramp")
+
+    def test_frame_coordinates_of_a_point_on_the_ramp(self):
+        frame = play.surface_frame(10.0, "terrain")
+        slope = math.tan(math.radians(10.0))
+        for x in (2.0, 7.5):
+            progress, height = play.frame_coordinates((x, 0.0, slope * x), (0.0, 0.0, 0.0), frame)
+            self.assertAlmostEqual(height, 0.0, places=9)
+            self.assertAlmostEqual(progress, x / math.cos(math.radians(10.0)), places=9)
+
+    def test_gravity_frame_reduces_to_x_and_z(self):
+        frame = play.surface_frame(-5.0, "gravity")
+        progress, height = play.frame_coordinates((3.0, 1.0, 0.27), (1.0, 1.0, 0.0), frame)
+        self.assertAlmostEqual(progress, 2.0, places=12)
+        self.assertAlmostEqual(height, 0.27, places=12)
+
+
+class SpawnOnSurfaceTests(unittest.TestCase):
+    ROBOT_OFFSET = (-0.16, 0.0, 0.0)
+    CART_OFFSET = (0.25, 0.0, 0.0)
+
+    def _spawn(self, slope, target=0.4, robot_height=0.35, cart_height=0.15):
+        return play.spawn_on_surface(slope_deg=slope, robot_height=robot_height,
+                                     cart_height=cart_height, robot_offset=self.ROBOT_OFFSET,
+                                     cart_offset=self.CART_OFFSET, target_distance=target)
+
+    def test_flat_case_matches_the_flat_spawn_solution(self):
+        spec = self._spawn(0.0)
+        expected_x = play._initial_cart_x(0.8, 0.4, spawn_height=0.35, cart_height=0.15,
+                                         robot_offset=self.ROBOT_OFFSET,
+                                         cart_offset=self.CART_OFFSET)
+        self.assertAlmostEqual(spec["cart_root"][0], expected_x, places=9)
+        self.assertAlmostEqual(spec["cart_root"][2], 0.15, places=9)
+        self.assertEqual(spec["quat_wxyz"], (1.0, 0.0, 0.0, 0.0))
+
+    def test_attachment_distance_is_exact_on_every_slope(self):
+        for slope in (0.0, 5.0, -5.0, 10.0, -10.0):
+            spec = self._spawn(slope, target=0.4)
+            self.assertAlmostEqual(spec["attachment_distance_m"], 0.4, places=9)
+
+    def test_birth_attitude_aligns_body_z_with_the_plane_normal(self):
+        spec = self._spawn(10.0)
+        normal = play.rotate_vector(spec["quat_wxyz"], (0.0, 0.0, 1.0))
+        self.assertAlmostEqual(normal[0], spec["normal"][0], places=9)
+        self.assertAlmostEqual(normal[2], spec["normal"][2], places=9)
+        forward = play.rotate_vector(spec["quat_wxyz"], (1.0, 0.0, 0.0))
+        self.assertAlmostEqual(forward[0], spec["tangent"][0], places=9)
+
+    def test_robot_height_is_a_normal_clearance_and_cart_sits_downhill(self):
+        frame = play.surface_frame(5.0, "terrain")
+        spec = self._spawn(5.0)
+        robot_progress, robot_height = play.frame_coordinates(spec["robot_root"], (0, 0, 0), frame)
+        cart_progress, cart_height = play.frame_coordinates(spec["cart_root"], (0, 0, 0), frame)
+        self.assertAlmostEqual(robot_progress, 0.0, places=9)
+        self.assertAlmostEqual(robot_height, 0.35, places=9)
+        self.assertGreater(robot_progress, cart_progress)      # 小车在后方（下坡侧）
+        self.assertGreater(cart_height, 0.0)
+
+    def test_impossible_geometry_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self._spawn(5.0, target=0.1)
+
+    def test_invalid_heights_rejected(self):
+        for value in (0.0, -0.2, float("nan")):
+            with self.assertRaises(ValueError):
+                self._spawn(0.0, robot_height=value)
+
+
+class RotationTests(unittest.TestCase):
+    def test_identity_and_axis_mapping(self):
+        self.assertEqual(play.rotation_y(0.0), (1.0, 0.0, 0.0, 0.0))
+        quat = play.rotation_y(-math.radians(10.0))
+        forward = play.rotate_vector(quat, (1.0, 0.0, 0.0))
+        tangent = (math.cos(math.radians(10.0)), 0.0, math.sin(math.radians(10.0)))
+        for mine, theirs in zip(forward, tangent):
+            self.assertAlmostEqual(mine, theirs, places=9)
+
+    def test_rotation_preserves_length(self):
+        quat = play.rotation_y(0.37)
+        vector = (0.3, -0.4, 0.5)
+        rotated = play.rotate_vector(quat, vector)
+        self.assertAlmostEqual(math.dist(rotated, (0, 0, 0)), math.dist(vector, (0, 0, 0)),
+                               places=12)
 
 
 class GeometryTests(unittest.TestCase):
