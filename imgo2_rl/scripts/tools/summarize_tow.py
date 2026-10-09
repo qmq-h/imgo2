@@ -354,13 +354,34 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
 
     if joint_names and rows and "robot_jp_00" in rows[0]:
         clearance = _clearance_series(rows, joint_names)
-        after_tow_clearance = [gap for phase, _, gap in clearance if phase != "station"]
-        coast_samples = [(time_s, gap) for phase, time_s, gap in clearance if phase == "coast"]
-        station_clearance = [gap for phase, _, gap in clearance if phase == "station"]
-        summary["min_clearance_m"] = min(after_tow_clearance)
+        # ⚠️ `tow_clearance.clearance()` 在**一对「面对面」点对都没有**时返回 `(None, None)`：
+        # 它的判据要求机器人后表面点与车头点在横向/竖向都在 `FACING_TOL_M = 0.05 m` 以内，
+        # 机器人被拽翻/腾空/姿态离奇时这个条件会整体不成立。那不是数值噪声而是**真实的坏姿态**，
+        # 所以既不能丢掉（会让判据静默变"干净"），也不能直接进 `min()`：`None` 与 `float`
+        # 不可比，2026-10-09 测试台首跑就是把整轮产物全挂在 `min(...)` 的 TypeError 上
+        # （9 个 case 的 CSV 与摘要一个都没写出来）。这里逐相位计数并只对可用样本取最小值。
+        unavailable = [(phase, time_s) for phase, time_s, gap in clearance if gap is None]
+        after_tow_clearance = [gap for phase, _, gap in clearance
+                               if phase != "station" and gap is not None]
+        coast_samples = [(time_s, gap) for phase, time_s, gap in clearance
+                         if phase == "coast" and gap is not None]
+        station_clearance = [gap for phase, _, gap in clearance
+                             if phase == "station" and gap is not None]
+        summary["clearance_unavailable_samples"] = len(unavailable)
+        summary["clearance_unavailable_phases"] = sorted({phase for phase, _ in unavailable})
+        summary["min_clearance_m"] = min(after_tow_clearance) if after_tow_clearance else None
         summary["min_clearance_coast_m"] = min(gap for _, gap in coast_samples) if coast_samples else None
         summary["min_clearance_station_m"] = min(station_clearance) if station_clearance else None
-        summary["final_clearance_m"] = clearance[-1][2]
+        # 末样本可能正好不可用 ⇒ 退回「coast 段最后一个可用样本」（`final_clearance_m` 是停车
+        # 段末的量，拿 station 段的数顶上去会把它说成"末端间隙"）。本来没有 coast 段（旧记录/
+        # 短跑）时才退回全轨迹最后一个可用样本；coast 段存在但整段不可用 ⇒ None（不知道就说不知道）。
+        coast_available = [gap for phase, _, gap in clearance
+                           if phase == "coast" and gap is not None]
+        has_coast_phase = any(phase == "coast" for phase, _, _ in clearance)
+        summary["final_clearance_m"] = (
+            coast_available[-1] if coast_available
+            else (None if has_coast_phase
+                  else next((gap for _, _, gap in reversed(clearance) if gap is not None), None)))
         # ---- 停止瞬态：训练目标（收到停止指令后机器人往前几步防追尾）要抢的时间窗 ----
         # `clearance_at_stop_m` = 指令归零那一刻的车头间隙；
         # `time_to_contact_after_stop_s` = 从那一刻到首次接触（间隙 ≤ 0）的时间 ⇒ 机器人
@@ -382,7 +403,10 @@ def summarize_tow(rows, *, user_command, takeup_fraction=TAKEUP_FRACTION, joint_
             summary["time_to_contact_after_stop_s"] = None
             summary["load_vx_at_contact_mps"] = None
         summary["clearance_samples"] = len(clearance)
-        if summary["min_clearance_m"] <= CLEARANCE_CONTACT_M:
+        # `min_clearance_m` 可能为 None（拖曳之后的样本**全部**不可用 ⇒ 见上面的计数），
+        # 这时不能判定"几何接触"，也不能与 float 比较。
+        if (summary["min_clearance_m"] is not None
+                and summary["min_clearance_m"] <= CLEARANCE_CONTACT_M):
             witnesses.append("geometric_clearance")
     else:
         summary["min_clearance_m"] = None

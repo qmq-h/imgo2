@@ -220,14 +220,99 @@ nominal_inertias.unsqueeze(0) * scales_host     # (1, N, 5, 9) × (N, 1) → dim
 
 **限制**：这只是把首跑的报错原因消掉，**仿真仍未跑通**；同一条命令要重跑冒烟才能确认。
 
+## 二跑：判读崩溃（已修）+「出生就贴上」的定量（2026-10-09 晚）
+
+**现象**（用户实跑）：`--num-envs 9 --headless --write-csv all --tow-duration 1 --coast-duration 1`
+主循环跑完，在**逐 case 判读**处 `[FAILED] TypeError: '<' not supported between instances of
+'float' and 'NoneType'`；`experiment.json` 停在 `state=failed`，`summaries/` 与逐 case `tow.csv`
+**一个都没有**（只能重跑）。同一配置开可视化时「机器人就在胡乱挣扎」。
+
+### ① 崩溃根因（已修）
+
+`tow_clearance.clearance()` 的「面对面」判据要求机器人后表面点与车头点在横向**与**竖向都落在
+`FACING_TOL_M = 0.05 m` 内；机器人被拽翻 / 腾空 / 姿态离奇时该条件会整体不成立，函数**合法地**
+返回 `(None, None)`。离线可复现：合成轨迹上 `robot_z_m ≥ 0.6 m`（机—车间距约 1 m 时）或
+「俯仰 45° + 抬高」就一对点都对不上。而 `summarize_tow` 直接 `min(after_tow_clearance)` ⇒
+`None` 与 `float` 不可比。
+
+修法（`scripts/tools/summarize_tow.py`）：
+
+- 逐相位统计不可用样本 → 新增 `clearance_unavailable_samples` / `clearance_unavailable_phases`（**不静默**，
+  坏姿态看得见）；
+- `min_clearance_m` / `min_clearance_coast_m` / `min_clearance_station_m` 只对**可用**样本取最小值，
+  某相位全部不可用 ⇒ `None`；
+- 判「几何接触」前守 `is not None`；`final_clearance_m` 只退回 **coast 段**最后一个可用样本
+  （旧记录没有 coast 段时才退回全轨迹最后一个可用样本），**不让 station 段的数冒充「末端间隙」**。
+
+同时把测试台的**原始轨迹提前到指标计算之前**落盘（`--write-csv all` 时逐 case 立即写 `tow.csv`）：
+判读代码再出问题也不会把这一轮的证据一起丢掉（`--write-csv failed` 仍在判出非 `OK` 之后写）。
+
+### ② 「出生就贴上」的定量
+
+用 `tow_clearance` 的真实 FK（`imgo2_description/urdf/imgo2.urdf` 全腿链）逐行算**出生姿态**
+（默认站姿、0.35 m 出生、竖直）下「机器人后表面 ↔ 车头」的几何间隙：
+
+| 行 | L0 | compliant（`0.5·L0`） | 几何间隙 | rigid（`L0`） | 几何间隙 |
+|---|---|---|---|---|---|
+| 0 | 0.60 | 0.300 | **0.0088 m** | 0.600 | 0.3370 m |
+| 1 | 0.63 | 0.316 | 0.0277 m | 0.632 | 0.3699 m |
+| 2 | 0.66 | 0.332 | 0.0463 m | 0.663 | 0.4026 m |
+| 3 | 0.69 | 0.347 | 0.0645 m | 0.695 | 0.4352 m |
+| … | … | … | … | … | … |
+| 19 | 1.20 | 0.600 | 0.3370 m | 1.200 | 0.9495 m |
+
+⚠️ `upper_env_cfg.py` 注释里的「spawn 间隙 ≈ 0.250 m」是**挂点距**（`along = sqrt(d² − Δn²)`），
+不是几何间隙：机器人后腿在默认站姿下伸到 base 后方 **0.398 m**，而挂点只在 −0.16 m，两者差 0.24 m。
+当年平地单绳验证用的 0.4 m 挂点距对应几何间隙 **0.0955 m**（已记为「生成时就贴上」的观察值），
+现在 row0 的 compliant 档只有 **8.8 mm**。
+
+### ③ 实跑数据：9/9 都在**站定段**就塌（2026-10-09 18:06 run）
+
+修好判读崩溃后同一条命令**跑完了**（`state=completed`，`imgo2_rl/logs/towing/play_test/20261009T100609Z_3b5735d0/`，
+9 case + `report.md`），这次有数据：
+
+| env | 连接/质量 | 判定 | 跌倒相位 | 最低 base 高 | 起步关节 RMS | 站定段最大张力 | 车斗接触峰值 |
+|---|---|---|---|---|---|---|---|
+| 0 | compliant/5 kg | FALL | **station** | 0.075 m | 0.611 rad | 130.7 N | 0 N |
+| 1 | compliant/10 kg | FALL | tow | 0.076 m | 0.595 | 405.5 N | 14.5 N |
+| 2 | compliant/15 kg | FALL | **station** | 0.075 m | 0.624 | 480.5 N | 0 |
+| 3 | compliant/20 kg | FALL | **station** | 0.074 m | 0.627 | 267.2 N | 0 |
+| 4 | compliant/25 kg | FALL | **station** | 0.075 m | 0.617 | 1004.9 N | 0 |
+| 5 | compliant/5 kg | FALL | **station** | 0.074 m | 0.625 | 166.4 N | 0 |
+| 6 | compliant/10 kg | FALL | **station** | 0.078 m | 0.635 | 1542.9 N | 472.9 N |
+| 7 | compliant/15 kg | FALL | **station** | 0.079 m | 0.618 | 778.6 N | 0 |
+| 8 | **rigid**/20 kg | FALL | **station** | 0.074 m | 0.587 | 1056.4 N | 0 |
+
+读法（三条互斥情形里**第一条被排除、第三条被排除、只剩控制/驱动这一档**）：
+
+1. **不是「绳/杆把机器人拽翻」**：`rope_tension_n` 在前 6 个记录点（含 t=0.03/0.055/0.105）**恒为 0**，
+   张力要到 t≈0.33 s 才起跳（`settle_max_tension_n` 是站定段内的**最大值**，不是首拍值）；
+   跌倒趋势（base 从 0.3425 → 0.1653 只用 25 ms）出现在任何张力之前。
+2. **不是「出生间隙 8.8 mm 顶到小车」**：9 个 case 只有 2 个出现车斗接触（env1 14.5 N、env6 472.9 N），
+   其余 7 个 `cart_deck_fx_n ≡ 0`；而 9 个全倒。⇒ 第二节的间隙表是**真实的设计余量问题**，但不是本次倒地的原因。
+3. **不是「掉进地里」**：`robot_z_m` 不是单调下掉而是**弹跳式**（0.3425→0.1653→0.2443→0.2756→0.2339→0.2963→…→0.075），
+   `invalid_samples = 0`（无 NaN/Inf）。
+4. **落在「关节驱动」这一档**：`robot_tau_*` 从一开始就**正负交替、打到 ±23.7 N·m（= `effort_limit`）**，
+   关节实测被压到极限（`robot_jp_02` 一度 = −3.0000），起步关节 RMS **0.59–0.64 rad（阈值 0.10 的 6 倍）**，
+   同时 `settle_robot_travel_m = −1.099 m`、`settle_load_drift_m = −0.649 m` ⇒ 站定段整对儿被拖着倒退 1 m。
+   **注意 t=0.005 那一拍是正常的**（目标 = 默认站姿 ± 小量：`jt=(−0.010, 0.912, −1.803)`，
+   与 `default + action_scale×action` 逐项吻合），异常从**第二拍**开始（hip 目标 −2.1 ≈ 饱和）。
+   即：**观测/置换在首拍是对的，但第二拍开始策略输出饱和、关节高速摆动**。
+
+⇒ 下一步（判据已收窄）：把 `--record-every 1` 跑 3 环境，看**第 0–4 个物理步**（第二拍策略动作之前）
+到底发生了什么；同时离线把「名义站姿」喂给导出的 `policy.pt`（`imgo2_deploy/policy/imgo2/amp/policy.pt`，
+sha256 `cba59d44…`）验证契约：如果对名义站姿它就输出饱和动作，那问题在**观测组装/契约**而不在物理。
+
 ## 未验证（缺什么才能完成）
 
-1. **仿真链路一次都没跑过**：本会话进程看不到 GPU（`NVIDIA_VISIBLE_DEVICES=void`、无
-   `/dev/nvidia*`、`torch.cuda.is_available() == False`），Isaac Sim 起不来。要完成必须先跑
-   上面命令 ② 的冒烟（40 环境 = 网格前缀，三种连接 + 三个坡度量级都在），确认：训练场景构造、
-   逐 env 的绳模型（三套 `rest_length` 张量 + 掩码）、逐 env 质量/惯量缩放、逐 env 出生几何
-   （第一拍不能有约束力）、训练接触传感器的 `force_matrix_w` 读法与顺序守卫、记录列与
-   `TEST_FIELDS` 一致、`summarize_tow` 能吃到新记录。
+1. **9/9 倒地的根因还没定位到一行代码**：判读崩溃已修、同一条命令已跑完并落盘（见上一节），
+   现在的判据收窄到「第二拍起策略输出饱和 + 关节高速摆动」这一档，但**还没区分**
+   「观测组装/契约错」与「物理/驱动侧不稳」。需要：① `--record-every 1 --num-envs 3` 看第 0–4
+   物理步；② 离线把名义站姿喂给 `policy.pt` 验契约；③ 与训练任务（同一 policy、同一 action term）
+   做同条件对照。**本会话进程看不到 GPU**（无 `/dev/nvidia*`、`torch.cuda.is_available() == False`），
+   ①③ 只能由用户终端执行。场景构造、逐 env 绳模型、逐 env 质量/惯量缩放、逐 env 出生几何
+   （第一拍不能有约束力 → 实测首拍张力 0 ✓）、训练接触传感器的 `force_matrix_w` 读法与顺序守卫、
+   记录列与 `TEST_FIELDS` 一致这些**已由这次实跑通过**。
 2. **坡度曲线上没有任何数值**：出生下落、上坡绳被拽直、下坡小车自己溜向机器人这三类瞬态
    都只有推理，没有数据。
 3. **阈值未标定**：关节 RMS/单关节上限是工程占位，首轮数据出来前 `JNT` 不能当定论。

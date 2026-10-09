@@ -2129,11 +2129,39 @@ def main(args):
               flush=True)
 
         # ------------------------------------------------------------ 逐 env 指标
+        def write_case_artifacts(case, rows):
+            """把一个 case 的原始轨迹 + config 落盘（`--write-csv` 的策略见调用处）。"""
+            case_dir = output / case.slug
+            case_dir.mkdir(parents=True, exist_ok=True)
+            write_json(case_dir / "config.json", {
+                "case": case.to_dict(), "schedule": args.schedule.to_dict(),
+                "lane_frame": {"tangent": [1.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0],
+                               "gravity_mps2": list(gravity)},
+                "connection": experiment["connection"],
+                "ground_friction": args.ground_friction,
+                "wheel_damping_nms_per_rad": args.wheel_damping,
+                "user_command_mps": case.velocity_mps,
+                "policy_joint_names": list(policy_cfg.joint_names),
+                "thresholds": thresholds,
+            })
+            with (case_dir / "tow.csv").open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=TEST_FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+            case_dirs.append(case.slug)
+
         case_summaries = []
         case_dirs = []
         for env_index, case in enumerate(cases):
             rows = case_rows[env_index]
             spec = specs[env_index]
+            # 原始轨迹**先落盘**：判读指标再出问题（例如 `summarize_tow` 在坏姿态下拿不到
+            # 几何间隙）也不能把这一轮的证据一起丢掉。2026-10-09 首跑正是指标抛 TypeError，
+            # 9 个 case 的 tow.csv 与摘要一个都没写出来，只能重跑。
+            csv_written = False
+            if args.write_csv == "all":
+                write_case_artifacts(case, rows)
+                csv_written = True
             tw_summary = summarize_tow(
                 rows, user_command=case.velocity_mps, joint_names=policy_cfg.joint_names,
                 config={
@@ -2171,25 +2199,10 @@ def main(args):
             }
             case_summaries.append(summary)
             write_json(summaries_dir / f"{case.slug}.json", summary)
-            should_write = (args.write_csv == "all"
-                            or (args.write_csv == "failed" and metrics["verdict"]["code"] != "OK"))
+            should_write = (not csv_written and args.write_csv == "failed"
+                            and metrics["verdict"]["code"] != "OK")
             if should_write:
-                case_dir = output / case.slug
-                case_dir.mkdir(parents=True, exist_ok=True)
-                write_json(case_dir / "config.json", {
-                    "case": case.to_dict(), "schedule": args.schedule.to_dict(),
-                    "lane_frame": summary["lane_frame"], "connection": experiment["connection"],
-                    "ground_friction": args.ground_friction,
-                    "wheel_damping_nms_per_rad": args.wheel_damping,
-                    "user_command_mps": case.velocity_mps,
-                    "policy_joint_names": list(policy_cfg.joint_names),
-                    "thresholds": thresholds,
-                })
-                with (case_dir / "tow.csv").open("w", newline="", encoding="utf-8") as stream:
-                    writer = csv.DictWriter(stream, fieldnames=TEST_FIELDS)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                case_dirs.append(case.slug)
+                write_case_artifacts(case, rows)
             verdict = metrics["verdict"]
             print(f"[case] env{case.env_index:04d} c{case.column:02d}r{case.row:02d} "
                   f"g{case.grade_deg:g} v{case.velocity_mps:g} {case.connection} "
