@@ -148,6 +148,29 @@ class SlopeGeometryTests(unittest.TestCase):
                         cross = (u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0])
                         self.assertGreater(cross[2], 0.0)
 
+    def test_adjacent_lanes_are_spliced_into_one_continuous_ground(self):
+        """相邻 lane **共边拼接**：间距等于板尺寸 ⇒ 板与板严格相接、行列之间不留虚空。
+
+        2026-10-09 用户要求「训练场景拼接到一起」，起因是训练地形之外没有 ground，
+        间距 2 m 时机器人/小车走出自己那块板或掉进缝里就会直接坠下去。
+        """
+        self.assertEqual(geometry.ROW_SPACING_M, geometry.BACK_M + geometry.FORWARD_M)
+        self.assertEqual(geometry.COLUMN_SPACING_M, 2.0*geometry.HALF_WIDTH_M)
+        for row, column in ((0, 0), (3, 20), (19, 39)):
+            x, y, _ = geometry.tile_origin(row, column)
+            # 板的足迹：[x − BACK, x + FORWARD] × [y ± HALF_WIDTH]
+            if row + 1 < geometry.ROWS:
+                nx, ny, _ = geometry.tile_origin(row + 1, column)
+                self.assertAlmostEqual(x + geometry.FORWARD_M, nx - geometry.BACK_M, places=9)
+            if column + 1 < geometry.COLUMNS:
+                nx, ny, _ = geometry.tile_origin(row, column + 1)
+                self.assertAlmostEqual(y + geometry.HALF_WIDTH_M, ny - geometry.HALF_WIDTH_M,
+                                       places=9)
+        # 行接缝处两侧都是平地：剖面在 x = ±(BACK/FORWARD) 上高度为 0 ⇒ 没有台阶
+        for grade in (0.0, 5.0, 10.0):
+            self.assertAlmostEqual(geometry.profile_height(grade, -geometry.BACK_M), 0.0, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, geometry.FORWARD_M), 0.0, places=12)
+
     def test_spawn_clearance_attachment_distance_and_goal_stay_on_lane(self):
         for index in range(grid.GRID_SIZE):
             spec = grid.env_spec(index)

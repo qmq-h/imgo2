@@ -12,6 +12,14 @@ x=0（**平地上、姿态竖直**），走完 10 m 目标时落在**出口平�
 从 9.0 m 起）；上坡与下坡在**同一条 lane 内成对出现**，所以不再需要「坡度正负号交替」来
 平衡方向。坡度量级由列决定（`connection_grid.slope_degrees` = 0 / 5 / 10 deg）。
 
+**相邻 lane 共边拼接**（2026-10-09 用户要求「训练场景拼接到一起」）：
+`ROW_SPACING_M = BACK_M + FORWARD_M`（15 m）、`COLUMN_SPACING_M = 2·HALF_WIDTH_M`（6 m），
+即每块板的足迹正好等于网格间距 ⇒ 800 块板拼成**一整块连续地面**（板之间的内部侧面仍在，
+但都落在整体内部、不可见）。此前间距各多 2 m、地形之外又没有 ground，机器人/小车走出自己
+那块板或掉进缝里就会直接坠下去 —— 用户看到的「有些机器人直接到底」就是它。接缝处：行方向
+（x）两侧都是平地、高度为 0 ⇒ 无落差；列方向只有「平地↔5°」「5°↔10°」两条分界有矮坎
+（高 0～0.53 m、随 x 起伏），同档量的列之间剖面相同、接缝同样无落差。
+
 坐标约定：`x` 沿坡前进，`y` 横向（±`HALF_WIDTH_M`），`z` 向上；lane 原点是剖面在
 `x = 0` 处的表面点（`profile_height(·, 0) = 0`），因此 `body_z − origin_z − profile_height(x)`
 就是「离坡面多高」，与 `slope_frame(局部坡度)` 一起构成坡面坐标系。
@@ -29,8 +37,14 @@ else:
 BACK_M = 2.25
 FORWARD_M = 12.75
 HALF_WIDTH_M = 3.0
-ROW_SPACING_M = BACK_M + FORWARD_M + 2.0
-COLUMN_SPACING_M = 2.0 * HALF_WIDTH_M + 2.0
+# 行/列**共边拼接**（2026-10-09 用户要求「训练场景拼接到一起」）：间距 = 板尺寸，
+# 不再留 2 m 间隙。此前板与板之间是空的（地形之外没有 ground），机器人/小车走出自己那块板、
+# 或掉进缝里就会直接坠下去 —— 用户看到的「有些机器人直接到底」就是它。拼接后走出去会落到
+# 相邻 lane 上：行方向（x）两侧都是平地、接缝处高度都是 0 ⇒ 无落差；列方向只有
+# 「平地↔5°」「5°↔10°」两条分界会形成一道高 0～0.53 m、随 x 起伏的矮坎（同档量的列之间
+# 剖面完全相同，接缝同样无落差）。
+ROW_SPACING_M = BACK_M + FORWARD_M
+COLUMN_SPACING_M = 2.0 * HALF_WIDTH_M
 THICKNESS_M = 0.35
 BOUNDARY_MARGIN_M = 0.6
 
@@ -52,6 +66,8 @@ if PROFILE_LENGTH_M > FORWARD_M:
     raise ValueError("剖面长度超过 lane 的前向长度（FORWARD_M），出生/边界假设不再成立")
 if BACK_M + FORWARD_M != 15.0:
     raise ValueError("跑道总长应为 15 m（2026-10-09 用户要求从 20 m 收到 15 m）")
+if (ROW_SPACING_M, COLUMN_SPACING_M) != (BACK_M + FORWARD_M, 2.0 * HALF_WIDTH_M):
+    raise ValueError("行/列间距必须等于板尺寸（相邻 lane 共边拼接）；改间距前先想清楚会不会又留出虚空")
 
 
 def tile_origin(row, column):
