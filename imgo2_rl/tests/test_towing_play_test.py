@@ -1075,6 +1075,19 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertTrue(play.contact_witness(rows, record_dt=0.005)["contact"])
         self.assertFalse(play.contact_witness(rows, record_dt=0.025)["contact"])
 
+    def test_compact_log_caps_the_detail_lines(self):
+        """`--compact-log` 必须**限行**，不能只按「非 OK 才打印」——全网格实测 800/800 都是非 OK。
+
+        `startup_joint_error`/`stop_joint_error` 用的是未标定的占位阈值（见记录「无负载参考」一节），
+        于是 800 个 case 里几乎全部非 OK；只按"非 OK 才打印"起不到压缩作用（2026-10-09 实跑刷了
+        800 行）。现在按 `--compact-log-detail`（默认 30）截断明细，并每 100 个 case 打一条带判定码
+        计数的进度行；逐 env 全量指标始终写在 `summaries/<case>.json` 与 `report.*` 里。
+        """
+        self.assertIn("--compact-log-detail", self.source)
+        self.assertIn("compact_detail_printed < args.compact_log_detail", self.source)
+        self.assertIn("tally.most_common()", self.source)
+        self.assertIn("逐 case 明细最多打印", self.source)
+
     def test_no_second_gravity_write_path(self):
         # 训练场景的重力就是世界竖直，不需要再往 PhysX 里写重力
         self.assertNotIn("set_gravity(", self.source)

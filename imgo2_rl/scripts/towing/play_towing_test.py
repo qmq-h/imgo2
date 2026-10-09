@@ -128,6 +128,7 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import csv
 import importlib.util
 import json
@@ -1400,8 +1401,12 @@ def parse_args(argv=None):
                              "无小车 env 的小车会横向停到 2 m 外、绳力与轮阻置 0，判定时跳过"
                              "与小车有关的项；分配是确定性的（每 round(1/fraction) 个 env 抽 1 个）")
     parser.add_argument("--compact-log", action="store_true",
-                        help="逐 case 只打印非 OK 的行（+ 每 100 个 case 一条进度）；"
-                             "800 环境完整网格默认会刷 800 行逐 env 判读")
+                        help="逐 case 明细最多打印 --compact-log-detail 条（默认 30），"
+                             "每 100 个 case 打一条带判定码计数的进度；"
+                             "不加则 800 环境会把 800 行逐 env 判读全部打到终端")
+    parser.add_argument("--compact-log-detail", type=int, default=30,
+                        help="--compact-log 下逐 case 明细的行数上限（默认 30；0 = 一条都不打，"
+                             "逐 env 全量指标仍写进 summaries/<case>.json 与 report.*）")
     parser.add_argument("--device", default="cuda:0", help="仿真设备")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将执行的网格、逐 env 分配与代价，不启动 Isaac Sim（标准库即可运行）")
@@ -2240,6 +2245,7 @@ def main(args):
 
         case_summaries = []
         case_dirs = []
+        compact_detail_printed = 0
         for env_index, case in enumerate(cases):
             rows = case_rows[env_index]
             spec = specs[env_index]
@@ -2306,7 +2312,13 @@ def main(args):
             # 逐 case 判读行：800 环境完整网格会刷 800 行（每行还带 5 个指标）⇒ 提供与训练脚本
             # 同名的 `--compact-log`：只打非 OK 的行 + 每 100 个 case 一条进度。分项指标仍然逐 env
             # 完整写进 `summaries/<case>.json` 与 `report.*`，只是不再往终端倒。
-            if not args.compact_log or verdict["code"] != "OK":
+            if not args.compact_log:
+                show_detail = True
+            else:
+                show_detail = (verdict["code"] != "OK"
+                               and compact_detail_printed < args.compact_log_detail)
+                compact_detail_printed += int(show_detail)
+            if show_detail:
                 print(f"[case] env{case.env_index:04d} c{case.column:02d}r{case.row:02d} "
                       f"g{case.grade_deg:g} v{case.velocity_mps:g} {case.connection} "
                       f"L{case.length_m:.2f} m{actual_masses[env_index]:g}kg ⇒ {verdict['code']}"
@@ -2317,7 +2329,11 @@ def main(args):
                       f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
                       f"横向|y|max={_fmt(metrics['lane'].get('y_max_abs_m'))}", flush=True)
             if args.compact_log and (env_index + 1) % 100 == 0:
-                print(f"[cases] 已判读 {env_index + 1}/{len(cases)}", flush=True)
+                # 进度里带判定码计数：明细被截断时也看得出整体分布（全量仍在 summaries/ 与 report.*）
+                tally = Counter(summary["verdict"]["code"] for summary in case_summaries)
+                print(f"[cases] 判读 {env_index + 1}/{len(cases)}：" +
+                      "，".join(f"{code} {count}" for code, count in tally.most_common()),
+                      flush=True)
 
         # ------------------------------------------------------------ 报告
         grades = sorted({case.grade_deg for case in cases})
