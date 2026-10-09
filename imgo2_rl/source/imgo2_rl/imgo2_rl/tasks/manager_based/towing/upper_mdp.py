@@ -163,10 +163,11 @@ class HierarchicalVelocityAction(ActionTerm):
         self._policy_to_asset = torch.tensor(
             [asset_names.index(name) for name in self._policy_cfg.joint_names],
             dtype=torch.long, device=env.device)
-        # 冻结策略**自己**输出的关节位置目标（绝对、策略关节顺序），**不含上层残差**。
-        # 与 `_held_joint_targets` 的区别：后者实际下发的是 `joint_targets + delta_joint_pos`。
-        # 供 `low_level_position_error_l2` 用：它衡量「底层跟不跟得上自己的目标」，
-        # 残差是上层意图、不能混进来（混了就变成"罚上层的动作"，与 action_* 重复）。
+        # 冻结策略**自己**输出的关节位置目标（= 「底层期望」/ 稳定步态），供
+        # `low_level_position_error_l2` 的 `reference="frozen"` 分支当参考量。
+        # ⚠ 必须在 `_policy_to_asset` **之后**初始化（要用它取策略关节顺序）——
+        # 2026-10-09 曾插到前面，训练一启动就 `AttributeError: ... has no attribute
+        # '_policy_to_asset'`（本机无 Isaac Lab，离线测试没覆盖到这个顺序）。
         self.loco_joint_targets = self._asset.data.default_joint_pos[
             :, self._policy_to_asset].clone()
         robot_body_ids, _ = self._asset.find_bodies([cfg.robot_body_name])
@@ -176,6 +177,28 @@ class HierarchicalVelocityAction(ActionTerm):
         if (len(robot_body_ids) != 1 or len(cart_body_ids) != 1
                 or len(wheel_joint_ids) != 4 or len(wheel_body_ids) != 4):
             raise RuntimeError("upper towing adapter requires one robot base, one cart base, and four wheels")
+        # 足端 body：按**接触传感器**的 `body_names` 顺序映射到资产 body id。
+        # Isaac Lab 的标准写法（`isaaclab_tasks/.../locomotion/velocity/mdp/rewards.py:feet_slide`）
+        # 用两个 SceneEntityCfg 各自解析 body_ids 后按下标配对，隐含「传感器与资产同序」的假设；
+        # 这里按名字映射，顺序不一致也能正确配对（配错会静默把 A 脚的速度算到 B 脚上）。
+        if cfg.foot_contact_sensor_name not in env.scene.sensors:
+            raise RuntimeError(
+                f"场景里没有足端接触传感器 {cfg.foot_contact_sensor_name!r}"
+                f"（现有：{sorted(env.scene.sensors.keys())}）")
+        foot_sensor = env.scene.sensors[cfg.foot_contact_sensor_name]
+        unknown = [name for name in foot_sensor.body_names if name not in set(self._asset.body_names)]
+        if unknown:
+            raise RuntimeError(f"足端接触传感器的 body {unknown} 不在机器人资产里")
+        # 数量也必须是 4（四条腿的 `*_FOOT`）。少了不能静默通过：`body_lin_vel_w[:, []]`
+        # 会得到 (N,0,2)、求和恒为 0，`feet_slide` 就变成一项永远为 0 的假奖励。
+        if len(foot_sensor.body_names) != 4:
+            raise RuntimeError(
+                f"足端接触传感器 {cfg.foot_contact_sensor_name!r} 解析出 "
+                f"{len(foot_sensor.body_names)} 个 body（{list(foot_sensor.body_names)}），"
+                f"应为 4 个（FL/FR/RL/RR_FOOT）")
+        self._foot_body_ids = torch.tensor(
+            [self._asset.body_names.index(name) for name in foot_sensor.body_names],
+            dtype=torch.long, device=env.device)
         ratio = cfg.low_level_control_dt / cfg.physics_dt
         if abs(ratio - round(ratio)) > 1.0e-6:
             raise ValueError("low_level_control_dt must be an integer multiple of physics_dt")
@@ -355,8 +378,8 @@ class HierarchicalVelocityAction(ActionTerm):
                 joint_pos=self._asset.data.joint_pos[:, self._policy_to_asset],
                 joint_vel=self._asset.data.joint_vel[:, self._policy_to_asset]))
             self.last_loco_action.copy_(output.action)
-            # 先记下冻结策略**自己**的目标（不含残差），再叠加残差下发。两处顺序不能反：
-            # `loco_joint_targets` 必须是纯底层输出，否则新的跟踪误差惩罚就变成罚上层动作了。
+            # 顺序不能反：先记下**底层期望**（不含残差），再叠加残差下发。反了参考量就含残差，
+            # 该项就从"实际离期望多远"变成"PD 跟不跟得上下发目标"，是另一项语义。
             self.loco_joint_targets.copy_(output.joint_targets)
             # 残差加在**关节位置目标**上（`joint_targets` 与残差同为策略关节顺序），
             # 每次冻结策略刷新都要重算：残差在两次上层更新之间不变，但底层输出每 20 ms 变。
@@ -517,6 +540,9 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     initial_ground_friction: float = 0.8
     initial_wheel_damping: float = 0.032
     robot_body_name: str = "base"
+    # 足端接触传感器（场景里由 `upper_env_cfg` 注册，`{ENV_REGEX_NS}/Robot/.*_FOOT`）。
+    # `mdp.feet_slide` 用它判着地；body 顺序按该传感器的 `body_names` 映射到资产 id。
+    foot_contact_sensor_name: str = "foot_contacts"
     cart_body_name: str = "base_link"
     cart_wheel_joint_names: tuple[str, ...] = (
         "wheel_fl_joint", "wheel_fr_joint", "wheel_rl_joint", "wheel_rr_joint")
@@ -675,27 +701,56 @@ def joint_vel_policy_order(env):
     term = _term(env); return term._asset.data.joint_vel[:, term._policy_to_asset]
 
 
-def low_level_position_error_l2(env):
-    """冻结底层策略**自己输出**的关节位置目标 vs 实测关节位置的平方误差（不含上层残差）。
+def low_level_position_error_l2(env, reference="commanded"):
+    """底层**期望关节位置**与实际关节位置的平方误差（rad²）。
 
-    量取的是 `term.loco_joint_targets`（= `output.joint_targets`，即
-    `default_dof_pos + action_scale · clip(action)`，绝对位置、策略关节顺序），**不是**实际
-    下发的 `output.joint_targets + delta_joint_pos`。两者不能混：本项要回答的是
-    「底层这一步跟不跟得上它自己的目标」，残差是上层意图，混进来就退化成罚上层动作、
-    与 `action_magnitude`／`action_rate` 重复。
+    `reference` 决定"期望"取哪个（用户 2026-10-09 定为 `commanded`）：
 
-    与那两项的分工：
-    - `action_magnitude`／`action_rate` 罚**残差本身**（幅值／变化率）；
-    - 本项罚**残差造成的后果**——位置跟踪误差大，通常意味着 PD 饱和、接触约束顶住、
-      或腿被压住，是真实的可控性信号。它不直接限制残差大小，而是限制「残差把腿带离
-      冻结步态的程度」。
+    - `"commanded"`（当前）：期望 = **底层输出 + 上层残差** = 真正下发给 PD 的目标
+      （`_held_joint_targets`）。残差被参考量抵消 ⇒ 误差 = 纯 PD 跟踪误差 `e_PD`，回答
+      「底层达没达到要求的位置」。残差的作用是"稳住角度跟踪"时，它调整的正是**期望**，
+      所以这里量的就是"调整后的期望达成了没有"。
+    - `"frozen"`：期望 = 底层策略**自己**的输出（稳定步态、不含残差）。此时
+      `q_act − q_exp = δ + e_PD`（含残差），语义变成"实际离底层意图多远"，会把 δ 一起罚。
 
-    单位是 rad²（12 个关节求和，未取均值）。量级参考：逐关节 RMS 0.05 rad ⇒ Σ≈0.03。
-    权重按此标定（见 `upper_env_cfg.UpperRewardsCfg.low_level_pos_error`），**待实跑复核**。
+    两处缓存都在 action term 里维护（`_held_joint_targets[:, _policy_to_asset]` 与
+    `loco_joint_targets`），都是**策略关节顺序**，可直接与 `joint_pos[:, _policy_to_asset]` 相减。
+
+    单位 rad²（12 关节求和，未取均值）。冒烟实测（2026-10-09，64 环境 20 轮）：`frozen` 口径
+    Σ≈0.34 rad²，按 `action_magnitude` 反推其中约 0.12 来自残差、0.22 来自 PD 误差。
     """
     term = _term(env)
     actual = term._asset.data.joint_pos[:, term._policy_to_asset]
-    return (actual - term.loco_joint_targets).square().sum(dim=1)
+    if reference == "commanded":
+        expected = term._held_joint_targets[:, term._policy_to_asset]
+    elif reference == "frozen":
+        expected = term.loco_joint_targets
+    else:
+        raise ValueError(f"reference 必须是 'commanded' 或 'frozen'，收到 {reference!r}")
+    return (actual - expected).square().sum(dim=1)
+
+
+def feet_slide(env, sensor_name, contact_threshold=1.0):
+    """支撑脚不许打滑：**着地**足的机体（水平）速度模长之和（m/s）。
+
+    公式与 PPO rough 的 `feet_slide` 一致（Isaac Lab
+    `isaaclab_tasks/.../locomotion/velocity/mdp/rewards.py`，那边权重 −0.05、足端正则 `.*_FOOT`）：
+
+        Σ_feet ‖v_foot,xy‖ · 1(net_forces_w_history 的历史最大合力 > contact_threshold)
+
+    - 着地门控用 `net_forces_w_history` 的**历史最大合力**（≥1 N 视为着地），与正本一致：
+      单拍的力抖动不会把着地误判成腾空。
+    - body 顺序按**传感器**的 `body_names` 映射到资产 id（见 action term 的 `_foot_body_ids`），
+      不依赖正本那种"传感器与资产同序"的隐含假设。
+    - 它是**模长之和**（不是平方和、不是均值）：着地脚静止时 ≈0，打滑时线性增长。
+      注意它天然可被"走慢"降低 ⇒ 与 `tracking_velocity` 对冲，权重需一起看。
+    """
+    term = _term(env)
+    sensor = env.scene.sensors[sensor_name]
+    contacts = (sensor.data.net_forces_w_history.norm(dim=-1).max(dim=1)[0]
+                > contact_threshold)
+    body_vel = term._asset.data.body_lin_vel_w[:, term._foot_body_ids, :2]
+    return torch.sum(body_vel.norm(dim=-1) * contacts, dim=1)
 def policy_frame(env):
     """One complete actor frame; history is applied once to preserve frame-major ordering.
 
@@ -988,3 +1043,20 @@ try:
     from isaaclab.envs.mdp import time_out
 except ImportError:
     def time_out(env): return env.episode_length_buf >= env.max_episode_length - 1
+
+
+# Isaac Lab 提供的事件函数（机器人侧域随机化，参数与 AMP vel 跟踪任务逐项一致）。
+# 与上面的 `time_out` 同一处理：本模块被读取做静态检查时不需要 Isaac Lab，
+# 缺依赖时留 None，只有真正构造环境（有 Isaac Lab）才会用到。
+try:
+    from isaaclab.envs.mdp import (
+        apply_external_force_torque,
+        randomize_actuator_gains,
+        randomize_rigid_body_com,
+        randomize_rigid_body_mass,
+    )
+except ImportError:  # pragma: no cover - 只在没有 Isaac Lab 的离线机器上走到
+    apply_external_force_torque = None
+    randomize_actuator_gains = None
+    randomize_rigid_body_com = None
+    randomize_rigid_body_mass = None

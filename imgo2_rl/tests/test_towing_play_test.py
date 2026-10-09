@@ -930,7 +930,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("compliant 320", text)
         self.assertIn("0° 400", text)
         self.assertIn("env0000", text)
-        self.assertIn("20, 25 kg 超出", text)
+        # 训练上限 2026-10-09 提到 30 kg ⇒ 默认质量档全部落在分布内
+        self.assertIn("本网格的质量档全部落在训练分布内", text)
         self.assertIn("轮轴阻尼 0.032", text)
         self.assertIn("「连接 × 质量」env 数", text)
 

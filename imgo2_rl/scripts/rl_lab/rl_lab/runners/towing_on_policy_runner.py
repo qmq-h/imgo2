@@ -28,6 +28,8 @@ class TowingOnPolicyRunner:
         self.env = env
         self.device = device
         self.log_dir = log_dir
+        # 足端滞空指标的 body id 缓存（首次打印时解析，与 AMP runner 同一口径）
+        self._foot_ids = None
 
         if self.cfg["policy_class_name"] != "ActorCriticRecurrent":
             raise ValueError("Towing runner requires ActorCriticRecurrent")
@@ -261,36 +263,56 @@ class TowingOnPolicyRunner:
                     f"coll {collection_time:>5.2f}s  lrn {learn_time:>5.2f}s  "
                     f"{fps:>6.0f} sps")
             # 分项只挑最需要观察的几项，避免又变长（完整分项在 TensorBoard 的 Episode_* 里）。
-            # 2026-10-08：`reference_tracking` 已随残差方案删除（没有 reference_command 了），
-            # 目标回合不再有停车奖励，保留牵引与安全分项。
-            picks = ("action_magnitude", "action_rate", "yaw_heading",
-                     "tracking_velocity", "min_clearance", "collision", "fall")
+            # 2026-10-08：`reference_tracking` 已随残差方案删除（没有 reference_command 了）。
+            # 2026-10-09：`yaw_heading` 已关闭（横向/朝向改由 PD 外环负责），从 picks 去掉；
+            # 换成这天新加的四项——否则终端上看不到它们，只能去 TensorBoard 翻。
+            picks = ("tracking_velocity", "low_level_pos_error", "towing_force_y",
+                     "feet_slide", "stop_towing_force", "extra_distance",
+                     "obs_stop_reached", "collision", "fall", "action_rate")
             detail = "  ".join(
                 f"{k.replace('Episode_Reward/', '')[:9]}={episode_stats[k]:+.3f}"
                 for k in (f"Episode_Reward/{p}" for p in picks) if k in episode_stats)
             eta = self.tot_time / (iteration - start_iter + 1) * (total_iter - iteration) / 3600
             return f"{head}  ETA {eta:5.2f}h" + (f"\n        {detail}" if detail else "")
 
-        width, pad = 80, 26
+        # 排版与 `rl_lab/runners/amp_on_policy_runner.py::log(width=80, pad=35)` 对齐
+        # （2026-10-09 用户要求「AMP/PPO 训练时的终端形式」）：同一个 `#` 边框 + 居中标题 +
+        # 右对齐标签，分项按 `Mean episode <key>: <value>` 打印。
+        width, pad = 80, 35
+        trainer = getattr(self, "decoder_trainer", None)
+        air_time, air_fraction = self._feet_air_metrics()
+        decoder_rows = [
+            f"{'Mean decoder loss:':>{pad}} {decoder_loss.item():.4f}",
+        ]
+        for name, value in zip(("velocity", "force", "mass"),
+                               getattr(trainer, "last_parts", ())):
+            decoder_rows.append(f"{f'Mean decoder {name} loss:':>{pad}} {value:.4f}")
+        decoder_rows.append(
+            f"{'Decoder weighted KL:':>{pad}} {getattr(trainer, 'last_weighted_kl', 0.0):.4f}")
+        air_rows = ([f"{'Mean last air time (s):':>{pad}} {air_time:.4f}",
+                     f"{'Mean air-borne feet frac:':>{pad}} {air_fraction:.3f}"]
+                    if air_time is not None else
+                    [f"{'Mean last air time (s):':>{pad}} n/a"])
         lines = [
             "#" * width,
             f" Learning iteration {iteration}/{total_iter} ".center(width, " "),
             "",
             f"{'Computation:':>{pad}} {fps:.0f} steps/s "
-            f"(collection: {collection_time:.3f}s, learning: {learn_time:.3f}s)",
+            f"(collection: {collection_time:.3f}s, learning {learn_time:.3f}s)",
             f"{'Value function loss:':>{pad}} {value_loss:.4f}",
             f"{'Surrogate loss:':>{pad}} {surrogate_loss:.4f}",
-            f"{'Mean decoder loss:':>{pad}} {decoder_loss.item():.4f}",
+            *decoder_rows,
             f"{'Mean action noise std:':>{pad}} {mean_std:.2f}",
+            *air_rows,
         ]
         if reward_buffer:
             lines.append(f"{'Mean reward:':>{pad}} {statistics.mean(reward_buffer):.2f}")
             lines.append(f"{'Mean episode length:':>{pad}} {statistics.mean(length_buffer):.2f}")
         else:
             lines.append(f"{'Mean reward:':>{pad}} (本批尚无回合结束)")
-        # 每个指标一行；episode_stats 已聚合，不会重复打印同名列。
+        # 每个分项一行；`episode_stats` 已聚合，不会重复打印同名列。
         for key, value in episode_stats.items():
-            lines.append(f"{key + ':':>{pad}} {value:.4f}")
+            lines.append(f"{('Mean episode ' + key + ':'):>{pad}} {value:.4f}")
 
         avg_iter_s = self.tot_time / (iteration - start_iter + 1)
         eta_s = avg_iter_s * (total_iter - iteration)
@@ -303,6 +325,26 @@ class TowingOnPolicyRunner:
             f"{'ETA:':>{pad}} {eta_s:.1f}s ({eta_s / 3600:.2f}h)",
         ]
         return "\n".join(lines)
+
+    def _feet_air_metrics(self):
+        """四足滞空物理量 → (最近一次滞空时长均值 s, 当前腾空足比例)；拿不到时返回 (None, None)。
+
+        与 `rl_lab/runners/amp_on_policy_runner.py::_feet_air_metrics` 同一口径（同一套
+        `track_air_time` 语义），只是传感器名换成本任务的 `foot_contacts`（`.*_FOOT`）。
+        """
+        try:
+            sensor = self.env.unwrapped.scene.sensors.get("foot_contacts")
+        except AttributeError:
+            return None, None
+        if sensor is None or not hasattr(sensor.data, "last_air_time"):
+            return None, None
+        if self._foot_ids is None:
+            self._foot_ids = sensor.find_bodies(".*_FOOT", preserve_order=True)[0]
+        if len(self._foot_ids) == 0:
+            return None, None
+        last_air = sensor.data.last_air_time[:, self._foot_ids]
+        current_air = sensor.data.current_air_time[:, self._foot_ids]
+        return float(last_air.mean().item()), float((current_air > 0).float().mean().item())
 
     def _log(
         self, iteration, total_iter, collection_time, learn_time,

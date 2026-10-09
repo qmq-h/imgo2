@@ -43,9 +43,9 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   inextensible 各档 32 个；0° 各档 80 个、5°/10° 各档 40 个），每列都覆盖全部 15 个组合；
 - 分配是**纯函数**，`--dry-run` 与实跑得到同一张表。
 
-质量档默认 `5, 10, 15, 20, 25 kg`，而训练侧 `reset_work_condition` 的
-`mass_range = (5, 15) kg` ⇒ **20 / 25 kg 超出训练分布**（15 kg 是训练上界）。
-这两档的结果要单独看：它们不是「训练分布内基线够不够」的证据，而是外推检查。
+质量档默认 `5, 10, 15, 20, 25 kg`。训练侧 `reset_work_condition` 的 `mass_range` 于
+**2026-10-09 由 (5, 15) 提到 (5, 30) kg** ⇒ 这些默认档**全部落在训练分布内**了；
+若要做外推检查，需要显式传更大的 `--cart-masses`（>30 kg）并单独标注。
 
 ## 五项指标（每一项在 summary 里都有明确字段）
 
@@ -163,8 +163,9 @@ FACTORY_FLOOR_FRICTION = 0.8
 #: 这里只是 CLI 默认值；实跑时会与训练 cfg 交叉核对，不一致直接报错。
 TRAINING_WHEEL_DAMPING = 0.032
 #: 训练侧质量随机范围（`reset_work_condition.params["mass_range"]`）。
-#: 本测试台的质量档里 20 / 25 kg 超出这个范围，判读时要分开看。
-TRAINING_MASS_RANGE_KG = (5.0, 15.0)
+#: 2026-10-09 由 (5, 15) 提到 (5, 30) ⇒ 默认质量档全部落在分布内；
+#: 要做外推检查得显式传 >30 kg 的档位。
+TRAINING_MASS_RANGE_KG = (5.0, 30.0)
 DEFAULT_VELOCITIES = (0.5, 1.0, 1.5)
 DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
 #: 800 环境 × 2200 步逐物理步记录 ≈ 176 万行（约 2 GB），默认改成每 5 步（25 ms，等于
@@ -1498,9 +1499,11 @@ def planned_grid_lines(args) -> list:
                     for connection, counts in summary["mass_counts_by_connection"].items()),
         f"[plan] 训练侧质量随机范围 [{TRAINING_MASS_RANGE_KG[0]:g}, "
         f"{TRAINING_MASS_RANGE_KG[1]:g}] kg："
-        + (", ".join(f"{m:g}" for m in args.cart_masses
-                     if m > TRAINING_MASS_RANGE_KG[1]) or "（本网格没有超出）")
-        + " kg 超出该范围 ⇒ 那几档是外推检查，判读要与分布内档位分开",
+        + (("超出该范围的质量档 " + ", ".join(
+            f"{m:g} kg" for m in args.cart_masses if m > TRAINING_MASS_RANGE_KG[1])
+            + " ⇒ 那几档是外推检查，判读要与分布内档位分开")
+           if any(m > TRAINING_MASS_RANGE_KG[1] for m in args.cart_masses)
+           else "本网格的质量档全部落在训练分布内"),
         f"[plan] 物理量：地面摩擦 {args.ground_friction:g}；轮轴阻尼 "
         f"{args.wheel_damping:g} N·m·s/rad；地面/重力/传感器/资产全部沿用训练配置",
         f"[plan] 每 env：station {schedule.station_steps * schedule.dt:.2f} s"

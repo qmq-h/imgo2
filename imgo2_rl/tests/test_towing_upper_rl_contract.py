@@ -493,31 +493,138 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
 
-    def test_low_level_position_error_uses_the_frozen_target_not_the_residual_command(self):
-        """底层跟踪误差惩罚必须拿**冻结策略自己**的关节目标，不能用「目标 + 残差」。
+    def test_low_level_position_error_expectation_is_switchable(self):
+        """角度跟踪项：期望可取「含残差的下发目标」（当前）或「底层原始期望」。
 
-        用户要求：惩罚「底层输出的 pos 和真实 pos 的差距」，且明确「是底层输出的 pos 而不是
-        经过残差的 pos」。混淆两者会让该项退化成罚上层动作，与 action_magnitude/action_rate
-        重复。
+        用户 2026-10-09 定为 `reference="commanded"`（= 底层输出 + 残差，误差 = 纯 PD 误差）；
+        另一分支 `"frozen"`（底层自己输出，误差 = δ + e_PD）保留供对照。
+        两条分支都必须存在，默认必须是 `commanded`。
         """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("def low_level_position_error_l2(", mdp)
+        self.assertIn("def low_level_position_error_l2(env, reference=\"commanded\"):", mdp)
         self.assertIn("actual = term._asset.data.joint_pos[:, term._policy_to_asset]", mdp)
-        self.assertIn("return (actual - term.loco_joint_targets).square().sum(dim=1)", mdp)
-        body = mdp[mdp.index("def low_level_position_error_l2("):]
-        body = body[:body.index("\ndef ", 1)]
-        # 只看代码，跳过 docstring（docstring 自己会把 `+ delta_joint_pos` 当反例引用）
-        code = body[body.index('"""', body.index('"""') + 3) + 3:]
-        self.assertNotIn("delta_joint_pos", code)
-        self.assertNotIn("_held_joint_targets", code)
-        # 缓存来自 output.joint_targets，且叠加残差之前先记录，顺序反了就不是"底层输出"了
+        self.assertIn("expected = term._held_joint_targets[:, term._policy_to_asset]", mdp)
+        self.assertIn("expected = term.loco_joint_targets", mdp)
+        self.assertIn("return (actual - expected).square().sum(dim=1)", mdp)
+        self.assertIn("reference 必须是", mdp)          # 非法值要报错，不能静默取默认
+        # 期望的两种来源都必须被维护：下发目标 = 底层输出 + 残差；`loco_joint_targets` 在叠加前记录
+        self.assertIn("output.joint_targets + self.delta_joint_pos", mdp)
         self.assertIn("self.loco_joint_targets.copy_(output.joint_targets)", mdp)
         self.assertLess(mdp.index("self.loco_joint_targets.copy_(output.joint_targets)"),
                         mdp.index("output.joint_targets + self.delta_joint_pos"))
+        self.assertIn('params={"reference": "commanded"}', cfg)
         self.assertIn(
-            "low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-5.0)",
-            cfg)
+            "low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-0.1,", cfg)
+
+    def test_action_term_init_never_uses_an_attribute_before_defining_it(self):
+        """`HierarchicalVelocityAction.__init__` 里不得"先用后定义"。
+
+        2026-10-09 实跑踩到：回退 `loco_joint_targets` 时把它插到了 `_policy_to_asset` 前面，
+        环境一构造就
+        `AttributeError: 'HierarchicalVelocityAction' object has no attribute '_policy_to_asset'`。
+        本机无 Isaac Lab（无法构造环境），所以这条必须靠**源码顺序**守住：按行扫 `__init__`，
+        任何 `self.X` 在 `self.X = ...` 之前出现就失败（基类 `ActionTerm` 已提供的属性白名单）。
+        """
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        start = mdp.index("    def __init__(self, cfg, env):")
+        end = mdp.index("\n    def ", start + 10)
+        body = mdp[start:end]
+        # `ActionTerm.__init__` 已经提供的属性/属性器，允许先出现
+        defined = {"_cfg", "_env", "_asset", "_asset_name", "device", "num_envs", "cfg"}
+        offenders = []
+        for line in body.splitlines():
+            code = line.split("#", 1)[0]
+            if not code.strip():
+                continue
+            stripped = code.strip()
+            match = re.match(r"self\.([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)", stripped)
+            assigned = match.group(1) if match else None
+            for used in re.findall(r"self\.([A-Za-z_]\w*)", code):
+                if used == assigned or used in defined:
+                    continue
+                offenders.append((used, stripped[:70]))
+            if assigned:
+                defined.add(assigned)
+        self.assertEqual(offenders, [], f"__init__ 里先用后定义：{offenders}")
+        # 同时把这次的顺序要求钉死：策略关节映射必须先于用到它的缓存
+        self.assertLess(
+            mdp.index("        self._policy_to_asset = torch.tensor("),
+            mdp.index("        self.loco_joint_targets = self._asset.data.default_joint_pos["))
+
+    def test_robot_domain_rand_matches_the_amp_velocity_task(self):
+        """机器人侧 DR 必须与 AMP vel 跟踪任务逐项一致（用户 2026-10-09 要求「参考 amp 恢复」）。
+
+        来源：`velocity_env_cfg.py` 的 `EventCfg` + `base_move/amp_env_cfg.py` 的覆盖（作用体/
+        关节收窄）。四项：base 加质量、其余乘质量、base 质心、策略关节执行器增益。
+        另两项**刻意不恢复**（照抄会变成空操作），守卫把原因也钉住，防止以后被「补全」。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        for name in ("apply_external_force_torque", "randomize_actuator_gains",
+                     "randomize_rigid_body_com", "randomize_rigid_body_mass"):
+            self.assertIn(name, mdp)
+        self.assertIn("class UpperRobotDomainRandCfg:", cfg)
+        self.assertIn('body_names=["base"]', cfg)
+        self.assertIn('"mass_distribution_params": (-1.0, 3.0)', cfg)
+        self.assertIn('"operation": "add"', cfg)
+        self.assertIn('body_names=["^(?!.*base).*"]', cfg)
+        self.assertIn('"mass_distribution_params": (0.7, 1.3)', cfg)
+        self.assertIn('"operation": "scale"', cfg)
+        self.assertEqual(cfg.count('"recompute_inertia": True'), 2)
+        self.assertIn('"com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)}', cfg)
+        self.assertIn("randomize_robot_actuator_gains = EventTerm(", cfg)
+        self.assertIn("mdp.randomize_actuator_gains", cfg)
+        self.assertIn('"stiffness_distribution_params": (0.5, 2.0)', cfg)
+        self.assertIn('"damping_distribution_params": (0.5, 2.0)', cfg)
+        self.assertIn('"distribution": "uniform"', cfg)
+        self.assertIn("joint_names=_policy_joint_names()", cfg)
+        self.assertIn('def _policy_joint_names() -> list[str]:', cfg)
+        self.assertIn('return list(get_policy("amp").joint_names)', cfg)
+        # 不得有**生效的**注册行（docstring 里会把它们当反例引用，所以不能用子串断言）
+        active = [ln.strip() for ln in cfg.splitlines()
+                  if ln.strip().startswith(("randomize_rigid_body_material =",
+                                            "randomize_robot_material =",
+                                            "randomize_robot_external_force_torque =",
+                                            "apply_external_force_torque ="))]
+        self.assertEqual(active, [], f"这两项刻意不恢复，不应注册：{active}")
+        # 两条"为什么不恢复"的理由必须留在源码里（换行会断开，所以只查关键词）
+        self.assertIn("**每回合**都会把 robot 与", cfg)
+        self.assertIn("**每个物理步**都调用", cfg)
+        self.assertIn("robot_domain_rand: UpperRobotDomainRandCfg = UpperRobotDomainRandCfg()", cfg)
+
+    def test_feet_slide_matches_the_ppo_rough_criterion(self):
+        """支撑脚不许打滑：与 PPO rough 的 `feet_slide` 同式（Isaac Lab 正本），权重 −0.05。
+
+        正本：`Σ_feet ‖v_foot,xy‖ · 1(net_forces_w_history 历史最大合力 > 1 N)`，
+        足端正则 `.*_FOOT`。两处必须一致才能把 PPO 的干净步态结论搬过来。
+        另外本仓库改成按**传感器** `body_names` 映射到资产 body id，不依赖正本那种
+        "传感器与资产按下标同序"的隐含假设——配错会静默把 A 脚的速度算到 B 脚上。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        # 场景：足端接触传感器（传感器自身的 prim_path 允许多个 prim；filter 才受"每项一个"约束）
+        self.assertIn('prim_path="{ENV_REGEX_NS}/Robot/.*_FOOT"', cfg)
+        self.assertIn("history_length=3,", cfg)
+        self.assertIn("track_air_time=True", cfg)
+        self.assertIn("foot_contacts = ContactSensorCfg(", cfg)
+        # 奖励：与正本同式
+        self.assertIn("def feet_slide(env, sensor_name, contact_threshold=1.0):", mdp)
+        self.assertIn("sensor.data.net_forces_w_history.norm(dim=-1).max(dim=1)[0]", mdp)
+        self.assertIn("> contact_threshold)", mdp)
+        self.assertIn("body_vel = term._asset.data.body_lin_vel_w[:, term._foot_body_ids, :2]", mdp)
+        self.assertIn("return torch.sum(body_vel.norm(dim=-1) * contacts, dim=1)", mdp)
+        self.assertIn("feet_slide = RewTerm(func=mdp.feet_slide, weight=-0.05,", cfg)
+        self.assertIn('params={"sensor_name": "foot_contacts"}', cfg)
+        # body 顺序按传感器映射（不按下标配对）
+        self.assertIn("for name in foot_sensor.body_names", mdp)
+        self.assertIn("self._asset.body_names.index(name)", mdp)
+        self.assertIn('foot_contact_sensor_name: str = "foot_contacts"', mdp)
+        # 传感器缺失/体名不匹配要报错，不能静默
+        self.assertIn("场景里没有足端接触传感器", mdp)
+        self.assertIn("不在机器人资产里", mdp)
+        # 空的 body 列表会静默变成"永远为 0 的假奖励"，必须硬报错
+        self.assertIn("应为 4 个（FL/FR/RL/RR_FOOT）", mdp)
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_decoder_loss_reports_three_weighted_components(self):
@@ -757,7 +864,11 @@ class UpperLogicTests(unittest.TestCase):
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         for fragment in (
             '"speed_range": SPEED_RANGE',
-            '"mass_range": (5.0, 15.0)',
+            '"mass_range": (5.0, 30.0)',
+            # 出生**固定**（用户 2026-10-09）：三个抖动必须都是 (0, 0)
+            '"robot_x_range": (0.0, 0.0)',
+            '"robot_y_range": (0.0, 0.0)',
+            '"robot_yaw_range": (0.0, 0.0)',
             '"friction_range": (0.4, 1.2)',
             '"wheel_damping_range": (0.008, 0.032)',
             '"no_cart_fraction": 0.125',

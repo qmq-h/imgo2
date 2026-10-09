@@ -98,7 +98,9 @@ class DecoderSpec:
     def dim(self):
         return sum(dim for _, dim in self.terms)
 
-    mass_range: tuple[float, float] = (5.0, 15.0)
+    # 2026-10-09 训练侧上限由 15 提到 30 kg（`UpperEventsCfg.reset_work_condition`），
+    # 这里同步，避免契约与训练配置漂移（该字段只作文档/派生用，不参与张量归一化）。
+    mass_range: tuple[float, float] = (5.0, 30.0)
     velocity_scale: tuple[float, float] = (1.0, 0.5)
     force_scale: float = 10.0
 

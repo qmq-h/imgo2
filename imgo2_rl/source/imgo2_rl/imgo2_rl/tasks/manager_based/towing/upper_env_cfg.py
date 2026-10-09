@@ -35,6 +35,7 @@ from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import (
     POST_STOP_WINDOW_S, SPEED_RANGE, episode_timeout_s)
 from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
     BOUNDARY_MARGIN_M, FLAT_OUT_START_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
+from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
 from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
     TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter,
 )
@@ -111,6 +112,16 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Cart/wheel_rr", update_period=0.0, history_length=1,
         filter_prim_paths_expr=_ROBOT_BODY_FILTERS)
 
+    # 足端接触：供 `mdp.feet_slide`（支撑脚不许打滑）判着地。与 PPO rough 的写法一致，
+    # 传感器自己的 `prim_path` 可匹配多个 prim（本模型 4 个 `FL/FR/RL/RR_FOOT`）；
+    # 受「每项只解析一个 prim」约束的是 `filter_prim_paths_expr`，这里**不需要** filter
+    # （用合力阈值判着地）。`history_length=3` 与 Isaac Lab 标准设置相同。
+    foot_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*_FOOT", update_period=0.0, history_length=3,
+        # `track_air_time` 与 AMP 的 `contact_forces` 一致：终端要打「最近一次滞空时长」与
+        # 「当前腾空足比例」（步频的观测口），`feet_slide` 只用 `net_forces_w_history`。
+        track_air_time=True)
+
 
 @configclass
 class UpperActionsCfg:
@@ -180,8 +191,9 @@ class UpperRewardsCfg:
     **设计取向（截至 2026-10-09）**：回合是三段制（settle → tow → STOP/滑行），所以奖励按
     相位分四组——跟踪类只有 `tracking_velocity`（实测速度 vs 命令，正向驱动，全程生效）；
     抖动/可控性类三项（`action_magnitude`／`action_rate` 罚**残差本身**，
-    `low_level_pos_error` 罚**残差的后果**：冻结策略的输出目标与实测关节位置的差）；
+    `low_level_pos_error` 罚**实际离底层期望多远**：冻结策略自己输出的关节位置 vs 实测（参考量不含残差；残差 δ 是补偿这项误差的执行器））；
     拉力方向一项（`towing_force_y`：机体系 y 分量占比，要求拉力落在矢状面内）；
+    足端一项（`feet_slide`：着地脚的滑动速度，与 PPO rough 同式同权重）；
     停止类两项（`stop_towing_force`／`extra_distance`，只在指令归零之后生效）。
     **横向与朝向不在这里**：2026-10-09 用户决定用 PD 外环负责，`tracking_velocity` 也只算纵向 `vx`。
     原先与之并列的 `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
@@ -266,6 +278,19 @@ class UpperRewardsCfg:
     #   要真正闭环修正需把 F_y（或比值）加进 actor 帧，见 README 问题表 TOW-14。
     towing_force_y = RewTerm(func=mdp.towing_force_y_ratio_sq, weight=-10.0)
 
+    # ============================ 支撑脚不许打滑 ============================
+
+    # 【足端打滑】Σ_feet ‖v_foot,xy‖·1(着地)，着地判据 = 接触合力**历史最大值** > 1 N。
+    # 公式与权重都与 PPO rough 一致（`feet_slide`，−0.05；足端正则 `.*_FOOT`），本仓库实现
+    # 在 `upper_mdp.feet_slide`（按传感器 `body_names` 映射到资产 id，避免"两处同序"假设）。
+    # 用户 2026-10-09 认可加入，用来回答「负载下速度跟踪变差、而角度跟踪没变差」是否由打滑
+    # 贡献——这一项自己的 TB 曲线就是该问题的测量（着地脚静止时应 ≈0）。
+    # ⚠ 它天然可被"走慢"降低，与 `tracking_velocity` 对冲；若日志里它压过跟踪项再下调。
+    # 量级：单脚打滑 0.2 m/s × 2 只着地脚 ⇒ func=0.4 ⇒ 每步 −0.05×0.4×0.05 = −0.001
+    # （约为 `tracking_velocity` 满额的 2%）。**权重沿用 PPO 值，待实跑标定。**
+    feet_slide = RewTerm(func=mdp.feet_slide, weight=-0.05,
+                         params={"sensor_name": "foot_contacts"})
+
     # ============================ 动作平滑／幅值（治抖动）============================
 
     # 【动作变化率】‖a_t − a_{t−1}‖²，鼓励平滑。2026-09-23 由 −0.02 提到 −0.1：
@@ -282,14 +307,22 @@ class UpperRewardsCfg:
 
     # ============================ 底层可控性（残差的后果）============================
 
-    # 【底层跟踪误差】冻结策略**自己输出**的关节位置目标 vs 实测关节位置的 Σ(rad²)，
-    # **不含上层残差**（用 `output.joint_targets`，不是 `joint_targets + delta_joint_pos`）。
-    # 与 `action_magnitude`/`action_rate` 的区别：那两项罚残差本身（幅值/变化率），本项罚
-    # 残差造成的后果——位置误差大意味着 PD 饱和、接触顶住或腿被压住，是真实的可控性信号。
-    # 量级：逐关节 RMS 0.05 rad ⇒ Σ≈0.03 ⇒ 每步 −5.0×0.03×0.05 ≈ −0.0075，约为
-    # `tracking_velocity` 满额（+1.0×0.05）的 15%。**该权重是按此量级估的初值，待实跑标定**：
-    # 若日志里 `Episode_Reward/low_level_pos_error` 长期压过跟踪项，说明残差被过度压制。
-    low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-5.0)
+    # 【底层跟踪误差】**底层期望 vs 实际**：参考量是冻结策略自己输出的关节位置（稳定步态），
+    # 不是叠加残差后的下发值——用户判据「底层的期望值就是稳定步态的，残差是用来稳定角度跟踪的，
+    # 所以奖励就应该是期望和实际的比较，这之中是根本不需要残差的」。
+    # 数学上 `q_act − q_exp = δ + e_PD`：残差 δ 会出现在差里，但这不是缺陷而是**机制**——
+    # 底层因负载下垂/坡度/接触产生系统性误差时，δ ≈ −e_PD 能把实测拉回期望，δ 就是执行器。
+    # 与 `action_magnitude`/`action_rate`（罚 δ 本身）方向相反，三者权重需一起看。
+    # 量级（2026-10-09 冒烟，64 环境 20 轮）：Σ≈0.34 rad²（每关节 RMS 0.17 rad；反推约 0.12 来自
+    # 残差、0.22 来自 PD 误差）。权重演化：初值 −5.0 实测 −0.086/步 ≈ `tracking_velocity` 的 2 倍、
+    # 主导整个回报 ⇒ 用户 2026-10-09 定为 **−0.1**（每步 ≈ −0.0017）。
+    # ⚠ 若按"主目标"理解，−0.1 偏小：它只值跟踪项的约 4%，可能不足以驱动 δ 去补偿负载下垂；
+    #   而 −5.0 又会主导回报。建议区间 −0.5 ~ −1.0，待用户定/实跑标定。
+    # 用户 2026-10-09 定为 `reference="commanded"`：期望取**含残差**的下发目标，即
+    # "底层的期望 = 底层输出 + 残差"，误差 = 纯 PD 跟踪误差；要换成不含残差的底层原始
+    # 期望，把参数改成 "frozen" 即可（两条分支都有测试守卫）。
+    low_level_pos_error = RewTerm(func=mdp.low_level_position_error_l2, weight=-0.1,
+                                  params={"reference": "commanded"})
 
     # ============================ 诊断项（不塑造策略）============================
 
@@ -330,16 +363,96 @@ class UpperEventsCfg:
         mode="reset",
         params={
             "speed_range": SPEED_RANGE,
-            "mass_range": (5.0, 15.0),
+            # 2026-10-09 用户要求上限提到 30 kg（原 5–15）：更接近"重载"工况。
+            # 质量的**惯量按同一比例**缩放（见 `reset_towing_episode`），所以转动惯量自洽；
+            # 注意轮轴阻尼范围 (0.008, 0.032) 未随质量缩放 ⇒ 30 kg 时"单位质量的滚动阻力"
+            # 比 5 kg 小，这是刻意保留的建模选择（与测量台同一套参数）。
+            "mass_range": (5.0, 30.0),
             "friction_range": (0.4, 1.2),
             "wheel_damping_range": (0.008, 0.032),
-            "robot_x_range": (-0.03, 0.03),
-            "robot_y_range": (-0.02, 0.02),
-            "robot_yaw_range": (-0.03, 0.03),
+            # 出生**固定**（用户 2026-10-09）：x/y/yaw 三个抖动全部归零 ⇒ 每个 env 的出生
+            # 位姿逐回合完全一致。保留参数形状（而不是删掉）是为了随时能调回去。
+            "robot_x_range": (0.0, 0.0),
+            "robot_y_range": (0.0, 0.0),
+            "robot_yaw_range": (0.0, 0.0),
             # 约 12.5% 环境作为零负载锚点（0.125 × 800 = 100 个）。注意它是**随机**子集，
             # 会打破网格的 8/8/4 平衡——这是用户明确要求保留的域随机化。
             "no_cart_fraction": 0.125,
             "no_cart_lateral_offset": 2.0,
+        },
+    )
+
+
+def _policy_joint_names() -> list[str]:
+    """冻结 AMP 策略契约里的 12 个关节名（域随机化按它们作用，与 AMP 训练环境一致）。"""
+    return list(get_policy("amp").joint_names)
+
+
+@configclass
+class UpperRobotDomainRandCfg:
+    """**机器人侧**域随机化：参数逐项照抄 AMP vel 跟踪任务。
+
+    来源：`locomotion/velocity/velocity_env_cfg.py` 的 `EventCfg`（基类范围）+
+    `base_move/amp_env_cfg.py` 的 `__post_init__`（Imgo2 AMP 的覆盖：作用体/关节收窄）。对齐
+    这几项是为了让**冻结底层策略处于它训练时见过的分布**（它是在这套 DR 下训出来的），
+    同时给上层的 sim2real 留出机器人参数偏差。
+
+    | 项 | 模式 | 作用对象 | 参数（与 AMP 相同） |
+    |---|---|---|---|
+    | 质量（base） | startup | `base` | **加** (−1, 3) kg，`recompute_inertia=True` |
+    | 质量（其余） | startup | 除 base 外全部 | **乘** (0.7, 1.3)，`recompute_inertia=True` |
+    | 质心 | startup | `base` | x/y/z 各 ±0.05 m |
+    | 执行器增益 | reset | 12 个策略关节 | stiffness/damping **乘** (0.5, 2.0)，uniform |
+
+    **刻意不恢复的两项（照抄会变成空操作，甚至误导）**：
+
+    - `randomize_rigid_body_material`（AMP 是 startup、机器人全体、static 0.3–1.0 / dynamic
+      0.3–0.8 / restitution 0–0.5）：本任务的 `reset_towing_episode` **每回合**都会把 robot 与
+      cart 的 material 摩擦/恢复系数整体改写（`friction_range` 采样值），startup 的随机化在
+      第一个回合就被覆盖 ⇒ 恒等于没加。
+    - `randomize_apply_external_force_torque`（AMP 是 reset、作用 base、力/力矩 ±10）：
+      本任务的取绳物理 `_apply_towing_physics` **每个物理步**都调用
+      `set_external_force_and_torque(..., body_ids=[base])`，把 base 的外力通道整个覆盖 ⇒
+      reset 时写进去的随机力在 5 ms 后就被冲掉，同样恒等于没加。要真正恢复它，必须把这份
+      随机力**加进取绳物理的合力**里（另一处改动），是否要做待用户定。
+    """
+    randomize_robot_mass_base = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "mass_distribution_params": (-1.0, 3.0),
+            "operation": "add",
+            "recompute_inertia": True,
+        },
+    )
+    randomize_robot_mass_others = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["^(?!.*base).*"]),
+            "mass_distribution_params": (0.7, 1.3),
+            "operation": "scale",
+            "recompute_inertia": True,
+        },
+    )
+    randomize_robot_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=["base"]),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
+        },
+    )
+    randomize_robot_actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=_policy_joint_names()),
+            "stiffness_distribution_params": (0.5, 2.0),
+            "damping_distribution_params": (0.5, 2.0),
+            "operation": "scale",
+            "distribution": "uniform",
         },
     )
 
@@ -358,6 +471,7 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     rewards: UpperRewardsCfg = UpperRewardsCfg()
     terminations: UpperTerminationsCfg = UpperTerminationsCfg()
     events: UpperEventsCfg = UpperEventsCfg()
+    robot_domain_rand: UpperRobotDomainRandCfg = UpperRobotDomainRandCfg()
     commands = None
     curriculum = None
 
