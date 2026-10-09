@@ -36,6 +36,47 @@
 - **`JNT`（起步/停车关节响应）与出生间隙无关**：行 0–19 的起步 RMS 中位全程 0.212–0.226，
   只有「停车最小间隙」随行号单调变大（连接越长初始间距越大）。
 
+## 「起步/停车关节响应误差」的确切口径
+
+判 `JNT` 的两个量（`startup_joint_error` / `stop_joint_error`）比的是：
+
+```
+误差 = q − q*
+  q  = robot_jp_NN  = 仿真里**实测的关节角**（robot.data.joint_pos，按策略顺序 FL/FR/RL/RR × hip/thigh/shank）
+  q* = robot_jt_NN  = **当拍下发给关节的位置目标** = default_dof_pos + action_scale ⊙ clip(a, −3, +3)
+                     （默认站姿 (0, 0.87, −1.82)；缩放：髋 0.125 rad、大腿/小腿 0.25 rad）
+```
+
+**不是**与默认站姿比、也**不是**与录制参考动作/专家数据比 —— 是"我们命令关节去的角度"与"关节实际
+到达的角度"之差。语义（`joint_track_stats` 的注释）：上层任务的 12 维残差动作正是加在 `q*` 上，
+所以 `q − q*` 就是**上层能修正的那部分偏差**（包含负载把腿压塌的量）。
+
+- **窗口**：起步误差 = **拖曳相位（tow）开始后的第一个 `--transition-window`**（默认 **1.0 s**；
+  `--record-every 5` 时 = 40 个记录行），**不含**前面 1 s 的站定段；停车误差 = coast 段第一个 1.0 s。
+- **汇总**（`joint_track_stats`）：
+  - `joint_rms_rad` = **12 关节 × 窗口内全部样本池化**的 RMS = `sqrt(Σ err² / (样本数 × 12))`
+    （不是"逐关节 RMS 再取平均"）；阈值 0.10 rad；
+  - `joint_max_rad` = 窗口内**单点最大** |err|（任意关节）；阈值 0.30 rad；
+  - `worst_joint` / `per_joint_rms_rad` = 逐关节 RMS 与最大者；
+  - `torque_saturated_frac` = `|τ| > 0.95 × 23.7 N·m` 的（关节, 样本）占比。
+  - **任一超阈值即触发 `*_joint_error`**（两个原因串同名）。
+- **同窗口的另外三个「起步」量**（不是关节误差，别混）：`startup_vx_rms_err_mps`
+  = RMS(实测**体系** vx − 指令 vx)、`startup_time_to_90pct_s`（到 90% 指令并保持 0.25 s 的时刻）、
+  `startup_overshoot_ratio`。而判 `SPD` 的 `speed_mae_mps` 是 **tow 段全程**的体系 vx 与指令的 MAE。
+
+**本组数据的实测值**（800 case）：`joint_rms_rad` 中位 **0.218 rad（12.5°）**、p25 0.174 / p75 0.243 /
+范围 0.161–0.267（阈值 0.10 ⇒ 800/800 超）；`joint_max_rad` 中位 **0.876 rad**（阈值 0.30 ⇒ 800/800 超）；
+`worst_joint` 分布 **RR_shank 56% / RL_shank 29% / FL_shank 15%**（误差集中在**小腿**、后腿为主）；
+这些 case 的 `torque_saturated_frac` 中位 **0.000** ⇒ 不是力矩不够，是**负载下的小腿跟踪滞后**。
+
+具体一行（env0000，拖曳第一拍 t=1.005 s）：`FL_shank` 目标 `q* = −1.532`、实测 `q = −2.043` ⇒
+误差 **−0.511 rad**（腿比命令**更折叠**）；起步 1 s 窗口内该关节 |err| 中位 0.293 rad、最大 0.511 rad，
+而同一时刻的髋/大腿误差只有 0.05–0.12 rad —— 与"小腿比髋/大腿大 3–6 倍"的逐关节 RMS 一致。
+字段位置：`report.json → cases[i].metrics.startup.*`；`report.csv` 的 `startup_joint_rms_rad` /
+`startup_joint_max_rad` / `startup_worst_joint` / `startup_torque_sat_frac`；实现见
+[`play_towing_test.py`](../../../imgo2_rl/scripts/towing/play_towing_test.py) 的 `joint_track_stats`（675-714 行）
+与 `classify_case`（1034-1045 行）。
+
 ## 口径与限制（判读前必读）
 
 1. **阈值是未标定的工程占位**：关节起步/停车 RMS ≤ 0.10 rad、单关节 ≤ 0.30 rad、跟速 MAE ≤ 指令 20%、
