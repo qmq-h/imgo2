@@ -2248,6 +2248,13 @@ def main(args):
         case_summaries = []
         case_dirs = []
         compact_detail_printed = 0
+        # 判读阶段的进度节拍：~20 行，够看出在走（每 100 个 case 一条的话，800 环境会有近 2 分钟
+        # 完全没输出，实测被误判成「卡住」）。
+        case_progress_every = max(1, len(cases) // 20)
+        if args.compact_log:
+            print(f"[cases] 开始逐 case 判读：{len(cases)} 个；明细最多打 "
+                  f"{args.compact_log_detail} 条（`--compact-log-detail` 可调），"
+                  f"之后每 {case_progress_every} 个 case 打一条带判定码计数的进度", flush=True)
         for env_index, case in enumerate(cases):
             rows = case_rows[env_index]
             spec = specs[env_index]
@@ -2330,10 +2337,19 @@ def main(args):
                       f"滑移={_fmt(metrics['stop'].get('cart_coast_distance_m'))} "
                       f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
                       f"横向|y|max={_fmt(metrics['lane'].get('y_max_abs_m'))}", flush=True)
-            if args.compact_log and (env_index + 1) % 100 == 0:
+            if (args.compact_log and args.compact_log_detail > 0
+                    and compact_detail_printed == args.compact_log_detail
+                    and env_index + 1 == args.compact_log_detail):
+                print(f"[cases] 明细已达上限 {args.compact_log_detail} 条 —— 其余只计数与落盘"
+                      f"（只增不减的进度见下；逐 env 全量指标在 summaries/ 与 report.*）", flush=True)
+            if args.compact_log and (env_index + 1) % case_progress_every == 0:
                 # 进度里带判定码计数：明细被截断时也看得出整体分布（全量仍在 summaries/ 与 report.*）
                 tally = Counter(summary["verdict"]["code"] for summary in case_summaries)
-                print(f"[cases] 判读 {env_index + 1}/{len(cases)}：" +
+                elapsed = time.time() - started
+                rate = (env_index + 1) / max(1e-9, elapsed)
+                print(f"[cases] 判读 {env_index + 1}/{len(cases)}"
+                      f"（{elapsed:.0f}s、{rate:.1f} 个/s、ETA "
+                      f"{(len(cases) - env_index - 1) / max(1e-9, rate):.0f}s）：" +
                       "，".join(f"{code} {count}" for code, count in tally.most_common()),
                       flush=True)
 
