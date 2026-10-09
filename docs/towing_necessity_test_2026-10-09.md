@@ -375,19 +375,37 @@ if not args.headless and (step + 1) % render_interval == 0:
 新增静态守卫 `test_physics_step_must_not_render`（禁止无参 `sim.step()`，要求
 `sim.step(render=False)` 与 `sim.render()` 同时在源码里）。
 
-**验证**：`test_towing_play_test.py` **88 项 OK**；全量 `python3 -m unittest discover -s imgo2_rl/tests`
-**423 项通过 0 失败**；`py_compile`、`git diff --check` 通过。**未验证**：本会话无 GPU，
-未重跑仿真 —— 必须由训练机用同一条 3 环境 + `--record-every 1` 的命令确认：首拍 base 只该掉
-~0.1 mm、关节只该动 ~0.01 rad，起步关节 RMS 应从 0.6 rad 回落到阈值（0.10 rad）附近。
+**离线验证**：`test_towing_play_test.py` **88 项 OK**；全量 `python3 -m unittest discover -s imgo2_rl/tests`
+**423 项通过 0 失败**；`py_compile`、`git diff --check` 通过。
+
+### ⑥ 修后实跑验证（用户执行，`20261009T111933Z_50b72de5`，3 环境 × `--record-every 1`）
+
+| 量 | 修前 | 修后 | 预测 |
+|---|---|---|---|
+| 首拍 base | 0.350 → 0.343（**7 mm**） | 0.350 → **0.350**（0.2 mm） | ~0.1 mm ✅ |
+| 首拍小腿 | −1.82 → −1.721（**0.10 rad**） | −1.820 → **−1.818**（0.002 rad） | ~0.01 rad ✅ |
+| `stability.fell` | **True**（9/9） | **False**（3/3） | 不倒地 ✅ |
+| 最低 base 高 | 0.074–0.079 m | **0.256–0.259 m**（正常站高 ~0.30） | — |
+| 站定段机器人位移 | **−1.099 m** | **+0.027 m** | 正常启动窜动 ✅ |
+| 站定段最大张力 | 130–1543 N | **0 N** | 松弛不起力 ✅ |
+| 起步关节 RMS | 0.59–0.64 rad | **0.164–0.173 rad** | 回落 ✅（仍高于 0.10 阈值） |
+
+判定矩阵也从 `FALL×9` 变成 `JNT×1 / SPD×2`（无 `FALL`、无 `COL`、无 `LAT`）。⇒ **根因修复成立**。
+
+**剩下的是真实的指标缺口（不再是崩溃/倒地）**：起步关节 RMS 0.164–0.173 rad（阈值 0.10，单关节峰值
+0.589 对 0.30）、跟速 MAE 0.088–0.128 m/s（对 0.5 m/s 指令是 18–26%，阈值 20%）。注意这 3 个 case
+**全是 row0 的 compliant**，也就是出生几何间隙只有 8.8 mm 的那一档（见 ②）——「起步就被小车约束」
+与这两个指标超限的关系尚未分开。**下一步**：跑一列 20 个长度（`--num-envs 20` = 第 0 列、row 0–19，
+间隙从 8.8 mm 到 0.337 m 单调变化），看 JNT/SPD 是否随出生间隙单调改善；若与间隙无关，再谈阈值标定
+（阈值本身仍是未标定的工程占位）。
 
 ## 未验证（缺什么才能完成）
 
-1. **修复本身还没有实跑验证**：根因（物理步进走了 `sim.step()` 的 render 分支 ⇒ 一帧约 10 个物理 tick）
-   已由 `--record-every 1` 的逐物理步数据定位，代码已改并加静态守卫（见上一节 ⑤），但**本会话无 GPU**
-   （无 `/dev/nvidia*`、`torch.cuda.is_available() == False`）⇒ 必须由训练机重跑
-   `--num-envs 3 --record-every 1` 确认首拍量级与起步关节 RMS。若修好后仍有残留塌陷，
-   下一档怀疑是 200 Hz 显式 PD 与腿链**无 armature**（MuJoCo 模型是 `damping=1 armature=0.1`，
-   URDF/Isaac 侧没有任何 armature）—— 那时再考虑给 `actuators` 加 `armature`。
+1. **根因修复已实跑验证**（见 ⑥：首拍量级、`fell`、站定段位移/张力全部对上预测），但**剩余指标缺口未查**：
+   起步关节 RMS 与跟速 MAE 仍超阈值，且这 3 个 case 全落在出生间隙最紧的 row0 ⇒ 需要一列 20 个长度
+   （`--num-envs 20`）把「出生间隙」这个变量分开；阈值本身也仍未标定。
+   若后续出现与本次不同的残留塌陷，下一档怀疑是 200 Hz 显式 PD 与腿链**无 armature**
+   （MuJoCo 模型是 `damping=1 armature=0.1`，URDF/Isaac 侧没有任何 armature）。
 2. **坡度曲线上没有任何数值**：出生下落、上坡绳被拽直、下坡小车自己溜向机器人这三类瞬态
    都只有推理，没有数据。
 3. **阈值未标定**：关节 RMS/单关节上限是工程占位，首轮数据出来前 `JNT` 不能当定论。
