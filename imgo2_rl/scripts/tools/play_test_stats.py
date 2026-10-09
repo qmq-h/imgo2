@@ -133,19 +133,21 @@ def segment_stats(case_dirs, summaries, *, limit=None, stride=1):
     for case_dir in picked:
         summary = by_slug[case_dir.name]
         grade = f"{summary['case']['grade_deg']:g}°"
+        # 是否拖车：新 run 写在 case 字典里；旧 run 没有该字段时用文件名后缀兜底。
+        cart_present = bool(summary["case"].get("cart_present", "_nocart" not in case_dir.name))
         with (case_dir / "tow.csv").open(encoding="utf-8") as stream:
             for row in csv.DictReader(stream):
                 if row["phase"] != "tow":
                     continue
                 segment = segment_of(float(row["robot_progress_m"]))
                 speed = f"{float(row['user_cmd_mps']):g}"
-                speed_matrix.setdefault(segment, {}).setdefault(
+                speed_matrix.setdefault(cart_present, {}).setdefault(segment, {}).setdefault(
                     speed, {"sumsq": 0.0, "n": 0})
-                speed_matrix[segment][speed]["sumsq"] += sum(
+                speed_matrix[cart_present][segment][speed]["sumsq"] += sum(
                     (float(row[f"robot_jp_{j:02d}"]) - float(row[f"robot_jt_{j:02d}"])) ** 2
                     for j in range(12)) / 12.0
-                speed_matrix[segment][speed]["n"] += 1
-                key = (grade, segment)
+                speed_matrix[cart_present][segment][speed]["n"] += 1
+                key = (cart_present, grade, segment)
                 bucket = groups.setdefault(key, {
                     "sum_e": [0.0] * 12, "sum_e2": [0.0] * 12, "sum_abs_tau": [0.0] * 12,
                     "sum_vx_err": 0.0, "sum_z": 0.0, "n": 0, "cases": set()})
@@ -163,14 +165,19 @@ def segment_stats(case_dirs, summaries, *, limit=None, stride=1):
     return groups, picked, speed_matrix
 
 
-def print_segments(groups, picked) -> None:
-    print(f"\n## 按剖面分段（拖曳段；样本 {len(picked)} 个 case）")
-    print("  段 = `robot_progress_m` 落点；q* = 当拍下发的关节目标；误差 = q − q*（12 关节）")
+def _segment_block(title, groups, presence, picked) -> dict:
+    """打印某一边（拖曳 / 无负载）的分段表，并返回 {(坡度, 段): 指标字典} 供差值表使用。"""
+    subset = {key: value for key, value in groups.items() if key[0] is presence}
+    print(f"\n### {title}")
+    if not subset:
+        print("（这一边没有样本：无负载需要 `--no-cart-fraction > 0`；拖曳需要 < 1）")
+        return {}
     print(f"{'坡度':>5s} {'剖面段':>11s} {'case':>5s} {'行':>6s} {'池化RMS':>8s} "
-          f"{'平均|均值|':>10s} {'平均动态std':>11s} {'平均|τ|':>8s} {'|vx−cmd|':>9s} {'base z':>7s}")
-    for grade in sorted({key[0] for key in groups}, key=lambda g: float(g.rstrip("°"))):
+          f"{'静差|均值|':>10s} {'动态std':>8s} {'平均|τ|':>8s} {'|vx−cmd|':>9s} {'base z':>7s}")
+    out = {}
+    for grade in sorted({key[1] for key in subset}, key=lambda g: float(g.rstrip("°"))):
         for segment in SEGMENT_ORDER:
-            bucket = groups.get((grade, segment))
+            bucket = subset.get((presence, grade, segment))
             if not bucket or bucket["n"] == 0:
                 continue
             n = bucket["n"]
@@ -179,26 +186,57 @@ def print_segments(groups, picked) -> None:
             stds = [math.sqrt(max(0.0, e2 / n - m * m))
                     for e2, m in zip(bucket["sum_e2"], means)]
             pooled = math.sqrt(sum(v * v for v in rms) / 12.0)
+            static = sum(abs(v) for v in means) / 12.0
+            dynamic = sum(stds) / 12.0
+            vx_err = bucket["sum_vx_err"] / n
+            out[(grade, segment)] = {"pooled": pooled, "static": static, "dynamic": dynamic,
+                                     "vx_err": vx_err, "cases": len(bucket["cases"]), "rows": n}
             print(f"{grade:>5s} {segment:>11s} {len(bucket['cases']):5d} {n:6d} {pooled:8.3f} "
-                  f"{sum(abs(v) for v in means) / 12.0:10.3f} "
-                  f"{sum(stds) / 12.0:11.3f} "
-                  f"{sum(bucket['sum_abs_tau']) / (n * 12):8.2f} "
-                  f"{bucket['sum_vx_err'] / n:9.3f} {bucket['sum_z'] / n:7.3f}")
+                  f"{static:10.3f} {dynamic:8.3f} "
+                  f"{sum(bucket['sum_abs_tau']) / (n * 12):8.2f} {vx_err:9.3f} "
+                  f"{bucket['sum_z'] / n:7.3f}")
+    return out
 
 
-def print_segment_speed_matrix(groups) -> None:
-    """段 × 速度 的池化 RMS —— 远端段只有快档到得了，这张表用来暴露那个混杂。"""
-    speeds = sorted({speed for per_speed in groups.values() for speed in per_speed},
-                    key=float)
-    print("\n### 段 × 速度（池化 RMS，rad；`-` = 该组合没有样本）")
-    print(f"{'剖面段':>11s} " + " ".join(f"{speed:>8s}" for speed in speeds))
-    for segment in SEGMENT_ORDER:
-        cells = []
-        for speed in speeds:
-            bucket = groups.get(segment, {}).get(speed)
-            cells.append("       -" if not bucket else
-                         f"{math.sqrt(bucket['sumsq'] / bucket['n']):8.3f}")
-        print(f"{segment:>11s} " + " ".join(cells))
+def print_segments(groups, picked) -> None:
+    print(f"\n## 按剖面分段（拖曳段；样本 {len(picked)} 个 case）")
+    print("  段 = `robot_progress_m` 落点；q* = 当拍下发的关节目标；误差 = q − q*（12 关节）；"
+          "静差 = 12 关节的 |mean(e)| 平均，动态 = 其 std 平均")
+    print("  注：0° lane 的「上坡/坡顶/下坡」只是**剖面位置**（坡度本身是 0，base z 可见高度不变）；"
+          "5°/10° lane 才是真坡。无负载（`_nocart`）与拖曳在同一轮 run 里同时出现时会给差值表。")
+    towed = _segment_block("拖曳（有负载，cart present）", groups, True, picked)
+    free = _segment_block("无负载（`_nocart` env）", groups, False, picked)
+    shared = sorted(set(towed) & set(free), key=lambda key: (float(key[0].rstrip("°")), SEGMENT_ORDER.index(key[1])))
+    if shared:
+        print("\n### 差值（拖曳 − 无负载；正 = 拖曳更差）")
+        print(f"{'坡度':>5s} {'剖面段':>11s} {'Δ池化RMS':>10s} {'Δ静差':>8s} {'Δ动态':>8s} {'Δ|vx−cmd|':>11s}")
+        for key in shared:
+            a, b = towed[key], free[key]
+            print(f"{key[0]:>5s} {key[1]:>11s} {a['pooled'] - b['pooled']:+10.3f} "
+                  f"{a['static'] - b['static']:+8.3f} {a['dynamic'] - b['dynamic']:+8.3f} "
+                  f"{a['vx_err'] - b['vx_err']:+11.3f}")
+    else:
+        print("\n（没有可对比的 (坡度, 段)：需要同一轮 run 里既有拖曳也有无负载 env —— "
+              "例如 `--no-cart-fraction 0.125`）")
+
+
+def print_segment_speed_matrix(matrix) -> None:
+    """段 × 速度 的池化 RMS（拖曳/无负载各一块）—— 远端段只有快档到得了，用它暴露这个混杂。"""
+    for presence, label in ((True, "拖曳（有负载）"), (False, "无负载")):
+        per_segment = matrix.get(presence)
+        if not per_segment:
+            continue
+        speeds = sorted({speed for per_speed in per_segment.values() for speed in per_speed},
+                        key=float)
+        print(f"\n### 段 × 速度：{label}（池化 RMS，rad；`-` = 该组合没有样本）")
+        print(f"{'剖面段':>11s} " + " ".join(f"{speed:>9s}" for speed in speeds))
+        for segment in SEGMENT_ORDER:
+            cells = []
+            for speed in speeds:
+                bucket = per_segment.get(segment, {}).get(speed)
+                cells.append("        -" if not bucket else
+                             f"{math.sqrt(bucket['sumsq'] / bucket['n']):9.3f}")
+            print(f"{segment:>11s} " + " ".join(cells))
 
 
 def med(values):

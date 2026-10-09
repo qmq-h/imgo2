@@ -451,8 +451,22 @@ if not args.headless and (step + 1) % render_interval == 0:
 **读法**：`q−q*` 随**速度**涨得比随**坡度**明显（0.161→0.236），静差部分（≈0.08）几乎不变
 ⇒ 再次印证它是"PD 顺从性 + 跟随滞后"；真正随坡度恶化的是**跟速**（10° 上坡 0.398 vs 平地 0.169）。
 
-**待做**：跑 `--no-cart-fraction 1.0` 一轮（同 800 环境、同指令、同剖面），用同一个 `--segments`
-出无负载分段统计，与上表逐格对比 —— **差值才是"拖曳造成的"**。
+**待做（用户 2026-10-09 定的新测试形态）**：**同一轮 run 里既有拖曳、也有少量无负载样本** ——
+`--no-cart-fraction 0.125` ⇒ **100/800** 个 env 不拖车，分布是：列 {0,8,16,24,32} × 全部 20 行，
+坡度 0°×60 / 5°×20 / 10°×20，连接 compliant 40 / rigid 40 / inextensible 20，
+速度 0.5/1/1.5 = 37/31/32，质量 5/10/15/20/25 各 20。这样比"跑一整轮无负载"更好：
+两边的场景、指令、地形、判读口径**完全同一轮**，只有负载这一个变量不同。
+
+```
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
+    --headless --compact-log --no-cart-fraction 0.125 --write-csv all
+python3 imgo2_rl/scripts/tools/play_test_stats.py --latest --segments --segments-limit 0
+```
+
+`--segments` 现在输出**两块**（拖曳 / 无负载）+ 一张**差值表**（拖曳 − 无负载，正 = 拖曳更差），
+外加**每一边的「段 × 速度」矩阵**；判定与分段都按「平地（0° lane）/ 斜坡（5°/10° lane，再分
+出生平地·上坡·坡顶·下坡·出口平地 5 段）」给。注意 0° lane 的「上坡/坡顶/下坡」只是**剖面位置**
+（坡度是 0、base z 不变），真坡只有 5°/10° lane。
 
 ## 未验证（缺什么才能完成）
 
