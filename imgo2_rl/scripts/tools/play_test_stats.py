@@ -22,7 +22,9 @@ import argparse
 import csv
 import glob
 import json
+import math
 import os
+import re
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -76,6 +78,127 @@ def metric_of(case: dict) -> dict:
         "clearance_unavailable": tw.get("clearance_unavailable_samples"),
         "settle_tension": tw.get("settle_max_tension_n"),
     }
+
+
+# ---------------------------------------------------------------- 剖面分段统计
+
+#: lane 局部 x 的剖面分段（边界与 `mdp/slope_geometry.py` 同源，不另写一份魔数）
+SEGMENT_BOUNDS = ((0.0, 2.25, "平地(出生)"), (2.25, 5.25, "上坡"), (5.25, 6.0, "坡顶"),
+                  (6.0, 9.0, "下坡"), (9.0, float("inf"), "平地(出口)"))
+SEGMENT_ORDER = ("平地(出生)", "上坡", "坡顶", "下坡", "平地(出口)")
+
+
+def segment_of(progress_m: float) -> str:
+    """`robot_progress_m`（相对 lane 原点的水平行程）→ 剖面分段名。"""
+    if progress_m < 0.0:
+        return "平地(出生)"
+    for low, high, name in SEGMENT_BOUNDS:
+        if low <= progress_m < high:
+            return name
+    return "平地(出口)"
+
+
+def segment_stats(case_dirs, summaries, *, limit=None, stride=1):
+    """按剖面分段统计 `q − q*`、力矩与跟速（读 `env*/tow.csv` 的拖曳段）。
+
+    为什么需要它：`startup_joint_error` 只看拖曳开始后的第一个 1 s —— 那 1 s 里机器人几乎
+    都在**出生平地**上（0.5 m/s 走 0.5 m、1.5 m/s 走 1.5 m，而出生平地段有 2.25 m），
+    坡上发生的事完全没进指标。分段统计按 `robot_progress_m` 把每行归到
+    平地(出生)/上坡/坡顶/下坡/平地(出口)，于是「误差随剖面怎么变」可以直接看出来，
+    拖曳与无负载两轮用同一套口径直接对比。
+    """
+    by_slug = {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in summaries}
+    entries = []
+    for case_dir in case_dirs:
+        if case_dir.name not in by_slug:
+            continue
+        matched = re.match(r"env\d+_c(\d+)r(\d+)_", case_dir.name)
+        column, row = (int(matched.group(1)), int(matched.group(2))) if matched else (0, 0)
+        entries.append((column, row, case_dir))
+    # 抽样必须**按 (列, 行) 网格**铺开：按目录序号等距会只落到少数几列上（实测 40 个样本
+    # 只命中 col 0 与 col 20 ⇒ 10° 档一个都没有）。列方向默认取 10 档（含 0/5/10°），
+    # 行方向按 limit 铺开。
+    picked = [case_dir for _, _, case_dir in entries]
+    if limit and len(entries) > limit:
+        columns = sorted({column for column, _, _ in entries})
+        rows = sorted({row for _, row, _ in entries})
+        n_columns = min(len(columns), 10)
+        n_rows = max(1, limit // n_columns)
+        column_stride = max(1, len(columns) // n_columns)
+        row_stride = max(1, len(rows) // n_rows)
+        picked = [case_dir for column, row, case_dir in entries
+                  if column % column_stride == 0 and row % row_stride == 0]
+    groups = {}
+    speed_matrix = {}
+    for case_dir in picked:
+        summary = by_slug[case_dir.name]
+        grade = f"{summary['case']['grade_deg']:g}°"
+        with (case_dir / "tow.csv").open(encoding="utf-8") as stream:
+            for row in csv.DictReader(stream):
+                if row["phase"] != "tow":
+                    continue
+                segment = segment_of(float(row["robot_progress_m"]))
+                speed = f"{float(row['user_cmd_mps']):g}"
+                speed_matrix.setdefault(segment, {}).setdefault(
+                    speed, {"sumsq": 0.0, "n": 0})
+                speed_matrix[segment][speed]["sumsq"] += sum(
+                    (float(row[f"robot_jp_{j:02d}"]) - float(row[f"robot_jt_{j:02d}"])) ** 2
+                    for j in range(12)) / 12.0
+                speed_matrix[segment][speed]["n"] += 1
+                key = (grade, segment)
+                bucket = groups.setdefault(key, {
+                    "sum_e": [0.0] * 12, "sum_e2": [0.0] * 12, "sum_abs_tau": [0.0] * 12,
+                    "sum_vx_err": 0.0, "sum_z": 0.0, "n": 0, "cases": set()})
+                for joint in range(12):
+                    error = (float(row[f"robot_jp_{joint:02d}"])
+                             - float(row[f"robot_jt_{joint:02d}"]))
+                    bucket["sum_e"][joint] += error
+                    bucket["sum_e2"][joint] += error * error
+                    bucket["sum_abs_tau"][joint] += abs(float(row[f"robot_tau_{joint:02d}"]))
+                bucket["sum_vx_err"] += abs(float(row["robot_vx_b_mps"])
+                                            - float(row["user_cmd_mps"]))
+                bucket["sum_z"] += float(row["robot_z_m"])
+                bucket["n"] += 1
+                bucket["cases"].add(case_dir.name)
+    return groups, picked, speed_matrix
+
+
+def print_segments(groups, picked) -> None:
+    print(f"\n## 按剖面分段（拖曳段；样本 {len(picked)} 个 case）")
+    print("  段 = `robot_progress_m` 落点；q* = 当拍下发的关节目标；误差 = q − q*（12 关节）")
+    print(f"{'坡度':>5s} {'剖面段':>11s} {'case':>5s} {'行':>6s} {'池化RMS':>8s} "
+          f"{'平均|均值|':>10s} {'平均动态std':>11s} {'平均|τ|':>8s} {'|vx−cmd|':>9s} {'base z':>7s}")
+    for grade in sorted({key[0] for key in groups}, key=lambda g: float(g.rstrip("°"))):
+        for segment in SEGMENT_ORDER:
+            bucket = groups.get((grade, segment))
+            if not bucket or bucket["n"] == 0:
+                continue
+            n = bucket["n"]
+            rms = [math.sqrt(total / n) for total in bucket["sum_e2"]]
+            means = [total / n for total in bucket["sum_e"]]
+            stds = [math.sqrt(max(0.0, e2 / n - m * m))
+                    for e2, m in zip(bucket["sum_e2"], means)]
+            pooled = math.sqrt(sum(v * v for v in rms) / 12.0)
+            print(f"{grade:>5s} {segment:>11s} {len(bucket['cases']):5d} {n:6d} {pooled:8.3f} "
+                  f"{sum(abs(v) for v in means) / 12.0:10.3f} "
+                  f"{sum(stds) / 12.0:11.3f} "
+                  f"{sum(bucket['sum_abs_tau']) / (n * 12):8.2f} "
+                  f"{bucket['sum_vx_err'] / n:9.3f} {bucket['sum_z'] / n:7.3f}")
+
+
+def print_segment_speed_matrix(groups) -> None:
+    """段 × 速度 的池化 RMS —— 远端段只有快档到得了，这张表用来暴露那个混杂。"""
+    speeds = sorted({speed for per_speed in groups.values() for speed in per_speed},
+                    key=float)
+    print("\n### 段 × 速度（池化 RMS，rad；`-` = 该组合没有样本）")
+    print(f"{'剖面段':>11s} " + " ".join(f"{speed:>8s}" for speed in speeds))
+    for segment in SEGMENT_ORDER:
+        cells = []
+        for speed in speeds:
+            bucket = groups.get(segment, {}).get(speed)
+            cells.append("       -" if not bucket else
+                         f"{math.sqrt(bucket['sumsq'] / bucket['n']):8.3f}")
+        print(f"{segment:>11s} " + " ".join(cells))
 
 
 def med(values):
@@ -147,6 +270,10 @@ def main(argv=None) -> int:
     ap.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="run 根目录")
     ap.add_argument("--csv", type=Path, default=None, help="把逐 case 关键指标另存为 CSV")
     ap.add_argument("--list-codes", action="store_true", help="额外打印每条失败原因的组合")
+    ap.add_argument("--segments", action="store_true",
+                    help="额外按剖面分段统计 q−q*（读 env*/tow.csv，需要 run 里保留了逐 case CSV）")
+    ap.add_argument("--segments-limit", type=int, default=40,
+                    help="分段统计最多读多少个 case（0 = 全部；默认 40，抽稀后覆盖整张网格）")
     args = ap.parse_args(argv)
 
     run = args.run or (latest_run(args.root) if args.latest or args.run is None else None)
@@ -205,6 +332,18 @@ def main(argv=None) -> int:
                 lambda c: c["metrics"]["verdict"]["code"])
     cross_table("COL（停车追尾）集中在哪：连接 × 是否 COL", cases, lambda c: c["case"]["connection"],
                 lambda c: "COL" if c["metrics"]["verdict"]["code"] == "COL" else "其它")
+
+    if args.segments:
+        case_dirs = sorted(path for path in run.glob("env*") if path.is_dir())
+        if not case_dirs:
+            print("\n（本 run 里没有 env*/tow.csv —— 默认 `--write-csv failed` 只给非 OK 的 case 留轨迹；"
+                  "想要全网格的分段统计请用 `--write-csv all` 重跑）")
+        else:
+            groups, picked, speed_matrix = segment_stats(
+                case_dirs, sorted((run / "summaries").glob("*.json")),
+                limit=(args.segments_limit or None))
+            print_segments(groups, picked)
+            print_segment_speed_matrix(speed_matrix)
 
     if args.list_codes:
         combos = Counter(tuple(r["reasons"]) for r in records if r["code"] != "OK")

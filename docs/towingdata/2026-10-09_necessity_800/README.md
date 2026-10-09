@@ -36,7 +36,7 @@
 - **`JNT`（起步/停车关节响应）与出生间隙无关**：行 0–19 的起步 RMS 中位全程 0.212–0.226，
   只有「停车最小间隙」随行号单调变大（连接越长初始间距越大）。
 
-## 「起步/停车关节响应误差」的确切口径
+## 「起步/停车关节响应误差」的确切口径l
 
 判 `JNT` 的两个量（`startup_joint_error` / `stop_joint_error`）比的是：
 
@@ -122,6 +122,21 @@ python3 - <<'PY'   # 直接复算 report.json 里的分组
 import json; r = json.load(open('docs/towingdata/2026-10-09_necessity_800/report.json')); print(r['conclusion'])
 PY
 ```
+
+## 下一步：无负载（不拖车）对照
+
+`startup_joint_error` 是「实测关节角 `q` − 当拍下发的关节目标 `q*`」，实测**符号均值 = −τ/kp**
+（PD 静差）⇒ 拖着负载必然有 ~0.2 rad，站着不动就有 0.212 rad（小腿）。所以要拿**完全不拖车**的一轮
+做参考量（用户 2026-10-09 决定：不加"站定基线"判据，直接测无负载统计量再比较）：
+
+```bash
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
+    --headless --compact-log --no-cart-fraction 1.0 --write-csv all
+python3 imgo2_rl/scripts/tools/play_test_stats.py --latest --segments --segments-limit 100
+```
+
+同一套 `--segments` 口径分别跑本目录这轮（拖曳）与无负载那轮，**逐段逐格对比**；本目录的
+`stats.txt` 里已有拖曳轮的分段结果（见「按剖面分段」一节）。
 
 ## 原始轨迹（未入库）
 

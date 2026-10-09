@@ -639,6 +639,57 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(row["reasons"], "stop_collision")
 
 
+class NoCartTests(unittest.TestCase):
+    """`--no-cart-fraction`：无负载参考测量的分配与物理屏蔽（纯逻辑 + 静态守卫）。
+
+    用途：`startup_joint_error` 是「实测关节角 − 当拍下发的关节目标」，它的**静差部分 ≈ τ/kp**
+    （PD 顺从性），拖曳与否都会有 —— 所以要拿**完全不拖车**的一轮当参考统计量比较，
+    而不是给测试台加一条"站定基线"判据（用户 2026-10-09 决定）。这一轮只改场景：
+    无小车 env 的小车横向停到 2 m 外、绳力与轮阻置 0，判定时跳过与小车有关的 `COL`/`LOW`。
+    """
+
+    def test_default_is_all_carts(self):
+        for index in range(20):
+            self.assertTrue(play.cart_present_for(index, 0.0))
+        cases = play.build_env_cases(8, [1.0], [10.0])
+        self.assertTrue(all(case.cart_present for case in cases))
+        self.assertNotIn("_nocart", cases[0].slug)
+
+    def test_fraction_one_means_no_carts_at_all(self):
+        self.assertFalse(any(play.cart_present_for(index, 1.0) for index in range(50)))
+        cases = play.build_env_cases(8, [1.0], [10.0], no_cart_fraction=1.0)
+        self.assertFalse(any(case.cart_present for case in cases))
+        self.assertTrue(cases[0].slug.endswith("_nocart"))
+        self.assertEqual(cases[0].to_dict()["cart_present"], False)
+
+    def test_middle_fraction_is_deterministic_and_close_to_requested(self):
+        cases = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES,
+                                     no_cart_fraction=0.125)
+        absent = sum(1 for case in cases if not case.cart_present)
+        self.assertEqual(absent, 100)                      # 800 × 0.125 = 100（等距抽样）
+        again = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES,
+                                     no_cart_fraction=0.125)
+        self.assertEqual([c.cart_present for c in cases], [c.cart_present for c in again])
+
+    def test_rejects_out_of_range_fraction(self):
+        with self.assertRaises(ValueError):
+            play.cart_present_for(0, -0.1)
+        with self.assertRaises(ValueError):
+            play.cart_present_for(0, 1.5)
+
+    def test_physics_and_verdicts_are_masked_for_absent_carts(self):
+        source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
+        # 绳力/轮阻必须乘 present（只靠横向距离不够稳；训练侧 cart_present 同义）
+        self.assertIn("for component in state.force_on_robot], dim=-1) * present", source)
+        self.assertIn("for component in state.force_on_cart], dim=-1) * present", source)
+        self.assertIn("wheel_damping) * present.unsqueeze(1)", source)
+        # 不拖车的 env 必须在判定前把与小车有关的量中性化（否则会报 COL/LOW）
+        self.assertIn("if not cart_present:", source)
+        self.assertIn('stop["gap_margin_low"] = False', source)
+        # 无小车 env 的文件名带 _nocart，两轮 run 可以共存并区分
+        self.assertIn('"_nocart"', source)
+
+
 class WorkConditionTests(unittest.TestCase):
     """工作条件的确定性轮转：`slot = row + column` ⇒ 质量 `slot % len(masses)`、速度每 len(masses) 个 slot 换一档。"""
 
@@ -740,7 +791,7 @@ class EnvCaseTests(unittest.TestCase):
         payload = play.build_env_cases(3, [1.0], [10.0])[2].to_dict()
         self.assertEqual(set(payload), {"env_index", "cell_index", "column", "row",
                                         "connection", "connection_length_m", "grade_deg",
-                                        "velocity_mps", "cart_mass_kg"})
+                                        "velocity_mps", "cart_mass_kg", "cart_present"})
         _json.dumps(payload)
 
     def test_env_case_summary_reports_the_distribution(self):

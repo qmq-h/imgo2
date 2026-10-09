@@ -313,6 +313,9 @@ class EnvCase:
     grade_deg: float
     velocity_mps: float
     cart_mass_kg: float
+    #: 本 env 是否拖车（`--no-cart-fraction`）：False = 小车横向停到 2 m 外、绳力/轮阻全部置 0，
+    #: 用来测「不带负载」的参考统计量（判定时也跳过与小车有关的项）。
+    cart_present: bool = True
 
     @property
     def slug(self) -> str:
@@ -321,15 +324,17 @@ class EnvCase:
         必须带 env 序号：工作条件是轮转分配的，同一个 (坡度量级, 速度, 连接, 质量) 组合
         会在多个 cell 上重复出现，只用那四项当文件名会互相覆盖。
         """
+        suffix = "" if self.cart_present else "_nocart"
         return (f"env{self.env_index:04d}_c{self.column:02d}r{self.row:02d}"
                 f"_g{self.grade_deg:g}_v{self.velocity_mps:g}"
-                f"_{self.connection}_m{self.cart_mass_kg:g}kg")
+                f"_{self.connection}_m{self.cart_mass_kg:g}kg{suffix}")
 
     def to_dict(self) -> dict:
         return {"env_index": self.env_index, "cell_index": self.cell_index,
                 "column": self.column, "row": self.row, "connection": self.connection,
                 "connection_length_m": self.length_m, "grade_deg": self.grade_deg,
-                "velocity_mps": self.velocity_mps, "cart_mass_kg": self.cart_mass_kg}
+                "velocity_mps": self.velocity_mps, "cart_mass_kg": self.cart_mass_kg,
+                "cart_present": bool(self.cart_present)}
 
 
 def work_conditions(num_envs: int, velocities, cart_masses,
@@ -373,7 +378,29 @@ def work_conditions(num_envs: int, velocities, cart_masses,
     return conditions
 
 
-def build_env_cases(num_envs: int, velocities, cart_masses) -> list:
+#: 无小车 env 的小车横向停放距离（与训练侧 `reset_towing_episode` 的
+#: `no_cart_lateral_offset` 同值；训练侧 12.5% 的锚点 env 就是这么处理的）。
+NO_CART_LATERAL_OFFSET_M = 2.0
+
+
+def cart_present_for(index: int, no_cart_fraction: float) -> bool:
+    """`--no-cart-fraction` → 第 `index` 个 env 是否拖车（**确定性**，不引入随机种子）。
+
+    `fraction = 0` ⇒ 全部拖车（默认，行为与以前完全一致）；`fraction = 1` ⇒ 全部不拖车
+    （测「无负载」参考就是这个）；中间值按 `index % period == 0` 的等距抽样，
+    `period = round(1/fraction)`（如 0.125 ⇒ 每 8 个 env 抽 1 个）。
+    """
+    if not 0.0 <= no_cart_fraction <= 1.0:
+        raise ValueError(f"no_cart_fraction 必须在 [0, 1]，收到 {no_cart_fraction!r}")
+    if no_cart_fraction <= 0.0:
+        return True
+    if no_cart_fraction >= 1.0:
+        return False
+    period = max(2, int(round(1.0 / no_cart_fraction)))
+    return index % period != 0
+
+
+def build_env_cases(num_envs: int, velocities, cart_masses, *, no_cart_fraction: float = 0.0) -> list:
     """逐 env 的 `EnvCase` 列表：cell 参数取训练网格，工作条件取 `work_conditions`。
 
     env → cell 的映射用训练侧同一函数（`connection_grid.env_spec`，row-major：列 = i % 40、
@@ -389,7 +416,8 @@ def build_env_cases(num_envs: int, velocities, cart_masses) -> list:
             env_index=index, cell_index=int(spec["grid_index"]), column=int(spec["column"]),
             row=int(spec["row"]), connection=str(spec["model_name"]),
             length_m=float(spec["length"]), grade_deg=float(spec["slope_degrees"]),
-            velocity_mps=velocity, cart_mass_kg=mass))
+            velocity_mps=velocity, cart_mass_kg=mass,
+            cart_present=cart_present_for(index, no_cart_fraction)))
     return cases
 
 
@@ -928,7 +956,8 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
                          schedule: PhaseSchedule, record_dt: float, tow_summary: dict,
                          thresholds: dict, joint_names=None, torque_limits=None,
                          transition_window_s: float = 1.0, lane_keeping: str = "off",
-                         lane_vy_limit: float = 0.4, lane_wz_limit: float = 0.8) -> dict:
+                         lane_vy_limit: float = 0.4, lane_wz_limit: float = 0.8,
+                         cart_present: bool = True) -> dict:
     """由逐记录步轨迹算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。
 
     `case` 是 `EnvCase.to_dict()`：带 env 序号、cell、连接、长度、坡度量级与工作条件。
@@ -983,7 +1012,18 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
         "stop": stop,
         "lane": lane,
         "stability": stability,
+        "cart_present": bool(cart_present),
     }
+    if not cart_present:
+        # 不拖车的 env：小车被横向停在 NO_CART_LATERAL_OFFSET_M 之外、绳力为 0 ⇒
+        # 「追尾接触」「停车余量」「几何间隙」全部没有意义（会算成"离停放的小车很远"）。
+        # 这里显式中性化，`classify_case` 就不会再产出 `COL`/`LOW`（判据本身保持不变）。
+        for key in ("contact", "clearance_at_stop_m", "min_clearance_coast_m",
+                    "min_clearance_station_m", "final_clearance_m",
+                    "time_to_contact_after_stop_s", "load_vx_at_contact_mps"):
+            stop[key] = None
+        stop["gap_margin_low"] = False
+        stop["cart_present"] = False
     metrics["verdict"] = classify_case(metrics, thresholds)
     return metrics
 
@@ -1355,6 +1395,10 @@ def parse_args(argv=None):
     parser.add_argument("--write-csv", choices=("failed", "all", "none"), default="failed",
                         help="逐记录步 CSV 的写入范围（all = 800 环境全写，可能数百 MB）")
     parser.add_argument("--headless", action="store_true", help="无显示运行")
+    parser.add_argument("--no-cart-fraction", type=float, default=0.0,
+                        help="不拖车的 env 比例（0 = 全部拖车，默认；1 = 全部不拖车 ⇒ 测无负载参考）。"
+                             "无小车 env 的小车会横向停到 2 m 外、绳力与轮阻置 0，判定时跳过"
+                             "与小车有关的项；分配是确定性的（每 round(1/fraction) 个 env 抽 1 个）")
     parser.add_argument("--compact-log", action="store_true",
                         help="逐 case 只打印非 OK 的行（+ 每 100 个 case 一条进度）；"
                              "800 环境完整网格默认会刷 800 行逐 env 判读")
@@ -1411,7 +1455,10 @@ def parse_args(argv=None):
         if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0.0:
             parser.error(f"--{name.replace('_', '-')} 必须是有限正数，收到 {value!r}")
     args.num_envs = int(args.num_envs)
-    args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses)
+    if not 0.0 <= args.no_cart_fraction <= 1.0:
+        parser.error(f"--no-cart-fraction 必须在 [0, 1]，收到 {args.no_cart_fraction!r}")
+    args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses,
+                                 no_cart_fraction=args.no_cart_fraction)
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
                                   tow_duration=args.tow_duration,
                                   coast_duration=args.coast_duration, dt=args.dt)
@@ -1459,6 +1506,9 @@ def planned_grid_lines(args) -> list:
         f"[plan] 记录：每 {args.record_every} 物理步一行（{args.record_every * args.dt * 1000:g} ms）"
         f" ⇒ 每 env 约 {recorded} 行，共约 {recorded * len(cases)} 行；CSV 策略 "
         f"{args.write_csv}",
+        (f"[plan] **无小车（无负载参考）env**：{sum(1 for case in cases if not case.cart_present)}"
+         f"/{len(cases)}（`--no-cart-fraction {args.no_cart_fraction:g}`；小车横向停 "
+         f"{NO_CART_LATERAL_OFFSET_M:g} m、绳力与轮阻置 0、跳过 COL/LOW 判定）"),
         f"[plan] 指令整形：{args.command_shaping}"
         + (f"（ramp {args.ramp_time_s:g} s）" if args.command_shaping == "ramp" else "（阶跃）"),
     ]
@@ -1864,9 +1914,9 @@ def main(args):
                                       robot_velocity=robot_v, cart_velocity=cart_v, dt=dt,
                                       robot=robot_props, cart=cart_props)
             force_robot = torch.stack([torch.as_tensor(component)
-                                       for component in state.force_on_robot], dim=-1)
+                                       for component in state.force_on_robot], dim=-1) * present
             force_cart = torch.stack([torch.as_tensor(component)
-                                      for component in state.force_on_cart], dim=-1)
+                                      for component in state.force_on_cart], dim=-1) * present
             robot.set_external_force_and_torque(link_frame_force(robot, base_ids[0], force_robot),
                                                 robot_zero_torque[:, :1],
                                                 positions=robot_attach.expand(num_envs, 1, 3),
@@ -1877,7 +1927,7 @@ def main(args):
                                                body_ids=cart_base_ids)
             effort = torch.zeros_like(cart.data.joint_pos)
             effort[:, cart_joint_ids] = viscous_resistance(
-                cart.data.joint_vel[:, cart_joint_ids], wheel_damping)
+                cart.data.joint_vel[:, cart_joint_ids], wheel_damping) * present.unsqueeze(1)
             cart.set_joint_effort_target(effort)
             return state
 
@@ -1942,6 +1992,11 @@ def main(args):
             if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
                 raise RuntimeError(f"profile_height_tensor 与标量版不一致（档位 {grade:g}°）")
 
+        # 逐 env 的「是否拖车」掩码：无小车 env 的绳力、轮阻全部置 0（训练侧 `cart_present` 同义）。
+        present = torch.tensor([1.0 if case.cart_present else 0.0 for case in cases],
+                               dtype=torch.float32, device=args.device)
+        present_mask = present > 0.5
+
         def reset_episode():
             """写死一个回合的初始状态（`Articulation.reset()` 不写位姿，必须显式重写）。
 
@@ -1953,6 +2008,10 @@ def main(args):
             robot_root[:, :3] += origins
             cart_root[:, :3] = origins + torch.tensor(spawn["cart_root"],
                                                       dtype=torch.float32, device=args.device)
+            # 无小车 env：小车沿 lane 横向停到 NO_CART_LATERAL_OFFSET_M 外（与训练侧锚点同做法），
+            # 并且绳力/轮阻在 apply_rope_and_resistance 里按 present 置 0（只靠横向距离不够稳）。
+            if not bool(present.all()):
+                cart_root[~present_mask, 1] += NO_CART_LATERAL_OFFSET_M
             robot_root[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32,
                                               device=args.device)
             cart_root[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32,
@@ -2211,7 +2270,18 @@ def main(args):
                 tow_summary=tw_summary, thresholds=thresholds,
                 joint_names=list(policy_cfg.joint_names), torque_limits=torque_limits,
                 transition_window_s=args.transition_window, lane_keeping=args.lane_keeping,
-                lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit)
+                lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit,
+                cart_present=case.cart_present)
+            if not case.cart_present:
+                # `summarize_tow` 的间隙/接触都是「机器人 ↔ 小车」的量；小车停在 2 m 外时它们
+                # 只是"很远"而不是"很好"，所以显式标注并清空，避免报告里出现误导性的读数。
+                tw_summary["cart_present"] = False
+                tw_summary["note_no_cart"] = ("无小车 env（--no-cart-fraction）：间隙/接触类字段不适用，"
+                                              "已在测试台侧中性化")
+                for key in ("min_clearance_m", "min_clearance_coast_m", "min_clearance_station_m",
+                            "final_clearance_m", "clearance_at_stop_m", "contact",
+                            "time_to_contact_after_stop_s"):
+                    tw_summary[key] = None
             metrics["summarize_tow"] = tw_summary
             summary = {
                 "case": case.to_dict(),
