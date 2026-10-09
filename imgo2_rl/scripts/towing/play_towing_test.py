@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""拖曳「上层任务必要性」基线测试台（Isaac Sim play 仿真）。
+"""拖曳「上层任务必要性」基线测试台（直接跑**训练场景**的 Isaac Sim play 仿真）。
 
 ## 这个脚本回答什么问题
 
@@ -11,6 +11,42 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 
 **本脚本不加载任何上层 checkpoint**：跑的是基线，不是策略回放。
 
+## 场景 = 训练场景（2026-10-09 起，用户确认）
+
+场景直接用 `upper_env_cfg.UpperTowingSceneCfg`（`InteractiveScene`），**不再自建平地/
+地形、也不再自己造扫描网格**：
+
+- `--num-envs`（默认 800 = 训练网格全集 `connection_grid.GRID_SIZE` = 40 列 × 20 行，
+  行距/列距由 `slope_geometry.ROW_SPACING_M` / `COLUMN_SPACING_M` 拼成一张连续地面）：
+  环境 `i` 的**连接类型 / 连接长度 / 坡度量级**直接取 `connection_grid.env_spec(i)`
+  （row-major：列 = i % 40、行 = i // 40），与训练时逐 env 的分配**逐位一致**。
+- 地形 mesh、机器人与小车资产、五个「车体 vs 机器人」接触传感器、物理材质、重力
+  （世界竖直）全部沿用训练配置；本脚本只覆盖**物理量标量**（地面摩擦、轮轴阻尼）与
+  逐 env 的工作条件。
+- 出生点统一在每条 lane 剖面的**平地段起点**（姿态竖直、单位四元数，lane 系 = 世界系）；
+  两挂点三维距 = `env_spec(i)["initial_distance"]`（绳 = 0.5·L0、刚体 = L），由纯函数
+  `spawn_offsets()` 逐 env 解出。
+- **不再有 `--slope-backend` / `--slopes` / `--connections` / `--slope-settle`**：
+  坡度量级与连接类型都是网格给定的，没有可扫的开关。
+
+## 只扫「速度 × 质量」：确定性轮转
+
+连接/长度/坡度由 cell 决定，所以工作条件只剩两项。`work_conditions()` 按**确定性轮转**
+分配（`slot = row + column`：质量 `masses[slot % len]`、速度 `velocities[(slot // len(masses)) % len]`）。
+**用 `row + column` 而不是 env 序号是关键**：列数 40 是质量档数的整数倍，用序号轮转会让质量只由
+列决定，而列同时决定连接类型与坡度量级 ⇒ `(连接, 质量)` 严重混淆（inextensible 会完全没有
+5 kg）。改后固定一列时 `slot` 随 20 行取 20 个连续整数，于是
+
+- 800 环境下**每个 cell 恰好落到一种 (速度, 质量) 组合**（cell 与 env 一一对应）；
+- 每个 (速度, 质量) 组合 50–55 个 env（`slot` 取值个数两头少中间多，不是严格 ±1）；
+- **每个 (连接 × 质量) 与 (坡度量级 × 质量) 都严格均衡**（实测 compliant/rigid 各档 64 个、
+  inextensible 各档 32 个；0° 各档 80 个、5°/10° 各档 40 个），每列都覆盖全部 15 个组合；
+- 分配是**纯函数**，`--dry-run` 与实跑得到同一张表。
+
+质量档默认 `5, 10, 15, 20, 25 kg`，而训练侧 `reset_work_condition` 的
+`mass_range = (5, 15) kg` ⇒ **20 / 25 kg 超出训练分布**（15 kg 是训练上界）。
+这两档的结果要单独看：它们不是「训练分布内基线够不够」的证据，而是外推检查。
+
 ## 五项指标（每一项在 summary 里都有明确字段）
 
 | 指标 | 字段 | 口径 |
@@ -21,93 +57,72 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 | 停止时机器人—小车距离维持 | `stop.clearance_at_stop_m` / `min_clearance_coast_m` / `final_clearance_m` / `time_to_contact_after_stop_s` / `contact` | **车头到机器人后腿的真实几何间隙**（全腿 FK，复用 `summarize_tow.py`，挂点距单独报）；接触由「车斗接触力 / 几何间隙 / 负载单步速度跃变」三路见证判定 |
 | 停止时的关节响应 | `stop.joint_rms_rad` / `joint_max_rad` / `worst_joint` / `settle_time_s` / `body_vx_rms_mps` | STOP 后 `--transition-window` 内的同一套关节跟踪误差 + 机器人从指令归零到 `|vx| < 0.05 m/s` 的耗时 |
 
-判据（阈值可用 CLI 覆盖）落成逐 case 码：`OK` / `LOW`（停车余量低）/ `JNT`（关节响应超限）/
-`SPD`（速度跟踪超限）/ `COL`（追尾接触）/ `FALL`（跌倒）/ `INV`（记录不可用）。
+判据（阈值可用 CLI 覆盖）落成逐 case 码：`OK` / `LOW`（停车余量低）/ `LAT`（横向或朝向
+保持超限）/ `JNT`（关节响应超限）/ `SPD`（速度跟踪超限）/ `COL`（追尾接触）/ `FALL`
+（跌倒）/ `INV`（记录不可用）。
 
-## 默认网格（完整分布）
+## 横向/朝向保持（`--lane-keeping pd`，默认开）
 
-- 速度档：`0.5, 1.0, 1.5 m/s`（阶跃指令，`--command-shaping ramp` 可换成固定斜坡对照）；
-- 连接：`compliant, inextensible, rigid` 三类；
-- 质量档：`5, 10, 15, 20, 25 kg`（质量与惯量按同一比例缩放，与测量台一致）；
-- 坡度：`0, +5, −5, +10, −10 deg`（`+` = 沿 +x 上坡，机器人在前、小车在后）；
-- 地面摩擦：**固定 `0.8`**（工厂地面常规值：混凝土/环氧地坪静动摩擦 0.6–0.9，本仓库
-  历来用 0.8，`--ground-friction` 可改）；
-- 共 3 × 3 × 5 × 5 = **225 case**。
+冻结策略的速度指令是 3 维 `(vx, vy, wz)`：`vx` **只由脚本调度给出、不参与任何反馈**；
+`vy`/`wz` 由横向/朝向 PD 生成，把机器人压在 lane 中线（lane 系 `y = 0`）并保持超前
+（`yaw = 0`，即 lane 的 +x 方向）。默认 `kp_y=1.0 kd_y=0.3 kp_yaw=1.5 kd_yaw=0.3`，
+限幅 `vy ≤ 0.4 m/s`、`wz ≤ 0.8 rad/s`（都在 AMP 训练过的指令范围内）。`--lane-keeping off`
+回到「只给 vx」的旧行为做对照。
 
-同一个坡度上的 45 个（速度 × 连接 × 质量）组合**并行放在 45 个环境**里跑一遍，
-逐坡度串行 ⇒ 总共 5 次仿真过程，而不是 225 次。每个环境 = 一个固定 case（逐 env 的
-小车质量、连接类型、速度指令都不同），坡度在两次过程之间切换。
+## 度量坐标系（固定 lane 系）
 
-## 坡度怎么实现（两种后端，同一套度量坐标系）
+地形是连续剖面（`slope_geometry.profile_*`），出生在平地段 ⇒ 切向 = +x、法向 = +z、
+重力世界竖直。记录里的
 
-`--slope-backend`：
-
-- **`gravity`（默认）**：不动地形，用 `TowSceneCfg` 现有的那块平地，把**重力方向转成
-  坡面的法向分解** `g = (−g·sinθ, 0, −g·cosθ)`。在随坡面倾斜的参考系里，「水平地面 +
-  倾斜重力」与「倾斜坡面 + 竖直重力」是**同一组方程**（接触法向、法向力 `mg·cosθ`、
-  下滑分量 `mg·sinθ` 逐项相同），因此这不是近似替代；冻结策略观测里的
-  `projected_gravity` 会自然看到倾斜后的重力。度量坐标系最简单（行程 = x 位移、
-  离面高度 = 绝对 z、俯仰 = 世界系俯仰），首轮建议先跑这个。
-- **`terrain`**：用远端 2026-10-09 的**真实坡面剖面**（`mdp/slope_geometry`，与训练场景
-  同源）：每条 lane 沿 +x 依次是「平地 2.25 m → 上坡 3 m → 坡顶平段 0.75 m → 下坡 3 m → 平地 2.25 m」
-  （板厚 0.35 m、跑道总长 15 m = 后 2.25 m + 前 12.75 m、半宽 3 m），坡度量级由列决定（0 / 5 / 10，**每条 lane 自带
-  一段上坡和一段下坡**，所以 `--slopes` 只接受这三个量级）。每轮的每个 case 拿一块同量级的
-  lane（cell 由 `slope_cells()` 从训练侧 40×20 网格里挑），平移到本测试台自己的紧凑网格上；
-  出生点在剖面的**平地段起点**（姿态竖直、无出生旋转），两挂点三维距 = `L0 − slack`。
-
-两个后端都用同一套**lane 系**度量：`(切向, 法向) = (+x, +z)` 由 `surface_frame()` 给出，
-记录里落成 `robot/load_progress_m`（x 行程）、`robot/load_surface_height_m`
-（**z − 局部剖面高度**）、`body_pitch_rel_rad`（世界系俯仰 + 局部坡度）。`gravity` 后端上
-剖面高度/坡度恒 0，于是退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；
-`terrain` 后端上则是真实剖面量，于是「走了多远、离面多高、翻了没有」在平地和各种坡档上
-是同一个口径。
-
-## 坡度上的站定段：驻车制动仿真（`--slope-settle`，默认 `hold`）
-
-被动小车只有轮轴黏性阻尼（`b = 0.016 N·m·s/rad`，训练侧同值），**没有驻车制动**。
-斜坡上它在站定段就会自己溜：5° 时终端速度约 0.85 m/s，1 s 站定能滚出 0.8 m ——
-远超 0.4 m 的初始松弛，绳在起拖之前就被拽直，于是所有坡度 case 都被这个瞬态主导，
-测不出控制器的差别。因此默认 `--slope-settle hold`：**只在 station 段**给四个轮子额外加
-`--hold-damping`（默认 5 N·m·s/rad）的黏性制动，起拖瞬间释放。这是明确的建模选择，
-会写进每个 case 的 `config.json` 与报告；要跑「无制动真实溜坡」用 `--slope-settle free`。
+- `robot/load_progress_m` = lane 系 x 行程；
+- `robot/load_surface_height_m` = `z − profile_height(本 env 的坡度量级, x)`（**逐 env**
+  的坡度量级参与换算，0° lane 上就是绝对 z）；
+- `body_pitch_rel_rad` = 世界系俯仰 + **局部**坡度（`profile_slope_degrees`）。
 
 ## 运行
 
-```bash
-# 只看将执行的网格，不启动仿真（标准库即可）
+```
+# 只看将执行的网格与逐 env 分配，不启动仿真（标准库即可）
 python3 imgo2_rl/scripts/towing/play_towing_test.py --dry-run
 
-# 默认完整网格（225 case，5 次仿真过程；建议 headless）
+# 默认：800 环境一次跑完（headless 建议）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py --headless
 
-# 先小规模试跑（1 个坡度 × 2 速度 × 2 连接 × 2 质量 = 8 环境）
+# 冒烟：40 环境（网格前缀，只覆盖前 40 个 cell）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
-    --headless --slopes 0 --velocities 0.5 1.0 --connections compliant rigid \
-    --cart-masses 5 25
+    --num-envs 40 --tow-duration 2.0 --coast-duration 2.0 --write-csv none
+
+# 对照：不做横向反馈 / 斜坡整形 / 只留失败轨迹
+    ... --lane-keeping off
+    ... --command-shaping ramp --ramp-time-s 1.0
+    ... --write-csv failed|all|none
 ```
 
 ## 产物
 
 ```
-<output-dir>/
-  experiment.json     运行级清单（参数、git、python、网格、阈值）
-  report.json         逐 case 摘要（含 summarize_tow 全量输出）+ 分组统计 + 结论
-  report.csv          逐 case 一行的关键指标表（便于表格工具）
-  report.md           人读报告：逐坡度判定矩阵、失败模式计数、结论与限制
-  summaries/<case>.json   每个 case 的完整摘要（总是写）
-  <case>/tow.csv + config.json   逐物理步原始记录（仅 --write-csv all|failed）
+experiment.json       场景来源、逐 env 的 cell 与工作条件分配、阈值、git
+report.md             人读：逐坡度量级判定矩阵、分组统计、结论、限制
+report.csv            每 env 一行（扁平指标）
+report.json           逐 case 摘要 + 分组统计 + 结论
+summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输出）
+<case>/tow.csv        逐记录步原始轨迹 + config.json（按 --write-csv 策略）
 ```
 
-`--write-csv` 默认 `failed`：只给非 `OK` 的 case 留原始轨迹（完整网格每步全写约 0.5 GB）。
+`--record-every` 默认 **5**（25 ms = 冻结策略周期）：800 环境 × 2200 步逐物理步记录是
+176 万行（Python dict 约 2 GB 内存），不可行；接触的速度跃变阈值已按记录步长自动放大。
 
 ## 判读与限制
 
-- 结论只由「本网格 + 本阈值」给出，不能外推：未测绳参数档（训练网格有 4 档 k/c，这里
-  默认只跑中间档 `k=4000, c=100`）、未测轮阻档、未测 breakaway/Coulomb 阻力、
-  未测跨环境隔离、未验真机。
+- 结论只由「本网格 + 本阈值」给出，不能外推：未测训练侧的域随机化（质量 20/25 kg 超出、
+  摩擦固定 0.8 而训练随机 0.4–1.2、轮轴阻尼固定 0.032 而训练随机 0.008–0.032）、
+  未测 **12.5% 无小车锚点**（本测试台所有 env 都拖车）、未测跨环境隔离、未验真机。
+- 连接类型/长度/坡度量级**不能扫**：它们由网格决定，`--num-envs` 不是 800 的整数倍时
+  只覆盖网格前缀（脚本会警告）。
 - `summarize_tow` 的 `steady_tracking_ratio` 用的是**世界系** vx 除以指令，坡上口径不同，
   本脚本的跟速指标一律用**体系** vx；两者都写在产物里，不要混用。
-- 速度指令是体系 x 速度（与冻结策略观测一致），不含转向；本测试只研究直线拖曳。
+- 关节跟踪误差阈值没有标定，首轮结果出来前不要把 `JNT` 当成定论。
+- 速度指令是体系 x 速度（与冻结策略观测一致），只研究直线拖曳。
 """
 
 from __future__ import annotations
@@ -143,12 +158,17 @@ GRAVITY_MPS2 = 9.81
 CONNECTIONS = ("compliant", "inextensible", "rigid")
 #: 工厂地面常规摩擦系数（混凝土/环氧地坪 0.6–0.9，本仓库历来固定 0.8）。
 FACTORY_FLOOR_FRICTION = 0.8
+#: 训练侧的轮轴黏性阻尼名义值（`HierarchicalVelocityActionCfg.initial_wheel_damping`）。
+#: 这里只是 CLI 默认值；实跑时会与训练 cfg 交叉核对，不一致直接报错。
+TRAINING_WHEEL_DAMPING = 0.032
+#: 训练侧质量随机范围（`reset_work_condition.params["mass_range"]`）。
+#: 本测试台的质量档里 20 / 25 kg 超出这个范围，判读时要分开看。
+TRAINING_MASS_RANGE_KG = (5.0, 15.0)
 DEFAULT_VELOCITIES = (0.5, 1.0, 1.5)
 DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
-# 坡度默认按后端给：gravity 用带符号的恒定坡度（含上/下坡），terrain 只用剖面的坡度量级
-# （每条 lane 自带一段上坡一段下坡 ⇒ 没有负档）。
-DEFAULT_SLOPES_DEG = (0.0, 5.0, -5.0, 10.0, -10.0)
-DEFAULT_SLOPES_TERRAIN_DEG = (0.0, 5.0, 10.0)
+#: 800 环境 × 2200 步逐物理步记录 ≈ 176 万行（约 2 GB），默认改成每 5 步（25 ms，等于
+#: 冻结策略周期）记一行；接触的速度跃变阈值在 `contact_witness` 里按记录步长自动放大。
+DEFAULT_RECORD_EVERY = 5
 N_JOINTS = 12
 PHASES = ("station", "tow", "coast")
 
@@ -175,17 +195,24 @@ MDP_DIR = RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
 recording = _load_module(
     "imgo2_play_towing_test_recording",
     RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py")
-# 真实坡面网格与几何：本测试台复用训练侧的 tile 生成与坡度符号，不自己写一套坡度表。
+# 训练网格（逐 env 的连接/长度/坡度量级）与坡面剖面几何：本测试台直接复用训练侧的定义，
+# 不自己写第二套网格表，保证「同一 env 编号 ⇒ 同一 cell」与训练逐位一致。
 connection_grid = _load_module("connection_grid", MDP_DIR / "connection_grid.py")
 slope_geometry = _load_module("slope_geometry", MDP_DIR / "slope_geometry.py")
+
+#: 默认并行环境数 = 训练网格全集（40 列 × 20 行 = 800）。写成 800 的整数倍时每个 cell
+#: 会重复出现，同一 cell 的不同 env 拿到不同工作条件（见 `work_conditions`）。
+DEFAULT_NUM_ENVS = int(connection_grid.GRID_SIZE)
+NUM_COLUMNS = int(connection_grid.COLUMNS)
+NUM_ROWS = int(connection_grid.ROWS)
 
 JOINT_TARGET_FIELDS = tuple(f"robot_jt_{index:02d}" for index in range(N_JOINTS))
 JOINT_TORQUE_FIELDS = tuple(f"robot_tau_{index:02d}" for index in range(N_JOINTS))
 WHEEL_LEGS = ("fl", "fr", "rl", "rr")
 #: 本测试新增列。`connection` 是字符串列，其余都是数值列。
-#: `*_progress_m` / `*_surface_height_m` / `body_pitch_rel_rad` 是**坡面坐标系**量：
-#: 两个后端都定义 `(原点, 切向, 法向)`，于是「走了多远」「离面多高」「相对面的俯仰」
-#: 在平地和坡上、在重力后端和地形后端上是同一个口径（见 `surface_frame`）。
+#: `*_progress_m` / `*_surface_height_m` / `body_pitch_rel_rad` 是**lane 坐标系**量：
+#: 出生在剖面平地段 ⇒ lane 系 = 世界系（切向 +x、法向 +z、重力竖直），逐 env 的坡度量级
+#: 只参与「离面高度」与「相对俯仰」的换算（`profile_height` / `profile_slope_degrees`）。
 EXTRA_FIELDS = (
     "velocity_cmd_mps",     # 本 env 当前的速度指令（体系 x）
     "robot_vx_b_mps",       # 体系 x 速度 = 跟速误差用的口径
@@ -201,13 +228,15 @@ EXTRA_FIELDS = (
     "velocity_cmd_vy_mps", "velocity_cmd_wz_radps",
     "lane_offset_m", "lane_heading_rad", "robot_vy_b_mps", "robot_wz_b_radps",
     "load_offset_m",
-    "slope_deg", "gravity_x_mps2", "gravity_z_mps2", "slope_backend",
+    # 本 env 的 lane 坡度量级（0 / 5 / 10 deg，来自训练网格）+ 连接长度（训练网格逐行）
+    "grade_deg", "connection_length_m",
+    "gravity_x_mps2", "gravity_z_mps2",
     "connection", "cart_mass_kg",
 )
 EXTRA_NUMERIC_FIELDS = tuple(
-    name for name in EXTRA_FIELDS if name not in ("connection", "slope_backend"))
+    name for name in EXTRA_FIELDS if name not in ("connection",))
 #: 记录里的非数值列（`make_row` 写字符串，数值完整性检查要跳过它们）。
-STRING_FIELDS = ("phase", "connection", "slope_backend")
+STRING_FIELDS = ("phase", "connection")
 TEST_FIELDS = ("phase", *recording.TOW_NUMERIC_FIELDS,
                *JOINT_TARGET_FIELDS, *JOINT_TORQUE_FIELDS, *EXTRA_FIELDS)
 
@@ -267,23 +296,133 @@ DEFAULT_THRESHOLDS = {
 
 
 @dataclass(frozen=True)
-class TestCase:
-    """一个 case：坡度 + 速度档 + 连接类型 + 小车质量。"""
+class EnvCase:
+    """一个环境的固定设定：cell（来自训练网格） + 工作条件（速度 × 质量轮转）。
 
-    slope_deg: float
-    velocity_mps: float
+    与训练侧的分工完全一致：**连接类型 / 连接长度 / 坡度量级由 cell 决定**（`env_spec`），
+    本测试台额外把「速度指令」和「小车质量」也变成逐 env 的量（训练时它们是随机化的），
+    这样就得到「同一套网格、每个 env 一个固定 case」的确定性扫描。
+    """
+
+    env_index: int
+    cell_index: int
+    column: int
+    row: int
     connection: str
+    length_m: float
+    grade_deg: float
+    velocity_mps: float
     cart_mass_kg: float
 
     @property
     def slug(self) -> str:
-        """文件名安全的短标识（`+`/`.` 都合法，只有 `/` 需要避开）。"""
-        return (f"slope{self.slope_deg:+g}_v{self.velocity_mps:g}_"
-                f"{self.connection}_m{self.cart_mass_kg:g}kg")
+        """文件名安全的短标识（`+`/`.` 合法，只有 `/` 要避开）。
+
+        必须带 env 序号：工作条件是轮转分配的，同一个 (坡度量级, 速度, 连接, 质量) 组合
+        会在多个 cell 上重复出现，只用那四项当文件名会互相覆盖。
+        """
+        return (f"env{self.env_index:04d}_c{self.column:02d}r{self.row:02d}"
+                f"_g{self.grade_deg:g}_v{self.velocity_mps:g}"
+                f"_{self.connection}_m{self.cart_mass_kg:g}kg")
 
     def to_dict(self) -> dict:
-        return {"slope_deg": self.slope_deg, "velocity_mps": self.velocity_mps,
-                "connection": self.connection, "cart_mass_kg": self.cart_mass_kg}
+        return {"env_index": self.env_index, "cell_index": self.cell_index,
+                "column": self.column, "row": self.row, "connection": self.connection,
+                "connection_length_m": self.length_m, "grade_deg": self.grade_deg,
+                "velocity_mps": self.velocity_mps, "cart_mass_kg": self.cart_mass_kg}
+
+
+def work_conditions(num_envs: int, velocities, cart_masses,
+                    columns: int = NUM_COLUMNS) -> list:
+    """逐 env 的 `(速度 m/s, 质量 kg)` 确定性轮转分配。
+
+    规则（`slot = row + column`，其中 `row = index // columns`、`column = index % columns`）：
+
+    - 质量：`cart_masses[slot % len(cart_masses)]`
+    - 速度：`velocities[(slot // len(cart_masses)) % len(velocities)]`
+
+    **为什么用 `row + column` 而不是 `index`**：`COLUMNS = 40` 是质量档数的整数倍
+    （40 % 5 == 0），若直接用 `index % len(masses)`，质量就只由 `column % 5` 决定 —— 而列同时
+    决定连接类型与坡度量级，于是 `(连接, 质量)` 与 `(坡度量级, 质量)` 会严重混淆（实测：
+    inextensible 完全没有 5 kg、5°/10° 的 inextensible 只落到重载，判定矩阵出现空格）。
+    改成 `row + column` 后，固定一列时 `slot` 随 20 行取到 20 个连续整数 ⇒ **每个质量档在
+    一列内出现 4 次、每个 (质量, 速度) 组合出现 1–2 次**，「连接 × 质量」「坡度量级 × 质量」
+    都均衡了。
+
+    性质（离线测试钉住）：**确定性**（与运行顺序、随机种子、`--num-envs` 无关；`--dry-run`
+    打印的就是实跑用的表）；800 env / 15 组合时每组 50–55 个 env（`slot` 的取值个数在
+    20×40 网格里两端少、中间多，所以不是严格的 ±1）。
+    """
+    if num_envs <= 0:
+        raise ValueError(f"num_envs 必须是正整数，收到 {num_envs!r}")
+    if columns <= 0:
+        raise ValueError(f"columns 必须是正整数，收到 {columns!r}")
+    velocities = [float(value) for value in velocities]
+    cart_masses = [float(value) for value in cart_masses]
+    if not velocities or not cart_masses:
+        raise ValueError("速度档与质量档都不能为空")
+    if any(not math.isfinite(v) or v <= 0.0 for v in velocities):
+        raise ValueError(f"速度档必须是有限正数，收到 {velocities!r}")
+    if any(not math.isfinite(m) or m <= 0.0 for m in cart_masses):
+        raise ValueError(f"质量档必须是有限正数，收到 {cart_masses!r}")
+    conditions = []
+    for index in range(num_envs):
+        slot = (index // columns) + (index % columns)
+        conditions.append((velocities[(slot // len(cart_masses)) % len(velocities)],
+                           cart_masses[slot % len(cart_masses)]))
+    return conditions
+
+
+def build_env_cases(num_envs: int, velocities, cart_masses) -> list:
+    """逐 env 的 `EnvCase` 列表：cell 参数取训练网格，工作条件取 `work_conditions`。
+
+    env → cell 的映射用训练侧同一函数（`connection_grid.env_spec`，row-major：列 = i % 40、
+    行 = i // 40，`i % GRID_SIZE` 循环），所以本测试台的 env `i` 与训练时的 env `i`
+    是**同一条 lane、同一种连接、同一段长度、同一个坡度量级**。
+    """
+    conditions = work_conditions(num_envs, velocities, cart_masses)
+    cases = []
+    for index in range(num_envs):
+        spec = connection_grid.env_spec(index)
+        velocity, mass = conditions[index]
+        cases.append(EnvCase(
+            env_index=index, cell_index=int(spec["grid_index"]), column=int(spec["column"]),
+            row=int(spec["row"]), connection=str(spec["model_name"]),
+            length_m=float(spec["length"]), grade_deg=float(spec["slope_degrees"]),
+            velocity_mps=velocity, cart_mass_kg=mass))
+    return cases
+
+
+def env_case_summary(cases) -> dict:
+    """`--dry-run`／`experiment.json` 用的分配摘要（纯逻辑，标准库可跑）。"""
+    if not cases:
+        raise ValueError("cases 不能为空")
+    connections, grades, lengths, buckets = {}, {}, [], {}
+    mass_by_connection = {}
+    for case in cases:
+        connections[case.connection] = connections.get(case.connection, 0) + 1
+        grades[case.grade_deg] = grades.get(case.grade_deg, 0) + 1
+        lengths.append(case.length_m)
+        key = (case.velocity_mps, case.cart_mass_kg)
+        buckets[key] = buckets.get(key, 0) + 1
+        per_connection = mass_by_connection.setdefault(case.connection, {})
+        per_connection[case.cart_mass_kg] = per_connection.get(case.cart_mass_kg, 0) + 1
+    return {
+        "envs": len(cases),
+        "cells": len({case.cell_index for case in cases}),
+        "cell_repeats": len(cases) / len({case.cell_index for case in cases}),
+        "connections": dict(sorted(connections.items())),
+        "grades_deg": {f"{grade:g}": count for grade, count in sorted(grades.items())},
+        "length_m": {"min": min(lengths), "max": max(lengths)},
+        "work_condition_buckets": {f"v{velocity:g}_m{mass:g}": count
+                                   for (velocity, mass), count in sorted(buckets.items())},
+        "bucket_env_counts": sorted(buckets.values()),
+        # 「连接 × 质量」的 env 数：暴露「质量只由列决定」带来的不平衡
+        # （COLUMNS=40 是质量档数的整数倍 ⇒ 列同时决定连接类型与坡度量级）
+        "mass_counts_by_connection": {
+            connection: {f"{mass:g}": count for mass, count in sorted(counts.items())}
+            for connection, counts in sorted(mass_by_connection.items())},
+    }
 
 
 @dataclass(frozen=True)
@@ -360,129 +499,6 @@ def lane_keeping_command(*, kp_y: float, kd_y: float, kp_yaw: float, kd_yaw: flo
             max(-wz_limit, min(wz_limit, wz_command)))
 
 
-def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
-    """`gravity` 后端用的重力向量（世界系）。
-
-    约定 `+slope_deg` = 沿 **+x 上坡**（机器人在前、小车在后，两者都朝 +x）。
-    上坡要求重力在 −x 方向有分量，因此 `gx = −g·sinθ`、`gz = −g·cosθ`。
-    这与 `mdp/slope_geometry.py` 的坡面约定同向：`tangent = (cosθ, 0, sinθ)`、
-    `normal = (−sinθ, 0, cosθ)`（tile 顶面 `z = tanθ·x`，沿 +x 升高）。
-    """
-    if not math.isfinite(slope_deg) or abs(slope_deg) > 45.0:
-        raise ValueError(f"坡度必须是 [-45, 45] 内的有限值，收到 {slope_deg!r}")
-    if not math.isfinite(g) or g <= 0:
-        raise ValueError(f"重力加速度必须是有限正数，收到 {g!r}")
-    angle = math.radians(slope_deg)
-    return (-g * math.sin(angle), 0.0, -g * math.cos(angle))
-
-
-def surface_frame(slope_deg: float, backend: str) -> dict:
-    """度量用的坐标系与**剖面档位**：`(切向, 法向)` 都是 lane 系（+x 前 / +z 上）。
-
-    2026-10-09 远端把训练地形改成「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」
-    的连续剖面（每条 lane 自带上下坡，坡度量级 0/5/10 由列决定），所以：
-
-    - `terrain`：度量系 = lane 系；**离面高度 = z − profile_height(档位, x)**、
-      **相对俯仰 = 世界系俯仰 + 局部坡度**（出生在平地段、姿态竖直）。`profile_grade_deg`
-      就是这条 lane 的档位（0 = 纯平地 lane）。
-    - `gravity`：现有平地 + 旋转重力 ⇒ 度量系同样是 lane 系，但坡面恒为水平（高度 = z、
-      俯仰 = 世界系俯仰），`profile_grade_deg = 0`；`slope_deg` 的符号表示上/下坡（重力倾斜方向）。
-
-    两个后端共用「行程 = x 位移 / 离面高度 / 相对俯仰」这套口径。
-    """
-    if backend not in ("terrain", "gravity"):
-        raise ValueError(f"未知的坡度后端 {backend!r}；可选 gravity / terrain")
-    if backend == "terrain":
-        if slope_deg < 0.0:
-            raise ValueError(
-                "terrain 后端只接受 0 / 5 / 10 的坡度量级：每条 lane 的剖面自带一段上坡和"
-                "一段下坡，没有「纯下坡」的 tile（要恒定坡度用 --slope-backend gravity）")
-        return {
-            "backend": backend,
-            "tangent": (1.0, 0.0, 0.0),
-            "normal": (0.0, 0.0, 1.0),
-            "profile_grade_deg": float(slope_deg),
-            "surface": "真实坡面剖面（mdp/slope_geometry，与训练场景同源）",
-        }
-    return {
-        "backend": backend,
-        "tangent": (1.0, 0.0, 0.0),
-        "normal": (0.0, 0.0, 1.0),
-        "profile_grade_deg": 0.0,
-        "surface": "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡面同解）",
-    }
-
-
-def slope_ground_plan(slope_deg: float, backend: str) -> dict:
-    """坡度 → 场景设置方案（重力后端 = 倾斜重力；地形后端 = 真实坡面 tile）。"""
-    frame = surface_frame(slope_deg, backend)
-    gravity = (slope_gravity(slope_deg) if backend == "gravity"
-               else (0.0, 0.0, -GRAVITY_MPS2))
-    note = ("现有平地 + 旋转重力：随坡面倾斜的参考系里与真实坡度同解"
-            "（法向 mg·cosθ、下滑 mg·sinθ 逐项一致）" if backend == "gravity"
-            else "真实闭合坡面剖面（平地→上坡→坡顶→下坡→平地），出生在平地段、姿态竖直")
-    return {"backend": backend, "gravity_mps2": gravity, "note": note, "frame": frame,
-            "surface": frame["surface"]}
-
-
-def slope_cells(grade_deg: float) -> list:
-    """训练侧 40×20 网格里**坡度量级**等于 `grade_deg` 的 `(row, column)` 列表。
-
-    2026-10-09 起训练地形是连续剖面：每条 lane 自带「上坡 3 m + 下坡 3 m」，`slope_degrees`
-    只给量级（0 / 5 / 10，见 `mdp/connection_grid.py`）。本测试台复用这同一张表，
-    于是「5° 的 tile」与训练场景里 5° 的 lane 是同一块几何。可用 cell 数：0° 400 个、
-    5° 与 10° 各 200 个。
-    """
-    cells = [(row, column)
-             for row in range(connection_grid.ROWS)
-             for column in range(connection_grid.COLUMNS)
-             if connection_grid.slope_degrees(column, row) == grade_deg]
-    if not cells:
-        raise ValueError(
-            f"训练网格里没有坡度量级 {grade_deg:g}° 的 cell；可选 0 / 5 / 10"
-            f"（见 mdp/connection_grid.py；剖面自带上下坡，没有负档）")
-    return cells
-
-
-def compact_tile_origins(count: int, *, row_spacing: float, column_spacing: float,
-                         columns: int | None = None) -> list:
-    """把 `count` 块 tile 摆成以原点为中心的紧凑网格，返回每块的 `(x, y, z)` 原点。
-
-    训练场景用 40×20 的固定 cell 原点（x 跨度 ~200 m），本测试台每轮只用几十块、
-    且同一轮坡度相同，所以自己排布：x 是上下坡方向（按 row_spacing 留出行距，
-    保证 12.75 m 前进 + 2.25 m 后退不串场），y 是横向（按 column_spacing）。
-    """
-    if count < 1:
-        raise ValueError("tile 数量必须 ≥ 1")
-    if row_spacing <= 0 or column_spacing <= 0:
-        raise ValueError("tile 间距必须是正数")
-    if columns is None:
-        columns = math.ceil(math.sqrt(count))
-    if columns < 1:
-        raise ValueError("列数必须 ≥ 1")
-    rows = math.ceil(count / columns)
-    span_x = row_spacing * (rows - 1)
-    span_y = column_spacing * (columns - 1)
-    origins = []
-    for index in range(count):
-        row, column = divmod(index, columns)
-        origins.append((row * row_spacing - 0.5 * span_x,
-                        column * column_spacing - 0.5 * span_y, 0.0))
-    return origins
-
-
-def translate_tile(vertices, source_origin, target_origin) -> list:
-    """把一块 tile 的顶点从训练网格原点平移到本测试台的紧凑原点。
-
-    只平移不改形状：顶面 `z = tanθ·(x − source_x)` 平移后是 `z = tanθ·(x − target_x)`，
-    因为 z 分量不动而 x 的参考点跟着原点走 —— 这也保证原点仍落在坡面上（z = 0）。
-    """
-    dx = target_origin[0] - source_origin[0]
-    dy = target_origin[1] - source_origin[1]
-    dz = target_origin[2] - source_origin[2]
-    return [(x + dx, y + dy, z + dz) for x, y, z in vertices]
-
-
 def scale_cart_mass_inertia(nominal_masses, nominal_inertias, mass_scales):
     """按**逐 env**的比例同时缩放小车的质量与惯量（AGENTS.md：只改质量不改惯量会不自洽）。
 
@@ -512,136 +528,78 @@ def scale_cart_mass_inertia(nominal_masses, nominal_inertias, mass_scales):
     return nominal_masses * scales, nominal_inertias * scales.unsqueeze(-1)
 
 
-def build_terrain_layout(slopes, num_envs, *, row_spacing=None, column_spacing=None,
-                         block_gap_m: float = 40.0) -> dict:
-    """把各坡度的 tile 铺成「每坡度一块紧凑网格」，并组装出整块 mesh。
+def attachment_along(initial_distance: float, normal_difference: float) -> float:
+    """两挂点三维距 = `initial_distance` 时，沿 lane 切向需要分开的距离。
 
-    场景只建一次，所以所有坡度的 tile 一次性放进同一块 mesh：每个坡度一块 `num_envs` 个
-    tile 的网格（间距取训练侧的 `ROW_SPACING_M` / `COLUMN_SPACING_M`，保证 17 m 前向 +
-    3 m 后向不串场），块与块沿 y 拉开 `block_gap_m`。每轮只把机器人/小车摆到本轮那一块的
-    原点上。纯标准库（几何来自 `mdp/slope_geometry.tile_mesh`），所以布局与 mesh 的
-    自洽性可以离线核对，不必等仿真。
+    出生姿态竖直 ⇒ 挂点高差 `normal_difference` 与切向距离正交，于是
+    `along = sqrt(d² − Δn²)`（勾股）。`d ≤ |Δn|` 时几何无解（挂不住），必须报错而不是
+    开方成 NaN —— 那种失败会在 PhysX 里表现成「生成第一拍就有约束力」，很难倒查。
     """
-    if not slopes:
-        raise ValueError("至少要有一个坡度")
-    if num_envs < 1:
-        raise ValueError("每轮环境数必须 ≥ 1")
-    rs = slope_geometry.ROW_SPACING_M if row_spacing is None else row_spacing
-    cs = slope_geometry.COLUMN_SPACING_M if column_spacing is None else column_spacing
-    columns = math.ceil(math.sqrt(num_envs))
-    block_y_pitch = cs * max(1, columns - 1) + block_gap_m
-    local_origins = compact_tile_origins(num_envs, row_spacing=rs, column_spacing=cs)
-    blocks, vertices, faces = {}, [], []
-    for block_index, slope in enumerate(slopes):
-        cells = slope_cells(slope)[:num_envs]
-        if len(cells) < num_envs:
-            raise ValueError(
-                f"坡度 {slope:+g}° 在训练网格里只有 {len(cells)} 块 tile，装不下 {num_envs} 个 env")
-        shift_y = block_index * block_y_pitch
-        origins = [(x, y + shift_y, z) for x, y, z in local_origins]
-        blocks[slope] = {"cells": cells, "origins": origins, "block_y_shift_m": shift_y}
-        for cell, target in zip(cells, origins):
-            tile_vertices, tile_faces, source = slope_geometry.tile_mesh(*cell)
-            offset = len(vertices)
-            vertices.extend(translate_tile(tile_vertices, source, target))
-            faces.extend(tuple(offset + index for index in face) for face in tile_faces)
-    # `origins_grid` 的形状 (坡度数, 每块 env 数, 3) 与整块 mesh 的 tile 数一一对应：
-    # Isaac Lab 的 `terrain_origins` 契约就是 `(num_rows, num_cols, 3)`，这里 num_rows = 坡度数、
-    # num_cols = 每轮 env 数，`num_rows * num_cols = tile 总数`（不这么报的话，terrain_origins
-    # 只覆盖第一块，与 mesh 不一致）。
-    origins_grid = [list(blocks[slope]["origins"]) for slope in slopes]
-    return {"blocks": blocks, "origins_grid": origins_grid,
-            "vertices": vertices, "faces": faces,
-            "columns": columns, "block_y_pitch_m": block_y_pitch,
-            "row_spacing_m": rs, "column_spacing_m": cs}
-
-
-def frame_coordinates(position, origin, frame) -> tuple:
-    """世界系位置 → 坡面坐标 `(沿切向行程, 法向高度)`。"""
-    relative = tuple(p - o for p, o in zip(position, origin))
-    progress = sum(r * t for r, t in zip(relative, frame["tangent"]))
-    height = sum(r * n for r, n in zip(relative, frame["normal"]))
-    return progress, height
-
-
-def rotation_y(angle_rad: float) -> tuple:
-    """绕 y 轴的旋转四元数 `(w, x, y, z)`（与 Isaac Lab 的 `(w, x, y, z)` 约定一致）。"""
-    return (math.cos(0.5 * angle_rad), 0.0, math.sin(0.5 * angle_rad), 0.0)
-
-
-def rotate_vector(quat, vector) -> tuple:
-    """用四元数旋转向量（纯 Python，只用于离线可测的 spawn 几何）。"""
-    w, qx, qy, qz = quat
-    vx, vy, vz = vector
-    # t = 2 * (q_vec × v)；v' = v + w·t + q_vec × t
-    tx = 2.0 * (qy * vz - qz * vy)
-    ty = 2.0 * (qz * vx - qx * vz)
-    tz = 2.0 * (qx * vy - qy * vx)
-    return (vx + w * tx + qy * tz - qz * ty,
-            vy + w * ty + qz * tx - qx * tz,
-            vz + w * tz + qx * ty - qy * tx)
-
-
-def spawn_on_surface(*, slope_deg: float, robot_height: float, cart_height: float,
-                     robot_offset, cart_offset, target_distance: float,
-                     robot_along: float = 0.0) -> dict:
-    """坡面上的出生位姿：机体系 +X 对切向、+Z 对法向，两挂点三维距 = `target_distance`。
-
-    与训练侧 `upper_mdp.reset_towing_episode` 同一套几何（只在**切向/法向**里解，
-    不用固定的世界 z 高差）：机器人根在原点上方 `robot_height`，小车沿切向后退
-    `along = sqrt(target² − Δn²)`，其中 `Δn` 是两挂点在法向的净高差（含挂点偏移随
-    出生姿态旋转后的法向分量）。返回的量都是**相对坡面原点**的，纯算术、可离线测。
-
-    连续剖面下出生点在**平地段起点**，所以调用方传 `slope_deg = 0`（姿态竖直、无出生
-    旋转）；保留 `slope_deg` 参数是为了这套解本身仍可离线复核（含恒定坡度档）。
-    """
-    for name, value in (("robot_height", robot_height), ("cart_height", cart_height),
-                        ("target_distance", target_distance)):
-        if not math.isfinite(value) or value <= 0:
-            raise ValueError(f"{name} 必须是有限正数，收到 {value!r}")
-    quat = rotation_y(-math.radians(slope_deg))
-    tangent = (math.cos(math.radians(slope_deg)), 0.0, math.sin(math.radians(slope_deg)))
-    normal = (-math.sin(math.radians(slope_deg)), 0.0, math.cos(math.radians(slope_deg)))
-    robot_attach = rotate_vector(quat, tuple(robot_offset))
-    cart_attach = rotate_vector(quat, tuple(cart_offset))
-    normal_difference = (robot_height - cart_height
-                         + sum((r - c) * n for r, c, n in zip(robot_attach, cart_attach, normal)))
-    if target_distance ** 2 <= normal_difference ** 2:
+    for name, value in (("initial_distance", initial_distance),
+                        ("normal_difference", normal_difference)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} 必须是有限值，收到 {value!r}")
+    if initial_distance <= 0.0:
+        raise ValueError(f"initial_distance 必须是正数，收到 {initial_distance!r}")
+    if initial_distance ** 2 <= normal_difference ** 2:
         raise ValueError(
-            f"目标挂点距 {target_distance:.3f} m ≤ 两挂点法向高差 {abs(normal_difference):.3f} m，"
-            f"坡面上无解（调大 --rope-length 或 --slack）")
-    along = math.sqrt(target_distance ** 2 - normal_difference ** 2)
-    robot_root = tuple(robot_height * n + robot_along * t for n, t in zip(normal, tangent))
-    cart_root = tuple(robot_root[i] + robot_attach[i] - cart_attach[i]
-                      - along * tangent[i] - normal_difference * normal[i]
-                      for i in range(3))
-    # 自检：按返回位姿重算两挂点的三维距离，必须等于目标（否则 spawn 第一拍就有约束力）
-    robot_point = tuple(robot_root[i] + robot_attach[i] for i in range(3))
-    cart_point = tuple(cart_root[i] + cart_attach[i] for i in range(3))
-    distance = math.dist(robot_point, cart_point)
+            f"目标挂点距 {initial_distance:.3f} m ≤ 两挂点法向高差 {abs(normal_difference):.3f} m，"
+            f"几何上无解（调大连接长度或减小挂点高差）")
+    return math.sqrt(initial_distance ** 2 - normal_difference ** 2)
+
+
+def spawn_offsets(initial_distances, *, robot_height: float, cart_height: float,
+                  robot_offset, cart_offset) -> dict:
+    """逐 env 的出生偏移（相对该 env 的 lane 原点）：机器人根与小车根。
+
+    与训练侧 `upper_mdp.reset_towing_episode` 同一套几何，但**出生在剖面平地段** ⇒
+    姿态竖直（单位四元数，lane 系 = 世界系），于是只有切向（+x）与法向（+z）两个分量：
+
+    - 机器人根 = `(0, 0, robot_height)`（`robot_height` 取资产 default root 的 z）；
+    - 小车根让两挂点三维距等于该 env 的 `initial_distance`（绳 = 0.5·L0、刚体 = L）：
+      沿 +x 分开 `along`、沿 z 相差 `Δn = (robot 挂点高 − cart 挂点高)`；
+    - 逐 env 的 `initial_distance` 不同（长度逐行不同、绳/刚体也不同），所以 `along` 是数组。
+
+    返回的量都是**相对 lane 原点**的纯算术结果；内部对每个 env 重算挂点三维距做自检
+    （目标是 spawn 第一拍不产生约束力）。
+    """
+    for name, value in (("robot_height", robot_height), ("cart_height", cart_height)):
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{name} 必须是有限正数，收到 {value!r}")
+    robot_offset = tuple(float(value) for value in robot_offset)
+    cart_offset = tuple(float(value) for value in cart_offset)
+    if len(robot_offset) != 3 or len(cart_offset) != 3:
+        raise ValueError("挂点偏移必须是三维向量")
+    if any(not math.isfinite(value) for value in (*robot_offset, *cart_offset)):
+        raise ValueError("挂点偏移必须是有限值")
+    distances = [float(value) for value in initial_distances]
+    if not distances:
+        raise ValueError("initial_distances 不能为空")
+    # Δn = 两挂点在 +z 上的高差（姿态竖直 ⇒ 偏移不经旋转，直接取 z 分量之差）
+    normal_difference = (robot_height - cart_height) + (robot_offset[2] - cart_offset[2])
+    robot_root = (0.0, 0.0, float(robot_height))
+    robot_point = tuple(robot_root[i] + robot_offset[i] for i in range(3))
+    alongs, cart_roots, checks = [], [], []
+    for distance in distances:
+        along = attachment_along(distance, normal_difference)
+        cart_root = (robot_point[0] - cart_offset[0] - along,
+                     robot_point[1] - cart_offset[1],
+                     robot_point[2] - cart_offset[2] - normal_difference)
+        cart_point = tuple(cart_root[i] + cart_offset[i] for i in range(3))
+        checks.append(math.dist(robot_point, cart_point))
+        if abs(checks[-1] - distance) > 1e-9:
+            raise RuntimeError(
+                f"出生几何自检失败：挂点距 {checks[-1]:.9f} ≠ 目标 {distance:.9f}")
+        alongs.append(along)
+        cart_roots.append(cart_root)
     return {
-        # `write_root_pose_to_sim` / `root_state[:, 3:7]` 用的是 (w, x, y, z)，
-        # 与 `data.root_quat_w` 同约定（Isaac Lab 的 quat_* 全走 (w,x,y,z)）。
-        "quat_wxyz": quat,
-        "robot_root": robot_root, "cart_root": cart_root,
-        "tangent": tangent, "normal": normal,
-        "normal_difference_m": normal_difference, "along_m": along,
-        "attachment_distance_m": distance,
-        "target_distance_m": target_distance,
+        "robot_root": robot_root,
+        "cart_root": cart_roots,
+        "along_m": alongs,
+        "normal_difference_m": normal_difference,
+        "attachment_distance_m": checks,
+        "target_distance_m": distances,
     }
-
-
-def build_case_grid(velocities, connections, cart_masses, slopes) -> list:
-    """完整网格，顺序固定：坡度 → 速度 → 连接 → 质量（坡度在外层 = 仿真过程顺序）。"""
-    return [TestCase(slope_deg=float(slope), velocity_mps=float(velocity),
-                     connection=str(connection), cart_mass_kg=float(mass))
-            for slope in slopes for velocity in velocities
-            for connection in connections for mass in cart_masses]
-
-
-def cases_for_slope(cases, slope_deg: float) -> list:
-    """取出某个坡度的全部 case（保持网格顺序）。"""
-    return [case for case in cases if case.slope_deg == slope_deg]
 
 
 def make_schedule(*, settle_steps: int, tow_duration: float, coast_duration: float,
@@ -681,21 +639,6 @@ def shaped_command(*, phase: str, step_in_phase: int, velocity: float,
         return float(velocity)
     fraction = min(1.0, (step_in_phase + 1) * dt / ramp_time_s)
     return float(velocity) * fraction
-
-
-def min_env_spacing(max_velocity_mps: float, *, tow_duration: float, coast_duration: float,
-                    margin_m: float = 2.0) -> float:
-    """并行环境的最小间距：机器人最长行程 + 小车滑行 + 余量。
-
-    机器人只在 tow 段被指令驱动（coast 段指令为 0，但它仍可能被撞着走一点），
-    所以行程上界取 `v·tow + v_robot_coast·coast` 里的保守近似：`v·(tow + 1.0) + margin`；
-    小车滑行最多再叠 `v·coast` 的一半（黏性衰减，实测远小于线性）。这里取保守值。
-    """
-    if max_velocity_mps <= 0:
-        return margin_m
-    robot_travel = max_velocity_mps * (tow_duration + 1.0)
-    cart_travel = 0.5 * max_velocity_mps * coast_duration
-    return robot_travel + cart_travel + margin_m
 
 
 def phase_rows(rows, phase: str) -> list:
@@ -981,13 +924,21 @@ def stability_stats(rows, *, transition_window_s: float, record_dt: float,
     }
 
 
-def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connection: str,
-                         cart_mass_kg: float, schedule: PhaseSchedule, record_dt: float,
-                         tow_summary: dict, thresholds: dict, joint_names=None,
-                         torque_limits=None, transition_window_s: float = 1.0,
-                         slope_backend: str = "gravity", lane_keeping: str = "off",
+def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
+                         schedule: PhaseSchedule, record_dt: float, tow_summary: dict,
+                         thresholds: dict, joint_names=None, torque_limits=None,
+                         transition_window_s: float = 1.0, lane_keeping: str = "off",
                          lane_vy_limit: float = 0.4, lane_wz_limit: float = 0.8) -> dict:
-    """由逐物理步记录算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。"""
+    """由逐记录步轨迹算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。
+
+    `case` 是 `EnvCase.to_dict()`：带 env 序号、cell、连接、长度、坡度量级与工作条件。
+    `command_mps` 缺省取 `case["velocity_mps"]`（避免两处各写一份速度指令）。
+    """
+    case = dict(case)
+    if "velocity_mps" not in case:
+        raise ValueError("case 字典必须带 velocity_mps")
+    if command_mps is None:
+        command_mps = float(case["velocity_mps"])
     station = phase_rows(rows, "station")
     tow = phase_rows(rows, "tow")
     coast = phase_rows(rows, "coast")
@@ -1024,9 +975,7 @@ def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connecti
                                 pitch_limit_rad=thresholds["pitch_limit_rad"],
                                 pitch_fraction_limit=thresholds["pitch_fraction_limit"])
     metrics = {
-        "case": {"slope_deg": slope_deg, "velocity_mps": command_mps,
-                 "connection": connection, "cart_mass_kg": cart_mass_kg,
-                 "slope_backend": slope_backend},
+        "case": case,
         "schedule": schedule.to_dict(),
         "samples": {"station": len(station), "tow": len(tow), "coast": len(coast)},
         "startup": startup,
@@ -1109,9 +1058,11 @@ def case_report_row(metrics: dict) -> dict:
     stability = metrics["stability"]
     verdict = metrics["verdict"]
     return {
-        "slope_deg": case["slope_deg"], "velocity_mps": case["velocity_mps"],
+        "env_index": case.get("env_index"), "cell_index": case.get("cell_index"),
+        "column": case.get("column"), "row": case.get("row"),
+        "grade_deg": case.get("grade_deg"), "velocity_mps": case["velocity_mps"],
         "connection": case["connection"], "cart_mass_kg": case["cart_mass_kg"],
-        "slope_backend": case.get("slope_backend", ""),
+        "connection_length_m": case.get("connection_length_m"),
         "verdict": verdict["code"], "reasons": "|".join(verdict["reasons"]),
         "startup_joint_rms_rad": startup.get("joint_rms_rad"),
         "startup_joint_max_rad": startup.get("joint_max_rad"),
@@ -1150,18 +1101,32 @@ def case_report_row(metrics: dict) -> dict:
 
 
 def group_of(case: dict) -> str:
-    """工况分组：平地 / 上坡 / 下坡。"""
-    slope = float(case["slope_deg"])
-    if slope == 0.0:
-        return "flat"
-    return "uphill" if slope > 0 else "downhill"
+    """工况分组的 key：**按 lane 的坡度量级**（0 / 5 / 10°）。
+
+    旧版按「平地/上坡/下坡」分组是因为每个 case 自己就是一个恒定坡度；现在每条 lane
+    的剖面自带一段上坡和一段下坡，方向不再是 case 的属性，能分的只有量级。
+    """
+    return grade_group_key(case["grade_deg"])
+
+
+def grade_group_key(grade_deg) -> str:
+    return f"grade{float(grade_deg):g}"
+
+
+def grade_group_label(grade_deg) -> str:
+    grade = float(grade_deg)
+    return "平地" if grade == 0.0 else f"{grade:g}° 坡"
 
 
 def group_statistics(case_summaries) -> dict:
-    """按 平地/上坡/下坡 汇总判定与失败模式计数。"""
+    """按坡度量级（0 / 5 / 10°）汇总判定与失败模式计数。"""
+    grades = sorted({float(summary["metrics"]["case"]["grade_deg"])
+                     for summary in case_summaries})
     groups = {}
-    for name in ("flat", "uphill", "downhill"):
-        groups[name] = {"cases": 0, "verdicts": {}, "reasons": {}, "worst_cases": []}
+    for grade in grades:
+        name = grade_group_key(grade)
+        groups[name] = {"grade_deg": grade, "label": grade_group_label(grade),
+                        "cases": 0, "verdicts": {}, "reasons": {}, "worst_cases": []}
     for summary in case_summaries:
         metrics = summary["metrics"]
         group = group_of(metrics["case"])
@@ -1192,8 +1157,10 @@ def necessity_conclusion(groups: dict, thresholds: dict) -> dict:
     """由分组统计给出「任务是否有必要」的判读（只依据本网格 + 本阈值）。"""
     lines = []
     verdict = {}
-    for name, label in (("flat", "平地"), ("uphill", "上坡"), ("downhill", "下坡")):
-        entry = groups[name]
+    if not groups:
+        return {"verdict": {}, "lines": ["- 没有任何 case（记录为空）。"]}
+    for name, entry in groups.items():
+        label = entry.get("label") or grade_group_label(entry.get("grade_deg", 0.0))
         if entry["cases"] == 0:
             verdict[name] = "no_cases"
             lines.append(f"- {label}：本网格没有该组 case。")
@@ -1215,20 +1182,31 @@ def necessity_conclusion(groups: dict, thresholds: dict) -> dict:
                              if reason != "invalid_record"]
             stop_dominated = all(reason in ("stop_collision", "stop_margin_low", "stop_joint_error")
                                  for reason in failure_kinds) and bool(failure_kinds)
+            lane_dominated = all(reason in ("lane_deviation",) for reason in failure_kinds) \
+                and bool(failure_kinds)
             hint = ("失败集中在**停车段**：上层任务的必要性主要来自停车时序与间隙维持，"
                     "需用 `--command-shaping ramp` 或更早的 STOP 调度做对照，判断纯脚本 shaping "
                     "是否已经够用。" if stop_dominated else
+                    "失败集中在**横向/朝向保持**：先调 PD 增益与限幅（`--lane-kp-y` 等），"
+                    "确认不是自动整定问题之后再谈学习——这类侧向扰动本身是经典反馈的短板。"
+                    if lane_dominated else
                     "失败跨起步/全程/停车多相：脚本 shaping 不足以解释，属于上层残差/调度的目标。")
             lines.append(f"- {label}：{ok}/{total} 通过；失败模式 {reasons}。{hint}")
     return {"verdict": verdict, "lines": lines}
 
 
-def format_verdict_matrix(case_summaries, *, slopes) -> str:
-    """逐坡度打印「质量 × (速度/连接)」判定矩阵（人读报告与终端共用）。"""
+def format_verdict_matrix(case_summaries, *, grades) -> str:
+    """逐**坡度量级**打印「质量 × (速度/连接)」判定矩阵（人读报告与终端共用）。
+
+    格 = 该组（同一坡度量级 + 速度 + 连接 + 质量）里的**最严重判定码** + `×env 数`。
+    为什么带 env 数：工作条件是逐 env 轮转的，同一个 (速度, 连接, 质量) 组合在这张表里
+    对应多个 cell（800 环境 / 15 个工作条件组合 ≈ 53 个），只写一个码会掩盖「多数 OK、
+    少数失败」的情况；`REF×3` 直读成「这一格 3 个 env，最严重的一个是 REF」。
+    """
     blocks = []
-    for slope in slopes:
+    for grade in grades:
         cases = [summary["metrics"] for summary in case_summaries
-                 if summary["metrics"]["case"]["slope_deg"] == slope]
+                 if float(summary["metrics"]["case"]["grade_deg"]) == float(grade)]
         if not cases:
             continue
         velocities = sorted({case["case"]["velocity_mps"] for case in cases})
@@ -1239,15 +1217,23 @@ def format_verdict_matrix(case_summaries, *, slopes) -> str:
             f"{velocity:g} m/s {connection}" for velocity in velocities
             for connection in connections) + " |"
         divider = "|" + "---|" * (len(velocities) * len(connections) + 1)
-        lines = [f"### 坡度 {slope:+g}°", "", header, divider]
-        index = {(case["case"]["velocity_mps"], case["case"]["connection"],
-                  case["case"]["cart_mass_kg"]): case for case in cases}
+        lines = [f"### 坡度量级 {grade_group_label(grade)}"
+                 f"（{len(cases)} env）", "", header, divider]
+        index = {}
+        for case in cases:
+            key = (case["case"]["velocity_mps"], case["case"]["connection"],
+                   case["case"]["cart_mass_kg"])
+            index.setdefault(key, []).append(case["verdict"]["code"])
         for mass in masses:
             cells = []
             for velocity in velocities:
                 for connection in connections:
-                    case = index.get((velocity, connection, mass))
-                    cells.append(case["verdict"]["code"] if case else "-")
+                    codes = index.get((velocity, connection, mass), [])
+                    if not codes:
+                        cells.append("-")
+                        continue
+                    worst = max(codes, key=lambda code: VERDICT_SEVERITY[code])
+                    cells.append(f"{worst}×{len(codes)}")
             lines.append(f"| {mass:g} | " + " | ".join(cells) + " |")
         lines.append("")
         blocks.append("\n".join(lines))
@@ -1255,21 +1241,26 @@ def format_verdict_matrix(case_summaries, *, slopes) -> str:
 
 
 def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thresholds,
-                          schedule, slopes, git) -> str:
+                          schedule, grades, git) -> str:
     """人读报告：配置、判定矩阵、失败模式、结论、限制。"""
-    lines = ["# 拖曳上层任务必要性：冻结策略基线测试", "",
+    lines = ["# 拖曳上层任务必要性：冻结策略基线测试（训练场景）", "",
              f"- 生成时间：{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
              f"- git：`{git.get('commit')}`（worktree {git.get('working_tree') or 'clean'}）",
-             f"- 速度档：{list(args_dict['velocities'])} m/s；连接：{list(args_dict['connections'])}；"
-             f"质量：{list(args_dict['cart_masses'])} kg",
-             f"- 坡度：{list(slopes)} deg（+ = 沿 +x 上坡）；地面摩擦固定 "
-             f"{args_dict['ground_friction']:g}",
+             f"- 场景：**训练场景** `UpperTowingSceneCfg`（`connection_grid` 40 列 × 20 行；"
+             f"{args_dict['num_envs']} 环境一次跑完）",
+             f"- 工作条件：速度档 {list(args_dict['velocities'])} m/s × 质量档 "
+             f"{list(args_dict['cart_masses'])} kg，**确定性轮转**（`slot = row + column`：质量 "
+             f"`slot % {len(args_dict['cart_masses'])}`、速度每 {len(args_dict['cart_masses'])} 个 "
+             f"slot 换一档）；连接/长度/坡度量级由 cell 决定，不可扫",
+             f"- 判据阈值里的质量档与训练随机范围 {list(TRAINING_MASS_RANGE_KG)} kg 不同："
+             f"超出范围的档位属于外推检查",
+             f"- 地面摩擦固定 {args_dict['ground_friction']:g}（训练随机 0.4–1.2）；轮轴阻尼 "
+             f"{args_dict['wheel_damping']:g} N·m·s/rad（训练随机 0.008–0.032）",
              f"- 指令整形：{args_dict['command_shaping']}"
-             + (f"（ramp {args_dict['ramp_time_s']:g} s）" if args_dict["command_shaping"] == "ramp" else "")
-             + f"；坡度后端：{args_dict['slope_backend']}；站定驻车制动：{args_dict['slope_settle']}",
-             "- 度量坐标系由后端决定：`progress`（沿坡切向行程）、`surface_height`（离面法向高度）、"
-             "`pitch_rel`（相对坡面参考姿态）——`gravity` 后端退化为 x 位移 / 绝对 z / 世界系俯仰；"
-             "`terrain` 后端是真实坡面坐标（出生姿态 `R_y(-θ)`，故参考俯仰是 `-θ`）",
+             + (f"（ramp {args_dict['ramp_time_s']:g} s）" if args_dict["command_shaping"] == "ramp" else ""),
+             "- 度量坐标系固定为 lane 系（出生在剖面平地段 ⇒ 切向 +x、法向 +z、重力竖直）："
+             "`progress` = x 行程（**沿坡面的水平投影**，不是弧长）；`surface_height` = "
+             "`z − profile_height(本 env 坡度量级, x)`；`pitch_rel` = 世界系俯仰 + 局部坡度",
              f"- 每 case：station {schedule.station_steps * schedule.dt:.2f} s + tow "
              f"{schedule.tow_steps * schedule.dt:.2f} s + coast "
              f"{schedule.coast_steps * schedule.dt:.2f} s，共 {schedule.total_steps} 物理步 "
@@ -1291,10 +1282,11 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
                 f"{args_dict['lane_wz_limit']:g} rad/s）")
              + f"；判据 |y| ≤ {thresholds['lane_y_limit_m']:g} m 且 |yaw| ≤ "
                f"{thresholds['lane_heading_limit_deg']:g}°（**前进速度不参与 PD，只给指令**）", "",
-             "## 逐坡度判定矩阵", "", format_verdict_matrix(case_summaries, slopes=slopes), "",
-             "## 分组统计", ""]
-    for name, label in (("flat", "平地"), ("uphill", "上坡"), ("downhill", "下坡")):
-        entry = groups[name]
+             "## 逐坡度量级判定矩阵", "",
+             format_verdict_matrix(case_summaries, grades=grades), "",
+             "## 分组统计（按坡度量级）", ""]
+    for name, entry in groups.items():
+        label = entry.get("label") or grade_group_label(entry.get("grade_deg", 0.0))
         if entry["cases"] == 0:
             continue
         reasons = ", ".join(f"{reason}×{count}" for reason, count in
@@ -1303,11 +1295,19 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
     lines += ["", "## 结论（任务是否有必要）", ""]
     lines += conclusion["lines"]
     lines += ["", "## 限制", "",
-              "- 只覆盖本网格与本阈值：未测弹性绳另外 3 档 k/c、未测轮阻档、未测 breakaway/"
-              "Coulomb 阻力、未测真机、未做跨环境隔离。",
+              "- 只覆盖本网格与本阈值：连接类型/长度/坡度量级由训练网格决定，不能扫；"
+              "未测训练侧的域随机化（摩擦 0.4–1.2、轮轴阻尼 0.008–0.032、"
+              "12.5% 无小车锚点）、未测 breakaway/Coulomb 阻力、未验真机、未做跨环境隔离。",
+              "- 质量档 20/25 kg 超出训练采样范围 [5, 15] kg：那两档是外推检查，"
+              "不能当作「训练分布内基线够不够」的证据。",
+              "- 工作条件轮转用的是 `slot = row + column`（不是 env 序号）：列数 40 是质量档数的"
+              "整数倍，用序号轮转会让质量只由列决定、与连接类型/坡度量级混淆。当前分配下"
+              "`(连接 × 质量)` 与 `(坡度量级 × 质量)` 严格均衡，但**每个 cell 仍然只落到一种 "
+              "(速度, 质量) 组合**（800 env = 800 cell），所以判读要按分档聚合，不能当逐 cell 的"
+              "完整响应面。",
               "- 跟速一律用**体系** vx（与冻结策略观测同口径）；`summarize_tow` 的 "
               "`steady_tracking_ratio` 是世界系口径，坡上不要混用。",
-              "- 坡度用「现有平地 + 旋转重力」实现（与真实坡面同解）；坡度地形资产尚未接入。",
+              "- `progress` 是 x 行程（水平投影），不是坡面弧长：10° 剖面上两者差 < 1%。",
               "- 关节跟踪误差阈值没有标定，首轮结果出来前不要把 `JNT` 当成定论。",
               f"- {SUMMARIZE_TOW_NOTE}",
               "- 仿真相位（PhysX 步进、绳力/轮阻施加、重力写入）只在训练机实跑验证；"
@@ -1319,50 +1319,25 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
 # ---------------------------------------------------------------- CLI
 
 
-def _positive(value, name, *, allow_zero=False):
-    if not math.isfinite(value) or (value < 0 if allow_zero else value <= 0):
-        raise argparse.ArgumentTypeError(
-            f"{name} 必须是有限{'非负' if allow_zero else '正'}数，收到 {value!r}")
-    return value
-
-
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="拖曳上层任务必要性：冻结 AMP 策略 + 脚本指令的网格基线测试",
+        description="拖曳上层任务必要性：冻结 AMP 策略 + 脚本指令，直接跑训练场景的网格基线测试",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--policy", default="amp", help="冻结底层策略名（见 policy_cfg.POLICIES）")
+    parser.add_argument("--num-envs", type=int, default=DEFAULT_NUM_ENVS,
+                        help=f"并行环境数（默认训练网格全集 {DEFAULT_NUM_ENVS} = 40 列 × 20 行；"
+                             f"不是 {DEFAULT_NUM_ENVS} 的整数倍时只覆盖网格前缀，脚本会警告）")
     parser.add_argument("--velocities", type=float, nargs="+", default=list(DEFAULT_VELOCITIES),
-                        help="速度档（m/s，体系 x 指令）")
+                        help="速度档（m/s，体系 x 指令）；按 slot = row + column 轮转分配")
     parser.add_argument("--cart-masses", type=float, nargs="+", default=list(DEFAULT_CART_MASSES),
-                        help="小车目标总质量档（kg，质量与惯量同比例缩放）")
-    parser.add_argument("--connections", nargs="+", choices=list(CONNECTIONS),
-                        default=list(CONNECTIONS), help="连接类型（三类）")
-    parser.add_argument("--slopes", type=float, nargs="+", default=None,
-                        help="坡度（deg）：gravity 后端用带符号的恒定坡度（+ = 上坡）；"
-                             "terrain 后端只接受坡度量级 0/5/10，每条 lane 的剖面自带上下坡。"
-                             "缺省按后端给（gravity 0/±5/±10；terrain 0/5/10）")
-    parser.add_argument("--slope-backend", choices=("gravity", "terrain"), default="gravity",
-                        help="坡度实现：gravity = 现有平地 + 旋转重力（默认，物理等价）；"
-                             "terrain = 将来的坡面地形资产（尚未实现，会报错）")
-    parser.add_argument("--slope-settle", choices=("hold", "free"), default="hold",
-                        help="坡度站定段是否给小车加驻车制动（hold，起拖释放）/ 放任溜坡（free）")
-    parser.add_argument("--hold-damping", type=float, default=5.0,
-                        help="--slope-settle hold 时额外的轮轴黏性阻尼（N·m·s/rad，仅 station 段）")
+                        help="小车目标总质量档（kg，质量与惯量同比例缩放）；按 slot = row + column 轮转分配")
     parser.add_argument("--ground-friction", type=float, default=FACTORY_FLOOR_FRICTION,
-                        help="地面静/动摩擦系数（固定值；工厂地面常规 0.8）")
+                        help="地面静/动摩擦系数（固定值；工厂地面常规 0.8，训练侧随机 0.4–1.2）")
+    parser.add_argument("--wheel-damping", type=float, default=TRAINING_WHEEL_DAMPING,
+                        help="轮轴黏性阻尼 b（N·m·s/rad；训练名义值 0.032，训练随机 0.008–0.032）")
     parser.add_argument("--command-shaping", choices=("direct", "ramp"), default="direct",
                         help="速度指令整形：direct = 阶跃（默认）；ramp = 固定斜坡对照")
     parser.add_argument("--ramp-time-s", type=float, default=1.0, help="ramp 整形的上升时间（s）")
-    # 负载与连接参数（与 tow_drag.py 同口径）
-    parser.add_argument("--rope-length", type=float, default=0.8, help="绳 L0 / 连杆名义长度（m）")
-    parser.add_argument("--slack", type=float, default=0.40, help="绳初始松弛量（m）")
-    parser.add_argument("--stiffness", type=float, default=4000.0, help="弹性绳 k（N/m）")
-    parser.add_argument("--damping", type=float, default=100.0, help="弹性绳 c（N·s/m）")
-    parser.add_argument("--position-gain", type=float, default=0.2, help="inextensible/rigid 回拉增益")
-    parser.add_argument("--max-correction-rate", type=float, default=0.2,
-                        help="inextensible/rigid 回拉相对速度上限（m/s）")
-    parser.add_argument("--wheel-damping", type=float, default=0.016,
-                        help="轮轴黏性阻尼 b（N·m·s/rad，训练侧同值）")
     # 时序
     parser.add_argument("--settle-time", type=float, default=1.0, help="站定时长（s）")
     parser.add_argument("--tow-duration", type=float, default=5.0, help="拖曳时长（s）")
@@ -1370,26 +1345,19 @@ def parse_args(argv=None):
     parser.add_argument("--transition-window", type=float, default=1.0,
                         help="起步/停车瞬态窗口（s），用于关节响应与速度响应统计")
     parser.add_argument("--dt", type=float, default=0.005, help="物理步长（s）")
-    parser.add_argument("--record-every", type=int, default=1,
-                        help="每 N 个物理步记一行（>1 会让接触的速度跃变见证失去 5 ms 标定，"
-                             "脚本内部已按步长放大阈值）")
-    # 场景
-    parser.add_argument("--spawn-height", type=float, default=None,
-                        help="机器人的初始离面高度（m）：gravity 后端是初始 z，terrain 后端是沿坡面法向的净空（两者同一含义）")
-    parser.add_argument("--cart-drop", type=float, default=0.03,
-                        help="小车生成离地高度（m）；只对 gravity 后端生效（terrain 后端由坡面出生解给出位姿）")
-    parser.add_argument("--env-spacing", type=float, default=16.0,
-                        help="并行环境间距（m）；只对 --slope-backend gravity 生效，terrain 后端用训练侧的 tile 间距")
-    parser.add_argument("--max-envs", type=int, default=128, help="单次仿真的最大环境数（保护）")
+    parser.add_argument("--record-every", type=int, default=DEFAULT_RECORD_EVERY,
+                        help="每 N 个物理步记一行（默认 5 = 25 ms = 冻结策略周期；"
+                             "800 环境逐物理步记录约 176 万行/2 GB，不可行。"
+                             ">1 会让接触的速度跃变见证失去 5 ms 标定，脚本内部已按步长放大阈值）")
     # 输出
     parser.add_argument("--output-dir", type=Path, default=None,
                         help="输出目录（默认 imgo2_rl/logs/towing/play_test/<时间戳>_<随机>）；绝不覆盖已有目录")
     parser.add_argument("--write-csv", choices=("failed", "all", "none"), default="failed",
-                        help="原始逐物理步 CSV 的写入范围（full 网格全写约 0.5 GB）")
+                        help="逐记录步 CSV 的写入范围（all = 800 环境全写，可能数百 MB）")
     parser.add_argument("--headless", action="store_true", help="无显示运行")
     parser.add_argument("--device", default="cuda:0", help="仿真设备")
     parser.add_argument("--dry-run", action="store_true",
-                        help="只打印将执行的网格与命令，不启动 Isaac Sim（标准库即可运行）")
+                        help="只打印将执行的网格、逐 env 分配与代价，不启动 Isaac Sim（标准库即可运行）")
     # 横向/朝向保持（PD）：默认开，前进速度不参与
     parser.add_argument("--lane-keeping", choices=("pd", "off"), default="pd",
                         help="横向/朝向保持：pd = 用 PD 生成 vy/wz 指令把机器人压在中线并保持超前；"
@@ -1403,9 +1371,12 @@ def parse_args(argv=None):
                             dest=name, help=f"判定阈值（默认 {value}）")
     args = parser.parse_args(argv)
 
-    if args.slopes is None:
-        args.slopes = list(DEFAULT_SLOPES_TERRAIN_DEG if args.slope_backend == "terrain"
-                           else DEFAULT_SLOPES_DEG)
+    if args.num_envs <= 0:
+        parser.error(f"--num-envs 必须是正整数，收到 {args.num_envs!r}")
+    if args.num_envs % int(connection_grid.GRID_SIZE) != 0:
+        print(f"[warn] --num-envs {args.num_envs} 不是训练网格 {connection_grid.GRID_SIZE} 的"
+              f"整数倍：只覆盖网格前缀（前 {args.num_envs} 个 cell），不是完整网格。",
+              file=sys.stderr)
     for name, value in DEFAULT_LANE_OPTIONS.items():
         if not math.isfinite(getattr(args, name)) or getattr(args, name) < 0.0:
             parser.error(f"--{name.replace('_', '-')} 必须是非负有限数")
@@ -1422,75 +1393,22 @@ def parse_args(argv=None):
     for mass in args.cart_masses:
         if not math.isfinite(mass) or not 2.0 <= mass <= 50.0:
             parser.error(f"--cart-masses 必须在 [2, 50] kg 内，收到 {mass!r}")
-    if not args.connections:
-        parser.error("--connections 不能为空")
-    if not args.slopes:
-        parser.error("--slopes 不能为空")
-    for slope in args.slopes:
-        if not math.isfinite(slope) or abs(slope) > 45.0:
-            parser.error(f"--slopes 必须在 [-45, 45] deg 内，收到 {slope!r}")
-    _positive(args.ground_friction, "--ground-friction")
-    if args.ground_friction > 2.0:
-        parser.error("--ground-friction 必须在 (0, 2] 内")
-    _positive(args.rope_length, "--rope-length")
-    _positive(args.slack, "--slack", allow_zero=True)
-    if args.rope_length - args.slack <= 0.05:
-        parser.error("--rope-length − --slack 必须 > 0.05 m（否则初始挂点距几何上不成立）")
-    _positive(args.stiffness, "--stiffness")
-    _positive(args.damping, "--damping", allow_zero=True)
+    if not math.isfinite(args.ground_friction) or not 0.0 < args.ground_friction <= 2.0:
+        parser.error(f"--ground-friction 必须在 (0, 2] 内，收到 {args.ground_friction!r}")
     for name in ("settle_time", "tow_duration", "coast_duration", "transition_window", "dt",
-                 "ramp_time_s", "hold_damping", "wheel_damping"):
+                 "ramp_time_s", "wheel_damping"):
         value = getattr(args, name)
-        allow_zero = name in ("wheel_damping", "hold_damping")
-        _positive(value, f"--{name.replace('_', '-')}", allow_zero=allow_zero)
-    if args.dt > 0.01:
-        parser.error("--dt 必须 ≤ 0.01 s")
+        if not math.isfinite(value) or value <= 0.0:
+            parser.error(f"--{name.replace('_', '-')} 必须是有限正数，收到 {value!r}")
+    if args.transition_window > args.tow_duration:
+        parser.error("--transition-window 不能超过 --tow-duration（窗口取不到记录）")
     if args.record_every < 1:
-        parser.error("--record-every 必须 ≥ 1")
-    if args.spawn_height is not None:
-        _positive(args.spawn_height, "--spawn-height")
-    if not 0.0 <= args.cart_drop <= 0.1:
-        parser.error("--cart-drop 必须在 [0, 0.1] m 内")
-    if not math.isfinite(args.env_spacing) or args.env_spacing <= 0:
-        parser.error("--env-spacing 必须是有限正数")
-    if args.max_envs < 1:
-        parser.error("--max-envs 必须 ≥ 1")
-    for name in DEFAULT_THRESHOLDS:
-        value = getattr(args, name)
-        if not math.isfinite(value) or value <= 0:
-            parser.error(f"--{name.replace('_', '-')} 必须是有限正数")
-
-    cases = build_case_grid(args.velocities, args.connections, args.cart_masses, args.slopes)
-    per_slope = len(cases) // len(args.slopes)
-    if per_slope > args.max_envs:
-        parser.error(
-            f"单个坡度的 case 数 {per_slope} 超过 --max-envs {args.max_envs}。"
-            f"减小网格（--velocities/--connections/--cart-masses/--slopes）或提高 --max-envs。")
-    required_spacing = min_env_spacing(max(args.velocities), tow_duration=args.tow_duration,
-                                       coast_duration=args.coast_duration)
-    if args.env_spacing < required_spacing:
-        parser.error(
-            f"--env-spacing {args.env_spacing:g} m 小于并行环境所需的最小间距 "
-            f"{required_spacing:.1f} m（最大速度 {max(args.velocities):g} m/s × "
-            f"最长行程）；调大 --env-spacing 或减小速度/时长")
-    try:
-        slope_ground_plan(args.slopes[0], args.slope_backend)   # 后端名非法时在这里报错
-    except ValueError as exc:
-        parser.error(str(exc))
-    if args.slope_backend == "terrain":
-        # terrain 后端只接受坡度量级 0/5/10（每条 lane 的剖面自带上下坡），
-        # 且每轮给每个 case 一块真实 tile ⇒ 每档可用的 cell 数有限
-        for slope in args.slopes:
-            try:
-                surface_frame(slope, args.slope_backend)
-            except ValueError as exc:
-                parser.error(str(exc))
-            available = len(slope_cells(slope))
-            if per_slope > available:
-                parser.error(
-                    f"--slope-backend terrain 下坡度量级 {slope:g}° 只有 {available} 个训练 cell，"
-                    f"装不下每轮 {per_slope} 个 case；减小网格或改用 --slope-backend gravity")
-    args.cases = cases
+        parser.error("--record-every 必须是正整数")
+    for name, value in DEFAULT_THRESHOLDS.items():
+        if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0.0:
+            parser.error(f"--{name.replace('_', '-')} 必须是有限正数，收到 {value!r}")
+    args.num_envs = int(args.num_envs)
+    args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses)
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
                                   tow_duration=args.tow_duration,
                                   coast_duration=args.coast_duration, dt=args.dt)
@@ -1498,39 +1416,49 @@ def parse_args(argv=None):
 
 
 def planned_grid_lines(args) -> list:
-    """`--dry-run` / 启动横幅用的网格与代价说明（纯逻辑）。"""
+    """`--dry-run` / 启动横幅：网格、逐 env 分配与代价（纯逻辑，标准库可跑）。"""
     schedule = args.schedule
     cases = args.cases
-    per_slope = len(cases) // len(args.slopes)
+    summary = env_case_summary(cases)
     recorded = schedule.total_steps // args.record_every
     lines = [
-        f"[plan] 冻结底层策略：{args.policy}；地面摩擦固定 {args.ground_friction:g}；"
-        f"轮轴阻尼 {args.wheel_damping:g} N·m·s/rad",
-        f"[plan] 速度档：{', '.join(f'{v:g}' for v in args.velocities)} m/s；连接："
-        f"{', '.join(args.connections)}；质量：{', '.join(f'{m:g}' for m in args.cart_masses)} kg",
-        f"[plan] 坡度：{', '.join(f'{s:+g}' for s in args.slopes)} deg（+ = 上坡）；后端 "
-        f"{args.slope_backend}；站定制动 {args.slope_settle}"
-        + (f"（额外 {args.hold_damping:g} N·m·s/rad，仅 station）"
-           if args.slope_settle == "hold" else ""),
-        f"[plan] 网格：{len(args.slopes)} 坡度 × {len(args.velocities)} 速度 × "
-        f"{len(args.connections)} 连接 × {len(args.cart_masses)} 质量 = {len(cases)} case；"
-        f"每坡度 {per_slope} 环境并行、{len(args.slopes)} 次仿真过程",
-        f"[plan] 每 case：station {schedule.station_steps * schedule.dt:.2f} s"
+        f"[plan] 场景 = **训练场景** `UpperTowingSceneCfg`：{NUM_COLUMNS} 列 × {NUM_ROWS} 行 = "
+        f"{connection_grid.GRID_SIZE} 条 lane（env i 的连接/长度/坡度量级取 "
+        f"`connection_grid.env_spec(i)`，与训练逐位一致）",
+        f"[plan] 并行环境数 {summary['envs']}（网格全集 {DEFAULT_NUM_ENVS} 的 "
+        f"{summary['cell_repeats']:g} 倍 ⇒ 覆盖 {summary['cells']} 个 cell）；"
+        f"一次仿真跑完，不再按坡度分轮",
+        f"[plan] 网格分布：连接 " + " / ".join(f"{name} {count}" for name, count
+                                              in summary["connections"].items())
+        + "；坡度量级 " + " / ".join(f"{grade}° {count}" for grade, count
+                                    in summary["grades_deg"].items())
+        + f"；连接长度 {summary['length_m']['min']:g}–{summary['length_m']['max']:g} m",
+        f"[plan] 工作条件（确定性轮转）：速度 {', '.join(f'{v:g}' for v in args.velocities)} m/s × "
+        f"质量 {', '.join(f'{m:g}' for m in args.cart_masses)} kg = "
+        f"{len(args.velocities) * len(args.cart_masses)} 组；slot = row + column（质量 "
+        f"`slot % {len(args.cart_masses)}`、速度每 {len(args.cart_masses)} 个 slot 换一档）⇒ 每组 "
+        f"{min(summary['bucket_env_counts'])}–{max(summary['bucket_env_counts'])} 个 env",
+        f"[plan] 「连接 × 质量」env 数（slot 轮转 ⇒ 严格均衡）："
+        + "；".join(f"{connection} " + "/".join(f"{mass}:{count}" for mass, count in counts.items())
+                    for connection, counts in summary["mass_counts_by_connection"].items()),
+        f"[plan] 训练侧质量随机范围 [{TRAINING_MASS_RANGE_KG[0]:g}, "
+        f"{TRAINING_MASS_RANGE_KG[1]:g}] kg："
+        + (", ".join(f"{m:g}" for m in args.cart_masses
+                     if m > TRAINING_MASS_RANGE_KG[1]) or "（本网格没有超出）")
+        + " kg 超出该范围 ⇒ 那几档是外推检查，判读要与分布内档位分开",
+        f"[plan] 物理量：地面摩擦 {args.ground_friction:g}；轮轴阻尼 "
+        f"{args.wheel_damping:g} N·m·s/rad；地面/重力/传感器/资产全部沿用训练配置",
+        f"[plan] 每 env：station {schedule.station_steps * schedule.dt:.2f} s"
         f"（{schedule.station_steps} 步）+ tow {schedule.tow_steps * schedule.dt:.2f} s"
         f"（{schedule.tow_steps} 步）+ coast {schedule.coast_steps * schedule.dt:.2f} s"
         f"（{schedule.coast_steps} 步）= {schedule.total_steps} 步 / "
         f"{schedule.total_steps * schedule.dt:.2f} s",
-        f"[plan] 记录：每 {args.record_every} 物理步一行 ⇒ 每 case 约 {recorded} 行，"
-        f"共约 {recorded * len(cases)} 行；CSV 策略 {args.write_csv}",
+        f"[plan] 记录：每 {args.record_every} 物理步一行（{args.record_every * args.dt * 1000:g} ms）"
+        f" ⇒ 每 env 约 {recorded} 行，共约 {recorded * len(cases)} 行；CSV 策略 "
+        f"{args.write_csv}",
         f"[plan] 指令整形：{args.command_shaping}"
-        + (f"（ramp {args.ramp_time_s:g} s）" if args.command_shaping == "ramp" else "（阶跃）")
-        + f"；环境间距 {args.env_spacing:g} m",
+        + (f"（ramp {args.ramp_time_s:g} s）" if args.command_shaping == "ramp" else "（阶跃）"),
     ]
-    frame_line = (f"[plan] 坡度后端 {args.slope_backend}："
-                  + ("现有平地 + 旋转重力（与真实坡面同解）" if args.slope_backend == "gravity"
-                     else f"真实坡面剖面（平地→上坡→坡顶→下坡→平地；每档一个 {per_slope} 块的"
-                          f"紧凑网格，cell 取自训练网格的 mdp/connection_grid）"))
-    lines.append(frame_line)
     if args.lane_keeping == "off":
         lines.append("[plan] 横向/朝向保持：**关闭**（指令只有 vx，机器人可能漂离中线）")
     else:
@@ -1540,6 +1468,13 @@ def planned_grid_lines(args) -> list:
             f"vy≤{args.lane_vy_limit:g} m/s、wz≤{args.lane_wz_limit:g} rad/s）"
             f"⇒ 目标 y=0（lane 中线）、yaw=0（超前）；**vx 只给指令、不参与 PD**"
             f"；判据 |y|≤{args.lane_y_limit_m:g} m、|yaw|≤{args.lane_heading_limit_deg:g}°")
+    preview = min(8, len(cases))
+    lines.append(f"[plan] 前 {preview} 个 env 的分配（env → 列/行、连接、长度、坡度量级、"
+                 f"速度、质量）：")
+    for case in cases[:preview]:
+        lines.append(f"        env{case.env_index:04d} → c{case.column:02d}r{case.row:02d} "
+                     f"{case.connection} L={case.length_m:.3f} m g={case.grade_deg:g}° "
+                     f"v={case.velocity_mps:g} m/s m={case.cart_mass_kg:g} kg")
     return lines
 
 
@@ -1566,18 +1501,46 @@ def main(args):
 
     git = git_info()
     thresholds = {name: getattr(args, name) for name in DEFAULT_THRESHOLDS}
-    grid = [case.to_dict() for case in args.cases]
+    cases = args.cases
+    distribution = env_case_summary(cases)
     experiment = {
         "state": "starting",
         "script": str(Path(__file__).resolve()),
-        "question": "冻结 AMP 策略 + 脚本速度指令的基线，在速度×连接×质量×坡度网格上是否已满足"
+        "question": "冻结 AMP 策略 + 脚本速度指令的基线，在**训练场景的 40×20 网格**上是否已满足"
                     "起步关节响应 / 全程跟速 / 停车滑移 / 停车间距 / 停车关节响应五项指标",
-        "grid": {"velocities_mps": list(args.velocities),
-                 "connections": list(args.connections),
-                 "cart_masses_kg": list(args.cart_masses),
-                 "slopes_deg": list(args.slopes),
-                 "cases": grid, "case_count": len(grid),
-                 "envs_per_pass": len(grid) // len(args.slopes)},
+        "scene": {
+            "source": "imgo2_rl.tasks.manager_based.towing.upper_env_cfg.UpperTowingSceneCfg",
+            "note": "直接构造训练场景（同一地形 mesh、机器人/小车资产、五个车体-机器人接触"
+                    "传感器、世界竖直重力）；本脚本只覆盖地面摩擦与轮轴阻尼这两个标量",
+            "num_envs": args.num_envs,
+            "grid": {"columns": NUM_COLUMNS, "rows": NUM_ROWS,
+                     "grid_size": int(connection_grid.GRID_SIZE)},
+            "cell_assignment": "env i → connection_grid.env_spec(i)"
+                               "（row-major：列 = i % 40、行 = i // 40）",
+            "distribution": distribution,
+            "spawn": "剖面平地段起点、姿态竖直（lane 系 = 世界系）；两挂点三维距 = "
+                     "env_spec(i)['initial_distance']（绳 = 0.5·L0、刚体 = L）",
+            "work_conditions": {
+                "velocities_mps": list(args.velocities),
+                "cart_masses_kg": list(args.cart_masses),
+                "rotation": "质量 = cart_masses[i % len(cart_masses)]；"
+                            "速度 = velocities[(i // len(cart_masses)) % len(velocities)]",
+                "note": "确定性轮转：每个 cell 只落到一种 (速度, 质量) 组合，"
+                        "各组合的 env 数只差 ±1",
+                "bucket_env_counts": distribution["bucket_env_counts"],
+            },
+            "caveats": [
+                "不使用训练侧 12.5% 的无小车锚点：本测试台所有 env 都拖车",
+                "速度指令由确定性轮转固定（训练侧每回合随机重采样）：同一 cell 只有一种"
+                " (速度, 质量) 组合，因此看不到「同一 cell 在不同工作条件下的离散度」",
+                f"质量档里 > {TRAINING_MASS_RANGE_KG[1]:g} kg 的档位超出训练随机范围 "
+                f"[{TRAINING_MASS_RANGE_KG[0]:g}, {TRAINING_MASS_RANGE_KG[1]:g}] kg，"
+                f"属于外推检查",
+                f"地面摩擦固定 {args.ground_friction:g}（训练随机 0.4–1.2）；轮轴阻尼固定 "
+                f"{args.wheel_damping:g} N·m·s/rad（训练随机 0.008–0.032）",
+                "关节位置残差为 0：跑的是冻结策略 + 脚本指令的基线，不加载上层 checkpoint",
+            ],
+        },
         "schedule": args.schedule.to_dict(),
         "thresholds": thresholds,
         "ground_friction": args.ground_friction,
@@ -1591,19 +1554,12 @@ def main(args):
             "limits": {name: getattr(args, name)
                        for name in ("lane_y_limit_m", "lane_heading_limit_deg")},
         },
-        "slope": {"backend": args.slope_backend, "settle": args.slope_settle,
-                  "hold_damping_nms_per_rad": args.hold_damping,
-                  "frames": {f"{slope:+g}": slope_ground_plan(slope, args.slope_backend)
-                             for slope in args.slopes},
-                  "realisation_note": (
-                      "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡度同解）"
-                      if args.slope_backend == "gravity" else
-                      "真实坡面 tile（mdp/slope_geometry.tile_mesh）+ 坡面出生姿态 R_y(-θ)，"
-                      "与训练场景同源；本测试台把每坡度的 tile 摆成自己的紧凑网格")},
-        "connection": {"rope_length_m": args.rope_length, "slack_m": args.slack,
-                       "stiffness_n_per_m": args.stiffness, "damping_ns_per_m": args.damping,
-                       "position_gain": args.position_gain,
-                       "max_correction_rate_mps": args.max_correction_rate},
+        "connection": {
+            "note": "连接类型/长度/弹性逐 env 由训练网格给定（env_spec），不可扫；"
+                    "三类模型都用逐 env 的 rest_length 构造，非本类型的 k/c 填 "
+                    "connection_grid.ELASTIC_KC[0] 占位（MultiRopeModel 用掩码忽略）",
+            "counts": distribution["connections"],
+        },
         "arguments": vars(args).copy() | {"cases": None, "schedule": None},
         "python": platform.python_version(),
         "git": git,
@@ -1634,172 +1590,58 @@ def main(args):
         launcher = AppLauncher(headless=args.headless, device=args.device)
         application = launcher.app
 
-        import carb
-        import numpy as np
-        import torch
-        import trimesh
         import isaaclab.sim as sim_utils
         import isaaclab.utils.math as math_utils
-        from isaaclab.assets import AssetBaseCfg
+        import torch
         from isaaclab.scene import InteractiveScene
-        from isaaclab.terrains import TerrainGeneratorCfg, TerrainImporter, TerrainImporterCfg
-        from imgo2_rl.assets.cart import make_cart_cfg
+        from imgo2_rl.assets.cart import resolve_cart_path
+        from imgo2_rl.assets.cart_model import read_cart_model
+        from imgo2_rl.tasks.manager_based.towing.mdp.profile_torch import (
+            profile_height_tensor)
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
         from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
-            RIGID_MODEL, BodyProperties, MultiRopeModel, make_rope_model,
-            world_inverse_inertia)
-        from imgo2_rl.tasks.manager_based.towing.mdp.profile_torch import (
-            profile_height_tensor)
+            BodyProperties, MultiRopeModel, make_rope_model, world_inverse_inertia)
         from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
-            BACK_M, FORWARD_M, HALF_WIDTH_M, PROFILE_LENGTH_M,
-            profile_height as profile_height_fn, profile_slope_degrees as profile_slope_fn)
-        from imgo2_rl.tasks.manager_based.towing.towing_env_cfg import (
-            ROBOT_ATTACHMENT_OFFSET_M, ROBOT_SPAWN_HEIGHT_M, TowSceneCfg)
+            profile_slope_degrees as profile_slope_fn)
+        from imgo2_rl.tasks.manager_based.towing.upper_env_cfg import (
+            UpperTowingEnvCfg, UpperTowingSceneCfg)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
-        from isaaclab.utils import configclass
 
         policy_cfg = get_policy(args.policy)
-        spawn_height = args.spawn_height if args.spawn_height is not None else ROBOT_SPAWN_HEIGHT_M
-        slope_cases = cases_for_slope(args.cases, args.slopes[0])
-        num_envs = len(slope_cases)
-        if num_envs != len(args.cases) // len(args.slopes):
-            raise RuntimeError("坡度分组后的 case 数与网格不一致（内部错误）")
+        num_envs = args.num_envs
+        dt = args.dt
+        record_dt = dt * args.record_every
 
-        cart_cfg, model = make_cart_cfg(output / "usd", drop_height=args.cart_drop)
-        cart_attachment = tuple(model["attachment_position_m"])
-        robot_attachment = tuple(ROBOT_ATTACHMENT_OFFSET_M)
-        cart_cfg.init_state.pos = (
-            _initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
-                            cart_height=model["resting_height_m"],
-                            robot_offset=robot_attachment, cart_offset=cart_attachment),
-            0.0, model["resting_height_m"] + args.cart_drop)
-
-        sim_cfg = sim_utils.SimulationCfg(
-            dt=args.dt, device=args.device,
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
-                restitution=0.0, friction_combine_mode="average", restitution_combine_mode="min"))
+        # ------------------------------------------------------------ 训练场景
+        training_cfg = UpperTowingEnvCfg()
+        action_cfg = training_cfg.actions.high_level_velocity
+        if num_envs != int(training_cfg.scene.num_envs):
+            print(f"[info] 训练场景默认 {int(training_cfg.scene.num_envs)} 环境，本次用 "
+                  f"{num_envs}（逐 env 参数仍按 `env_spec` 分配，非整数倍时只覆盖网格前缀）",
+                  flush=True)
+        sim_cfg = training_cfg.sim
+        sim_cfg.device = args.device
         sim = sim_utils.SimulationContext(sim_cfg)
-
-        # ------------------------------------------------------------ 坡面 tile 布局（terrain 后端）
-        # 场景只建一次，所以把**所有坡度**的 tile 一次性铺进同一块 mesh：每个坡度一块
-        # `num_envs` 个 tile 的紧凑网格，块与块沿 y 拉开；每轮只把机器人/小车摆到本轮
-        # 那一块的原点上（`pass_origins`），mesh 不重建。几何直接复用训练侧的
-        # `slope_geometry.tile_mesh`（cell 由 `slope_cells` 从训练网格里挑同坡度的），
-        # 只把顶点平移到本测试台的紧凑布局。
-        slope_blocks = {}
-        terrain_layout = None
-        if args.slope_backend == "terrain":
-            terrain_layout = build_terrain_layout(args.slopes, num_envs)
-            slope_blocks = terrain_layout["blocks"]
-            vertices = terrain_layout["vertices"]
-            faces = terrain_layout["faces"]
-            print(f"[INFO] terrain 后端：{len(args.slopes)} 块 × {num_envs} 个真实坡面 tile"
-                  f"（共 {len(vertices)} 顶点 / {len(faces)} 面）；块沿 y 间距 "
-                  f"{terrain_layout['block_y_pitch_m']:g} m", flush=True)
-
-        class PlayTestTileGenerator:
-            """本测试台的地形生成器：一次铺好所有坡度的 tile（`TerrainGeneratorCfg.class_type`）。"""
-
-            def __init__(self, cfg, device="cpu"):
-                self.terrain_mesh = trimesh.Trimesh(
-                    vertices=np.asarray(vertices, dtype=np.float64),
-                    faces=np.asarray(faces, dtype=np.int64), process=False)
-                self.terrain_origins = np.asarray(terrain_layout["origins_grid"], dtype=np.float32)
-                self.flat_patches = {}
-
-        class PlayTestTileImporter(TerrainImporter):
-            """env 原点固定成本轮坡度那一块；训练侧的课程/原点更新在这里没有意义。"""
-
-            def configure_env_origins(self, terrain_origins=None):
-                if terrain_origins is None:
-                    raise ValueError("terrain 后端需要生成器给出的 tile 原点")
-                origins = torch.as_tensor(np.asarray(terrain_origins), device=self.device,
-                                          dtype=torch.float32)
-                expected = (len(args.slopes), num_envs, 3)
-                if tuple(origins.shape) != expected:
-                    raise ValueError(
-                        f"tile 原点形状 {tuple(origins.shape)} 与 {expected} 不符")
-                self.terrain_origins = origins
-                self.terrain_levels = torch.zeros(self.cfg.num_envs, dtype=torch.long,
-                                                  device=self.device)
-                self.terrain_types = torch.arange(self.cfg.num_envs, dtype=torch.long,
-                                                  device=self.device)
-                self.max_terrain_level = 1
-                self.env_origins = origins[0].clone()
-
-            def update_env_origins(self, env_ids, move_up, move_down):
-                raise RuntimeError("本测试台的 tile 布局固定，不支持课程/原点更新")
-
-        @configclass
-        class PlayTestTerrainSceneCfg(TowSceneCfg):
-            """terrain 后端：把 `ground` 字段的类型放宽成「平地或地形」。
-
-            为什么复用 `ground` 这个名字而不新增 `terrain` 字段：`InteractiveScene`
-            按**对象类型**分派（`isinstance(asset_cfg, TerrainImporterCfg)` ⇒ 当地形处理），
-            字段名无所谓；而 dataclass 里**新增**字段只能追加到字段序最后，那样地形会比
-            robot/cart 晚建 —— 训练场景与 Isaac Lab 官方地形任务都把 terrain 声明在第一位，
-            所以这里沿用它原位的字段，顺序与训练侧一致（`ground=None` 也不会同时生成平地）。
-            """
-
-            ground: AssetBaseCfg | TerrainImporterCfg | None = None
-
-        # 相机：terrain 后端每轮对准本轮那一块 tile（每轮都会重设），gravity 后端用固定视角。
-        if args.slope_backend == "gravity":
-            grid_side = max(1, math.ceil(math.sqrt(num_envs)))
-            span = args.env_spacing * max(1, grid_side - 1)
-            if num_envs > 1:
-                centre = 0.5 * span
-                sim.set_camera_view((centre + 1.6 * span, centre - 1.6 * span, 1.1 * span),
-                                    (centre, centre, 0.2))
-            else:
-                sim.set_camera_view((2.5, 2.5, 1.8), (-0.7, 0.0, 0.2))
-
-        scene_cfg = TowSceneCfg(num_envs=num_envs, env_spacing=args.env_spacing, cart=cart_cfg)
-        if args.slope_backend == "terrain":
-            scene_cfg = PlayTestTerrainSceneCfg(num_envs=num_envs, env_spacing=args.env_spacing,
-                                                cart=cart_cfg)
-            scene_cfg.ground = TerrainImporterCfg(
-                prim_path="/World/Ground", terrain_type="generator",
-                class_type=PlayTestTileImporter,
-                terrain_generator=TerrainGeneratorCfg(
-                    class_type=PlayTestTileGenerator,
-                    size=(BACK_M + FORWARD_M, 2.0 * HALF_WIDTH_M),
-                    num_rows=len(args.slopes), num_cols=num_envs,
-                    sub_terrains={}, curriculum=False),
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
-                    restitution=0.0, friction_combine_mode="average",
-                    restitution_combine_mode="min"))
-        else:
-            ground = scene_cfg.ground.spawn.physics_material
-            ground.static_friction = args.ground_friction
-            ground.dynamic_friction = args.ground_friction
-        scene_cfg.robot.init_state.pos = (0.0, 0.0, spawn_height)
+        scene_cfg = UpperTowingSceneCfg(num_envs=num_envs,
+                                        env_spacing=training_cfg.scene.env_spacing)
+        material = scene_cfg.terrain.physics_material
+        material.static_friction = args.ground_friction
+        material.dynamic_friction = args.ground_friction
         scene_cfg.robot.init_state.joint_pos = dict(zip(policy_cfg.joint_names,
                                                         policy_cfg.default_dof_pos))
-        if args.slope_backend == "terrain":
-            experiment["slope"]["terrain_layout"] = {
-                "mesh_vertices": len(terrain_layout["vertices"]),
-                "mesh_faces": len(terrain_layout["faces"]),
-                "columns_per_block": terrain_layout["columns"],
-                "block_y_pitch_m": terrain_layout["block_y_pitch_m"],
-                "row_spacing_m": terrain_layout["row_spacing_m"],
-                "column_spacing_m": terrain_layout["column_spacing_m"],
-                "blocks": {
-                    f"{slope:+g}": {
-                        "tiles": len(slope_blocks[slope]["cells"]),
-                        "cells_row_column": [list(cell) for cell in slope_blocks[slope]["cells"]],
-                        "origins": [list(origin) for origin in slope_blocks[slope]["origins"]]}
-                    for slope in args.slopes}}
-            write_json(output / "experiment.json", experiment)
         scene = InteractiveScene(scene_cfg)
         sim.reset()
-        robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
-        deck_contacts = scene["deck_contacts"]
+        robot, cart = scene["robot"], scene["cart"]
+        deck_sensor = scene[action_cfg.collision_sensor_names[0]]
+        wheel_sensors = [scene[name] for name in action_cfg.collision_sensor_names[1:]]
+        origins = scene.env_origins
+        cart_model = read_cart_model(resolve_cart_path())
+        dt = sim.get_physics_dt()
+        if not math.isclose(dt, args.dt, rel_tol=1e-6):
+            raise RuntimeError(f"Simulator dt {dt} 与请求的 {args.dt} 不一致")
 
         # ------------------------------------------------------------ 契约核对
         if robot.num_joints != policy_cfg.num_joints:
@@ -1812,38 +1654,92 @@ def main(args):
         reordered_default = [float(value) for value in robot.data.default_joint_pos[0, policy_to_asset]]
         if any(abs(a - b) > 1e-6 for a, b in zip(reordered_default, policy_cfg.default_dof_pos)):
             raise RuntimeError("关节置换核对失败：模型默认关节角与契约 default_dof_pos 不一致")
-        base_ids, _ = robot.find_bodies(["base"])
-        cart_base_ids, _ = cart.find_bodies(["base_link"])
-        cart_joint_ids, _ = cart.find_joints(list(model["joint_names"]), preserve_order=True)
-        cart_wheel_ids, _ = cart.find_bodies(list(model["wheel_names"]), preserve_order=True)
-        if len(base_ids) != 1 or len(cart_base_ids) != 1 or len(cart_joint_ids) != 4:
-            raise RuntimeError("base/base_link 或小车四轮关节的解析结果不符合预期")
-        decimation = max(1, int(round(policy_cfg.control_dt / args.dt)))
-        if not math.isclose(decimation * args.dt, policy_cfg.control_dt, rel_tol=1e-6):
+        base_ids, _ = robot.find_bodies([action_cfg.robot_body_name])
+        cart_base_ids, _ = cart.find_bodies([action_cfg.cart_body_name])
+        cart_joint_ids, _ = cart.find_joints(list(action_cfg.cart_wheel_joint_names),
+                                             preserve_order=True)
+        cart_wheel_ids, _ = cart.find_bodies(list(action_cfg.cart_wheel_body_names),
+                                             preserve_order=True)
+        if (len(base_ids) != 1 or len(cart_base_ids) != 1
+                or len(cart_joint_ids) != 4 or len(cart_wheel_ids) != 4):
+            raise RuntimeError("base/base_link 或小车四轮关节/轮体的解析结果不符合预期")
+        if len(action_cfg.collision_sensor_names) != 5:
+            raise RuntimeError("训练侧碰撞传感器数量不是 5（车斗 + 四轮）")
+        # 约定：第 0 个是车斗（Cart/base_link）、后 4 个是轮子。按名字守一道，避免训练侧
+        # 调整顺序后本脚本静默把「轮子」当「车斗」记进 `cart_deck_fx_n`。
+        if "deck" not in action_cfg.collision_sensor_names[0]:
+            raise RuntimeError(
+                f"碰撞传感器第 0 项不是车斗：{action_cfg.collision_sensor_names[0]!r}"
+                f"（训练侧约定 {action_cfg.collision_sensor_names}）")
+        for name in action_cfg.collision_sensor_names[1:]:
+            if "wheel" not in name:
+                raise RuntimeError(f"碰撞传感器 {name!r} 不是轮子（顺序约定被改了）")
+        decimation = max(1, int(round(policy_cfg.control_dt / dt)))
+        if not math.isclose(decimation * dt, policy_cfg.control_dt, rel_tol=1e-6):
             raise RuntimeError("policy_cfg.control_dt 必须是物理 dt 的整数倍")
         policy = FrozenLowLevelPolicy(policy_cfg, device=args.device)
-        # 冻结策略的 reset 契约建议的站定步数（`--settle-time` 比它短时起拖前可能还没站定）
         recommended_settle = policy.reset()
         if args.schedule.station_steps < recommended_settle:
             print(f"[warn] station {args.schedule.station_steps} 步（{args.settle_time:g} s）"
                   f"短于冻结策略 reset 契约建议的 {recommended_settle} 步"
                   f"（{policy_cfg.reset_settle_s:g} s）：起拖前机器人可能还没站定，"
                   f"起步指标会被这段未站定的瞬态污染。", flush=True)
+        if not math.isclose(args.wheel_damping, float(action_cfg.initial_wheel_damping),
+                            rel_tol=1e-9):
+            print(f"[warn] 轮轴阻尼 {args.wheel_damping:g} ≠ 训练名义值 "
+                  f"{float(action_cfg.initial_wheel_damping):g} N·m·s/rad（训练侧随机 "
+                  f"0.008–0.032）：本轮的判读不再代表训练分布中心。", flush=True)
+        if not math.isclose(args.ground_friction, float(action_cfg.initial_ground_friction),
+                            rel_tol=1e-9):
+            print(f"[warn] 地面摩擦 {args.ground_friction:g} ≠ 训练名义值 "
+                  f"{float(action_cfg.initial_ground_friction):g}（训练侧随机 0.4–1.2）。",
+                  flush=True)
+        if args.lane_keeping == "pd":
+            for name, cap in (("lane_vy_limit", 1.0), ("lane_wz_limit", 1.57)):
+                if getattr(args, name) > cap:
+                    raise RuntimeError(
+                        f"--{name.replace('_', '-')} {getattr(args, name):g} 超出 AMP 训练过的"
+                        f"指令范围 ±{cap:g}：会给冻结策略喂分布外指令")
+
+        # 相机：一次覆盖整张 40×20 网格（默认 800 环境时跨度约 230 m × 110 m）
+        centre = origins.mean(dim=0)
+        extent = (origins.max(dim=0).values - origins.min(dim=0).values)
+        span = max(float(extent.max()), 10.0)
+        sim.set_camera_view((float(centre[0]) + 1.1 * span, float(centre[1]) - 1.1 * span,
+                             0.9 * span), tuple(float(value) for value in centre))
+
+        # ------------------------------------------------------------ 逐 env 参数
+        specs = [connection_grid.env_spec(index) for index in range(num_envs)]
+        grade_deg = torch.tensor([float(case.grade_deg) for case in cases],
+                                 dtype=torch.float32, device=args.device)
+        if any(abs(float(spec["slope_degrees"]) - case.grade_deg) > 1e-9
+               for spec, case in zip(specs, cases)):
+            raise RuntimeError("case 的坡度量级与 env_spec 不一致（内部错误）")
+        velocities = torch.tensor([float(case.velocity_mps) for case in cases],
+                                  dtype=torch.float32, device=args.device)
+        connection_length = torch.tensor([float(spec["length"]) for spec in specs],
+                                         dtype=torch.float32, device=args.device)
+        initial_distance = torch.tensor([float(spec["initial_distance"]) for spec in specs],
+                                        dtype=torch.float32, device=args.device)
+        model_ids = torch.tensor([int(spec["model_index"]) for spec in specs],
+                                 dtype=torch.long, device=args.device)
+        placeholder_k, placeholder_c = connection_grid.ELASTIC_KC[0]
+        rope_stiffness = torch.tensor(
+            [float(spec["stiffness"]) if spec["stiffness"] is not None else placeholder_k
+             for spec in specs], dtype=torch.float32, device=args.device)
+        rope_damping = torch.tensor(
+            [float(spec["damping"]) if spec["damping"] is not None else placeholder_c
+             for spec in specs], dtype=torch.float32, device=args.device)
+
+        # ---- 逐 env 的小车质量/惯量（质量档轮转）
         nominal_masses = cart.root_physx_view.get_masses().clone()
         nominal_inertias = cart.root_physx_view.get_inertias().clone()
-        dt = sim.get_physics_dt()
-        if not math.isclose(dt, args.dt, rel_tol=1e-6):
-            raise RuntimeError("Simulator dt 与请求不一致")
-        record_dt = dt * args.record_every
-
-        # ------------------------------------------------------------ 逐 env 的 case 参数
-        connection_ids = torch.tensor([CONNECTIONS.index(case.connection) for case in slope_cases],
-                                      dtype=torch.long, device=args.device)
-        mass_scales = torch.tensor([case.cart_mass_kg / model["total_mass_kg"]
-                                    for case in slope_cases],
+        nominal_total = nominal_masses.sum(dim=1)
+        if float(nominal_total.min()) <= 0.0:
+            raise RuntimeError("小车名义总质量非正，无法按档缩放")
+        mass_scales = torch.tensor([float(case.cart_mass_kg) / float(nominal_total[index])
+                                    for index, case in enumerate(cases)],
                                    dtype=torch.float32, device=args.device)
-        velocities = torch.tensor([case.velocity_mps for case in slope_cases],
-                                  dtype=torch.float32, device=args.device)
         cart_env_idx = torch.arange(num_envs, dtype=torch.int, device="cpu")
         # `get_masses()/get_inertias()` 是 **CPU** 缓冲（PhysX 视图约定），缩放系数必须同设备，
         # 否则 CPU×CUDA 直接报 "Expected all tensors to be on the same device"。
@@ -1852,35 +1748,67 @@ def main(args):
         cart.root_physx_view.set_masses(scaled_masses, cart_env_idx)
         cart.root_physx_view.set_inertias(scaled_inertias, cart_env_idx)
         actual_masses = cart.root_physx_view.get_masses().sum(dim=1).tolist()
+        for index, case in enumerate(cases):
+            if abs(actual_masses[index] - case.cart_mass_kg) > 1e-3 + 1e-3 * case.cart_mass_kg:
+                raise RuntimeError(
+                    f"env {index} 的小车质量缩放失败：目标 {case.cart_mass_kg:g} kg，"
+                    f"PhysX 里是 {actual_masses[index]:g} kg")
         torque_limits = robot.data.joint_effort_limits[0, policy_to_asset].tolist()
 
-        def build_connection_model(names):
-            """按逐 env 的连接类型建模型：全同单模型，混合用 MultiRopeModel。"""
-            unique = list(dict.fromkeys(names))
-            if len(unique) == 1:
-                return _build_rope(unique[0], args, RIGID_MODEL, make_rope_model)
-            indices = {name: index for index, name in enumerate(unique)}
-            ids = torch.tensor([indices[name] for name in names], dtype=torch.long,
-                               device=args.device)
-            return MultiRopeModel(models=tuple(_build_rope(name, args, RIGID_MODEL, make_rope_model)
-                                               for name in unique), model_ids=ids)
+        # ---- 出生几何（逐 env）：目标挂点距 = env_spec 的 initial_distance
+        spawn = spawn_offsets(initial_distance.tolist(),
+                              robot_height=float(robot.data.default_root_state[0, 2]),
+                              cart_height=float(cart.data.default_root_state[0, 2]),
+                              robot_offset=action_cfg.robot_attachment,
+                              cart_offset=action_cfg.cart_attachment)
+        print(f"[info] 出生几何：挂点法向高差 {spawn['normal_difference_m']:+.3f} m；"
+              f"沿 lane 切向 {min(spawn['along_m']):.3f}–{max(spawn['along_m']):.3f} m；"
+              f"两挂点三维距 {min(spawn['target_distance_m']):.3f}–"
+              f"{max(spawn['target_distance_m']):.3f} m（= env_spec 的 initial_distance）",
+              flush=True)
 
-        rope_model = build_connection_model([case.connection for case in slope_cases])
-        # 观测里的 `projected_gravity` 是**单位**重力方向（训练侧同口径）；`set_gravity()`
-        # 要的是完整向量（含 9.81 的模长），所以两者分开：`gravity_world` 只给观测用。
+        # ---- 连接模型：三套都按**逐 env** 的长度/弹性张量构造（训练侧同一写法）
+        rope_model = MultiRopeModel(
+            models=(
+                make_rope_model("compliant", rest_length=connection_length,
+                                stiffness=rope_stiffness, damping=rope_damping),
+                make_rope_model("inextensible", rest_length=connection_length,
+                                position_gain=float(action_cfg.rope_position_gain),
+                                max_correction_rate=float(action_cfg.rope_max_correction_rate)),
+                make_rope_model("rigid", rest_length=connection_length,
+                                position_gain=float(action_cfg.rigid_position_gain),
+                                max_correction_rate=float(action_cfg.rigid_max_correction_rate)),
+            ), model_ids=model_ids)
+
+        # 观测里的 `projected_gravity` 是**单位**重力方向（训练侧同口径）；重力恒为世界竖直。
+        gravity = (0.0, 0.0, -GRAVITY_MPS2)
         gravity_world = torch.tensor([0.0, 0.0, -1.0], dtype=torch.float32, device=args.device)
 
         def per_env(vector_1x3):
             return vector_1x3.view(1, 3).expand(num_envs, 3)
 
-        robot_attach = torch.tensor(robot_attachment, dtype=torch.float32,
+        robot_attach = torch.tensor(action_cfg.robot_attachment, dtype=torch.float32,
                                     device=args.device).view(1, 1, 3)
-        cart_attach = torch.tensor(cart_attachment, dtype=torch.float32,
+        cart_attach = torch.tensor(action_cfg.cart_attachment, dtype=torch.float32,
                                    device=args.device).view(1, 1, 3)
         robot_zero_torque = torch.zeros(num_envs, robot.num_bodies, 3,
                                         dtype=torch.float32, device=args.device)
         cart_zero_torque = torch.zeros(num_envs, cart.num_bodies, 3,
                                        dtype=torch.float32, device=args.device)
+
+        def robot_contact_fx(sensor):
+            """车体与**机器人**之间的法向接触力（世界系 x 分量，逐 env）。
+
+            训练场景的接触传感器是按机器人 body 过滤的（`filter_prim_paths_expr` 逐个列出
+            机器人 link），所以必须读 `force_matrix_w`（shape `(N, 1, M, 3)`，M = 机器人 link
+            数）再对 M 求和，**不能**用 `net_forces_w`：那个是「传感器 body 受到的净法向力」，
+            含车体与地面/自身部件的全部接触，不是「机器人碰车」的度量。训练侧的
+            `cart_collision` 终止判据读的也是这张矩阵。
+            """
+            matrix = sensor.data.force_matrix_w
+            if matrix is None:
+                raise RuntimeError("过滤后的机器人—小车接触力矩阵不可用（filter 配置丢了？）")
+            return matrix[:, 0].sum(dim=1)[:, 0]
 
         def link_frame_force(asset, body_id, force_world):
             local = math_utils.quat_apply_inverse(asset.data.body_quat_w[:, body_id], force_world)
@@ -1906,9 +1834,9 @@ def main(args):
             masses = host_buffer(cart.root_physx_view.get_masses())
             inertias = host_buffer(cart.root_physx_view.get_inertias())
             spun = sum(inertias[:, body_id, 4] for body_id in cart_wheel_ids)
-            return masses.sum(dim=1) + 4.0 * spun / model["wheel_radius_m"] ** 2
+            return masses.sum(dim=1) + 4.0 * spun / float(cart_model["wheel_radius_m"]) ** 2
 
-        def apply_rope_and_resistance(*, wheel_damping: float, hold_damping: float):
+        def apply_rope_and_resistance(*, wheel_damping: float):
             robot_offset_w = math_utils.quat_apply(robot.data.body_quat_w[:, base_ids[0]],
                                                    per_env(robot_attach))
             cart_offset_w = math_utils.quat_apply(cart.data.body_quat_w[:, cart_base_ids[0]],
@@ -1942,10 +1870,9 @@ def main(args):
                                                cart_zero_torque[:, :1],
                                                positions=cart_attach.expand(num_envs, 1, 3),
                                                body_ids=cart_base_ids)
-            damping = wheel_damping + hold_damping
             effort = torch.zeros_like(cart.data.joint_pos)
             effort[:, cart_joint_ids] = viscous_resistance(
-                cart.data.joint_vel[:, cart_joint_ids], damping)
+                cart.data.joint_vel[:, cart_joint_ids], wheel_damping)
             cart.set_joint_effort_target(effort)
             return state
 
@@ -1986,34 +1913,45 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out.joint_targets
 
-        def set_gravity(gravity):
-            """把重力写进 PhysX 场景（Isaac Lab 官方 `randomize_physics_scene_gravity` 同一 API）。"""
-            physics_sim_view = sim.physics_sim_view
-            physics_sim_view.set_gravity(carb.Float3(*[float(value) for value in gravity]))
+        def pitch_offsets_for(progress):
+            """逐 env 的局部坡度（rad）：相对剖面参考姿态的俯仰偏移。
 
-        def reset_episode(*, origins, spawn_spec=None):
-            """把一个回合的初始状态写死（`Articulation.reset()` 不写位姿，必须显式重写）。
+            只有 0/5/10 三个档位，所以按档位分组做（每组一次 torch 赋值），避免逐 env 标量
+            调用在 800 环境 × 440 个记录步上累计成几百万次 Python 调用。
+            """
+            offsets = torch.zeros_like(progress)
+            for grade in torch.unique(grade_deg).tolist():
+                if float(grade) == 0.0:
+                    continue
+                mask = grade_deg == grade
+                values = [math.radians(profile_slope_fn(grade, x))
+                          for x in progress[mask].tolist()]
+                offsets[mask] = torch.tensor(values, dtype=torch.float32, device=args.device)
+            return offsets
 
-            `spawn_spec` 为 None = `gravity` 后端的平地出生（沿用 `default_root_state` 的
-            x/y/高度偏移，只有姿态是单位四元数）；否则是 `terrain` 后端的坡面出生：
-            `spawn_on_surface()` 给出的**坡面系**偏移 + 出生四元数 `R_y(−θ)`。
+        # 交叉核对：张量版剖面高度必须与训练侧标量版逐点一致（新的 15 m 剖面同样检查）
+        for grade in (0.0, 5.0, 10.0):
+            xs = torch.linspace(0.0, 14.0, 29, device=args.device)
+            got = profile_height_tensor(torch.full_like(xs, grade), xs).tolist()
+            want = [slope_geometry.profile_height(grade, float(x)) for x in xs.tolist()]
+            if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
+                raise RuntimeError(f"profile_height_tensor 与标量版不一致（档位 {grade:g}°）")
+
+        def reset_episode():
+            """写死一个回合的初始状态（`Articulation.reset()` 不写位姿，必须显式重写）。
+
+            出生在剖面平地段 ⇒ 姿态竖直（单位四元数）；小车根由 `spawn_offsets()` 逐 env
+            解出，保证两挂点三维距 = `env_spec` 的目标值（spawn 第一拍不产生约束力）。
             """
             robot_root = robot.data.default_root_state.clone()
             cart_root = cart.data.default_root_state.clone()
-            if spawn_spec is None:
-                robot_root[:, :3] += origins
-                cart_root[:, :3] += origins
-            else:
-                quat = torch.tensor(spawn_spec["quat_wxyz"], dtype=torch.float32,
-                                    device=args.device)
-                robot_offset = torch.tensor(spawn_spec["robot_root"], dtype=torch.float32,
-                                            device=args.device)
-                cart_offset = torch.tensor(spawn_spec["cart_root"], dtype=torch.float32,
-                                           device=args.device)
-                robot_root[:, :3] = origins + robot_offset
-                cart_root[:, :3] = origins + cart_offset
-                robot_root[:, 3:7] = quat
-                cart_root[:, 3:7] = quat
+            robot_root[:, :3] += origins
+            cart_root[:, :3] = origins + torch.tensor(spawn["cart_root"],
+                                                      dtype=torch.float32, device=args.device)
+            robot_root[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32,
+                                              device=args.device)
+            cart_root[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float32,
+                                             device=args.device)
             for asset, root in ((robot, robot_root), (cart, cart_root)):
                 root[:, 7:] = 0.0
                 asset.write_root_pose_to_sim(root[:, :7])
@@ -2028,12 +1966,12 @@ def main(args):
             scene.update(dt)
 
         def make_row(env_index: int, *, phase: str, step: int, command: float,
-                     gravity, joint_targets, joint_err_rms: float, joint_err_max: float,
-                     frame: dict, progress_robot, progress_load,
-                     robot_height, load_height, pitch_offsets,
-                     command_vy: float, command_wz: float, lane_offset: float,
-                     lane_heading: float, body_vy: float, body_wz: float,
-                     load_offset: float) -> dict:
+                     joint_targets, joint_err_rms: float, joint_err_max: float,
+                     progress_robot, progress_load, robot_height, load_height,
+                     pitch_offsets, command_vy: float, command_wz: float, lane_offset: float,
+                     lane_heading: float, body_vy: float, body_wz: float, load_offset: float,
+                     deck_fx: float, wheel_fx: float) -> dict:
+            case = cases[env_index]
             quat = robot.data.root_quat_w[env_index]
             qw, qx, qy, qz = (float(value) for value in quat)
             pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
@@ -2056,8 +1994,13 @@ def main(args):
                 "load_z_m": float(cart.data.root_pos_w[env_index, 2]),
                 "body_pitch_rad": pitch,
                 "body_pitch_rate_radps": float(robot.data.root_ang_vel_b[env_index, 1]),
-                "cart_deck_fx_n": float(deck_contacts.data.net_forces_w[env_index, 0, 0]),
-                "cart_wheel_fx_n": float(contacts.data.net_forces_w[env_index, :, 0].sum()),
+                # 接触见证（训练传感器按**机器人**过滤 ⇒ 读 `force_matrix_w`）：
+                #   cart_deck_fx_n  = 车斗（Cart/base_link）与机器人各 link 的法向力之和的世界 x 分量
+                #   cart_wheel_fx_n = 四个轮子与机器人各 link 的法向力之和的世界 x 分量之和
+                # 轮地接触不在过滤列表里，所以这两列**只反映机器人—小车接触**，与训练侧
+                # `cart_collision`（同样读 force_matrix_w）同一口径。
+                "cart_deck_fx_n": float(deck_fx),
+                "cart_wheel_fx_n": float(wheel_fx),
                 "robot_quat_x": float(quat[1]), "robot_quat_y": float(quat[2]),
                 "robot_quat_z": float(quat[3]), "robot_quat_w": float(quat[0]),
                 "load_quat_x": float(cart.data.root_quat_w[env_index, 1]),
@@ -2068,13 +2011,14 @@ def main(args):
                 "robot_vx_b_mps": float(robot.data.root_lin_vel_b[env_index, 0]),
                 "joint_err_rms_rad": joint_err_rms,
                 "joint_err_max_rad": joint_err_max,
-                # 坡面坐标：两个后端同口径（见 surface_frame / frame_coordinates）
+                # lane 坐标：出生在平地段 ⇒ lane 系 = 世界系；逐 env 的坡度量级参与换算
                 "robot_progress_m": progress_robot[env_index],
                 "load_progress_m": progress_load[env_index],
                 "robot_surface_height_m": robot_height[env_index],
                 "load_surface_height_m": load_height[env_index],
                 "body_pitch_rel_rad": pitch + pitch_offsets[env_index],
-                "slope_deg": slope_cases[env_index].slope_deg,
+                "grade_deg": case.grade_deg,
+                "connection_length_m": case.length_m,
                 "gravity_x_mps2": float(gravity[0]),
                 "gravity_z_mps2": float(gravity[2]),
                 "velocity_cmd_vy_mps": command_vy,
@@ -2084,8 +2028,7 @@ def main(args):
                 "robot_vy_b_mps": body_vy,
                 "robot_wz_b_radps": body_wz,
                 "load_offset_m": load_offset,
-                "slope_backend": frame["backend"],
-                "connection": slope_cases[env_index].connection,
+                "connection": case.connection,
                 "cart_mass_kg": actual_masses[env_index],
             }
             row.update(wheel_omega_fields(cart.data.joint_vel[env_index], cart_joint_ids))
@@ -2099,228 +2042,177 @@ def main(args):
                 raise RuntimeError(f"记录字段与契约不一致：缺 {missing}，多 {extra}")
             return row
 
-        # ------------------------------------------------------------ 主循环
+        # ------------------------------------------------------------ 主循环（单轮跑完）
+        case_rows = [[] for _ in range(num_envs)]
+        joint_targets = torch.zeros(num_envs, policy_cfg.num_joints,
+                                    dtype=torch.float32, device=args.device)
+        command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32, device=args.device)
+        tangent_t = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=args.device)
+        normal_t = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=args.device)
+        reset_episode()
+        print(f"\n[run] 训练场景 {num_envs} 环境一次跑完："
+              f"{len(set(case.connection for case in cases))} 类连接、"
+              f"{len({case.grade_deg for case in cases})} 个坡度量级、"
+              f"{len({case.length_m for case in cases})} 种连接长度、"
+              f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
+              f"重力 {gravity}（世界竖直）", flush=True)
+        started = time.time()
+        for step in range(args.schedule.total_steps):
+            phase = args.schedule.phase_of(step)
+            step_in_phase = args.schedule.step_in_phase(step)
+            if phase == "tow":
+                if args.command_shaping == "direct":
+                    vx_command = velocities
+                else:
+                    vx_command = velocities * shaped_command(
+                        phase="tow", step_in_phase=step_in_phase, velocity=1.0,
+                        shaping="ramp", ramp_time_s=args.ramp_time_s, dt=dt)
+            else:
+                vx_command = torch.zeros_like(velocities)
+            if step % decimation == 0:
+                # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变
+                command_tensor = lane_command(vx_command)
+                joint_targets = policy_step(command_tensor)
+            state = apply_rope_and_resistance(wheel_damping=args.wheel_damping)
+            scene.write_data_to_sim()
+            sim.step()
+            scene.update(dt)
+            if step % args.record_every:
+                continue
+            joint_err = (robot.data.joint_pos[:, policy_to_asset] - joint_targets)
+            err_rms = joint_err.pow(2).mean(dim=1).sqrt().tolist()
+            err_max = joint_err.abs().amax(dim=1).tolist()
+            commands = command_tensor.tolist()
+            lane = (robot.data.root_pos_w - origins)[:, 1].tolist()
+            quat = robot.data.root_quat_w
+            qw, qx, qy, qz = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+            headings = torch.atan2(2.0 * (qw * qz + qx * qy),
+                                   1.0 - 2.0 * (qy * qy + qz * qz)).tolist()
+            body_vy = robot.data.root_lin_vel_b[:, 1].tolist()
+            body_wz = robot.data.root_ang_vel_b[:, 2].tolist()
+            load_lane = (cart.data.root_pos_w - origins)[:, 1].tolist()
+            deck_fx = robot_contact_fx(deck_sensor).tolist()
+            wheel_fx = sum(robot_contact_fx(sensor) for sensor in wheel_sensors).tolist()
+            # lane 坐标（一次张量运算，避免逐 env 做设备同步）
+            relative_robot = robot.data.root_pos_w - origins
+            relative_load = cart.data.root_pos_w - origins
+            progress_robot = (relative_robot * tangent_t).sum(dim=1)
+            progress_load = (relative_load * tangent_t).sum(dim=1)
+            # 离面高度 = lane 系 z − 局部剖面高度（逐 env 的坡度量级参与；0° lane 恒 0）
+            height_robot = (relative_robot * normal_t).sum(dim=1)
+            height_load = (relative_load * normal_t).sum(dim=1)
+            if float(grade_deg.max()) > 0.0:
+                height_robot = height_robot - profile_height_tensor(grade_deg, progress_robot)
+                height_load = height_load - profile_height_tensor(grade_deg, progress_load)
+            height_robot = height_robot.tolist()
+            height_load = height_load.tolist()
+            pitch_offsets = pitch_offsets_for(progress_robot).tolist()
+            progress_robot = progress_robot.tolist()
+            progress_load = progress_load.tolist()
+            for env_index in range(num_envs):
+                case_rows[env_index].append(make_row(
+                    env_index, phase=phase, step=step,
+                    command=commands[env_index][0],
+                    joint_targets=joint_targets,
+                    joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
+                    progress_robot=progress_robot, progress_load=progress_load,
+                    robot_height=height_robot, load_height=height_load,
+                    pitch_offsets=pitch_offsets,
+                    command_vy=commands[env_index][1],
+                    command_wz=commands[env_index][2],
+                    lane_offset=lane[env_index], lane_heading=headings[env_index],
+                    body_vy=body_vy[env_index], body_wz=body_wz[env_index],
+                    load_offset=load_lane[env_index],
+                    deck_fx=deck_fx[env_index], wheel_fx=wheel_fx[env_index]))
+        elapsed = time.time() - started
+        print(f"[run] 完成 {args.schedule.total_steps} 步 × {num_envs} 环境，用时 {elapsed:.1f} s",
+              flush=True)
+
+        # ------------------------------------------------------------ 逐 env 指标
         case_summaries = []
         case_dirs = []
-        started = time.time()
-        for slope in args.slopes:
-            plan = slope_ground_plan(slope, args.slope_backend)
-            frame = plan["frame"]
-            gravity = plan["gravity_mps2"]
-            gravity_vector = torch.tensor(gravity, dtype=torch.float32, device=args.device)
-            gravity_world = gravity_vector / gravity_vector.norm()
-            set_gravity(gravity)
-            # 本轮的原点与出生位姿：terrain 后端用本轮 tile 块的原点 + 坡面出生解；
-            # gravity 后端用场景原点 + 平地出生（`default_root_state`）。
-            spawn_spec = None
-            if args.slope_backend == "terrain":
-                origins = torch.tensor(slope_blocks[slope]["origins"], dtype=torch.float32,
-                                       device=args.device)
-                # 自检：lane 原点必须落在剖面的平地段上（出生姿态竖直、无出生旋转），
-                # 且剖面长度不超出 lane 的前向余量（否则机器人会走出 slab）。
-                grade = frame["profile_grade_deg"]
-                if profile_height_fn(grade, 0.0) != 0.0 or \
-                        profile_slope_fn(grade, 0.0) != 0.0:
-                    raise RuntimeError("lane 原点不在剖面的平地段上（出生几何假设不成立）")
-                if PROFILE_LENGTH_M > FORWARD_M:
-                    raise RuntimeError("剖面长度超过 lane 前向长度")
-                # 出生在平地段 ⇒ 用 slope_deg=0 的平地解（机体系 +X 对 +x、+Z 对 +z）
-                spawn_spec = spawn_on_surface(
-                    slope_deg=0.0, robot_height=spawn_height,
-                    cart_height=model["resting_height_m"] + args.cart_drop,
-                    robot_offset=robot_attachment, cart_offset=cart_attachment,
-                    target_distance=args.rope_length - args.slack)
-                if abs(spawn_spec["attachment_distance_m"]
-                       - (args.rope_length - args.slack)) > 1e-9:
-                    raise RuntimeError("坡面出生的两挂点三维距与目标不一致（spawn 几何自检失败）")
-                xs = [origin[0] for origin in slope_blocks[slope]["origins"]]
-                ys = [origin[1] for origin in slope_blocks[slope]["origins"]]
-                cx, cy = 0.5 * (min(xs) + max(xs)), 0.5 * (min(ys) + max(ys))
-                span_xy = max(max(xs) - min(xs), max(ys) - min(ys), 10.0)
-                sim.set_camera_view((cx + 1.3 * span_xy, cy - 1.3 * span_xy, 0.9 * span_xy),
-                                    (cx, cy, 0.0))
-            else:
-                origins = scene.env_origins
-            tangent_t = torch.tensor(frame["tangent"], dtype=torch.float32, device=args.device)
-            normal_t = torch.tensor(frame["normal"], dtype=torch.float32, device=args.device)
-            reset_episode(origins=origins, spawn_spec=spawn_spec)
-            print(f"\n[pass slope {slope:+g} deg] 重力 {tuple(round(v, 4) for v in gravity)} "
-                  f"（{plan['note']}）；{num_envs} 环境并行；度量系 切向="
-                  f"{tuple(round(v, 4) for v in frame['tangent'])} 法向="
-                  f"{tuple(round(v, 4) for v in frame['normal'])}"
-                  + (f"；出生挂点距 {spawn_spec['target_distance_m']:.3f} m（法向高差 "
-                     f"{spawn_spec['normal_difference_m']:+.3f} m、沿坡 {spawn_spec['along_m']:.3f} m）"
-                     if spawn_spec else ""), flush=True)
-            case_rows = [[] for _ in range(num_envs)]
-            joint_targets = torch.zeros(num_envs, policy_cfg.num_joints,
-                                        dtype=torch.float32, device=args.device)
-            command_tensor = torch.zeros(num_envs, dtype=torch.float32, device=args.device)
-            pass_started = time.time()
-            command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32,
-                                         device=args.device)
-            for step in range(args.schedule.total_steps):
-                phase = args.schedule.phase_of(step)
-                step_in_phase = args.schedule.step_in_phase(step)
-                if phase == "tow":
-                    if args.command_shaping == "direct":
-                        vx_command = velocities
-                    else:
-                        vx_command = velocities * shaped_command(
-                            phase="tow", step_in_phase=step_in_phase, velocity=1.0,
-                            shaping="ramp", ramp_time_s=args.ramp_time_s, dt=dt)
-                else:
-                    vx_command = torch.zeros_like(velocities)
-                if step % decimation == 0:
-                    # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变
-                    command_tensor = lane_command(vx_command)
-                    joint_targets = policy_step(command_tensor)
-                hold = args.hold_damping if (phase == "station" and args.slope_settle == "hold") else 0.0
-                state = apply_rope_and_resistance(wheel_damping=args.wheel_damping,
-                                                  hold_damping=hold)
-                scene.write_data_to_sim()
-                sim.step()
-                scene.update(dt)
-                if step % args.record_every:
-                    continue
-                joint_err = (robot.data.joint_pos[:, policy_to_asset] - joint_targets)
-                err_rms = joint_err.pow(2).mean(dim=1).sqrt().tolist()
-                err_max = joint_err.abs().amax(dim=1).tolist()
-                commands = command_tensor.tolist()
-                lane = (robot.data.root_pos_w - origins)[:, 1].tolist()
-                quat = robot.data.root_quat_w
-                qw, qx, qy, qz = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-                headings = torch.atan2(2.0 * (qw * qz + qx * qy),
-                                       1.0 - 2.0 * (qy * qy + qz * qz)).tolist()
-                body_vy = robot.data.root_lin_vel_b[:, 1].tolist()
-                body_wz = robot.data.root_ang_vel_b[:, 2].tolist()
-                load_lane = (cart.data.root_pos_w - origins)[:, 1].tolist()
-                # 坡面坐标（一次张量运算，避免逐 env 做设备同步）
-                relative_robot = robot.data.root_pos_w - origins
-                relative_load = cart.data.root_pos_w - origins
-                progress_robot = (relative_robot * tangent_t).sum(dim=1)
-                progress_load = (relative_load * tangent_t).sum(dim=1)
-                # 离面高度 = lane 系 z − 局部剖面高度；相对俯仰的参考 = 局部坡度
-                # （gravity 后端档位 0 ⇒ 剖面高度/坡度恒 0，数值与旧口径逐位一致）
-                height_robot = (relative_robot * normal_t).sum(dim=1).tolist()
-                height_load = (relative_load * normal_t).sum(dim=1).tolist()
-                grade_t = frame["profile_grade_deg"]
-                if grade_t:
-                    grade_vec = torch.full_like(progress_robot, float(grade_t))
-                    profile_robot = profile_height_tensor(grade_vec, progress_robot).tolist()
-                    profile_load = profile_height_tensor(grade_vec, progress_load).tolist()
-                    height_robot = [value - offset
-                                    for value, offset in zip(height_robot, profile_robot)]
-                    height_load = [value - offset
-                                   for value, offset in zip(height_load, profile_load)]
-                progress_robot = progress_robot.tolist()
-                progress_load = progress_load.tolist()
-                if grade_t:
-                    pitch_offsets = [math.radians(profile_slope_fn(grade_t, x))
-                                     for x in progress_robot]
-                else:
-                    pitch_offsets = [0.0] * num_envs
-                for env_index in range(num_envs):
-                    case_rows[env_index].append(make_row(
-                        env_index, phase=phase, step=step,
-                        command=commands[env_index][0],
-                        gravity=gravity, joint_targets=joint_targets,
-                        joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
-                        frame=frame,
-                        progress_robot=progress_robot, progress_load=progress_load,
-                        robot_height=height_robot, load_height=height_load,
-                        pitch_offsets=pitch_offsets,
-                        command_vy=commands[env_index][1],
-                        command_wz=commands[env_index][2],
-                        lane_offset=lane[env_index], lane_heading=headings[env_index],
-                        body_vy=body_vy[env_index], body_wz=body_wz[env_index],
-                        load_offset=load_lane[env_index]))
-            print(f"[pass slope {slope:+g} deg] 完成，用时 {time.time() - pass_started:.1f} s",
-                  flush=True)
-
-            for env_index, case in enumerate(slope_cases):
-                rows = case_rows[env_index]
-                tw_summary = summarize_tow(
-                    rows, user_command=case.velocity_mps, joint_names=policy_cfg.joint_names,
-                    config={
-                        "rope": {"model": case.connection,
-                                 "rest_length_m": (args.rope_length - args.slack)
-                                 if case.connection == RIGID_MODEL else args.rope_length,
-                                 "stiffness_n_per_m": args.stiffness,
-                                 "damping_ns_per_m": args.damping,
-                                 "initial_slack_m": args.slack,
-                                 "position_gain": args.position_gain,
-                                 "max_correction_rate_mps": args.max_correction_rate},
-                        "cart_model": model,
-                        "cart_mass_actual_kg": actual_masses[env_index],
-                        "robot_mass_kg": float(robot_mass_kg[env_index]),
-                        "dt_s": dt,
-                    })
-                metrics = compute_case_metrics(
-                    rows, command_mps=case.velocity_mps, slope_deg=case.slope_deg,
-                    connection=case.connection, cart_mass_kg=actual_masses[env_index],
-                    schedule=args.schedule, record_dt=record_dt, tow_summary=tw_summary,
-                    thresholds=thresholds, joint_names=list(policy_cfg.joint_names),
-                    torque_limits=torque_limits, transition_window_s=args.transition_window,
-                    slope_backend=args.slope_backend, lane_keeping=args.lane_keeping,
-                    lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit)
-                metrics["summarize_tow"] = tw_summary
-                summary = {
-                    "case": case.to_dict(),
-                    "labels": {"slope_deg": case.slope_deg, "velocity_mps": case.velocity_mps,
-                               "connection": case.connection,
-                               "cart_mass_kg": actual_masses[env_index]},
-                    "schedule": args.schedule.to_dict(),
-                    "slope": plan,
-                    "metrics": metrics,
-                    "verdict": metrics["verdict"],
-                    "summarize_tow_valid": tw_summary.get("valid"),
-                    "summarize_tow_note": SUMMARIZE_TOW_NOTE,
-                }
-                case_summaries.append(summary)
-                write_json(summaries_dir / f"{case.slug}.json", summary)
-                should_write = (args.write_csv == "all"
-                                or (args.write_csv == "failed" and metrics["verdict"]["code"] != "OK"))
-                if should_write:
-                    case_dir = output / case.slug
-                    case_dir.mkdir(parents=True, exist_ok=True)
-                    write_json(case_dir / "config.json", {
-                        "case": case.to_dict(), "schedule": args.schedule.to_dict(),
-                        "slope": plan, "connection": experiment["connection"],
-                        "ground_friction": args.ground_friction,
-                        "wheel_damping_nms_per_rad": args.wheel_damping,
-                        "slope_settle": {"mode": args.slope_settle,
-                                         "hold_damping_nms_per_rad": args.hold_damping},
-                        "user_command_mps": case.velocity_mps,
-                        "policy_joint_names": list(policy_cfg.joint_names),
-                        "thresholds": thresholds,
-                    })
-                    with (case_dir / "tow.csv").open("w", newline="", encoding="utf-8") as stream:
-                        writer = csv.DictWriter(stream, fieldnames=TEST_FIELDS)
-                        writer.writeheader()
-                        writer.writerows(rows)
-                    case_dirs.append(case.slug)
-                verdict = metrics["verdict"]
-                print(f"[case] slope{case.slope_deg:+g} v{case.velocity_mps:g} "
-                      f"{case.connection} m{actual_masses[env_index]:g}kg ⇒ {verdict['code']}"
-                      f"{(' [' + ','.join(verdict['reasons']) + ']') if verdict['reasons'] else ''}"
-                      f"  起步关节RMS={_fmt(metrics['startup']['joint_rms_rad'])} "
-                      f"跟速MAE={_fmt(metrics['speed'].get('mae_mps'))} "
-                      f"滑移={_fmt(metrics['stop'].get('cart_coast_distance_m'))} "
-                      f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
-                      f"停车关节RMS={_fmt(metrics['stop'].get('joint_rms_rad'))}", flush=True)
+        for env_index, case in enumerate(cases):
+            rows = case_rows[env_index]
+            spec = specs[env_index]
+            tw_summary = summarize_tow(
+                rows, user_command=case.velocity_mps, joint_names=policy_cfg.joint_names,
+                config={
+                    "rope": {"model": case.connection,
+                             "rest_length_m": case.length_m,
+                             "stiffness_n_per_m": spec["stiffness"],
+                             "damping_ns_per_m": spec["damping"],
+                             "initial_slack_m": case.length_m - float(spec["initial_distance"]),
+                             "position_gain": float(action_cfg.rope_position_gain),
+                             "max_correction_rate_mps": float(action_cfg.rope_max_correction_rate)},
+                    "cart_model": cart_model,
+                    "cart_mass_actual_kg": actual_masses[env_index],
+                    "robot_mass_kg": float(robot_mass_kg[env_index]),
+                    "dt_s": dt,
+                })
+            metrics = compute_case_metrics(
+                rows, case=case.to_dict(), schedule=args.schedule, record_dt=record_dt,
+                tow_summary=tw_summary, thresholds=thresholds,
+                joint_names=list(policy_cfg.joint_names), torque_limits=torque_limits,
+                transition_window_s=args.transition_window, lane_keeping=args.lane_keeping,
+                lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit)
+            metrics["summarize_tow"] = tw_summary
+            summary = {
+                "case": case.to_dict(),
+                "labels": {"grade_deg": case.grade_deg, "velocity_mps": case.velocity_mps,
+                           "connection": case.connection,
+                           "cart_mass_kg": actual_masses[env_index]},
+                "schedule": args.schedule.to_dict(),
+                "lane_frame": {"tangent": [1.0, 0.0, 0.0], "normal": [0.0, 0.0, 1.0],
+                               "gravity_mps2": list(gravity)},
+                "metrics": metrics,
+                "verdict": metrics["verdict"],
+                "summarize_tow_valid": tw_summary.get("valid"),
+                "summarize_tow_note": SUMMARIZE_TOW_NOTE,
+            }
+            case_summaries.append(summary)
+            write_json(summaries_dir / f"{case.slug}.json", summary)
+            should_write = (args.write_csv == "all"
+                            or (args.write_csv == "failed" and metrics["verdict"]["code"] != "OK"))
+            if should_write:
+                case_dir = output / case.slug
+                case_dir.mkdir(parents=True, exist_ok=True)
+                write_json(case_dir / "config.json", {
+                    "case": case.to_dict(), "schedule": args.schedule.to_dict(),
+                    "lane_frame": summary["lane_frame"], "connection": experiment["connection"],
+                    "ground_friction": args.ground_friction,
+                    "wheel_damping_nms_per_rad": args.wheel_damping,
+                    "user_command_mps": case.velocity_mps,
+                    "policy_joint_names": list(policy_cfg.joint_names),
+                    "thresholds": thresholds,
+                })
+                with (case_dir / "tow.csv").open("w", newline="", encoding="utf-8") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=TEST_FIELDS)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                case_dirs.append(case.slug)
+            verdict = metrics["verdict"]
+            print(f"[case] env{case.env_index:04d} c{case.column:02d}r{case.row:02d} "
+                  f"g{case.grade_deg:g} v{case.velocity_mps:g} {case.connection} "
+                  f"L{case.length_m:.2f} m{actual_masses[env_index]:g}kg ⇒ {verdict['code']}"
+                  f"{(' [' + ','.join(verdict['reasons']) + ']') if verdict['reasons'] else ''}"
+                  f"  起步关节RMS={_fmt(metrics['startup']['joint_rms_rad'])} "
+                  f"跟速MAE={_fmt(metrics['speed'].get('mae_mps'))} "
+                  f"滑移={_fmt(metrics['stop'].get('cart_coast_distance_m'))} "
+                  f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
+                  f"横向|y|max={_fmt(metrics['lane'].get('y_max_abs_m'))}", flush=True)
 
         # ------------------------------------------------------------ 报告
+        grades = sorted({case.grade_deg for case in cases})
         groups = group_statistics(case_summaries)
         conclusion = necessity_conclusion(groups, thresholds)
         labels = {name: getattr(args, name) for name in
-                  ("velocities", "connections", "cart_masses", "ground_friction",
-                   "command_shaping", "ramp_time_s", "slope_backend", "slope_settle",
-                   "record_every", "write_csv", "env_spacing", "lane_keeping",
+                  ("num_envs", "velocities", "cart_masses", "ground_friction", "wheel_damping",
+                   "command_shaping", "ramp_time_s", "record_every", "write_csv", "lane_keeping",
                    "lane_kp_y", "lane_kd_y", "lane_kp_yaw", "lane_kd_yaw",
                    "lane_vy_limit", "lane_wz_limit")}
         report = {
             "question": experiment["question"],
-            "grid": experiment["grid"], "thresholds": thresholds,
+            "scene": experiment["scene"], "thresholds": thresholds,
             "arguments": experiment["arguments"],
             "groups": groups, "conclusion": conclusion,
             "cases": case_summaries,
@@ -2339,16 +2231,16 @@ def main(args):
             build_markdown_report(case_summaries=case_summaries, groups=groups,
                                   conclusion=conclusion, args_dict=labels,
                                   thresholds=thresholds, schedule=args.schedule,
-                                  slopes=list(args.slopes), git=git),
+                                  grades=grades, git=git),
             encoding="utf-8")
 
-        print("\n" + format_verdict_matrix(case_summaries, slopes=list(args.slopes)))
+        print("\n" + format_verdict_matrix(case_summaries, grades=grades))
         print("[conclusion] 上层任务是否有必要（本网格 + 本阈值）")
         for line in conclusion["lines"]:
             print(line)
-        print(f"\n[DONE] {len(case_summaries)} case，用时 {time.time() - started:.1f} s ⇒ {output}",
+        print(f"\n[DONE] {len(case_summaries)} env，用时 {time.time() - started:.1f} s ⇒ {output}",
               flush=True)
-        experiment.update(state="completed", case_count=len(case_summaries),
+        experiment.update(state="completed", env_count=len(case_summaries),
                           csv_cases=case_dirs, elapsed_s=time.time() - started)
         write_json(output / "experiment.json", experiment)
         sys.stdout.flush()
@@ -2394,14 +2286,6 @@ def _fmt(value) -> str:
     return "n/a" if not math.isfinite(value) else f"{value:.3f}"
 
 
-def _build_rope(name, args, rigid_model, make_rope_model):
-    """按连接类型建单个模型（rigid 的长度是初始挂点距 L0 − slack，与测量台一致）。"""
-    rest_length = (args.rope_length - args.slack) if name == rigid_model else args.rope_length
-    return make_rope_model(name, rest_length=rest_length, stiffness=args.stiffness,
-                           damping=args.damping, position_gain=args.position_gain,
-                           max_correction_rate=args.max_correction_rate)
-
-
 def wheel_omega_fields(joint_vel, joint_ids) -> dict:
     """四轮角速度列（列名只在这里生成，离线测试直接调用核对）。"""
     return {f"wheel_{leg}_omega_radps": float(joint_vel[joint_id])
@@ -2416,17 +2300,6 @@ def joint_state_fields(*, pos, target, torque) -> dict:
         fields[f"robot_jt_{index:02d}"] = float(target[index])
         fields[f"robot_tau_{index:02d}"] = float(torque[index])
     return fields
-
-
-def _initial_cart_x(rope_length: float, slack: float, *, spawn_height: float,
-                    cart_height: float, robot_offset, cart_offset) -> float:
-    """机器人在原点出生时的小车初始 x：两挂点三维距离 = L0 − slack（绳是松的）。"""
-    target = rope_length - slack
-    dz = (spawn_height + robot_offset[2]) - (cart_height + cart_offset[2])
-    if target * target < dz * dz:
-        raise ValueError(f"绳长 {rope_length} m 减松弛 {slack} m 后小于挂点高差 {abs(dz):.3f} m")
-    horizontal = math.sqrt(target * target - dz * dz)
-    return 0.0 + robot_offset[0] - cart_offset[0] - horizontal
 
 
 if __name__ == "__main__":
