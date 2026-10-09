@@ -679,10 +679,13 @@ class NoCartTests(unittest.TestCase):
 
     def test_physics_and_verdicts_are_masked_for_absent_carts(self):
         source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
-        # 绳力/轮阻必须乘 present（只靠横向距离不够稳；训练侧 cart_present 同义）
-        self.assertIn("for component in state.force_on_robot], dim=-1) * present", source)
-        self.assertIn("for component in state.force_on_cart], dim=-1) * present", source)
-        self.assertIn("wheel_damping) * present.unsqueeze(1)", source)
+        # 绳力/轮阻必须乘 present（只靠横向距离不够稳；训练侧 cart_present 同义）。
+        # ⚠️ 必须 `present.unsqueeze(1)`：力是 (N, 3)、掩码是 (N,)，直接乘会报
+        #   "The size of tensor a (3) must match the size of tensor b (800) at
+        #    non-singleton dimension 1"（2026-10-09 首跑 800 env 实测踩到）。
+        self.assertIn("* present.unsqueeze(1)", source)
+        self.assertEqual(source.count("* present.unsqueeze(1)"), 3)   # 两个力 + 轮阻
+        self.assertNotIn("], dim=-1) * present\n", source)
         # 不拖车的 env 必须在判定前把与小车有关的量中性化（否则会报 COL/LOW）
         self.assertIn("if not cart_present:", source)
         self.assertIn('stop["gap_margin_low"] = False', source)

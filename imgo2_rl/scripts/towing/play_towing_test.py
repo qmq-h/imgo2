@@ -1919,9 +1919,11 @@ def main(args):
                                       robot_velocity=robot_v, cart_velocity=cart_v, dt=dt,
                                       robot=robot_props, cart=cart_props)
             force_robot = torch.stack([torch.as_tensor(component)
-                                       for component in state.force_on_robot], dim=-1) * present
+                                       for component in state.force_on_robot], dim=-1) \
+                * present.unsqueeze(1)
             force_cart = torch.stack([torch.as_tensor(component)
-                                      for component in state.force_on_cart], dim=-1) * present
+                                      for component in state.force_on_cart], dim=-1) \
+                * present.unsqueeze(1)
             robot.set_external_force_and_torque(link_frame_force(robot, base_ids[0], force_robot),
                                                 robot_zero_torque[:, :1],
                                                 positions=robot_attach.expand(num_envs, 1, 3),
