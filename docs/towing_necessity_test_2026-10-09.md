@@ -333,16 +333,61 @@ targets= [−0.010,  0.911, −1.803,  0.093,  0.915, −1.722, −0.102, 0.888,
 但说明**出生净空比注释里写的小**，与「首拍就已经触地（记录 t=0.005 的 FK 足端最低点 = 0.0000 m）」
 一致 —— 倒地发生在**落地后的最初几十毫秒**。
 
+### ⑤ 根因：测试台的物理步进走了 `sim.step()` 的 **render 分支**（已修，待实跑验证）
+
+`--record-every 1` 那次（`20261009T111331Z_da3efc67`，3 环境）把**逐物理步**轨迹记下来了，
+证据指向**步进方式**，不是控制或模型：
+
+- **第一次调用**就让 base 从 0.350 → 0.343（**7 mm**）、小腿关节 −1.82 → −1.721（**0.1 rad**），
+  而此时策略目标是 −1.803、误差只有 0.017 rad。按 kp = 25、腿链惯量 ~6e-4 kg·m² 估：
+  5 ms 内关节只该动 ~0.01 rad、base 只该掉 0.12 mm ⇒ **等效 dt ≈ 50 ms（≈10 个物理 tick）**。
+- 之后每 5 ms「记录步」的下降量是 24 / 51 / 28 / 64 mm（等效 5–13 m/s），关节以 ±0.52 rad
+  正负交替 —— 正是 URDF 的限位（髋 ±0.523、小腿 −3.0），力矩 ±23.7 N·m（= `effort_limit`）交替饱和。
+
+`isaacsim.core.api` 的 `SimulationContext.step`（`simulation_context.py:672-710`）：
+
+```python
+if render:
+    ...
+    self._app.update()                  # ← app/帧时序驱动：一帧可推进多个物理 tick
+else:
+    if self.is_playing():
+        self._physics_context._step(...)  # ← 恰好一个物理 tick
+```
+
+而训练侧 `ManagerBasedRLEnv` 的物理步进**一律** `self.sim.step(render=False)`
+（`envs/manager_based_rl_env.py:190`），渲染单独放在
+`self._sim_step_counter % self.cfg.sim.render_interval == 0` 那一拍 `self.sim.render()`
+（同文件 194-195 行）。测试台原来写的是**无参** `sim.step()`（render 默认 True）⇒ 每个
+「5 ms 记录步」实际推进约 10 个物理 tick ⇒「每 4 次调用 = 一个 20 ms 控制周期」的前提整体失效
+⇒ 按 200 Hz 标定的 PD 发散 ⇒ 关节撞限位、机器人在最初几十毫秒内塌掉。绳/杆张力（130–1543 N）
+与车斗接触都是**后果**（张力前 6 个记录点恒为 0，7/9 个 case 全程无车斗接触）。
+
+**修法**（`imgo2_rl/scripts/towing/play_towing_test.py`）：
+
+```python
+sim.step(render=False)                        # 物理：恰好一个 5 ms tick
+scene.update(dt)
+if not args.headless and (step + 1) % render_interval == 0:
+    sim.render()                              # 渲染：与训练同节拍（render_interval = decimation）
+```
+
+新增静态守卫 `test_physics_step_must_not_render`（禁止无参 `sim.step()`，要求
+`sim.step(render=False)` 与 `sim.render()` 同时在源码里）。
+
+**验证**：`test_towing_play_test.py` **88 项 OK**；全量 `python3 -m unittest discover -s imgo2_rl/tests`
+**423 项通过 0 失败**；`py_compile`、`git diff --check` 通过。**未验证**：本会话无 GPU，
+未重跑仿真 —— 必须由训练机用同一条 3 环境 + `--record-every 1` 的命令确认：首拍 base 只该掉
+~0.1 mm、关节只该动 ~0.01 rad，起步关节 RMS 应从 0.6 rad 回落到阈值（0.10 rad）附近。
+
 ## 未验证（缺什么才能完成）
 
-1. **9/9 倒地的根因还没定位到一行代码**：判读崩溃已修、同一条命令已跑完并落盘（见上一节），
-   现在的判据收窄到「第二拍起策略输出饱和 + 关节高速摆动」这一档，但**还没区分**
-   「观测组装/契约错」与「物理/驱动侧不稳」。需要：① `--record-every 1 --num-envs 3` 看第 0–4
-   物理步；② 离线把名义站姿喂给 `policy.pt` 验契约；③ 与训练任务（同一 policy、同一 action term）
-   做同条件对照。**本会话进程看不到 GPU**（无 `/dev/nvidia*`、`torch.cuda.is_available() == False`），
-   ①③ 只能由用户终端执行。场景构造、逐 env 绳模型、逐 env 质量/惯量缩放、逐 env 出生几何
-   （第一拍不能有约束力 → 实测首拍张力 0 ✓）、训练接触传感器的 `force_matrix_w` 读法与顺序守卫、
-   记录列与 `TEST_FIELDS` 一致这些**已由这次实跑通过**。
+1. **修复本身还没有实跑验证**：根因（物理步进走了 `sim.step()` 的 render 分支 ⇒ 一帧约 10 个物理 tick）
+   已由 `--record-every 1` 的逐物理步数据定位，代码已改并加静态守卫（见上一节 ⑤），但**本会话无 GPU**
+   （无 `/dev/nvidia*`、`torch.cuda.is_available() == False`）⇒ 必须由训练机重跑
+   `--num-envs 3 --record-every 1` 确认首拍量级与起步关节 RMS。若修好后仍有残留塌陷，
+   下一档怀疑是 200 Hz 显式 PD 与腿链**无 armature**（MuJoCo 模型是 `damping=1 armature=0.1`，
+   URDF/Isaac 侧没有任何 armature）—— 那时再考虑给 `actuators` 加 `armature`。
 2. **坡度曲线上没有任何数值**：出生下落、上坡绳被拽直、下坡小车自己溜向机器人这三类瞬态
    都只有推理，没有数据。
 3. **阈值未标定**：关节 RMS/单关节上限是工程占位，首轮数据出来前 `JNT` 不能当定论。

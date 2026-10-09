@@ -1625,6 +1625,8 @@ def main(args):
         sim_cfg = training_cfg.sim
         sim_cfg.device = args.device
         sim = sim_utils.SimulationContext(sim_cfg)
+        # 渲染节拍：与训练侧 `self.cfg.sim.render_interval` 同口径（物理步计数）。
+        render_interval = max(1, int(getattr(sim_cfg, "render_interval", 1)))
         scene_cfg = UpperTowingSceneCfg(num_envs=num_envs,
                                         env_spacing=training_cfg.scene.env_spacing)
         material = scene_cfg.terrain.physics_material
@@ -2075,8 +2077,19 @@ def main(args):
                 joint_targets = policy_step(command_tensor)
             state = apply_rope_and_resistance(wheel_damping=args.wheel_damping)
             scene.write_data_to_sim()
-            sim.step()
+            # ⚠️ 物理步进**必须** `render=False`。`SimulationContext.step()` 的 render 默认是 True，
+            # 那条分支走的是 `self._app.update()`：物理由 app/帧时序驱动，**一帧可能推进多个物理
+            # tick**。实测（20261009T111331Z，--record-every 1）第一次调用就让 base 掉了 7 mm、
+            # 小腿关节转了 0.1 rad —— 等效 dt ≈ 50 ms 而不是 5 ms。于是「每 4 次调用 = 一个
+            # 20 ms 控制周期」这个前提整体失效，按 200 Hz 标定的 PD（kp 25 / kd 0.5，腿链惯量
+            # ~6e-4 kg·m²）直接发散：关节正负交替打到 ±23.7 N·m、被推到自己限位（髋 ±0.523、
+            # 小腿 −3.0），机器人在最初几十毫秒内塌掉（绳/杆与车斗接触都是**后果**）。
+            # Isaac Lab 的 `ManagerBasedRLEnv` 物理步进一律 `sim.step(render=False)`，
+            # 渲染单独放在 `sim_step_counter % render_interval == 0` 那一拍（`sim.render()`）。
+            sim.step(render=False)
             scene.update(dt)
+            if not args.headless and (step + 1) % render_interval == 0:
+                sim.render()
             if step % args.record_every:
                 continue
             joint_err = (robot.data.joint_pos[:, policy_to_asset] - joint_targets)

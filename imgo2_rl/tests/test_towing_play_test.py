@@ -991,9 +991,26 @@ class SimLoopStaticTests(unittest.TestCase):
         body = self.source.split("def apply_rope_and_resistance")[1]
         # 从调用点往后切：`scene.update(dt)` 在 reset_episode() 里也出现一次，不能用全局首个
         loop = body[body.index("state = apply_rope_and_resistance("):]
-        order = [loop.index("scene.write_data_to_sim()"), loop.index("sim.step()"),
+        order = [loop.index("scene.write_data_to_sim()"), loop.index("sim.step(render=False)"),
                  loop.index("scene.update(dt)")]
         self.assertEqual(order, sorted(order))
+
+    def test_physics_step_must_not_render(self):
+        """物理步进必须 `render=False`：回归守卫，对应 2026-10-09 实跑定位到的真实 bug。
+
+        `SimulationContext.step()` 的 render 默认是 True，那条分支走 `self._app.update()`：
+        物理由 app/帧时序驱动，**一帧可能推进多个物理 tick**（实测首拍 base 就掉 7 mm、
+        小腿关节转 0.1 rad ⇒ 等效 dt ≈ 50 ms 而不是 5 ms）。于是「每 4 次调用 = 一个
+        20 ms 控制周期」的前提失效，按 200 Hz 标定的 PD（kp 25 / kd 0.5、腿链惯量
+        ~6e-4 kg·m²）发散：关节正负交替打到 ±23.7 N·m 并撞到自身限位（髋 ±0.523、
+        小腿 −3.0），机器人在最初几十毫秒内塌掉（绳/杆张力与车斗接触都是**后果**）。
+        Isaac Lab 的 `ManagerBasedRLEnv` 物理步进一律 `sim.step(render=False)`，
+        渲染单独放在 `render_interval` 那一拍 `sim.render()`。
+        """
+        self.assertIn("sim.step(render=False)", self.source)
+        self.assertNotIn("sim.step()\n", self.source)
+        self.assertIn("sim.render()", self.source)
+        self.assertIn("render_interval = max(1, int(getattr(sim_cfg", self.source)
 
     def test_episode_reset_writes_poses_before_scene_reset(self):
         body = self.source.split("def reset_episode(")[1].split("def make_row")[0]
