@@ -28,7 +28,8 @@ from imgo2_rl.assets.imgo2 import IMGO2_CFG
 import imgo2_rl.tasks.manager_based.towing.upper_mdp as mdp
 from imgo2_rl.tasks.manager_based.towing.mdp.connection_grid import COLUMNS, ROWS
 from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import SPEED_RANGE, episode_timeout_s
-from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import FORWARD_M, BOUNDARY_MARGIN_M
+from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
+    BOUNDARY_MARGIN_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
 from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
     TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter,
 )
@@ -286,8 +287,9 @@ class UpperEventsCfg:
 
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
-    # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. The first 20 columns
-    # are flat; the rest split equally between |5 deg| and |10 deg| ramps.
+    # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. 每条 lane 的剖面都是
+    # 「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」（`mdp/slope_geometry.py`）；
+    # 列决定坡度量级：前 20 列是纯平地，之后 10 列 5°、10 列 10°（见 `connection_grid.py`）。
     # A non-multiple of 800 only covers a grid prefix, not all work conditions.
     scene: UpperTowingSceneCfg = UpperTowingSceneCfg(
         num_envs=COLUMNS * ROWS, env_spacing=6.0)
@@ -303,11 +305,14 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
         action = self.actions.high_level_velocity
         if action.goal_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
-            raise ValueError("goal distance exceeds the safe straight-ramp lane")
+            raise ValueError("goal distance exceeds the safe lane length")
         minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
+        # timeout 用**坡面弧长**上界（最陡档）：10 m 水平目标在 10° 剖面上是
+        # `profile_arc_length(10, 10) = 10.093 m` → 1 + 10.093/0.4 + 2 = 28.23 s，
+        # 即在最慢速度下理想行走仍然不超时（旧恒定坡度下是 28.0 s）。
+        surface_distance = profile_arc_length(MAX_GRADE_DEG, action.goal_distance_m)
         self.episode_length_s = episode_timeout_s(
-            action.goal_distance_m, minimum_speed, action.tow_start_s)
-        # 10 m at 0.4 m/s + 1 s settle + 2 s margin = 28 s.
+            surface_distance, minimum_speed, action.tow_start_s)
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.viewer.eye = (4.0, 4.0, 2.5)

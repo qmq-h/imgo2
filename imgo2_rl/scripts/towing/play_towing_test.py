@@ -48,18 +48,19 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   下滑分量 `mg·sinθ` 逐项相同），因此这不是近似替代；冻结策略观测里的
   `projected_gravity` 会自然看到倾斜后的重力。度量坐标系最简单（行程 = x 位移、
   离面高度 = 绝对 z、俯仰 = 世界系俯仰），首轮建议先跑这个。
-- **`terrain`**：用 2026-10-09 远端实现的**真实坡面 tile**（`mdp/slope_geometry.tile_mesh`，
-  与训练场景同源：顶面 `z = tanθ·(x − 原点x)`、板厚 `0.35 m`、前 17 m / 后 3 m / 半宽 3 m）。
-  每轮的每个 case 拿一块同坡度的 tile（cell 由 `slope_cells()` 从训练侧 40×20 网格里挑，
-  坡度符号沿用其行列交替规则），平移到本测试台自己的紧凑网格上；出生位姿按训练侧同一套
-  坡面解（机体系 +X 对切向、+Z 对法向，两挂点三维距 = `L0 − slack`）。两种后端的
-  `tangent/normal` 运行时会与 `slope_geometry.slope_frame()` 交叉核对。
+- **`terrain`**：用远端 2026-10-09 的**真实坡面剖面**（`mdp/slope_geometry`，与训练场景
+  同源）：每条 lane 沿 +x 依次是「平地 3 m → 上坡 4 m → 坡顶平段 1 m → 下坡 4 m → 平地 3 m」
+  （板厚 0.35 m、前 17 m / 后 3 m / 半宽 3 m），坡度量级由列决定（0 / 5 / 10，**每条 lane 自带
+  一段上坡和一段下坡**，所以 `--slopes` 只接受这三个量级）。每轮的每个 case 拿一块同量级的
+  lane（cell 由 `slope_cells()` 从训练侧 40×20 网格里挑），平移到本测试台自己的紧凑网格上；
+  出生点在剖面的**平地段起点**（姿态竖直、无出生旋转），两挂点三维距 = `L0 − slack`。
 
-两个后端都用同一个**坡面坐标系**做度量：`(原点, 切向, 法向)` 由 `surface_frame()` 给出，
-记录里落成 `robot/load_progress_m`（沿坡切向行程）、`robot/load_surface_height_m`
-（离面法向高度）、`body_pitch_rel_rad`（相对坡面参考姿态的俯仰）。`gravity` 后端上它们
-退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；`terrain` 后端上则是真实坡面量，
-于是「走了多远、离面多高、翻了没有」在平地和各种坡度上是同一个口径。
+两个后端都用同一套**lane 系**度量：`(切向, 法向) = (+x, +z)` 由 `surface_frame()` 给出，
+记录里落成 `robot/load_progress_m`（x 行程）、`robot/load_surface_height_m`
+（**z − 局部剖面高度**）、`body_pitch_rel_rad`（世界系俯仰 + 局部坡度）。`gravity` 后端上
+剖面高度/坡度恒 0，于是退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；
+`terrain` 后端上则是真实剖面量，于是「走了多远、离面多高、翻了没有」在平地和各种坡档上
+是同一个口径。
 
 ## 坡度上的站定段：驻车制动仿真（`--slope-settle`，默认 `hold`）
 
@@ -315,35 +316,40 @@ def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
 
 
 def surface_frame(slope_deg: float, backend: str) -> dict:
-    """度量用的坡面坐标系：`(切向, 法向, 俯仰参考偏移)`，只由后端与坡度决定。
+    """度量用的坐标系与**剖面档位**：`(切向, 法向)` 都是 lane 系（+x 前 / +z 上）。
 
-    - `terrain`：真实 tile 顶面。切向 = 上坡方向 `(cosθ, 0, sinθ)`，法向 = 面法向
-      `(−sinθ, 0, cosθ)`（与 `slope_geometry.slope_frame` 一致）；出生姿态是 `R_y(−θ)`
-      （机体系 +X 对切向、+Z 对法向），所以参考俯仰是 `−θ`。
-    - `gravity`：现有平地 + 旋转重力。度量就用平地坐标系（切向 +x、法向 +z），
-      机器人站在水平地面上，"离面高度" = 绝对 z、"行程" = x 位移；
-      俯仰参考偏移 0（世界系 = 度量系）。
+    2026-10-09 远端把训练地形改成「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」
+    的连续剖面（每条 lane 自带上下坡，坡度量级 0/5/10 由列决定），所以：
 
-    两个后端的 `(原点, 切向, 法向)` 定义让「行程 / 离面高度 / 相对俯仰」在三种坡上同口径。
+    - `terrain`：度量系 = lane 系；**离面高度 = z − profile_height(档位, x)**、
+      **相对俯仰 = 世界系俯仰 + 局部坡度**（出生在平地段、姿态竖直）。`profile_grade_deg`
+      就是这条 lane 的档位（0 = 纯平地 lane）。
+    - `gravity`：现有平地 + 旋转重力 ⇒ 度量系同样是 lane 系，但坡面恒为水平（高度 = z、
+      俯仰 = 世界系俯仰），`profile_grade_deg = 0`；`slope_deg` 的符号表示上/下坡（重力倾斜方向）。
+
+    两个后端共用「行程 = x 位移 / 离面高度 / 相对俯仰」这套口径。
     """
+    if backend not in ("terrain", "gravity"):
+        raise ValueError(f"未知的坡度后端 {backend!r}；可选 gravity / terrain")
     if backend == "terrain":
-        angle = math.radians(slope_deg)
-        return {
-            "backend": backend,
-            "tangent": (math.cos(angle), 0.0, math.sin(angle)),
-            "normal": (-math.sin(angle), 0.0, math.cos(angle)),
-            "pitch_offset_rad": -angle,
-            "surface": "真实坡面 tile（mdp/slope_geometry.tile_mesh，与训练场景同源）",
-        }
-    if backend == "gravity":
+        if slope_deg < 0.0:
+            raise ValueError(
+                "terrain 后端只接受 0 / 5 / 10 的坡度量级：每条 lane 的剖面自带一段上坡和"
+                "一段下坡，没有「纯下坡」的 tile（要恒定坡度用 --slope-backend gravity）")
         return {
             "backend": backend,
             "tangent": (1.0, 0.0, 0.0),
             "normal": (0.0, 0.0, 1.0),
-            "pitch_offset_rad": 0.0,
-            "surface": "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡面同解）",
+            "profile_grade_deg": float(slope_deg),
+            "surface": "真实坡面剖面（mdp/slope_geometry，与训练场景同源）",
         }
-    raise ValueError(f"未知的坡度后端 {backend!r}；可选 gravity / terrain")
+    return {
+        "backend": backend,
+        "tangent": (1.0, 0.0, 0.0),
+        "normal": (0.0, 0.0, 1.0),
+        "profile_grade_deg": 0.0,
+        "surface": "现有平地 + 旋转重力（随坡面倾斜的参考系里与真实坡面同解）",
+    }
 
 
 def slope_ground_plan(slope_deg: float, backend: str) -> dict:
@@ -353,25 +359,27 @@ def slope_ground_plan(slope_deg: float, backend: str) -> dict:
                else (0.0, 0.0, -GRAVITY_MPS2))
     note = ("现有平地 + 旋转重力：随坡面倾斜的参考系里与真实坡度同解"
             "（法向 mg·cosθ、下滑 mg·sinθ 逐项一致）" if backend == "gravity"
-            else "真实闭合坡面 tile（顶面 z = tanθ·(x − 原点 x)）+ 坡面出生姿态 R_y(−θ)")
+            else "真实闭合坡面剖面（平地→上坡→坡顶→下坡→平地），出生在平地段、姿态竖直")
     return {"backend": backend, "gravity_mps2": gravity, "note": note, "frame": frame,
             "surface": frame["surface"]}
 
 
-def slope_cells(slope_deg: float) -> list:
-    """训练侧 40×20 网格里 slope 恰好等于 `slope_deg` 的 `(row, column)` 列表。
+def slope_cells(grade_deg: float) -> list:
+    """训练侧 40×20 网格里**坡度量级**等于 `grade_deg` 的 `(row, column)` 列表。
 
-    复用 `mdp/connection_grid.slope_degrees`（纯标准库）而不是自己写一张坡度表：
-    坡面朝向随行/列交替（避免弹性档永久绑定上坡或下坡），本测试台按同一映射取 tile，
-    于是「+5° 的 tile」与训练场景里 +5° 的 tile 是同一块几何。
+    2026-10-09 起训练地形是连续剖面：每条 lane 自带「上坡 4 m + 下坡 4 m」，`slope_degrees`
+    只给量级（0 / 5 / 10，见 `mdp/connection_grid.py`）。本测试台复用这同一张表，
+    于是「5° 的 tile」与训练场景里 5° 的 lane 是同一块几何。可用 cell 数：0° 400 个、
+    5° 与 10° 各 200 个。
     """
     cells = [(row, column)
              for row in range(connection_grid.ROWS)
              for column in range(connection_grid.COLUMNS)
-             if connection_grid.slope_degrees(column, row) == slope_deg]
+             if connection_grid.slope_degrees(column, row) == grade_deg]
     if not cells:
-        raise ValueError(f"训练网格里没有坡度 {slope_deg:+g}° 的 cell；"
-                         f"可选 ±5 / ±10 / 0（见 mdp/connection_grid.py）")
+        raise ValueError(
+            f"训练网格里没有坡度量级 {grade_deg:g}° 的 cell；可选 0 / 5 / 10"
+            f"（见 mdp/connection_grid.py；剖面自带上下坡，没有负档）")
     return cells
 
 
@@ -518,10 +526,13 @@ def spawn_on_surface(*, slope_deg: float, robot_height: float, cart_height: floa
                      robot_along: float = 0.0) -> dict:
     """坡面上的出生位姿：机体系 +X 对切向、+Z 对法向，两挂点三维距 = `target_distance`。
 
-    与训练侧 `upper_mdp.reset_towing_episode` 同一套几何（只在**坡面切向/法向**里解，
+    与训练侧 `upper_mdp.reset_towing_episode` 同一套几何（只在**切向/法向**里解，
     不用固定的世界 z 高差）：机器人根在原点上方 `robot_height`，小车沿切向后退
     `along = sqrt(target² − Δn²)`，其中 `Δn` 是两挂点在法向的净高差（含挂点偏移随
     出生姿态旋转后的法向分量）。返回的量都是**相对坡面原点**的，纯算术、可离线测。
+
+    连续剖面下出生点在**平地段起点**，所以调用方传 `slope_deg = 0`（姿态竖直、无出生
+    旋转）；保留 `slope_deg` 参数是为了这套解本身仍可离线复核（含恒定坡度档）。
     """
     for name, value in (("robot_height", robot_height), ("cart_height", cart_height),
                         ("target_distance", target_distance)):
@@ -1201,7 +1212,8 @@ def parse_args(argv=None):
     parser.add_argument("--connections", nargs="+", choices=list(CONNECTIONS),
                         default=list(CONNECTIONS), help="连接类型（三类）")
     parser.add_argument("--slopes", type=float, nargs="+", default=list(DEFAULT_SLOPES_DEG),
-                        help="坡度（deg；+ = 沿 +x 上坡，0 = 平地）")
+                        help="坡度（deg）：gravity 后端用带符号的恒定坡度（+ = 上坡）；"
+                             "terrain 后端只接受坡度量级 0/5/10，每条 lane 的剖面自带上下坡")
     parser.add_argument("--slope-backend", choices=("gravity", "terrain"), default="gravity",
                         help="坡度实现：gravity = 现有平地 + 旋转重力（默认，物理等价）；"
                              "terrain = 将来的坡面地形资产（尚未实现，会报错）")
@@ -1318,14 +1330,22 @@ def parse_args(argv=None):
             f"--env-spacing {args.env_spacing:g} m 小于并行环境所需的最小间距 "
             f"{required_spacing:.1f} m（最大速度 {max(args.velocities):g} m/s × "
             f"最长行程）；调大 --env-spacing 或减小速度/时长")
-    slope_ground_plan(args.slopes[0], args.slope_backend)   # 后端名非法时在这里报错
+    try:
+        slope_ground_plan(args.slopes[0], args.slope_backend)   # 后端名非法时在这里报错
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.slope_backend == "terrain":
-        # 地形后端每轮给每个 case 一块真实 tile，cell 来自训练网格 ⇒ 每坡度可用的 cell 数有限
+        # terrain 后端只接受坡度量级 0/5/10（每条 lane 的剖面自带上下坡），
+        # 且每轮给每个 case 一块真实 tile ⇒ 每档可用的 cell 数有限
         for slope in args.slopes:
+            try:
+                surface_frame(slope, args.slope_backend)
+            except ValueError as exc:
+                parser.error(str(exc))
             available = len(slope_cells(slope))
             if per_slope > available:
                 parser.error(
-                    f"--slope-backend terrain 下坡度 {slope:+g}° 只有 {available} 个训练 cell，"
+                    f"--slope-backend terrain 下坡度量级 {slope:g}° 只有 {available} 个训练 cell，"
                     f"装不下每轮 {per_slope} 个 case；减小网格或改用 --slope-backend gravity")
     args.cases = cases
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
@@ -1365,8 +1385,8 @@ def planned_grid_lines(args) -> list:
     ]
     frame_line = (f"[plan] 坡度后端 {args.slope_backend}："
                   + ("现有平地 + 旋转重力（与真实坡面同解）" if args.slope_backend == "gravity"
-                     else f"真实坡面 tile（每坡度一个 {per_slope} 块的紧凑网格，"
-                          f"cell 取自训练网格的 mdp/connection_grid）"))
+                     else f"真实坡面剖面（平地→上坡→坡顶→下坡→平地；每档一个 {per_slope} 块的"
+                          f"紧凑网格，cell 取自训练网格的 mdp/connection_grid）"))
     lines.append(frame_line)
     return lines
 
@@ -1468,8 +1488,11 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
             RIGID_MODEL, BodyProperties, MultiRopeModel, make_rope_model,
             world_inverse_inertia)
+        from imgo2_rl.tasks.manager_based.towing.mdp.profile_torch import (
+            profile_height_tensor)
         from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
-            BACK_M, FORWARD_M, HALF_WIDTH_M, slope_frame)
+            BACK_M, FORWARD_M, HALF_WIDTH_M, PROFILE_LENGTH_M,
+            profile_height as profile_height_fn, profile_slope_degrees as profile_slope_fn)
         from imgo2_rl.tasks.manager_based.towing.towing_env_cfg import (
             ROBOT_ATTACHMENT_OFFSET_M, ROBOT_SPAWN_HEIGHT_M, TowSceneCfg)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
@@ -1823,7 +1846,7 @@ def main(args):
         def make_row(env_index: int, *, phase: str, step: int, command: float,
                      gravity, joint_targets, joint_err_rms: float, joint_err_max: float,
                      frame: dict, progress_robot, progress_load,
-                     height_robot, height_load) -> dict:
+                     robot_height, load_height, pitch_offsets) -> dict:
             quat = robot.data.root_quat_w[env_index]
             qw, qx, qy, qz = (float(value) for value in quat)
             pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
@@ -1861,9 +1884,9 @@ def main(args):
                 # 坡面坐标：两个后端同口径（见 surface_frame / frame_coordinates）
                 "robot_progress_m": progress_robot[env_index],
                 "load_progress_m": progress_load[env_index],
-                "robot_surface_height_m": height_robot[env_index],
-                "load_surface_height_m": height_load[env_index],
-                "body_pitch_rel_rad": pitch - frame["pitch_offset_rad"],
+                "robot_surface_height_m": robot_height[env_index],
+                "load_surface_height_m": load_height[env_index],
+                "body_pitch_rel_rad": pitch + pitch_offsets[env_index],
                 "slope_deg": slope_cases[env_index].slope_deg,
                 "gravity_x_mps2": float(gravity[0]),
                 "gravity_z_mps2": float(gravity[2]),
@@ -1899,15 +1922,17 @@ def main(args):
             if args.slope_backend == "terrain":
                 origins = torch.tensor(slope_blocks[slope]["origins"], dtype=torch.float32,
                                        device=args.device)
-                # 交叉核对：本脚本的切向/法向必须与训练侧 `slope_geometry.slope_frame` 一致
-                repo_tangent, repo_normal = slope_frame(slope)
-                for mine, theirs, name in ((frame["tangent"], repo_tangent, "tangent"),
-                                           (frame["normal"], repo_normal, "normal")):
-                    if max(abs(a - b) for a, b in zip(mine, theirs)) > 1e-9:
-                        raise RuntimeError(
-                            f"坡面 {name} 与 slope_geometry.slope_frame 不一致：{mine} vs {theirs}")
+                # 自检：lane 原点必须落在剖面的平地段上（出生姿态竖直、无出生旋转），
+                # 且剖面长度不超出 lane 的前向余量（否则机器人会走出 slab）。
+                grade = frame["profile_grade_deg"]
+                if profile_height_fn(grade, 0.0) != 0.0 or \
+                        profile_slope_fn(grade, 0.0) != 0.0:
+                    raise RuntimeError("lane 原点不在剖面的平地段上（出生几何假设不成立）")
+                if PROFILE_LENGTH_M > FORWARD_M:
+                    raise RuntimeError("剖面长度超过 lane 前向长度")
+                # 出生在平地段 ⇒ 用 slope_deg=0 的平地解（机体系 +X 对 +x、+Z 对 +z）
                 spawn_spec = spawn_on_surface(
-                    slope_deg=slope, robot_height=spawn_height,
+                    slope_deg=0.0, robot_height=spawn_height,
                     cart_height=model["resting_height_m"] + args.cart_drop,
                     robot_offset=robot_attachment, cart_offset=cart_attachment,
                     target_distance=args.rope_length - args.slack)
@@ -1966,10 +1991,28 @@ def main(args):
                 # 坡面坐标（一次张量运算，避免逐 env 做设备同步）
                 relative_robot = robot.data.root_pos_w - origins
                 relative_load = cart.data.root_pos_w - origins
-                progress_robot = (relative_robot * tangent_t).sum(dim=1).tolist()
-                progress_load = (relative_load * tangent_t).sum(dim=1).tolist()
+                progress_robot = (relative_robot * tangent_t).sum(dim=1)
+                progress_load = (relative_load * tangent_t).sum(dim=1)
+                # 离面高度 = lane 系 z − 局部剖面高度；相对俯仰的参考 = 局部坡度
+                # （gravity 后端档位 0 ⇒ 剖面高度/坡度恒 0，数值与旧口径逐位一致）
                 height_robot = (relative_robot * normal_t).sum(dim=1).tolist()
                 height_load = (relative_load * normal_t).sum(dim=1).tolist()
+                grade_t = frame["profile_grade_deg"]
+                if grade_t:
+                    grade_vec = torch.full_like(progress_robot, float(grade_t))
+                    profile_robot = profile_height_tensor(grade_vec, progress_robot).tolist()
+                    profile_load = profile_height_tensor(grade_vec, progress_load).tolist()
+                    height_robot = [value - offset
+                                    for value, offset in zip(height_robot, profile_robot)]
+                    height_load = [value - offset
+                                   for value, offset in zip(height_load, profile_load)]
+                progress_robot = progress_robot.tolist()
+                progress_load = progress_load.tolist()
+                if grade_t:
+                    pitch_offsets = [math.radians(profile_slope_fn(grade_t, x))
+                                     for x in progress_robot]
+                else:
+                    pitch_offsets = [0.0] * num_envs
                 for env_index in range(num_envs):
                     case_rows[env_index].append(make_row(
                         env_index, phase=phase, step=step, command=commands[env_index],
@@ -1977,7 +2020,8 @@ def main(args):
                         joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
                         frame=frame,
                         progress_robot=progress_robot, progress_load=progress_load,
-                        height_robot=height_robot, height_load=height_load))
+                        robot_height=height_robot, load_height=height_load,
+                        pitch_offsets=pitch_offsets))
             print(f"[pass slope {slope:+g} deg] 完成，用时 {time.time() - pass_started:.1f} s",
                   flush=True)
 

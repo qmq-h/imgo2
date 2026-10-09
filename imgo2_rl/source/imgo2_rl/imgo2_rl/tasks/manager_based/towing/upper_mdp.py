@@ -20,7 +20,9 @@ from isaaclab.utils import math as math_utils
 from .upper_logic import UpperActionSpec
 from .mdp.connection_grid import ELASTIC_KC, GRID_SIZE, env_spec, is_full_grid
 from .mdp.episode_geometry import GOAL_DISTANCE_M, SETTLE_TIME_S
-from .mdp.slope_geometry import BACK_M, FORWARD_M, HALF_WIDTH_M, BOUNDARY_MARGIN_M
+from .mdp.profile_torch import profile_height_tensor
+from .mdp.slope_geometry import (
+    BACK_M, BOUNDARY_MARGIN_M, FORWARD_M, HALF_WIDTH_M)
 from .mdp.rope import point_velocity
 from .mdp.rope_model import (
     BodyProperties,
@@ -95,12 +97,16 @@ class HierarchicalVelocityAction(ActionTerm):
             print(f"[WARN] num_envs={env.num_envs} 不是网格 {GRID_SIZE} 的整数倍，"
                   f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（40 列 × 20 行）的整数倍")
         specs = [env_spec(index) for index in range(env.num_envs)]
-        self.slope_angle = torch.deg2rad(torch.tensor(
-            [spec["slope_degrees"] for spec in specs], device=env.device))
-        zeros = torch.zeros_like(self.slope_angle)
-        sine, cosine = torch.sin(self.slope_angle), torch.cos(self.slope_angle)
-        self.terrain_tangent_w = torch.stack((cosine, zeros, sine), dim=1)
-        self.terrain_normal_w = torch.stack((-sine, zeros, cosine), dim=1)
+        # 每条 lane 的坡度量级（0 / 5 / 10 deg）。**出生点在剖面的平地段起点**，所以出生
+        # 坐标系就是世界系（+x 前、+z 上）：`terrain_tangent_w` / `terrain_normal_w` 不再是
+        # 逐 env 的恒定坡面系，而是同一组基；lane 内部的上/下坡由 `slope_geometry.profile_*`
+        # 按当前位置算（行程 / 离面高度 / 局部坡度）。
+        self.hill_grade_deg = torch.tensor(
+            [spec["slope_degrees"] for spec in specs], dtype=torch.float32, device=env.device)
+        self.terrain_tangent_w = torch.tensor([1.0, 0.0, 0.0], device=env.device).expand(
+            env.num_envs, 3).clone()
+        self.terrain_normal_w = torch.tensor([0.0, 0.0, 1.0], device=env.device).expand(
+            env.num_envs, 3).clone()
         self.rope_model_id = torch.tensor(
             [[spec["model_index"]] for spec in specs], dtype=torch.float32, device=env.device)
         # 连接长度：绳是 L0、刚体是杆长 L（同一行的数值相同）。
@@ -489,11 +495,9 @@ def reset_towing_episode(
     robot_state[:, 1] += sample(robot_y_range)
     yaw = sample(robot_yaw_range)
     yaw_delta = math_utils.quat_from_euler_xyz(torch.zeros_like(yaw), torch.zeros_like(yaw), yaw)
-    # R_y(-theta) maps body +X to the uphill tangent and +Z to the plane normal.
-    slope_quat = math_utils.quat_from_euler_xyz(
-        torch.zeros_like(yaw), -term.slope_angle[env_ids], torch.zeros_like(yaw))
-    robot_state[:, 3:7] = math_utils.quat_mul(
-        slope_quat, math_utils.quat_mul(robot_state[:, 3:7], yaw_delta))
+    # 出生在剖面的平地段上 ⇒ 姿态竖直，只叠一层采样的小偏航（不再有 R_y(−θ) 出生旋转；
+    # 上/下坡在同一条 lane 内部，靠走过去而不是靠出生姿态对齐）。
+    robot_state[:, 3:7] = math_utils.quat_mul(robot_state[:, 3:7], yaw_delta)
     robot_state[:, 7:13] = 0
     term.start_progress[env_ids] = ((robot_state[:, :3] - env.scene.env_origins[env_ids])
                                     * tangent).sum(dim=1)
@@ -503,10 +507,11 @@ def reset_towing_episode(
                                    torch.zeros_like(robot.data.default_joint_vel[env_ids]), env_ids=env_ids)
 
     cart_state = cart.data.default_root_state[env_ids].clone()
-    cart_state[:, 3:7] = math_utils.quat_mul(slope_quat, cart_state[:, 3:7])
-    # Solve in the ramp tangent/normal frame, not with a fixed world-Z difference.
+    # Solve in the (spawn) tangent/normal frame, not with a fixed world-Z difference.
     # Both default root heights are normal clearances; all attachment offsets are
     # transformed from the actual spawned orientation (including sampled yaw).
+    # 出生在平地段 ⇒ 这里的 tangent/normal 就是 +x/+z，解退化成平地摆放；保留这套写法是为了
+    # 挂点偏移随采样偏航旋转后仍然精确（两挂点三维距 = 目标值，第一拍没有约束力）。
     robot_attach_w = math_utils.quat_apply(
         robot_state[:, 3:7], term._robot_attach.expand(count, 3))
     cart_attach_w = math_utils.quat_apply(
@@ -707,18 +712,21 @@ def yaw_heading_l2(env):
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
 def robot_fall(env, minimum_height):
+    """离**局部坡面**的高度低于阈值 ⇒ 判定为跌倒（坡上不能用绝对 z）。"""
     term = _term(env)
-    clearance = ((term._asset.data.root_pos_w - env.scene.env_origins)
-                 * term.terrain_normal_w).sum(dim=1)
-    return clearance < minimum_height
+    local = term._asset.data.root_pos_w - env.scene.env_origins
+    height = local[:, 2] - profile_height_tensor(term.hill_grade_deg, local[:, 0])
+    return height < minimum_height
 def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()
 
 
 def goal_reached(env):
-    """Robot crosses the target plane, measured along the slope from reset pose.
+    """Robot crosses the target plane, measured from the reset pose along +x.
 
     True termination (no timeout bootstrap). The existing lane bounds constrain
     lateral drift; this task measures forward distance, not Euclidean odometry.
+    `progress` 是 **lane 局部 x**（平面距离）：剖面里上/下坡段的弧长略长于水平投影
+    （10° 档 10 m 目标对应 10.09 m 弧长，+0.9%），timeout 用的是弧长上界。
     """
     term = _term(env)
     progress = ((term._asset.data.root_pos_w - env.scene.env_origins)

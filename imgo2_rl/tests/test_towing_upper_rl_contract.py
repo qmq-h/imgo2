@@ -866,17 +866,29 @@ class UpperLogicTests(unittest.TestCase):
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         self.assertIn("time_out = DoneTerm(func=mdp.time_out, time_out=True)", cfg)
         self.assertIn("goal_reached = DoneTerm(func=mdp.goal_reached)", cfg)
-        self.assertIn("action.goal_distance_m, minimum_speed, action.tow_start_s", cfg)
+        # timeout 用**坡面弧长上界**（连续剖面里坡段比水平投影长），不是水平目标距离
+        self.assertIn("profile_arc_length(MAX_GRADE_DEG, action.goal_distance_m)", cfg)
+        self.assertIn("episode_timeout_s(\n            surface_distance, minimum_speed, "
+                      "action.tow_start_s)", cfg)
         self.assertIn("progress - term.start_progress >= term.cfg.goal_distance_m", mdp)
         self.assertNotIn("stop_towing_force = RewTerm", cfg)
         self.assertNotIn("extra_distance = RewTerm", cfg)
 
-    def test_mesh_origins_and_fall_test_follow_the_slope(self):
+    def test_mesh_origins_and_fall_test_follow_the_profile(self):
+        """地形 origin 来自 mesh importer；跌倒判据量的是**离局部剖面**的高度。
+
+        2026-10-09 起 lane 是「平地 → 上坡 → 坡顶 → 下坡 → 平地」的连续剖面，绝对 z 或
+        单一 `terrain_normal_w` 都不再是「离坡面多高」，必须减去 `profile_height(grade, x)`。
+        """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         self.assertIn("class_type=TowingSlopeTerrainImporter", cfg)
         self.assertIn("terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)", cfg)
-        self.assertIn("* term.terrain_normal_w).sum(dim=1)", mdp)
+        self.assertIn("profile_height_tensor(term.hill_grade_deg", mdp)
+        self.assertIn("from .mdp.profile_torch import profile_height_tensor", mdp)
+        # 前进量仍然沿 lane 的切向（出生在平地段 ⇒ 切向 = +x）
+        self.assertIn("* term.terrain_tangent_w).sum(dim=1)", mdp)
+        self.assertNotIn("term.slope_angle", mdp)
 
 
 if __name__ == "__main__":

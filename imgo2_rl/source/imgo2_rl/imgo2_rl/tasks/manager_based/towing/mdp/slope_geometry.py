@@ -1,4 +1,19 @@
-"""Standard-library geometry shared by the towing mesh and offline checks."""
+"""Standard-library geometry shared by the towing mesh and offline checks.
+
+2026-10-09：坡面从「每格一个恒定坡度、按行列交替正负」改成**整合到一起的一条连续剖面**
+（一整座小土包），每条 lane 沿 +X 依次是：
+
+    平地 3 m  →  上坡 4 m  →  坡顶平段 1 m  →  下坡 4 m  →  平地 3 m
+    x: 0 ─────── 3 ───────── 7 ──────────── 8 ───────── 12 ─────── 15   (lane 局部坐标)
+
+机器人出生在 x=0（**平地上、姿态竖直**），走完 10 m 目标时正好到达下坡中段；上坡与下坡
+在**同一条 lane 内成对出现**，所以不再需要「坡度正负号交替」来平衡方向。坡度量级由列决定
+（`connection_grid.slope_degrees` = 0 / 5 / 10 deg），lane 之间只差这个量级。
+
+坐标约定：`x` 沿坡前进，`y` 横向（±`HALF_WIDTH_M`），`z` 向上；lane 原点是剖面在
+`x = 0` 处的表面点（`profile_height(·, 0) = 0`），因此 `body_z − origin_z − profile_height(x)`
+就是「离坡面多高」，与 `slope_frame(局部坡度)` 一起构成坡面坐标系。
+"""
 
 from __future__ import annotations
 
@@ -17,6 +32,22 @@ COLUMN_SPACING_M = 2.0 * HALF_WIDTH_M + 2.0
 THICKNESS_M = 0.35
 BOUNDARY_MARGIN_M = 0.6
 
+# ---- 连续剖面（「平地 → 上坡 → 坡顶 → 下坡 → 平地」）各段边界（lane 局部 x） ---------------
+FLAT_IN_M = 3.0                 # 出生点前方的平地：机器人 + 小车都在这一段
+UP_M = 4.0                      # 上坡的水平长度
+CREST_M = 1.0                   # 坡顶平段
+DOWN_M = 4.0                    # 下坡的水平长度
+EXIT_M = 3.0                    # 出坡后的平地（仍在 17 m 前向余量内）
+UP_START_M = FLAT_IN_M                          # 3.0  上坡起点
+CREST_START_M = UP_START_M + UP_M               # 7.0  坡顶起点
+DOWN_START_M = CREST_START_M + CREST_M          # 8.0  下坡起点
+FLAT_OUT_START_M = DOWN_START_M + DOWN_M        # 12.0 回到平地
+PROFILE_LENGTH_M = FLAT_OUT_START_M + EXIT_M    # 15.0
+MAX_GRADE_DEG = 10.0            # 剖面的最大坡度量级（= 网格里最陡的一档）
+
+if PROFILE_LENGTH_M > FORWARD_M:
+    raise ValueError("剖面长度超过 lane 的前向长度（FORWARD_M），出生/边界假设不再成立")
+
 
 def tile_origin(row, column):
     """True 20-by-40 mesh origins, independent of GridCloner's square layout."""
@@ -27,22 +58,143 @@ def tile_origin(row, column):
 
 
 def slope_frame(degrees):
+    """恒定坡度的 (切向, 法向)：`tangent = (cosθ, 0, sinθ)`、`normal = (−sinθ, 0, cosθ)`。"""
     angle = math.radians(degrees)
     return ((math.cos(angle), 0.0, math.sin(angle)),
             (-math.sin(angle), 0.0, math.cos(angle)))
 
 
+# --------------------------------------------------------------------------- 连续剖面
+
+def profile_rise(grade_deg):
+    """坡度（deg）→ 每米水平前进的抬升（tan）。剖面总是「先上后下」，只用绝对值。"""
+    if not math.isfinite(grade_deg) or abs(grade_deg) > 45.0:
+        raise ValueError(f"坡度必须是 [-45, 45] 内的有限值，收到 {grade_deg!r}")
+    return math.tan(math.radians(abs(grade_deg)))
+
+
+def profile_height(grade_deg, x):
+    """lane 局部坐标 `x` 处的坡面高度（相对 lane 原点；原点在平地上 ⇒ h(0)=0）。"""
+    if not math.isfinite(x):
+        raise ValueError(f"x 必须是有限值，收到 {x!r}")
+    rise = profile_rise(grade_deg)
+    if x <= UP_START_M:
+        return 0.0
+    if x <= CREST_START_M:
+        return rise * (x - UP_START_M)
+    if x <= DOWN_START_M:
+        return rise * UP_M
+    if x <= FLAT_OUT_START_M:
+        return rise * (FLAT_OUT_START_M - x)
+    return 0.0
+
+
+def profile_slope_degrees(grade_deg, x):
+    """`x` 处的**局部**坡度（带符号：上坡为正、下坡为负、平地 0）。"""
+    if not math.isfinite(x):
+        raise ValueError(f"x 必须是有限值，收到 {x!r}")
+    profile_rise(grade_deg)              # 只做范围校验
+    grade = abs(grade_deg)
+    if x <= UP_START_M or x > FLAT_OUT_START_M:
+        return 0.0
+    if x <= CREST_START_M:
+        return grade
+    if x <= DOWN_START_M:
+        return 0.0
+    return -grade
+
+
+def profile_frame(grade_deg, x):
+    """`x` 处的坡面坐标系 (切向, 法向)（用局部坡度）。"""
+    return slope_frame(profile_slope_degrees(grade_deg, x))
+
+
+def profile_arc_length(grade_deg, x):
+    """从 lane 原点沿**坡面**走到 `x` 的行程（平地段 = x，坡段要除 cosθ）。"""
+    if not math.isfinite(x):
+        raise ValueError(f"x 必须是有限值，收到 {x!r}")
+    profile_rise(grade_deg)              # 只做范围校验
+    grade = abs(grade_deg)
+    cosine = math.cos(math.radians(grade))
+    if x <= UP_START_M:
+        return x
+    if x <= CREST_START_M:
+        return UP_START_M + (x - UP_START_M) / cosine
+    if x <= DOWN_START_M:
+        return UP_START_M + UP_M / cosine + (x - CREST_START_M)
+    if x <= FLAT_OUT_START_M:
+        return UP_START_M + UP_M / cosine + CREST_M + (x - DOWN_START_M) / cosine
+    return (UP_START_M + (UP_M + DOWN_M) / cosine + CREST_M
+            + (x - FLAT_OUT_START_M))
+
+
+def profile_polyline(grade_deg):
+    """剖面在 x–z 平面的闭合多边形（上表面 + 底面），供 mesh 与离线检查共用。
+
+    上表面从 `-BACK_M` 到 `FORWARD_M`（两侧都是平地，z=0），底面比它低 `THICKNESS_M`。
+    """
+    # 只保留真正的折点：平地 lane（rise = 0）的中间三个点与两端共线，留它们会造出零面积
+    # 三角形（PhysX 吃进去会报退化三角形），所以平地 lane 退化成简单矩形。
+    xs = [-BACK_M]
+    if profile_rise(grade_deg) != 0.0:
+        xs += [UP_START_M, CREST_START_M, DOWN_START_M, FLAT_OUT_START_M]
+    xs.append(FORWARD_M)
+    top = [(x, profile_height(grade_deg, x)) for x in xs]
+    # 底面必须**平**（z = −THICKNESS）：坡面是实心板上的凸起，不是等厚的弯曲薄壳。
+    # 第一版把底面写成「上表面下移 THICKNESS」，结果整块板跟着坡走、凸起少了一半以上体积
+    # （10° 档体积 42 m³ 而不是 63 m³，被 `_signed_volume` 与鞋带面积同时抓出来）。
+    # 底面只留两个端点：中间那些点与两端共线，留着会在端面扇形三角化时造出零面积三角形。
+    bottom = [(FORWARD_M, -THICKNESS_M), (-BACK_M, -THICKNESS_M)]
+    return top + bottom
+
+
+def _extrude(polygon, half_width):
+    """把 x–z 平面的闭合多边形沿 y 挤出成闭合实体，返回 (vertices, faces)。
+
+    两个端面用扇形三角化（本剖面多边形是凸的），侧壁每条边一个四边形。绕向这一步不保证，
+    由调用方按有符号体积统一翻转。
+    """
+    count = len(polygon)
+    vertices = [(x, -half_width, z) for x, z in polygon]
+    vertices += [(x, half_width, z) for x, z in polygon]
+    faces = []
+    # 端面：从**最后一个顶点**（底面左下角）扇形三角化。不能从顶点 0（上表面最左点）扇：
+    # 平地段两端与坡顶的 z 都是 0 或平台，会和顶点 0 连成共线三点 ⇒ 零面积三角形
+    # （实测 5°/10° 档各 2 个；PhysX 吃退化三角形会报错）。底面角点天然离开 z=0 平面。
+    # 端面法向必须朝 ±y 外侧：剖面多边形在 x–z 里是顺时针（上表面向右、底面折返），
+    # 所以 y = −half 的端面要**反序**才是 −y 外法向，y = +half 的端面用原序得 +y。
+    apex = count - 1
+    for index in range(count - 2):
+        faces.append((apex, index + 1, index))                           # y = −half 端面
+        faces.append((count + apex, count + index, count + index + 1))   # y = +half 端面
+    for index in range(count):
+        nxt = (index + 1) % count          # 闭合边（index = count-1）必须回到 0，不能写 index+1
+        faces.append((index, count + nxt, count + index))
+        faces.append((index, nxt, count + nxt))
+    return vertices, faces
+
+
+def _signed_volume(vertices, faces):
+    """闭合网格的有符号体积（> 0 表示面绕向朝外）。"""
+    total = 0.0
+    for a, b, c in faces:
+        ax, ay, az = vertices[a]
+        bx, by, bz = vertices[b]
+        cx, cy, cz = vertices[c]
+        total += (ax * (by * cz - bz * cy)
+                  - ay * (bx * cz - bz * cx)
+                  + az * (bx * cy - by * cx))
+    return total / 6.0
+
+
 def tile_mesh(row, column):
-    """Closed straight-ramp slab; top is z=tan(theta)*(x-origin_x)."""
+    """一块闭合的「小山」板：上表面 = `profile_height(该列坡度, x)`，底面低 THICKNESS。"""
     origin = tile_origin(row, column)
-    slope = math.tan(math.radians(slope_degrees(column, row)))
-    corners = ((-BACK_M, -HALF_WIDTH_M), (FORWARD_M, -HALF_WIDTH_M),
-               (FORWARD_M, HALF_WIDTH_M), (-BACK_M, HALF_WIDTH_M))
-    top = [(origin[0]+x, origin[1]+y, origin[2]+slope*x) for x, y in corners]
-    vertices = top + [(x, y, z-THICKNESS_M) for x, y, z in top]
-    faces = [(0, 1, 2), (0, 2, 3), (4, 6, 5), (4, 7, 6),
-             (0, 5, 1), (0, 4, 5), (1, 6, 2), (1, 5, 6),
-             (2, 7, 3), (2, 6, 7), (3, 4, 0), (3, 7, 4)]
+    grade = slope_degrees(column, row)
+    local_vertices, faces = _extrude(profile_polyline(grade), HALF_WIDTH_M)
+    if _signed_volume(local_vertices, faces) < 0.0:
+        faces = [(a, c, b) for a, b, c in faces]
+    vertices = [(origin[0] + x, origin[1] + y, origin[2] + z) for x, y, z in local_vertices]
     return vertices, faces, origin
 
 
@@ -62,7 +214,7 @@ def grid_mesh():
 
 
 def attachment_root_positions(degrees, distance, robot_height=0.35, cart_height=0.18):
-    """Nominal yaw-zero reset used to check plane clearance and attachment distance."""
+    """平地上（或恒定坡度上）的名义出生位姿，用于检查离面净空与挂点距。"""
     tangent, normal = slope_frame(degrees)
     difference = robot_height-cart_height
     if distance <= abs(difference):

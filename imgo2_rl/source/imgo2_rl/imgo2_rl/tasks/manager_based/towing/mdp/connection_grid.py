@@ -1,9 +1,12 @@
 """20 flat + 10 five-degree + 10 ten-degree columns, 20 length rows.
 
 Flat columns keep 8 compliant / 8 rigid / 4 inextensible. Each slope
-magnitude has 4 / 4 / 2 columns. Direction alternates by row and column,
-so each row has five up/down cells per magnitude and each stiffness column
-sees both directions across rows. Not a full factorial design at each length.
+magnitude has 4 / 4 / 2 columns. Not a full factorial design at each length.
+
+2026-10-09：地形改成**一条连续剖面**（平地 → 上坡 → 坡顶 → 下坡 → 平地，见
+`slope_geometry.profile_*`），上坡与下坡在**同一条 lane 内成对出现**，所以
+`slope_degrees` 只保留**量级**（0 / 5 / 10），不再按行列交替正负 —— 方向平衡是构造上成立
+的，不需要再用交替来避免「某个弹性档只遇到上坡」。
 """
 
 from __future__ import annotations
@@ -48,13 +51,17 @@ def column_spec(column: int):
 
 
 def slope_degrees(column: int, row: int = 0) -> float:
-    """Signed grade along +X. Alternate directions without fixing k to up/down."""
+    """这条 lane 的**坡度量级**（deg）：0 = 纯平地 lane，5 / 10 = 剖面上的上/下坡档。
+
+    每条 lane 的剖面都是「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」，
+    上坡与下坡成对出现在同一条 lane 里，所以这里只给量级、没有方向。`row` 只为兼容旧签名
+    保留（不再影响取值）。
+    """
     if not 0 <= column < COLUMNS or not 0 <= row < ROWS:
         raise ValueError(f"invalid cell row={row}, column={column}")
     if column < FLAT_COLUMNS:
         return 0.0
-    magnitude = 5.0 if column < FLAT_COLUMNS + FIVE_DEGREE_COLUMNS else 10.0
-    return magnitude if (column - FLAT_COLUMNS + row) % 2 == 0 else -magnitude
+    return 5.0 if column < FLAT_COLUMNS + FIVE_DEGREE_COLUMNS else 10.0
 
 
 def initial_attachment_distance(model_name: str, length: float) -> float:

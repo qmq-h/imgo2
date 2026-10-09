@@ -641,13 +641,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(len(args.cases), 1)
 
     def test_terrain_backend_rejects_more_envs_than_cells(self):
-        # 每个非零坡度在训练网格里只有 100 块同坡度 tile：8 速度 × 3 连接 × 5 质量 = 120
+        # 5° 档在训练网格里只有 200 块 lane：14 速度 × 3 连接 × 5 质量 = 210 > 200
         with self.assertRaises(SystemExit):
             play.parse_args(["--slope-backend", "terrain", "--slopes", "5",
-                             "--velocities", "0.3", "0.5", "0.7", "0.9", "1.1", "1.3", "1.5", "1.7",
+                             "--velocities", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9",
+                             "1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6",
                              "--connections", "compliant", "inextensible", "rigid",
                              "--cart-masses", "5", "10", "15", "20", "25",
-                             "--env-spacing", "20", "--max-envs", "128"])
+                             "--env-spacing", "16", "--max-envs", "210"])
 
     def test_single_connection_subset_is_allowed(self):
         args = play.parse_args(["--connections", "rigid", "--slopes", "0",
@@ -734,22 +735,23 @@ class SimLoopStaticTests(unittest.TestCase):
 class SlopeCellTests(unittest.TestCase):
     """terrain 后端的 tile 来源：训练侧 40×20 网格里同坡度的 cell（不另写一张坡度表）。"""
 
-    def test_cell_counts_per_slope(self):
-        self.assertEqual(len(play.slope_cells(0.0)), 400)       # 20 平列 × 20 行
-        for slope in (5.0, -5.0, 10.0, -10.0):
-            # 每个坡度 10 列里按行奇偶各取 5 列 ⇒ 每行 5 块 × 20 行
-            self.assertEqual(len(play.slope_cells(slope)), 100)
+    def test_cell_counts_per_grade(self):
+        # 20 平列 × 20 行；5° 与 10° 各 10 列 × 20 行
+        self.assertEqual(len(play.slope_cells(0.0)), 400)
+        self.assertEqual(len(play.slope_cells(5.0)), 200)
+        self.assertEqual(len(play.slope_cells(10.0)), 200)
         self.assertGreaterEqual(len(play.slope_cells(10.0)), 45)
 
-    def test_every_cell_has_the_requested_slope(self):
-        for slope in (0.0, 5.0, -5.0, 10.0, -10.0):
-            for row, column in play.slope_cells(slope):
-                self.assertEqual(connection_grid.slope_degrees(column, row), slope)
+    def test_every_cell_has_the_requested_grade(self):
+        for grade in (0.0, 5.0, 10.0):
+            for row, column in play.slope_cells(grade):
+                self.assertEqual(connection_grid.slope_degrees(column, row), grade)
 
-    def test_rejects_slope_outside_the_training_grid(self):
-        for slope in (7.0, -15.0):
+    def test_rejects_grade_outside_the_training_grid(self):
+        # 剖面自带上下坡 ⇒ 没有负档，也没有 7° 这类量级
+        for grade in (7.0, -5.0, -10.0):
             with self.assertRaises(ValueError):
-                play.slope_cells(slope)
+                play.slope_cells(grade)
 
 
 class CompactLayoutTests(unittest.TestCase):
@@ -795,20 +797,28 @@ class CompactLayoutTests(unittest.TestCase):
 
 
 class TranslateTileTests(unittest.TestCase):
-    def test_top_surface_passes_through_the_new_origin(self):
-        vertices, faces, source = play.slope_geometry.tile_mesh(0, 30)     # +10° 的一块 tile
-        target = (5.0, -3.0, 0.0)
-        moved = play.translate_tile(vertices, source, target)
-        self.assertEqual(len(moved), len(vertices))
-        # 顶面 4 个顶点（前 4 个）满足 z = tanθ·(x − 原点 x)：新原点恰在坡面上
-        slope = math.tan(math.radians(play.connection_grid.slope_degrees(30, 0)))
-        for x, y, z in moved[:4]:
-            self.assertAlmostEqual(z, slope * (x - target[0]), places=9)
-        # 平移不改变相对几何
-        for old, new in zip(vertices, moved):
-            self.assertAlmostEqual(new[0] - old[0], target[0] - source[0], places=9)
-            self.assertAlmostEqual(new[1] - old[1], target[1] - source[1], places=9)
-            self.assertAlmostEqual(new[2], old[2], places=9)
+    def test_top_surface_follows_the_profile_after_translation(self):
+        profile = play.slope_geometry
+        for column in (0, 30):                       # 平地 lane + 10° lane
+            vertices, faces, source = profile.tile_mesh(0, column)
+            target = (5.0, -3.0, 0.0)
+            moved = play.translate_tile(vertices, source, target)
+            self.assertEqual(len(moved), len(vertices))
+            grade = play.connection_grid.slope_degrees(column, 0)
+            half = len(moved) // 2                   # 每个剖面点先 −y 侧、后 +y 侧
+            top = [(x, z) for x, _, z in moved if z > -0.5*profile.THICKNESS_M]
+            self.assertTrue(top)
+            for x, z in top:
+                self.assertAlmostEqual(z, target[2] + profile.profile_height(grade, x - target[0]),
+                                       places=9)
+            # 平移不改变相对几何，且 lane 原点（剖面平地段）仍在表面上
+            for old_vertex, new_vertex in zip(vertices, moved):
+                self.assertAlmostEqual(new_vertex[0] - old_vertex[0], target[0] - source[0], places=9)
+                self.assertAlmostEqual(new_vertex[1] - old_vertex[1], target[1] - source[1], places=9)
+                self.assertAlmostEqual(new_vertex[2], old_vertex[2], places=9)
+            self.assertAlmostEqual(profile.profile_height(grade, 0.0), 0.0, places=12)
+            self.assertGreater(len(vertices), 0)
+            self.assertEqual(half, len(vertices) // 2)
 
     def test_mesh_faces_stay_in_range(self):
         vertices, faces, source = play.slope_geometry.tile_mesh(0, 31)
@@ -884,19 +894,26 @@ class MassScalingTests(unittest.TestCase):
 class TerrainLayoutTests(unittest.TestCase):
     """整块 mesh 的组装（只有仿真里才建，但布局与自洽性可以离线核对）。"""
 
+    GRADES = (0.0, 5.0, 10.0)
+
     @classmethod
     def setUpClass(cls):
-        cls.layout = play.build_terrain_layout(play.DEFAULT_SLOPES_DEG, 45)
+        cls.layout = play.build_terrain_layout(cls.GRADES, 45)
 
     def test_block_shape_and_counts(self):
-        self.assertEqual(len(self.layout["blocks"]), len(play.DEFAULT_SLOPES_DEG))
-        for slope in play.DEFAULT_SLOPES_DEG:
-            block = self.layout["blocks"][slope]
+        self.assertEqual(len(self.layout["blocks"]), len(self.GRADES))
+        for grade in self.GRADES:
+            block = self.layout["blocks"][grade]
             self.assertEqual(len(block["cells"]), 45)
             self.assertEqual(len(block["origins"]), 45)
-        # 每块 8 顶点 / 12 面
-        self.assertEqual(len(self.layout["vertices"]), len(play.DEFAULT_SLOPES_DEG) * 45 * 8)
-        self.assertEqual(len(self.layout["faces"]), len(play.DEFAULT_SLOPES_DEG) * 45 * 12)
+        # 平地 lane 的剖面退化成矩形（8 顶点 / 12 面），坡道 lane 是 16 顶点 / 28 面
+        expected_verts = expected_faces = 0
+        for grade in self.GRADES:
+            per_lane = (8, 12) if grade == 0.0 else (16, 28)
+            expected_verts += 45 * per_lane[0]
+            expected_faces += 45 * per_lane[1]
+        self.assertEqual(len(self.layout["vertices"]), expected_verts)
+        self.assertEqual(len(self.layout["faces"]), expected_faces)
 
     def test_mesh_is_finite_and_faces_are_in_range(self):
         for vertex in self.layout["vertices"]:
@@ -907,41 +924,40 @@ class TerrainLayoutTests(unittest.TestCase):
             self.assertTrue(all(0 <= index < face_count for index in face))
 
     def test_every_origin_lies_on_its_tile_surface(self):
-        for slope in play.DEFAULT_SLOPES_DEG:
-            block = self.layout["blocks"][slope]
-            slope_tan = math.tan(math.radians(slope))
+        for grade in self.GRADES:
+            block = self.layout["blocks"][grade]
             for cell, origin in zip(block["cells"], block["origins"]):
                 vertices, _, source = play.slope_geometry.tile_mesh(*cell)
                 moved = play.translate_tile(vertices, source, origin)
-                for x, _, z in moved[:4]:                     # 顶面四点
-                    self.assertAlmostEqual(z, slope_tan * (x - origin[0]), places=9)
+                for x, _, z in moved:
+                    if z > origin[2] - 0.5*play.slope_geometry.THICKNESS_M:
+                        self.assertAlmostEqual(
+                            z, play.slope_geometry.profile_height(grade, x - origin[0]), places=9)
 
     def test_origins_grid_matches_the_mesh_and_the_terrain_contract(self):
         # Isaac Lab 的 `terrain_origins` 契约是 (num_rows, num_cols, 3)，必须覆盖整块 mesh
         grid = self.layout["origins_grid"]
-        self.assertEqual(len(grid), len(play.DEFAULT_SLOPES_DEG))
+        self.assertEqual(len(grid), len(self.GRADES))
         for block in grid:
             self.assertEqual(len(block), 45)
             for origin in block:
                 self.assertEqual(len(origin), 3)
-        self.assertEqual(len(grid) * len(grid[0]),
-                         len(self.layout["vertices"]) // 8)     # 一块 tile = 8 顶点
-        # 块顺序与 slopes 顺序一致（generator 用 num_rows = 坡度数来报这张表）
-        self.assertEqual([self.layout["blocks"][slope]["origins"] for slope in play.DEFAULT_SLOPES_DEG],
+        self.assertEqual(len(grid) * len(grid[0]), len(self.layout["blocks"]) * 45)
+        # 块顺序与 slopes 顺序一致（generator 用 num_rows = 坡度量级数来报这张表）
+        self.assertEqual([self.layout["blocks"][grade]["origins"] for grade in self.GRADES],
                          [list(block) for block in grid])
 
     def test_blocks_are_separated_along_y(self):
         pitch = self.layout["block_y_pitch_m"]
         half = play.slope_geometry.HALF_WIDTH_M
-        shifts = [self.layout["blocks"][slope]["block_y_shift_m"]
-                  for slope in play.DEFAULT_SLOPES_DEG]
+        shifts = [self.layout["blocks"][grade]["block_y_shift_m"] for grade in self.GRADES]
         self.assertEqual(shifts, sorted(shifts))
         for previous, following in zip(shifts, shifts[1:]):
             self.assertGreater(following - previous, 2.0 * half)   # 两块 y 上不重叠
 
     def test_too_few_cells_is_rejected(self):
         with self.assertRaises(ValueError):
-            play.build_terrain_layout((5.0,), 200)          # +5° 只有 100 块 tile
+            play.build_terrain_layout((5.0,), 201)          # 5° 只有 200 块 lane
 
     def test_empty_or_zero_env_rejected(self):
         with self.assertRaises(ValueError):
@@ -951,25 +967,29 @@ class TerrainLayoutTests(unittest.TestCase):
 
 
 class SurfaceFrameTests(unittest.TestCase):
-    def test_gravity_backend_matches_the_flat_frame(self):
-        frame = play.surface_frame(5.0, "gravity")
+    """两个后端的度量系都是 lane 系（+x 前 / +z 上）；terrain 多带一个「坡面档位」。"""
+
+    def test_gravity_backend_is_the_flat_frame(self):
+        frame = play.surface_frame(-5.0, "gravity")          # 负号 = 下坡（重力倾斜方向）
         self.assertEqual(frame["tangent"], (1.0, 0.0, 0.0))
         self.assertEqual(frame["normal"], (0.0, 0.0, 1.0))
-        self.assertEqual(frame["pitch_offset_rad"], 0.0)
+        self.assertEqual(frame["profile_grade_deg"], 0.0)
 
-    def test_terrain_frame_matches_the_training_slope_frame(self):
-        for slope in (0.0, 5.0, -5.0, 10.0, -10.0):
-            frame = play.surface_frame(slope, "terrain")
-            tangent, normal = play.slope_geometry.slope_frame(slope)
-            for mine, theirs in zip(frame["tangent"], tangent):
-                self.assertAlmostEqual(mine, theirs, places=12)
-            for mine, theirs in zip(frame["normal"], normal):
-                self.assertAlmostEqual(mine, theirs, places=12)
-            self.assertAlmostEqual(frame["pitch_offset_rad"], -math.radians(slope), places=12)
+    def test_terrain_backend_carries_the_profile_grade(self):
+        for grade in (0.0, 5.0, 10.0):
+            frame = play.surface_frame(grade, "terrain")
+            self.assertEqual(frame["tangent"], (1.0, 0.0, 0.0))
+            self.assertEqual(frame["normal"], (0.0, 0.0, 1.0))
+            self.assertEqual(frame["profile_grade_deg"], grade)
+        # 剖面自带上下坡 ⇒ 负档不成立
+        for bad in (-5.0, -10.0):
+            with self.assertRaises(ValueError):
+                play.surface_frame(bad, "terrain")
 
     def test_frame_is_orthonormal(self):
-        for slope in (-10.0, 0.0, 10.0):
-            frame = play.surface_frame(slope, "terrain")
+        for backend, slope in (("terrain", 0.0), ("terrain", 10.0), ("gravity", -10.0),
+                               ("gravity", 5.0)):
+            frame = play.surface_frame(slope, backend)
             tangent, normal = frame["tangent"], frame["normal"]
             self.assertAlmostEqual(math.dist(tangent, (0, 0, 0)), 1.0, places=12)
             self.assertAlmostEqual(math.dist(normal, (0, 0, 0)), 1.0, places=12)
@@ -979,19 +999,23 @@ class SurfaceFrameTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             play.surface_frame(5.0, "ramp")
 
-    def test_frame_coordinates_of_a_point_on_the_ramp(self):
+    def test_frame_coordinates_are_lane_x_and_z(self):
+        # 点在剖面表面上：lane 系高度 = profile_height，减掉它才是「离面高度」
+        profile = play.slope_geometry
         frame = play.surface_frame(10.0, "terrain")
-        slope = math.tan(math.radians(10.0))
-        for x in (2.0, 7.5):
-            progress, height = play.frame_coordinates((x, 0.0, slope * x), (0.0, 0.0, 0.0), frame)
-            self.assertAlmostEqual(height, 0.0, places=9)
-            self.assertAlmostEqual(progress, x / math.cos(math.radians(10.0)), places=9)
+        for x in (2.0, 7.5, 10.0):
+            height = profile.profile_height(10.0, x)
+            progress, z = play.frame_coordinates((x, 0.0, height), (0.0, 0.0, 0.0), frame)
+            self.assertAlmostEqual(progress, x, places=9)
+            self.assertAlmostEqual(z, height, places=9)
+            self.assertAlmostEqual(z - profile.profile_height(10.0, progress), 0.0, places=9)
 
     def test_gravity_frame_reduces_to_x_and_z(self):
         frame = play.surface_frame(-5.0, "gravity")
         progress, height = play.frame_coordinates((3.0, 1.0, 0.27), (1.0, 1.0, 0.0), frame)
         self.assertAlmostEqual(progress, 2.0, places=12)
         self.assertAlmostEqual(height, 0.27, places=12)
+
 
 
 class SpawnOnSurfaceTests(unittest.TestCase):
@@ -1025,15 +1049,19 @@ class SpawnOnSurfaceTests(unittest.TestCase):
         forward = play.rotate_vector(spec["quat_wxyz"], (1.0, 0.0, 0.0))
         self.assertAlmostEqual(forward[0], spec["tangent"][0], places=9)
 
-    def test_robot_height_is_a_normal_clearance_and_cart_sits_downhill(self):
-        frame = play.surface_frame(5.0, "terrain")
-        spec = self._spawn(5.0)
-        robot_progress, robot_height = play.frame_coordinates(spec["robot_root"], (0, 0, 0), frame)
-        cart_progress, cart_height = play.frame_coordinates(spec["cart_root"], (0, 0, 0), frame)
-        self.assertAlmostEqual(robot_progress, 0.0, places=9)
-        self.assertAlmostEqual(robot_height, 0.35, places=9)
-        self.assertGreater(robot_progress, cart_progress)      # 小车在后方（下坡侧）
-        self.assertGreater(cart_height, 0.0)
+    def test_robot_height_is_a_normal_clearance_and_cart_sits_behind(self):
+        # 恒定坡度档的解（剖面出生用的是 slope=0，这条方程本身仍要能离线复核）
+        for slope in (0.0, 5.0, -5.0, 10.0):
+            tangent, normal = play.slope_geometry.slope_frame(slope)
+            frame = {"tangent": tangent, "normal": normal}
+            spec = self._spawn(slope)
+            robot_progress, robot_height = play.frame_coordinates(spec["robot_root"], (0, 0, 0),
+                                                                  frame)
+            cart_progress, cart_height = play.frame_coordinates(spec["cart_root"], (0, 0, 0), frame)
+            self.assertAlmostEqual(robot_progress, 0.0, places=9)
+            self.assertAlmostEqual(robot_height, 0.35, places=9)
+            self.assertLess(cart_progress, robot_progress - 0.3)   # 小车在后方
+            self.assertGreater(cart_height, 0.0)
 
     def test_impossible_geometry_is_rejected(self):
         with self.assertRaises(ValueError):

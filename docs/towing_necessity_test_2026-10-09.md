@@ -39,7 +39,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
     --headless --command-shaping ramp --ramp-time-s 1.0
 
-# ⑤ 用远端的真实坡面 tile（与训练场景同源；每坡度需 ≤100 个 case）
+# ⑤ 用远端的真实坡面剖面（与训练场景同源；坡度量级 0/5/10，每档需 ≤200 个 case）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
     --headless --slope-backend terrain --slopes 0 5 -5 10 -10
 ```
@@ -90,7 +90,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 | 后端 | 地形 | 重力 | 出生姿态 | 度量坐标系 | 用途 |
 |---|---|---|---|---|---|
 | `gravity`（默认） | `TowSceneCfg` 现有平地 | 旋转重力 `(−g·sinθ, 0, −g·cosθ)` | 平地（单位四元数） | 平地系（行程 = x、离面高度 = z、俯仰 = 世界系） | 首轮；度量最简单、代码路径最短 |
-| `terrain` | **真实 tile mesh**（`slope_geometry.tile_mesh`，每坡度一块紧凑网格） | 世界竖直 | 坡面解 `R_y(−θ)`（机体系 +X 对切向、+Z 对法向） | 坡面系（沿坡行程、离面法向高度、相对坡面俯仰） | 与训练场景对齐复核 |
+| `terrain` | **真实剖面 mesh**（`slope_geometry.tile_mesh`：平地→上坡→坡顶→下坡→平地，每档一块紧凑网格） | 世界竖直 | **出生在平地段**（姿态竖直，无旋转） | lane 系（x 行程、`z − profile_height(档位,x)` 离面高度、世界系俯仰 + 局部坡度） | 与训练场景对齐复核 |
 
 ### gravity 后端（物理等价）
 
@@ -109,25 +109,29 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
 
 ### terrain 后端（与训练场景同源）
 
-- tile 几何与坡度符号直接取自训练侧：cell 由 `slope_cells()` 在 40×20 网格里按
-  `connection_grid.slope_degrees(column, row)` 挑出同坡度的（0° 有 400 个、±5°/±10° 各 100 个），
+- tile 几何与坡度量级直接取自训练侧：cell 由 `slope_cells()` 在 40×20 网格里按
+  `connection_grid.slope_degrees(column, row)` 挑出同量级的（0° 有 400 条、5° 与 10° 各 200 条；
+  **每条 lane 的剖面自带一段上坡和一段下坡**，所以负档不存在、`--slopes` 只接受 0/5/10），
   顶点用 `tile_mesh(row, column)` 生成后**平移到本测试台的紧凑网格**（训练网格 x 跨度 ~200 m，
   没必要照搬；平移保持顶面 `z = tanθ·(x − 原点x)` 且原点仍在坡面上）。
-- 出生位姿用训练侧同一套坡面解：`spawn_on_surface()` 在切向/法向里解
-  `along = sqrt(target² − Δn²)`，机体系 +X 对切向、+Z 对法向，两挂点三维距 = `L0 − slack`
+- 出生位姿用训练侧同一套解：`spawn_on_surface()` 在切向/法向里解
+  `along = sqrt(target² − Δn²)`；连续剖面下出生点在**平地段起点**，所以调用方传 `slope_deg = 0`
+  （姿态竖直、无出生旋转），两挂点三维距 = `L0 − slack`
   （三类连接在本测试台都用同一个初始挂点距；rigid 的杆长也取 `L0 − slack`，与测量台一致）。
 - 场景只建一次，所以**所有坡度的 tile 一次性铺进同一块 mesh**（每坡度一块、块间沿 y 留 40 m），
   每轮把机器人/小车摆到本轮那一块的原点上；`build_terrain_layout()` 是这件事的唯一来源，
   纯标准库、离线有测试（mesh 有限性、面索引范围、原点在坡面上、块不重叠）。
-- 运行时还会交叉核对本脚本的 `tangent/normal` 与 `slope_geometry.slope_frame()` 逐位一致。
+- 运行时自检：lane 原点必须落在剖面平地段（`profile_height(档位,0) = 0`、局部坡度 0），
+  且剖面总长不超过 lane 前向余量。
 
 ### 度量坐标系（两个后端同口径）
 
-记录里新增 `robot/load_progress_m`（沿坡切向行程）、`robot/load_surface_height_m`
-（离面法向高度）、`body_pitch_rel_rad`（相对坡面参考姿态的俯仰），由 `surface_frame()` +
-`frame_coordinates()` 定义。`gravity` 后端上它们退化成 x 位移 / 绝对 z / 世界系俯仰
-（与旧版记录逐位一致）；`terrain` 后端上是真实坡面量。**跌倒判据因此改用离面高度与相对俯仰**
-——直接拿世界系 z 或世界系俯仰会把 10° 坡上的正常站姿判成跌倒（出生姿态本来就转了 −θ）。
+记录里新增 `robot/load_progress_m`（lane 系 x 行程）、`robot/load_surface_height_m`
+（**z − `profile_height(档位, x)`**）、`body_pitch_rel_rad`（世界系俯仰 + 局部坡度），由
+`surface_frame()` + `frame_coordinates()` + 训练侧的剖面函数定义。`gravity` 后端上剖面高度/坡度
+恒 0，于是退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；`terrain` 后端上是真实
+剖面量。**跌倒判据因此改用离面高度与相对俯仰** —— 在剖面上拿绝对 z 会把走上坡的机器人
+（坡面已抬升 0.7 m）判成正常，或把下坡判成跌倒。
 
 ## 坡上站定段：驻车制动仿真（`--slope-settle hold`，默认）
 
@@ -178,7 +182,7 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
   指令整形、五项指标在合成轨迹上的数值、接触三路见证（含 `--record-every` 的阈值放大）、
   判定码严重度、分组统计与结论文案、判定矩阵、人读报告、CLI 校验（含 terrain 的 cell 数上限）、
   记录字段契约（AST 抽取 `make_row` 的列集与 `TEST_FIELDS` 逐项比对）；
-- `imgo2_rl/tests` 全量 **430 项通过 0 失败**（含远端 2026-10-09 新增的坡面/VAE 契约测试）；
+- `imgo2_rl/tests` 全量 **434 项通过 0 失败**（含远端 2026-10-09 的坡面/VAE 契约测试与本次连续剖面改动）；
 - `python -m compileall`、`git diff --check`、tracked-ignore 检查通过。
 
 ## 首跑定位并修复的一个阻断 bug（2026-10-09）
