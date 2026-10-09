@@ -22,43 +22,75 @@ FORCE_SLICE = slice(VELOCITY_DIM + MASS_DIM, OUTPUT_DIM)
 
 
 class TowingDynamicsDecoder(nn.Module):
-    """Estimate robot velocity, load mass and body-frame towing force."""
+    """Supervised variational bottleneck: history -> z -> explicit six-vector.
 
-    def __init__(self, frame_dim=51, feature_dim=128, hidden_dim=128, num_layers=1, force_scale=10.0):
+    Latent coordinates have no prescribed physical meanings. Unlike CMoE's
+    next-proprioception reconstruction, this task reconstructs the privileged
+    [vx, vy, mass, Fx, Fy, Fz] target through the latent bottleneck.
+    """
+
+    def __init__(self, frame_dim=57, feature_dim=128, hidden_dim=128,
+                 num_layers=1, force_scale=10.0, latent_dim=16):
         super().__init__()
+        if latent_dim <= 0:
+            raise ValueError("latent_dim must be positive")
         self.frame_dim = frame_dim
         self.force_scale = force_scale
+        self.latent_dim = latent_dim
         self.encoder = nn.Sequential(nn.Linear(frame_dim, feature_dim), nn.ELU())
         self.gru = nn.GRU(feature_dim, hidden_dim, num_layers=num_layers)
-        self.velocity_head = nn.Linear(hidden_dim, VELOCITY_DIM)
-        self.mass_head = nn.Linear(hidden_dim, MASS_DIM)
-        self.force_head = nn.Linear(hidden_dim, FORCE_DIM)
+        self.fc_mu = nn.Linear(hidden_dim, latent_dim)
+        self.fc_log_var = nn.Linear(hidden_dim, latent_dim)
+        self.latent_decoder = nn.Sequential(nn.Linear(latent_dim, feature_dim), nn.ELU())
+        self.velocity_head = nn.Linear(feature_dim, VELOCITY_DIM)
+        self.mass_head = nn.Linear(feature_dim, MASS_DIM)
+        self.force_head = nn.Linear(feature_dim, FORCE_DIM)
 
     @property
     def output_dim(self):
-        """输出维数（= ``UpperObservationSpec.decoder_dim``）。"""
         return OUTPUT_DIM
 
-    def forward(self, frames, hidden_state=None):
+    @property
+    def actor_feature_dim(self):
+        return self.output_dim + self.latent_dim
+
+    @staticmethod
+    def reparameterize(mu, log_var):
+        return mu + torch.randn_like(mu) * torch.exp(0.5 * log_var)
+
+    @staticmethod
+    def kl_loss(mu, log_var):
+        return (-0.5 * (1 + log_var - mu.square() - log_var.exp()).sum(dim=-1)).mean()
+
+    def encode(self, frames, hidden_state=None):
         single_step = frames.ndim == 2
         if single_step:
             frames = frames.unsqueeze(0)
         if frames.ndim != 3 or frames.shape[-1] != self.frame_dim:
-            raise ValueError(
-                f"decoder frames must have shape [T, B, {self.frame_dim}] or [B, {self.frame_dim}], "
-                f"got {tuple(frames.shape)}")
-        features = self.encoder(frames)
-        features, hidden_state = self.gru(features, hidden_state)
-        # 2026-09-23 去掉三个 head 的 tanh：直接回归**物理量**（m/s、kg、N）。
-        # 理由：target 归一化到 [-1,1] 会把 loss 的物理权重按 s² 压低
-        # （力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；tanh 还会在饱和区丢梯度。
-        # 稳定性由 `loss()` 的 smooth_l1(β=1) 提供：大误差处梯度线性、不爆炸。
-        prediction = torch.cat((
-            self.velocity_head(features),
-            self.mass_head(features),
-            self.force_head(features),
-        ), dim=-1)
-        return (prediction.squeeze(0) if single_step else prediction), hidden_state
+            raise ValueError(f"decoder expects [T,B,{self.frame_dim}] or [B,{self.frame_dim}]")
+        features, hidden_state = self.gru(self.encoder(frames), hidden_state)
+        mu = self.fc_mu(features)
+        # Bound exp(log_var) to keep sampling and KL finite at startup.
+        log_var = self.fc_log_var(features).clamp(-10.0, 4.0)
+        if single_step:
+            mu, log_var = mu.squeeze(0), log_var.squeeze(0)
+        return mu, log_var, hidden_state
+
+    def decode(self, latent):
+        features = self.latent_decoder(latent)
+        return torch.cat((self.velocity_head(features), self.mass_head(features),
+                          self.force_head(features)), dim=-1)
+
+    def forward_with_latent(self, frames, hidden_state=None, *, sample=None):
+        mu, log_var, state = self.encode(frames, hidden_state)
+        if sample is None:
+            sample = self.training
+        latent = self.reparameterize(mu, log_var) if sample else mu
+        return self.decode(latent), latent, state
+
+    def forward(self, frames, hidden_state=None):
+        prediction, _, state = self.forward_with_latent(frames, hidden_state)
+        return prediction, state
 
     def force_newtons(self, prediction):
         """取 force head 的输出。去掉 tanh 与归一化后它本身就是牛顿，故为恒等。
@@ -98,18 +130,13 @@ class TowingDynamicsDecoder(nn.Module):
         return parts[0] + parts[1] + parts[2], parts
 
 
-def augment_actor_observation(frames, prediction):
-    """Append detached estimates to form the actor input (frame_dim + decoder_dim).
-
-    ``frames`` 是 policy 帧（维数由 ``UpperObservationSpec.frame_dim`` 定义，
-    runner 已断言 decoder 的 ``frame_dim`` 与 ``env.num_obs`` 一致），``prediction``
-    是 decoder 输出；这里只做「按最后一维拼接 + detach」这一件事。
-    """
-    if frames.shape[:-1] != prediction.shape[:-1] or prediction.shape[-1] != OUTPUT_DIM:
-        raise ValueError(
-            f"actor augmentation expects matching batch dims and {OUTPUT_DIM}-D estimates, "
-            f"got frames {tuple(frames.shape)} and prediction {tuple(prediction.shape)}")
-    return torch.cat((frames, prediction.detach()), dim=-1)
+def augment_actor_observation(frames, prediction, latent):
+    """Actor receives detached explicit estimates and latent; PPO cannot train VAE."""
+    if (frames.shape[:-1] != prediction.shape[:-1]
+            or frames.shape[:-1] != latent.shape[:-1]
+            or prediction.shape[-1] != OUTPUT_DIM):
+        raise ValueError("actor augmentation batch or explicit dimension mismatch")
+    return torch.cat((frames, prediction.detach(), latent.detach()), dim=-1)
 
 
 def mass_supervision_weight(
@@ -149,30 +176,37 @@ class DynamicsDecoderTrainer:
         velocity_coef=1.0,
         force_coef=1.0,
         mass_coef=1.0,
+        kld_weight=0.005,
     ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
         self.velocity_coef = velocity_coef
         self.force_coef = force_coef
         self.mass_coef = mass_coef
+        if kld_weight < 0:
+            raise ValueError("kld_weight must be nonnegative")
+        self.kld_weight = kld_weight
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
     def update(self, frames, targets, mass_supervision_weight, dones=None, hidden_state=None):
         self.decoder.train()
+        state = hidden_state.detach().clone() if hidden_state is not None else None
         if dones is None:
-            prediction, _ = self.decoder(frames.detach(), hidden_state)
+            mu, log_var, _ = self.decoder.encode(frames.detach(), state)
         else:
             if dones.shape != frames.shape[:2]:
                 raise ValueError(f"decoder dones must have shape {frames.shape[:2]}, got {dones.shape}")
-            predictions = []
-            state = hidden_state
+            mus, log_vars = [], []
             for step in range(frames.shape[0]):
                 if step > 0 and state is not None:
                     keep = (~dones[step - 1].bool()).to(frames.dtype).view(1, -1, 1)
                     state = state * keep
-                step_prediction, state = self.decoder(frames[step].detach(), state)
-                predictions.append(step_prediction)
-            prediction = torch.stack(predictions)
+                step_mu, step_log_var, state = self.decoder.encode(frames[step].detach(), state)
+                mus.append(step_mu)
+                log_vars.append(step_log_var)
+            mu, log_var = torch.stack(mus), torch.stack(log_vars)
+        latent = self.decoder.reparameterize(mu, log_var)
+        prediction = self.decoder.decode(latent)
         loss, parts = self.decoder.loss(
             prediction,
             targets.detach(),
@@ -181,6 +215,10 @@ class DynamicsDecoderTrainer:
             force_coef=self.force_coef,
             mass_coef=self.mass_coef,
         )
+        kl = self.decoder.kl_loss(mu, log_var)
+        loss = loss + self.kld_weight * kl
+        self.last_kl = float(kl.detach())
+        self.last_weighted_kl = float((self.kld_weight * kl).detach())
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)

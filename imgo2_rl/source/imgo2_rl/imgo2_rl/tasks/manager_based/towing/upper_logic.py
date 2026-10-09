@@ -61,6 +61,8 @@ class UpperObservationSpec:
         ("joint_vel", 12),
     )
 
+    latent_dim: int = 16
+
     @property
     def decoder_dim(self):
         """decoder 输出维数。唯一定义在 ``DecoderSpec``，避免两处各自漂移。"""
@@ -72,7 +74,7 @@ class UpperObservationSpec:
 
     @property
     def actor_dim(self):
-        return self.frame_dim + self.decoder_dim
+        return self.frame_dim + self.decoder_dim + self.latent_dim
 
 
 @dataclass(frozen=True)

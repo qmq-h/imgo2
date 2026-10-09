@@ -20,12 +20,18 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg
+from isaaclab.terrains import TerrainGeneratorCfg, TerrainImporterCfg
 from isaaclab.utils import configclass
 
 from imgo2_rl.assets.cart import make_cart_cfg
 from imgo2_rl.assets.imgo2 import IMGO2_CFG
 import imgo2_rl.tasks.manager_based.towing.upper_mdp as mdp
 from imgo2_rl.tasks.manager_based.towing.mdp.connection_grid import COLUMNS, ROWS
+from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import SPEED_RANGE, episode_timeout_s
+from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import FORWARD_M, BOUNDARY_MARGIN_M
+from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
+    TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter,
+)
 
 
 # 仓库根。本文件在 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/` 下，
@@ -66,12 +72,17 @@ _ROBOT_BODY_FILTERS = _robot_body_filters()
 
 @configclass
 class UpperTowingSceneCfg(InteractiveSceneCfg):
-    ground = AssetBaseCfg(
-        prim_path="/World/Ground",
-        spawn=sim_utils.GroundPlaneCfg(
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=0.8, dynamic_friction=0.8, restitution=0.0,
-                friction_combine_mode="average", restitution_combine_mode="min")))
+    # Real mesh: 20 flat columns, 10 at |5 deg| and 10 at |10 deg|.
+    # Exact origins come from the importer, not GridCloner's square arrangement.
+    terrain = TerrainImporterCfg(
+        prim_path="/World/Ground", terrain_type="generator",
+        class_type=TowingSlopeTerrainImporter,
+        terrain_generator=TerrainGeneratorCfg(
+            class_type=TowingSlopeTerrainGenerator, size=(20.0, 6.0),
+            num_rows=ROWS, num_cols=COLUMNS, sub_terrains={}, curriculum=False),
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=0.8, dynamic_friction=0.8, restitution=0.0,
+            friction_combine_mode="average", restitution_combine_mode="min"))
     light = AssetBaseCfg(prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=2000))
     robot: ArticulationCfg = IMGO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     cart: ArticulationCfg = make_cart_cfg(_USD_CACHE)[0]
@@ -171,7 +182,7 @@ class UpperRewardsCfg:
 
     # 【实际速度 vs 命令期望】唯一的正奖励，是策略的主要驱动。
     # exp(−(Δlin/0.5)² − (Δyaw/1.0)²)：完全跟上给 1.0，误差到 0.5 m/s 掉到 0.37、到 1.0 掉到 0.018。
-    # 全程生效（settle 与 STOP 段 `loco_command` 为 0，即"保持零速"）。
+    # 全程生效（settle 段 `loco_command` 为 0，即"保持零速"）。
     # 2026-10-08 修正：线性项原先误用 `reference_command − user_command`（上层自己的积分指令
     # vs 任务指令），与函数名和奖励文档都不符，且与 reference_tracking 重复；现在比实测
     # 机体系线速度，口径与测量台的 `steady_tracking_ratio` 一致。
@@ -203,7 +214,7 @@ class UpperRewardsCfg:
     # 且按**连接长度比例**给出阈值（不是绝对量）。weight 的单位是"每米缺口扣多少"。
     # **ratio=0.25（2026-10-08 随 20 行长度网格由 0.40 下调）**：阈值逐 env 用
     # `term.connection_length`，不再是单一 `rope_length`。spawn 间隙 =
-    # sqrt((0.5·L0)² − 0.17²) + 0.0025，最短行 L0=0.4 时约 0.108 m > 0.25×0.4=0.10 m，
+    # sqrt((0.5·L0)² − 0.17²) + 0.0025，最短行 L0=0.6 时约 0.250 m > 0.25×0.6=0.15 m，
     # 故**网格所有行 spawn 都精确为 0**（用户 2026-09-23 要求初始不生效）。
     min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
                             params={"ratio": 0.25, "softness": 0.02})
@@ -215,17 +226,7 @@ class UpperRewardsCfg:
     # 量级：偏 11° ⇒ −0.074/步、29° ⇒ −0.51、90° ⇒ −4.9（刻意强于其余惩罚）。
     yaw_heading = RewTerm(func=mdp.yaw_heading_l2, weight=-2.0)
 
-    # ============================ 停止阶段（仅 t ≥ t_stop 生效）============================
-
-    # 【停车后卸力】‖F_tow‖/(‖F_tow‖+10)，有界归一化。表达"停车后应松绳"，
-    # 与 extra_distance 配对，防止"为卸载拉力而继续前冲"或"停死后被追尾"两种极端。
-    # 只在正式 STOP 之后计算；无小车环境屏蔽。实测每步约 −0.0045（绳力本就很小的必然结果）。
-    stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
-                                params={"force_scale": 10.0})
-
-    # 【停车后额外位移】relu(x − x_stop)：越过停车点的距离。惩罚"停不住继续滑"。
-    # 实测每步约 −0.003。
-    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
+    # Reaching the goal ends the episode; there is no timed STOP reward phase.
 
     # ============================ 动作平滑／幅值（治抖动）============================
 
@@ -256,8 +257,10 @@ class UpperRewardsCfg:
 @configclass
 class UpperTerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    goal_reached = DoneTerm(func=mdp.goal_reached)
     robot_fall = DoneTerm(func=mdp.robot_fall, params={"minimum_height": 0.18})
     cart_collision = DoneTerm(func=mdp.cart_collision)
+    terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)
 
 
 @configclass
@@ -266,15 +269,14 @@ class UpperEventsCfg:
         func=mdp.reset_towing_episode,
         mode="reset",
         params={
-            "speed_range": (0.2, 1.0),
-            "stop_time_range": (4.0, 6.0),
+            "speed_range": SPEED_RANGE,
             "mass_range": (5.0, 15.0),
             "friction_range": (0.4, 1.2),
             "wheel_damping_range": (0.008, 0.032),
             "robot_x_range": (-0.03, 0.03),
             "robot_y_range": (-0.02, 0.02),
             "robot_yaw_range": (-0.03, 0.03),
-            # 约 12.5% 环境作为零负载锚点（0.125 × 400 = 50 个）。注意它是**随机**子集，
+            # 约 12.5% 环境作为零负载锚点（0.125 × 800 = 100 个）。注意它是**随机**子集，
             # 会打破网格的 8/8/4 平衡——这是用户明确要求保留的域随机化。
             "no_cart_fraction": 0.125,
             "no_cart_lateral_offset": 2.0,
@@ -284,9 +286,9 @@ class UpperEventsCfg:
 
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
-    # 场景是 20 列 × 20 行的确定性网格（列 = 类型/弹性档、行 = 长度 0.4–0.8 m），
-    # 所以默认环境数固定为 COLUMNS×ROWS=400；类型与长度按 env index 映射，不再随机。
-    # `--num_envs` 若覆盖成非 400 整数倍只会覆盖网格前缀（可跑冒烟，但不是平衡设计）。
+    # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. The first 20 columns
+    # are flat; the rest split equally between |5 deg| and |10 deg| ramps.
+    # A non-multiple of 800 only covers a grid prefix, not all work conditions.
     scene: UpperTowingSceneCfg = UpperTowingSceneCfg(
         num_envs=COLUMNS * ROWS, env_spacing=6.0)
     observations: UpperObservationsCfg = UpperObservationsCfg()
@@ -299,8 +301,16 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
-        self.episode_length_s = 10.0
+        action = self.actions.high_level_velocity
+        if action.goal_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
+            raise ValueError("goal distance exceeds the safe straight-ramp lane")
+        minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
+        self.episode_length_s = episode_timeout_s(
+            action.goal_distance_m, minimum_speed, action.tow_start_s)
+        # 10 m at 0.4 m/s + 1 s settle + 2 s margin = 28 s.
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.viewer.eye = (4.0, 4.0, 2.5)
         self.viewer.lookat = (0.0, 0.0, 0.2)
+        self.viewer.origin_type = "env"
+        self.viewer.env_index = 0

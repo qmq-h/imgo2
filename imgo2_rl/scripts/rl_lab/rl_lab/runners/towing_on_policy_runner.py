@@ -36,7 +36,7 @@ class TowingOnPolicyRunner:
 
         decoder_kwargs = {
             key: self.decoder_cfg[key]
-            for key in ("frame_dim", "feature_dim", "hidden_dim", "num_layers", "force_scale")
+            for key in ("frame_dim", "feature_dim", "hidden_dim", "num_layers", "force_scale", "latent_dim")
         }
         if decoder_kwargs["frame_dim"] != env.num_obs:
             raise ValueError(
@@ -50,9 +50,10 @@ class TowingOnPolicyRunner:
             velocity_coef=self.decoder_cfg["velocity_coef"],
             force_coef=self.decoder_cfg["force_coef"],
             mass_coef=self.decoder_cfg["mass_coef"],
+            kld_weight=self.decoder_cfg["kld_weight"],
         )
 
-        actor_obs_dim = env.num_obs + self.decoder.output_dim
+        actor_obs_dim = env.num_obs + self.decoder.actor_feature_dim
         actor_critic = ActorCriticRecurrent(
             num_actor_obs=actor_obs_dim,
             num_critic_obs=env.num_privileged_obs,
@@ -134,10 +135,13 @@ class TowingOnPolicyRunner:
             frame_rollout, target_rollout, weight_rollout, done_rollout = [], [], [], []
             episode_infos = []
 
+            decoder_initial_hidden = (self.decoder_hidden.detach().clone()
+                                      if self.decoder_hidden is not None else None)
             with torch.inference_mode():
                 for _ in range(self.num_steps_per_env):
-                    estimate, self.decoder_hidden = self.decoder(raw_obs, self.decoder_hidden)
-                    actor_obs = augment_actor_observation(raw_obs, estimate)
+                    estimate, latent, self.decoder_hidden = self.decoder.forward_with_latent(
+                        raw_obs, self.decoder_hidden, sample=False)
+                    actor_obs = augment_actor_observation(raw_obs, estimate, latent)
                     normalized_critic_obs = self._critic_obs(critic_obs, update=True)
                     actions = self.alg.act(actor_obs, normalized_critic_obs)
 
@@ -181,6 +185,7 @@ class TowingOnPolicyRunner:
                 torch.stack(target_rollout),
                 torch.stack(weight_rollout),
                 dones=torch.stack(done_rollout),
+                hidden_state=decoder_initial_hidden,
             )
             learn_time = time.time() - learn_start
 
@@ -228,6 +233,8 @@ class TowingOnPolicyRunner:
         for _name, _val in zip(("velocity", "force", "mass"),
                                getattr(_trainer, "last_parts", ())):
             self.writer.add_scalar(f"Loss/decoder_{_name}", _val, iteration)
+        self.writer.add_scalar("Loss/decoder_kl", getattr(_trainer, "last_kl", 0.0), iteration)
+        self.writer.add_scalar("Loss/decoder_weighted_kl", getattr(_trainer, "last_weighted_kl", 0.0), iteration)
         self.writer.add_scalar("Policy/mean_noise_std", mean_std, iteration)
         self.writer.add_scalar("Perf/total_fps", fps, iteration)
         self.writer.add_scalar("Perf/collection_time", collection_time, iteration)
@@ -255,10 +262,9 @@ class TowingOnPolicyRunner:
                     f"{fps:>6.0f} sps")
             # 分项只挑最需要观察的几项，避免又变长（完整分项在 TensorBoard 的 Episode_* 里）。
             # 2026-10-08：`reference_tracking` 已随残差方案删除（没有 reference_command 了），
-            # 换成停车阶段最该看的 `stop_towing_force`／`extra_distance`。
+            # 目标回合不再有停车奖励，保留牵引与安全分项。
             picks = ("action_magnitude", "action_rate", "yaw_heading",
-                     "tracking_velocity", "min_clearance",
-                     "stop_towing_force", "extra_distance")
+                     "tracking_velocity", "min_clearance", "collision", "fall")
             detail = "  ".join(
                 f"{k.replace('Episode_Reward/', '')[:9]}={episode_stats[k]:+.3f}"
                 for k in (f"Episode_Reward/{p}" for p in picks) if k in episode_stats)
@@ -320,6 +326,9 @@ class TowingOnPolicyRunner:
 
     def save(self, path, infos=None):
         torch.save({
+            "towing_contract": {"version": 2, "frame_dim": self.decoder.frame_dim,
+                                "explicit_dim": self.decoder.output_dim,
+                                "latent_dim": self.decoder.latent_dim},
             "model_state_dict": self.alg.actor_critic.state_dict(),
             "optimizer_state_dict": self.alg.optimizer.state_dict(),
             "decoder_state_dict": self.decoder.state_dict(),
@@ -331,6 +340,10 @@ class TowingOnPolicyRunner:
 
     def load(self, path, load_optimizer=True):
         checkpoint = torch.load(path, map_location=self.device)
+        expected = {"version": 2, "frame_dim": self.decoder.frame_dim,
+                    "explicit_dim": self.decoder.output_dim, "latent_dim": self.decoder.latent_dim}
+        if checkpoint.get("towing_contract") != expected:
+            raise ValueError("Checkpoint predates/mismatches the towing VAE contract; start a new run.")
         self.alg.actor_critic.load_state_dict(checkpoint["model_state_dict"])
         self.decoder.load_state_dict(checkpoint["decoder_state_dict"])
         self.critic_normalizer.load_state_dict(checkpoint["critic_normalizer_state_dict"])
@@ -347,13 +360,16 @@ class TowingOnPolicyRunner:
             self.decoder.to(device)
         self.alg.actor_critic.eval()
         self.decoder.eval()
-        # 暴露最近一次的 5 维估计，供 play 端与真值对照（decoder 是部署件，必须能核对精度）。
+        # 暴露最近一次的 6 维估计和 16 维 latent，供 play 端与真值对照（decoder 是部署件，必须能核对精度）。
         self.last_estimate = None
+        self.last_latent = None
 
         def policy(raw_obs):
-            estimate, self.decoder_hidden = self.decoder(raw_obs, self.decoder_hidden)
+            estimate, latent, self.decoder_hidden = self.decoder.forward_with_latent(
+                        raw_obs, self.decoder_hidden, sample=False)
             self.last_estimate = estimate
+            self.last_latent = latent
             return self.alg.actor_critic.act_inference(
-                augment_actor_observation(raw_obs, estimate))
+                augment_actor_observation(raw_obs, estimate, latent))
 
         return policy

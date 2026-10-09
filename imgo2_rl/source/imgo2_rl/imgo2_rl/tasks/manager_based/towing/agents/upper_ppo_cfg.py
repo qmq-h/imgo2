@@ -41,6 +41,8 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
         feature_dim=128,
         hidden_dim=128,
         num_layers=1,
+        latent_dim=16,
+        kld_weight=0.005,
         force_scale=10.0,
         learning_rate=1.0e-3,
         max_grad_norm=1.0,

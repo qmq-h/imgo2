@@ -33,7 +33,7 @@ grid = load("towing_connection_grid_test", PKG / "mdp/connection_grid.py")
 
 class UpperLogicTests(unittest.TestCase):
     def test_actor_contract_matches_paper_plan(self):
-        """57 维单帧 + 6 维 estimate = 63 维 actor 输入（2026-10-08 残差方案）。
+        """57 维单帧 + 6 维 estimate = 79 维 actor 输入（2026-10-08 残差方案）。
 
         命令项只保留 `loco_command`（送冻结策略的脚本指令）；`last_action` 由 3 维
         归一化加速度变为 12 维关节残差；decoder 力改 3 维后 estimate 为 6 维。
@@ -44,7 +44,7 @@ class UpperLogicTests(unittest.TestCase):
                           "last_loco_action", "joint_pos", "joint_vel"])
         self.assertEqual(spec.frame_dim, 57)
         self.assertEqual(spec.decoder_dim, 6)
-        self.assertEqual(spec.actor_dim, 63)
+        self.assertEqual(spec.actor_dim, 79)
         self.assertEqual(dict(spec.terms)["loco_command"], 3)
         self.assertEqual(dict(spec.terms)["last_action"], 12)
 
@@ -346,21 +346,21 @@ class UpperLogicTests(unittest.TestCase):
         decoder = decoder_module.TowingDynamicsDecoder(
             frame_dim=51, feature_dim=8, hidden_dim=8)
         frames = torch.zeros(3, 51, requires_grad=True)
-        prediction, hidden = decoder(frames)
+        prediction, latent, hidden = decoder.forward_with_latent(frames)
         self.assertEqual(tuple(prediction.shape), (3, 6))
         self.assertEqual(decoder.output_dim, 6)
         self.assertEqual(tuple(hidden.shape), (1, 3, 8))
-        actor_obs = decoder_module.augment_actor_observation(frames, prediction)
-        self.assertEqual(tuple(actor_obs.shape), (3, 57))
+        actor_obs = decoder_module.augment_actor_observation(frames, prediction, latent)
+        self.assertEqual(tuple(actor_obs.shape), (3, 73))
         actor_obs.sum().backward()
         self.assertTrue(all(parameter.grad is None for parameter in decoder.parameters()))
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_towing_network_forward_contract_and_zero_init(self):
-        """端到端数值契约：57 帧 → 6 维估计(GRU 128) → 63 维 actor(GRU 256) → 12 维残差；critic 72 → 1。
+        """端到端数值契约：57 帧 → 6 维估计(GRU 128) → 79 维 actor(GRU 256) → 12 维残差；critic 72 → 1。
 
         这条用**真实网络类**跑一次前向，锁住三件事：
-        1. 各层宽度与 `upper_logic` 契约一致（frame 57 / decoder 6 / actor 63 / action 12）；
+        1. 各层宽度与 `upper_logic` 契约一致（frame 57 / decoder 6 / actor 79 / action 12）；
         2. `augment_actor_observation` 的拼接结果能直接喂进 `ActorCriticRecurrent`（63 → GRU(63,256)）；
         3. towing runner 的**零初始化**语义：零初始化后首拍残差必须精确为 0（实测未初始化时
            为 |a|max ≈ 0.149 归一化，即约 ±0.04 rad 的系统性关节偏置），保证起点等于冻结策略自身的步态。
@@ -429,9 +429,9 @@ class UpperLogicTests(unittest.TestCase):
             actor_critic.eval()
             frames = torch.randn(4, obs.frame_dim)
             with torch.inference_mode():
-                estimate, hidden = decoder(frames)
+                estimate, latent, hidden = decoder.forward_with_latent(frames)
                 actions = actor_critic.act_inference(
-                    decoder_module.augment_actor_observation(frames, estimate))
+                    decoder_module.augment_actor_observation(frames, estimate, latent))
                 values = actor_critic.evaluate(torch.randn(4, critic_dim))
             self.assertEqual(tuple(estimate.shape), (4, dec_spec.dim))
             self.assertEqual(tuple(hidden.shape), (1, 4, 128))
@@ -681,7 +681,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn(f"self.num_decoder_obs != {dec.dim + 1}", wrapper)
         self.assertIn("decoder[:, :6], decoder[:, 6]", wrapper)
         # runner 的 actor 输入维数必须由 decoder 的输出维数推导，而不是硬编码 +5/+6
-        self.assertIn("actor_obs_dim = env.num_obs + self.decoder.output_dim", runner)
+        self.assertIn("actor_obs_dim = env.num_obs + self.decoder.actor_feature_dim", runner)
         # decoder 的 frame_dim 必须等于 policy 帧维数（runner 会在启动时断言这一点，
         # 但配置写错时应当在这里就失败，而不是等训练机起环境）
         for path, label in ((PKG / "agents/upper_ppo_cfg.py", "upper_ppo_cfg"),
@@ -695,7 +695,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn(f"OUTPUT_DIM = VELOCITY_DIM + MASS_DIM + FORCE_DIM", decoder)
         self.assertEqual(dec.dim, 6)
         self.assertEqual(obs.frame_dim, 57)
-        self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim)
+        self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim + obs.latent_dim)
 
     def test_towing_runner_zero_inits_actor_output_layer(self):
         """残差策略必须从 0 起步：只对 towing runner 零初始化 actor 末层。
@@ -719,8 +719,7 @@ class UpperLogicTests(unittest.TestCase):
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         for fragment in (
-            '"speed_range": (0.2, 1.0)',
-            '"stop_time_range": (4.0, 6.0)',
+            '"speed_range": SPEED_RANGE',
             '"mass_range": (5.0, 15.0)',
             '"friction_range": (0.4, 1.2)',
             '"wheel_damping_range": (0.008, 0.032)',
@@ -733,7 +732,8 @@ class UpperLogicTests(unittest.TestCase):
         # 类型/长度来自确定性网格，不再是逐 env 随机采样
         self.assertIn("specs = [env_spec(index) for index in range(env.num_envs)]", mdp)
         self.assertNotIn("torch.randint(0, len(CONNECTION_MODELS)", mdp)
-        self.assertIn("elapsed_s < self.stop_time_s", mdp)
+        self.assertIn("~goal_reached(self._env)", mdp)
+        self.assertNotIn("stop_time_range", cfg)
         self.assertIn("self._apply_towing_physics()", mdp)
         self.assertIn("self._physics_step % low_level_decimation", mdp)
         self.assertIn("-self.wheel_damping * self._cart.data.joint_vel", mdp)
@@ -783,10 +783,10 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("target_distance = term.initial_distance[env_ids, 0]", mdp)
         # spawn 摆放：水平分量 = sqrt(target² − Δz²)（纯几何函数），方向沿机器人正后方，
         # 挂点用实际 spawn 位姿算
-        self.assertIn("attachment_horizontal_gap(target_distance, delta_z=delta_z)", mdp)
+        self.assertIn("attachment_horizontal_gap(target_distance, delta_z=normal_difference)", mdp)
         self.assertIn("robot_attach_w = math_utils.quat_apply(", mdp)
         # 顺序：先按连接长度摆放，再加无小车横移（反了会覆盖横向停放）
-        self.assertLess(mdp.index("horizontal = attachment_horizontal_gap("),
+        self.assertLess(mdp.index("along = attachment_horizontal_gap("),
                         mdp.index("cart_state[~cart_present, 1] += no_cart_lateral_offset"))
         # 旧的「只在刚体分支里摆放」已被三类统一摆放取代
         self.assertNotIn("rigid_link_horizontal_gap", mdp)
@@ -831,7 +831,7 @@ class UpperLogicTests(unittest.TestCase):
         runner = (RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py").read_text("utf-8")
         wrapper = (RL / "scripts/rl_lab/rl_lab/wrapper/towing_vec_env_wrapper.py").read_text("utf-8")
         self.assertIn("class TowingOnPolicyRunner", runner)
-        self.assertIn("augment_actor_observation(raw_obs, estimate)", runner)
+        self.assertIn("augment_actor_observation(raw_obs, estimate, latent)", runner)
         self.assertIn("critic_normalizer(critic_obs, update=update)", runner)
         self.assertIn('"decoder_optimizer_state_dict"', runner)
         self.assertIn('"critic_normalizer_state_dict"', runner)
@@ -861,18 +861,22 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("cfg.upper_control_dt - env.step_dt", mdp)
         self.assertIn("cfg.low_level_control_dt - self._policy_cfg.control_dt", mdp)
 
-    def test_post_stop_distance_excludes_initial_settle_phase(self):
+    def test_goal_and_timeout_have_distinct_termination_semantics(self):
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("elapsed_s >= term.stop_time_s", mdp)
+        self.assertIn("time_out = DoneTerm(func=mdp.time_out, time_out=True)", cfg)
+        self.assertIn("goal_reached = DoneTerm(func=mdp.goal_reached)", cfg)
+        self.assertIn("action.goal_distance_m, minimum_speed, action.tow_start_s", cfg)
+        self.assertIn("progress - term.start_progress >= term.cfg.goal_distance_m", mdp)
+        self.assertNotIn("stop_towing_force = RewTerm", cfg)
+        self.assertNotIn("extra_distance = RewTerm", cfg)
 
-    def test_post_stop_towing_force_is_gated_and_bounded(self):
-        env_cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+    def test_mesh_origins_and_fall_test_follow_the_slope(self):
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("stop_towing_force = RewTerm(func=mdp.post_stop_towing_force", env_cfg)
-        self.assertIn('params={"force_scale": 10.0}', env_cfg)
-        self.assertIn("post_stop = (elapsed_s >= term.stop_time_s).float()", mdp)
-        self.assertIn("normalized_force = force / (force + force_scale)", mdp)
-        self.assertIn("normalized_force * post_stop * term.cart_present[:, 0]", mdp)
+        self.assertIn("class_type=TowingSlopeTerrainImporter", cfg)
+        self.assertIn("terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)", cfg)
+        self.assertIn("* term.terrain_normal_w).sum(dim=1)", mdp)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,8 @@ class TowingDecoderCfg:
     feature_dim: int = 128
     hidden_dim: int = 128
     num_layers: int = 1
+    latent_dim: int = 16
+    kld_weight: float = 0.005
     force_scale: float = 10.0
     learning_rate: float = 1.0e-3
     max_grad_norm: float = 1.0

@@ -19,6 +19,8 @@ from isaaclab.utils import math as math_utils
 
 from .upper_logic import UpperActionSpec
 from .mdp.connection_grid import ELASTIC_KC, GRID_SIZE, env_spec, is_full_grid
+from .mdp.episode_geometry import GOAL_DISTANCE_M, SETTLE_TIME_S
+from .mdp.slope_geometry import BACK_M, FORWARD_M, HALF_WIDTH_M, BOUNDARY_MARGIN_M
 from .mdp.rope import point_velocity
 from .mdp.rope_model import (
     BodyProperties,
@@ -67,7 +69,7 @@ class HierarchicalVelocityAction(ActionTerm):
         self.loco_command = torch.zeros(env.num_envs, 3, device=env.device)
         self.tow_speed = torch.full((env.num_envs,), cfg.initial_tow_speed, device=env.device)
         self.tow_start_s = torch.full((env.num_envs,), cfg.tow_start_s, device=env.device)
-        self.stop_time_s = torch.full((env.num_envs,), cfg.initial_stop_time_s, device=env.device)
+        self.start_progress = torch.zeros(env.num_envs, device=env.device)
         self.last_loco_action = torch.zeros(env.num_envs, 12, device=env.device)
         # [clearance, tension, extension, taut]. Collision is deliberately separate: tautness is
         # a rope state and must never double as a contact flag.
@@ -77,8 +79,6 @@ class HierarchicalVelocityAction(ActionTerm):
         # 0.17/L0 = 21–43%，且 Fz 在 -0.16 m 挂点上产生俯仰力矩，丢掉它对 actor／惩罚都不可见。
         self.towing_force_b = torch.zeros(env.num_envs, 3, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-        self.stop_origin_x = self._asset.data.root_pos_w[:, 0].clone()
-        self._was_stopped = torch.linalg.vector_norm(self.loco_command, dim=1) <= 1.0e-4
         self.cart_mass = torch.full((env.num_envs, 1), cfg.initial_cart_mass, device=env.device)
         self.ground_friction = torch.full((env.num_envs, 1), cfg.initial_ground_friction, device=env.device)
         self.wheel_damping = torch.full((env.num_envs, 1), cfg.initial_wheel_damping, device=env.device)
@@ -93,8 +93,14 @@ class HierarchicalVelocityAction(ActionTerm):
         if not is_full_grid(env.num_envs):
             # 允许非整倍数（例如 4 环境冒烟）跑通，但只覆盖网格前缀、不是平衡设计。
             print(f"[WARN] num_envs={env.num_envs} 不是网格 {GRID_SIZE} 的整数倍，"
-                  f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（20 列 × 20 行）的整数倍")
+                  f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（40 列 × 20 行）的整数倍")
         specs = [env_spec(index) for index in range(env.num_envs)]
+        self.slope_angle = torch.deg2rad(torch.tensor(
+            [spec["slope_degrees"] for spec in specs], device=env.device))
+        zeros = torch.zeros_like(self.slope_angle)
+        sine, cosine = torch.sin(self.slope_angle), torch.cos(self.slope_angle)
+        self.terrain_tangent_w = torch.stack((cosine, zeros, sine), dim=1)
+        self.terrain_normal_w = torch.stack((-sine, zeros, cosine), dim=1)
         self.rope_model_id = torch.tensor(
             [[spec["model_index"]] for spec in specs], dtype=torch.float32, device=env.device)
         # 连接长度：绳是 L0、刚体是杆长 L（同一行的数值相同）。
@@ -216,16 +222,12 @@ class HierarchicalVelocityAction(ActionTerm):
         """每上层控制步（50 ms）更新一次：脚本速度指令 + 12 维关节残差。
 
         速度指令不再由网络积分产生——上层网络的输出**只是**残差。指令相位与测量台
-        ``tow_drag.py`` 一致：settle 段 0、牵引段 ``tow_speed``、STOP 后 0。
+        settle 段为 0，之后持续牵引，直到到达目标或终止；测量台保留自己的 STOP 流程。
         """
         elapsed_s = self._env.episode_length_buf * self._env.step_dt
-        towing = (elapsed_s >= self.tow_start_s) & (elapsed_s < self.stop_time_s)
+        towing = (elapsed_s >= self.tow_start_s) & ~goal_reached(self._env)
         self.loco_command.zero_()
         self.loco_command[:, 0] = torch.where(towing, self.tow_speed, 0.0)
-        stopped = torch.linalg.vector_norm(self.loco_command, dim=1) <= 1.0e-4
-        newly_stopped = stopped & ~self._was_stopped
-        self.stop_origin_x[newly_stopped] = self._asset.data.root_pos_w[newly_stopped, 0]
-        self._was_stopped.copy_(stopped)
         self._previous.copy_(self._processed)
         self._raw.copy_(actions)
         self._processed.copy_(actions.clamp(-1.0, 1.0))
@@ -382,8 +384,9 @@ class HierarchicalVelocityAction(ActionTerm):
         self.towing_force_b[env_ids] = 0
         self._held_joint_targets[env_ids] = self._asset.data.default_joint_pos[env_ids]
         self.cart_collision[env_ids] = False
-        self.stop_origin_x[env_ids] = self._asset.data.root_pos_w[env_ids, 0]
-        self._was_stopped[env_ids] = False
+        progress = ((self._asset.data.root_pos_w - self._env.scene.env_origins)
+                    * self.terrain_tangent_w).sum(dim=1)
+        self.start_progress[env_ids] = progress[env_ids]
         self._policy.reset(env_ids)
 
 
@@ -403,8 +406,8 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     low_level_control_dt: float = 0.02
     physics_dt: float = 0.005
     initial_tow_speed: float = 0.5
-    tow_start_s: float = 1.0
-    initial_stop_time_s: float = 5.0
+    tow_start_s: float = SETTLE_TIME_S
+    goal_distance_m: float = GOAL_DISTANCE_M
     initial_cart_mass: float = 10.0
     initial_ground_friction: float = 0.8
     initial_wheel_damping: float = 0.032
@@ -434,7 +437,7 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
 
 
 def reset_towing_episode(
-    env, env_ids, *, speed_range, stop_time_range, mass_range, friction_range,
+    env, env_ids, *, speed_range, mass_range, friction_range,
     wheel_damping_range, robot_x_range, robot_y_range, robot_yaw_range,
     no_cart_fraction, no_cart_lateral_offset,
 ):
@@ -454,12 +457,10 @@ def reset_towing_episode(
         return lo + (hi - lo) * torch.rand(count, device=env.device)
 
     speeds = sample(speed_range)
-    stop_times = sample(stop_time_range)
     masses_kg = sample(mass_range)
     friction = sample(friction_range)
     wheel_damping = sample(wheel_damping_range)
     term.tow_speed[env_ids] = speeds
-    term.stop_time_s[env_ids] = stop_times
     term.cart_mass[env_ids, 0] = masses_kg
     term.ground_friction[env_ids, 0] = friction
     term.wheel_damping[env_ids, 0] = wheel_damping
@@ -478,33 +479,45 @@ def reset_towing_episode(
     robot = term._asset
     cart = term._cart
     robot_state = robot.data.default_root_state[env_ids].clone()
-    robot_state[:, :3] += env.scene.env_origins[env_ids]
-    robot_state[:, 0] += sample(robot_x_range)
+    tangent = term.terrain_tangent_w[env_ids]
+    normal = term.terrain_normal_w[env_ids]
+    robot_height = robot.data.default_root_state[env_ids, 2]
+    cart_height = cart.data.default_root_state[env_ids, 2]
+    robot_state[:, :3] = (env.scene.env_origins[env_ids]
+                         + sample(robot_x_range).unsqueeze(1) * tangent
+                         + robot_height.unsqueeze(1) * normal)
     robot_state[:, 1] += sample(robot_y_range)
     yaw = sample(robot_yaw_range)
     yaw_delta = math_utils.quat_from_euler_xyz(torch.zeros_like(yaw), torch.zeros_like(yaw), yaw)
-    robot_state[:, 3:7] = math_utils.quat_mul(robot_state[:, 3:7], yaw_delta)
+    # R_y(-theta) maps body +X to the uphill tangent and +Z to the plane normal.
+    slope_quat = math_utils.quat_from_euler_xyz(
+        torch.zeros_like(yaw), -term.slope_angle[env_ids], torch.zeros_like(yaw))
+    robot_state[:, 3:7] = math_utils.quat_mul(
+        slope_quat, math_utils.quat_mul(robot_state[:, 3:7], yaw_delta))
     robot_state[:, 7:13] = 0
+    term.start_progress[env_ids] = ((robot_state[:, :3] - env.scene.env_origins[env_ids])
+                                    * tangent).sum(dim=1)
     robot.write_root_pose_to_sim(robot_state[:, :7], env_ids=env_ids)
     robot.write_root_velocity_to_sim(robot_state[:, 7:13], env_ids=env_ids)
     robot.write_joint_state_to_sim(robot.data.default_joint_pos[env_ids],
                                    torch.zeros_like(robot.data.default_joint_vel[env_ids]), env_ids=env_ids)
 
     cart_state = cart.data.default_root_state[env_ids].clone()
-    cart_state[:, :3] += env.scene.env_origins[env_ids]
-    # 三类连接都按本 env 的目标三维挂点距摆放小车（**不再依赖场景里写死的 cart.init_state.pos**）：
-    # 绳 = 0.5·L0（留松弛）、刚体 = L（杆正好是 L）。否则第一物理步就有初始约束力（绳预张紧、
-    # 刚体初始压缩）。解析解：水平分量 = sqrt(target² − Δz²)，方向取机器人正后方；机器人挂点用
-    # **实际** spawn 位姿（含 x/y/yaw 随机化）算，故初始违反量与抖动无关。
+    cart_state[:, 3:7] = math_utils.quat_mul(slope_quat, cart_state[:, 3:7])
+    # Solve in the ramp tangent/normal frame, not with a fixed world-Z difference.
+    # Both default root heights are normal clearances; all attachment offsets are
+    # transformed from the actual spawned orientation (including sampled yaw).
     robot_attach_w = math_utils.quat_apply(
         robot_state[:, 3:7], term._robot_attach.expand(count, 3))
-    delta_z = robot_state[:, 2] - cart_state[:, 2]
-    if bool((target_distance ** 2 <= delta_z ** 2).any()):
-        raise ValueError("连接长度必须大于两挂点高差，否则水平摆放无解")
-    horizontal = attachment_horizontal_gap(target_distance, delta_z=delta_z)
-    cart_state[:, 0] = (robot_state[:, 0] + robot_attach_w[:, 0]
-                        - horizontal - term.cfg.cart_attachment[0])
-    cart_state[:, 1] = robot_state[:, 1] + robot_attach_w[:, 1]
+    cart_attach_w = math_utils.quat_apply(
+        cart_state[:, 3:7], term._cart_attach.expand(count, 3))
+    normal_difference = (robot_height - cart_height
+                         + ((robot_attach_w-cart_attach_w)*normal).sum(dim=1))
+    if bool((target_distance ** 2 <= normal_difference ** 2).any()):
+        raise ValueError("connection distance must exceed normal attachment height difference")
+    along = attachment_horizontal_gap(target_distance, delta_z=normal_difference)
+    cart_state[:, :3] = (robot_state[:, :3] + robot_attach_w - cart_attach_w
+                         - along.unsqueeze(1)*tangent - normal_difference.unsqueeze(1)*normal)
     # Isaac Lab replicates one cart articulation per environment. For zero-load environments,
     # park it inside the 6 m cell but well outside the robot's reachable path.
     # 注意顺序：必须在按连接长度摆放**之后**再加横移，否则会把无小车环境的横向停放覆盖掉。
@@ -651,18 +664,6 @@ def min_clearance_violation(env, ratio, softness=0.02):
     return violation * term.cart_present[:, 0]
 
 
-def post_stop_towing_force(env, force_scale):
-    term = _term(env)
-    elapsed_s = env.episode_length_buf * env.step_dt
-    post_stop = (elapsed_s >= term.stop_time_s).float()
-    force = torch.linalg.vector_norm(term.towing_force_b, dim=1)
-    normalized_force = force / (force + force_scale)
-    return normalized_force * post_stop * term.cart_present[:, 0]
-def post_stop_distance(env):
-    term = _term(env)
-    elapsed_s = env.episode_length_buf * env.step_dt
-    post_stop = (elapsed_s >= term.stop_time_s).float()
-    return torch.relu(term._asset.data.root_pos_w[:, 0] - term.stop_origin_x) * post_stop
 def action_magnitude_l2(env):
     """上层动作幅值平方（裁剪后），用于抑制动作抖动。
 
@@ -705,8 +706,37 @@ def yaw_heading_l2(env):
 
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
-def robot_fall(env, minimum_height): return _term(env)._asset.data.root_pos_w[:, 2] < minimum_height
+def robot_fall(env, minimum_height):
+    term = _term(env)
+    clearance = ((term._asset.data.root_pos_w - env.scene.env_origins)
+                 * term.terrain_normal_w).sum(dim=1)
+    return clearance < minimum_height
 def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()
+
+
+def goal_reached(env):
+    """Robot crosses the target plane, measured along the slope from reset pose.
+
+    True termination (no timeout bootstrap). The existing lane bounds constrain
+    lateral drift; this task measures forward distance, not Euclidean odometry.
+    """
+    term = _term(env)
+    progress = ((term._asset.data.root_pos_w - env.scene.env_origins)
+                * term.terrain_tangent_w).sum(dim=1)
+    return progress - term.start_progress >= term.cfg.goal_distance_m
+
+
+def terrain_out_of_bounds(env):
+    """End the episode before either body reaches the disconnected slab edge."""
+    term = _term(env)
+
+    def outside(asset):
+        local = asset.data.root_pos_w - env.scene.env_origins
+        return ((local[:, 0] < -BACK_M + BOUNDARY_MARGIN_M)
+                | (local[:, 0] > FORWARD_M - BOUNDARY_MARGIN_M)
+                | (local[:, 1].abs() > HALF_WIDTH_M - BOUNDARY_MARGIN_M))
+
+    return outside(term._asset) | (outside(term._cart) & term.cart_present[:, 0])
 
 
 # ---------------------------------------------------------------------------

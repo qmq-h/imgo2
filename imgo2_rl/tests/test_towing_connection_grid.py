@@ -1,6 +1,6 @@
 """Offline tests for the deterministic towing scene grid (``mdp/connection_grid.py``).
 
-用户 2026-10-08 指定：20 列 = 弹性绳 8 / 刚体 8 / 普通绳 4，20 行 = 长度 0.4–0.8 m；
+用户 2026-10-08 指定：40 列 = 平地 20 / |5°| 10 / |10°| 10，20 行 = 长度 0.6–1.2 m；
 弹性绳只在列上做弹性区分（4 档 k/c，每档 2 列）。本文件是纯标准库检查，不需要仿真器。
 """
 
@@ -36,10 +36,10 @@ rope_model = load("towing_rope_model_grid_test", MDP / "rope_model.py")
 
 class GridShapeTests(unittest.TestCase):
     def test_dimensions_and_row_lengths(self):
-        self.assertEqual((grid.COLUMNS, grid.ROWS, grid.GRID_SIZE), (20, 20, 400))
+        self.assertEqual((grid.COLUMNS, grid.ROWS, grid.GRID_SIZE), (40, 20, 800))
         lengths = [grid.row_length(row) for row in range(grid.ROWS)]
-        self.assertAlmostEqual(lengths[0], 0.4, places=12)
-        self.assertAlmostEqual(lengths[-1], 0.8, places=12)
+        self.assertAlmostEqual(lengths[0], 0.6, places=12)
+        self.assertAlmostEqual(lengths[-1], 1.2, places=12)
         # 20 档等距（含两端），步长 = 0.4 / 19
         step = (grid.LENGTH_MAX_M - grid.LENGTH_MIN_M) / (grid.ROWS - 1)
         for previous, current in zip(lengths, lengths[1:]):
@@ -49,13 +49,13 @@ class GridShapeTests(unittest.TestCase):
 
     def test_column_split_is_eight_eight_four(self):
         names = [grid.column_spec(column)[0] for column in range(grid.COLUMNS)]
-        self.assertEqual(names.count("compliant"), 8)
-        self.assertEqual(names.count("rigid"), 8)
-        self.assertEqual(names.count("inextensible"), 4)
+        self.assertEqual(names.count("compliant"), 16)
+        self.assertEqual(names.count("rigid"), 16)
+        self.assertEqual(names.count("inextensible"), 8)
         # 列布局顺序：弹性（0-7）→ 刚体（8-15）→ 普通绳（16-19）
         self.assertEqual(names[:8], ["compliant"] * 8)
         self.assertEqual(names[8:16], ["rigid"] * 8)
-        self.assertEqual(names[16:], ["inextensible"] * 4)
+        self.assertEqual(names[16:20], ["inextensible"] * 4)
 
     def test_elasticity_is_differentiated_only_on_columns(self):
         """弹性绳 4 档 k/c、每档 2 列；刚体与普通绳的列是同参数重复列。"""
@@ -73,8 +73,9 @@ class GridShapeTests(unittest.TestCase):
             self.assertTrue(math.isfinite(stiffness) and stiffness > 0.0)
             self.assertTrue(math.isfinite(damping) and damping > 0.0)
         # 刚体/普通绳列不带 k/c
-        for column in range(8, grid.COLUMNS):
-            self.assertEqual(grid.column_spec(column)[1:], (None, None))
+        for column in range(grid.COLUMNS):
+            if grid.column_spec(column)[0] != "compliant":
+                self.assertEqual(grid.column_spec(column)[1:], (None, None))
 
     def test_elastic_levels_stay_inside_the_explicit_spring_stability_limit(self):
         """最硬的弹性档在**最坏质量**（5 kg 小车）下仍需留在 dt=5 ms 的稳定域内。
