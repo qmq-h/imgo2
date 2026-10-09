@@ -123,6 +123,13 @@ import json; r = json.load(open('docs/towingdata/2026-10-09_necessity_800/report
 PY
 ```
 
+## 后续：同轮含无负载对照的那一轮
+
+本目录是**全拖车**的一轮；用「同一轮里既有拖曳也有少量无负载 env」做的对照见
+[../2026-10-09_necessity_800_noload/README.md](../2026-10-09_necessity_800_noload/README.md)
+（结论摘要：拖曳的代价集中在**跟速**与**追尾**，`q − q*` 的静差部分与是否拖车无关），
+三张对比表在 [no-load_comparison.md](no-load_comparison.md)。
+
 ## 下一步：无负载（不拖车）对照
 
 `startup_joint_error` 是「实测关节角 `q` − 当拍下发的关节目标 `q*`」，实测**符号均值 = −τ/kp**
