@@ -21,7 +21,7 @@
 | 项 | 路径 |
 |---|---|
 | 测试脚本 | [play_towing_test.py](../imgo2_rl/scripts/towing/play_towing_test.py) |
-| 离线测试（98 项，无需 GPU） | [test_towing_play_test.py](../imgo2_rl/tests/test_towing_play_test.py) |
+| 离线测试（103 项，无需 GPU） | [test_towing_play_test.py](../imgo2_rl/tests/test_towing_play_test.py) |
 
 ```bash
 # ① 只看网格与代价，不启动仿真（标准库即可）
@@ -169,8 +169,8 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
 
 - `--dry-run`（标准库即可运行）：默认网格 225 case、每坡度 45 环境、2200 步/case、命令行校验
    （含 `--env-spacing` 下限、`--max-envs` 上限、坡度/质量/速度范围、`rope_length − slack` 几何）；
-- `imgo2_rl/tests/test_towing_play_test.py` **98 项通过**（`/usr/bin/python3` 无 torch 时 96 通过
-   + 1 跳过，跳过项是与 `mdp/rope_model.py::CONNECTION_MODELS` 的交叉核对）；覆盖：
+- `imgo2_rl/tests/test_towing_play_test.py` **103 项通过**（`/usr/bin/python3` 无 torch 时 98 通过
+   + 5 跳过，跳过项是与 `mdp/rope_model.py::CONNECTION_MODELS` 的交叉核对）；覆盖：
   坡度→重力（含模长不变性与镜像）、坡面 tile 的 cell 选取与计数、紧凑布局与足迹不重叠、
   tile 平移后顶面仍过新原点、`surface_frame` 与训练侧 `slope_frame` 逐位一致、坡面坐标投影、
   坡面出生解（三维挂点距精确、姿态对齐法向、平地档退化为测量台解、无解时报错）、
@@ -178,8 +178,42 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
   指令整形、五项指标在合成轨迹上的数值、接触三路见证（含 `--record-every` 的阈值放大）、
   判定码严重度、分组统计与结论文案、判定矩阵、人读报告、CLI 校验（含 terrain 的 cell 数上限）、
   记录字段契约（AST 抽取 `make_row` 的列集与 `TEST_FIELDS` 逐项比对）；
-- `imgo2_rl/tests` 全量 **425 项通过 0 失败**（含远端 2026-10-09 新增的坡面/VAE 契约测试）；
+- `imgo2_rl/tests` 全量 **430 项通过 0 失败**（含远端 2026-10-09 新增的坡面/VAE 契约测试）；
 - `python -m compileall`、`git diff --check`、tracked-ignore 检查通过。
+
+## 首跑定位并修复的一个阻断 bug（2026-10-09）
+
+**现象**（用户默认网格首跑）：`[FAILED] RuntimeError: The size of tensor a (5) must match the
+size of tensor b (45) at non-singleton dimension 2`。
+
+**根因**：逐 env 的质量/惯量缩放写错了缓冲形状。PhysX tensor API 返回的是**整批**缓冲：
+`get_masses()` → `(N, num_bodies)`、`get_inertias()` → `(N, num_bodies, 9)`；小车
+`merge_fixed_joints=True`，无质量的挂点被并进 `base_link`，所以 `num_bodies = 5`
+（base_link + 四轮）。原代码把已经带 env 维的缓冲又 `.unsqueeze(0)`：
+
+```
+nominal_inertias.unsqueeze(0) * scales_host     # (1, N, 5, 9) × (N, 1) → dim2: 5 vs N
+```
+
+`(N,1)` 广播成 `(1,1,N,1)`，于是 dim 2 上 `num_bodies`(5) 撞 `N`(45) —— 报错里的 5 和 45
+正是这两个量。**质量那一路（2 维）单独乘不会报错**，只是形状变成 `(1, N, 5)`；N=1 时两路都
+侥幸不炸，所以单环境/小网格冒烟抓不到它。
+
+**修法**：抽成纯函数 `scale_cart_mass_inertia(nominal_masses, nominal_inertias, mass_scales)`，
+质量乘 `(N,1)`、惯量乘 `(N,1,1)`，并在函数里显式校验输入形状（`(N,nb)` / `(N,nb,9)` / `(N,)`）。
+
+**验证**：新增 `MassScalingTests` 5 项 —— N=1/8/45 的形状、逐 env 比例确实按 env 生效、
+**把 bug 的确切形状写成负向断言**（`inertias.unsqueeze(0) * (N,1)` 必须在 dim 2 抛错）、
+非法形状报错；另加静态守卫禁止 `nominal_masses.unsqueeze(0)` / `nominal_inertias.unsqueeze(0)`
+再出现。`test_towing_play_test.py` 103 项通过（`/usr/bin/python3` 无 torch 时 98 通过 + 5 跳过）、
+全量 `imgo2_rl/tests` 430 项通过 0 失败。
+
+**顺带修正**：`terrain` 后端的 `terrain_origins` 原来只报了第一块（形状 `(1, N, 3)`），而
+整块 mesh 有「坡度数 × N」块 tile。现在生成器报 `(坡度数, N, 3)`（与 Isaac Lab 的
+`(num_rows, num_cols, 3)` 契约、`num_rows*num_cols = tile 总数` 一致），importer 按同一形状校验、
+env 原点仍取第一块（每轮由 `pass_origins` 覆盖）。
+
+**限制**：这只是把首跑的报错原因消掉，**仿真仍未跑通**；同一条命令要重跑冒烟才能确认。
 
 ## 未验证（缺什么才能完成）
 

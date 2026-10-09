@@ -707,7 +707,12 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertNotIn("scene_cfg.terrain =", self.source)
 
     def test_mass_scaling_happens_on_host_buffer(self):
-        self.assertIn('scales_host = mass_scales.detach().to("cpu").unsqueeze(1)', self.source)
+        # PhysX 的 get_masses()/get_inertias() 是 CPU 缓冲 ⇒ 缩放前必须先搬到 CPU
+        self.assertIn("scale_cart_mass_inertia(", self.source)
+        self.assertIn('mass_scales.detach().to("cpu")', self.source)
+        # 回归守卫：不能再把已经是 (N, nb) 的缓冲 `.unsqueeze(0)` 去乘 (N,1)
+        self.assertNotIn("nominal_masses.unsqueeze(0)", self.source)
+        self.assertNotIn("nominal_inertias.unsqueeze(0)", self.source)
 
     def test_step_order_is_force_then_write_then_step_then_update(self):
         body = self.source.split("def apply_rope_and_resistance")[1]
@@ -813,6 +818,69 @@ class TranslateTileTests(unittest.TestCase):
                 self.assertLess(index, len(moved))
 
 
+class MassScalingTests(unittest.TestCase):
+    """逐 env 质量/惯量缩放的形状契约。
+
+    这条测试是 2026-10-09 默认 45 环境首跑的回归守卫：
+    `nominal_masses.unsqueeze(0) * (N,1)` 会在 dim 2 上撞 `num_bodies`(小车 5) 与 `N`，
+    报 `size of tensor a (5) must match the size of tensor b (45)`；N=1 时侥幸通过，
+    所以必须按 N>1 的形状测。
+    """
+
+    def setUp(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("需要 torch 才能做形状回归")
+        self.torch = torch
+
+    def test_shapes_for_several_env_counts(self):
+        torch = self.torch
+        for num_envs in (1, 8, 45):
+            bodies = 5                      # base_link + 四轮（fixed joint 已合并）
+            masses = torch.ones(num_envs, bodies)
+            inertias = torch.ones(num_envs, bodies, 9)
+            scales = torch.linspace(0.5, 2.5, num_envs)
+            scaled_masses, scaled_inertias = play.scale_cart_mass_inertia(masses, inertias, scales)
+            self.assertEqual(tuple(scaled_masses.shape), (num_envs, bodies))
+            self.assertEqual(tuple(scaled_inertias.shape), (num_envs, bodies, 9))
+
+    def test_scaling_is_applied_per_environment(self):
+        torch = self.torch
+        masses = torch.tensor([[10.0, 1.0, 1.0, 1.0, 1.0],
+                               [10.0, 1.0, 1.0, 1.0, 1.0]])
+        inertias = torch.ones(2, 5, 9)
+        scales = torch.tensor([0.5, 2.5])
+        scaled_masses, scaled_inertias = play.scale_cart_mass_inertia(masses, inertias, scales)
+        self.assertAlmostEqual(float(scaled_masses[0, 0]), 5.0, places=6)
+        self.assertAlmostEqual(float(scaled_masses[1, 0]), 25.0, places=6)
+        self.assertAlmostEqual(float(scaled_inertias[1, 3, 4]), 2.5, places=6)
+        # 惯量必须与质量同比例（AGENTS.md：只改质量不改惯量会让模型不自洽）
+        # 惯量与质量必须用**同一个**比例（AGENTS.md：只改质量不改惯量会让模型不自洽）
+        self.assertAlmostEqual(float(scaled_inertias[0, 0, 0] / inertias[0, 0, 0]),
+                               float(scales[0]), places=9)
+        self.assertAlmostEqual(float(scaled_inertias[1, 0, 8] / inertias[1, 0, 8]),
+                               float(scales[1]), places=9)
+    def test_the_old_unsqueeze_pattern_is_really_broken(self):
+        """把 bug 的形状写进测试：N>1 时它必须抛广播错误，防止再写回去。"""
+        torch = self.torch
+        num_envs, bodies = 45, 5
+        inertias = torch.ones(num_envs, bodies, 9)
+        scales = torch.linspace(0.5, 2.5, num_envs).unsqueeze(1)
+        with self.assertRaises(RuntimeError) as caught:
+            _ = inertias.unsqueeze(0) * scales
+        self.assertIn("dimension 2", str(caught.exception))
+
+    def test_bad_shapes_are_rejected(self):
+        torch = self.torch
+        with self.assertRaises(ValueError):
+            play.scale_cart_mass_inertia(torch.ones(5), torch.ones(1, 5, 9), torch.ones(1))
+        with self.assertRaises(ValueError):
+            play.scale_cart_mass_inertia(torch.ones(2, 5), torch.ones(3, 5, 9), torch.ones(2))
+        with self.assertRaises(ValueError):
+            play.scale_cart_mass_inertia(torch.ones(2, 5), torch.ones(2, 5, 9), torch.ones(3))
+
+
 class TerrainLayoutTests(unittest.TestCase):
     """整块 mesh 的组装（只有仿真里才建，但布局与自洽性可以离线核对）。"""
 
@@ -847,6 +915,20 @@ class TerrainLayoutTests(unittest.TestCase):
                 moved = play.translate_tile(vertices, source, origin)
                 for x, _, z in moved[:4]:                     # 顶面四点
                     self.assertAlmostEqual(z, slope_tan * (x - origin[0]), places=9)
+
+    def test_origins_grid_matches_the_mesh_and_the_terrain_contract(self):
+        # Isaac Lab 的 `terrain_origins` 契约是 (num_rows, num_cols, 3)，必须覆盖整块 mesh
+        grid = self.layout["origins_grid"]
+        self.assertEqual(len(grid), len(play.DEFAULT_SLOPES_DEG))
+        for block in grid:
+            self.assertEqual(len(block), 45)
+            for origin in block:
+                self.assertEqual(len(origin), 3)
+        self.assertEqual(len(grid) * len(grid[0]),
+                         len(self.layout["vertices"]) // 8)     # 一块 tile = 8 顶点
+        # 块顺序与 slopes 顺序一致（generator 用 num_rows = 坡度数来报这张表）
+        self.assertEqual([self.layout["blocks"][slope]["origins"] for slope in play.DEFAULT_SLOPES_DEG],
+                         [list(block) for block in grid])
 
     def test_blocks_are_separated_along_y(self):
         pitch = self.layout["block_y_pitch_m"]

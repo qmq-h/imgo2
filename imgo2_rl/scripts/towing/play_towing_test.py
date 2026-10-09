@@ -414,6 +414,35 @@ def translate_tile(vertices, source_origin, target_origin) -> list:
     return [(x + dx, y + dy, z + dz) for x, y, z in vertices]
 
 
+def scale_cart_mass_inertia(nominal_masses, nominal_inertias, mass_scales):
+    """按**逐 env**的比例同时缩放小车的质量与惯量（AGENTS.md：只改质量不改惯量会不自洽）。
+
+    形状契约（PhysX tensor API，实测）：
+    - `get_masses()` → `(N, num_bodies)`（小车 `merge_fixed_joints=True`，无质量的挂点被并进
+      base_link ⇒ **5** 个刚体：base_link + 四轮）；
+    - `get_inertias()` → `(N, num_bodies, 9)`；
+    - `mass_scales` → `(N,)`。
+
+    因此缩放系数要分别扩成 `(N, 1)` 与 `(N, 1, 1)`。**踩过的坑**：把已经是 `(N, nb)` 的
+    质量再 `.unsqueeze(0)` 会广播成 `(1, N, nb) × (N, 1)`，在 dim 2 上撞 `nb`(5) 与 `N`(45)，
+    报 `The size of tensor a (5) must match the size of tensor b (45) at non-singleton
+    dimension 2`（2026-10-09 默认 45 环境首跑实测）；N=1 时形状侥幸不报错，所以单环境冒烟
+    抓不到它。
+    """
+    if nominal_masses.dim() != 2 or nominal_inertias.dim() != 3:
+        raise ValueError(
+            f"质量应为 (N, num_bodies)、惯量应为 (N, num_bodies, 9)，收到 "
+            f"{tuple(nominal_masses.shape)} / {tuple(nominal_inertias.shape)}")
+    if nominal_masses.shape[0] != nominal_inertias.shape[0] or \
+            nominal_masses.shape[1] != nominal_inertias.shape[1]:
+        raise ValueError("质量与惯量的前两维必须一致")
+    scales = mass_scales.reshape(-1, 1)
+    if scales.shape[0] != nominal_masses.shape[0]:
+        raise ValueError(
+            f"逐 env 缩放系数应为 {nominal_masses.shape[0]} 个，收到 {scales.shape[0]}")
+    return nominal_masses * scales, nominal_inertias * scales.unsqueeze(-1)
+
+
 def build_terrain_layout(slopes, num_envs, *, row_spacing=None, column_spacing=None,
                          block_gap_m: float = 40.0) -> dict:
     """把各坡度的 tile 铺成「每坡度一块紧凑网格」，并组装出整块 mesh。
@@ -447,7 +476,13 @@ def build_terrain_layout(slopes, num_envs, *, row_spacing=None, column_spacing=N
             offset = len(vertices)
             vertices.extend(translate_tile(tile_vertices, source, target))
             faces.extend(tuple(offset + index for index in face) for face in tile_faces)
-    return {"blocks": blocks, "vertices": vertices, "faces": faces,
+    # `origins_grid` 的形状 (坡度数, 每块 env 数, 3) 与整块 mesh 的 tile 数一一对应：
+    # Isaac Lab 的 `terrain_origins` 契约就是 `(num_rows, num_cols, 3)`，这里 num_rows = 坡度数、
+    # num_cols = 每轮 env 数，`num_rows * num_cols = tile 总数`（不这么报的话，terrain_origins
+    # 只覆盖第一块，与 mesh 不一致）。
+    origins_grid = [list(blocks[slope]["origins"]) for slope in slopes]
+    return {"blocks": blocks, "origins_grid": origins_grid,
+            "vertices": vertices, "faces": faces,
             "columns": columns, "block_y_pitch_m": block_y_pitch,
             "row_spacing_m": rs, "column_spacing_m": cs}
 
@@ -1489,8 +1524,7 @@ def main(args):
                 self.terrain_mesh = trimesh.Trimesh(
                     vertices=np.asarray(vertices, dtype=np.float64),
                     faces=np.asarray(faces, dtype=np.int64), process=False)
-                first = np.asarray(slope_blocks[args.slopes[0]]["origins"], dtype=np.float32)
-                self.terrain_origins = first.reshape(1, -1, 3)
+                self.terrain_origins = np.asarray(terrain_layout["origins_grid"], dtype=np.float32)
                 self.flat_patches = {}
 
         class PlayTestTileImporter(TerrainImporter):
@@ -1501,9 +1535,10 @@ def main(args):
                     raise ValueError("terrain 后端需要生成器给出的 tile 原点")
                 origins = torch.as_tensor(np.asarray(terrain_origins), device=self.device,
                                           dtype=torch.float32)
-                if tuple(origins.shape) != (1, num_envs, 3):
+                expected = (len(args.slopes), num_envs, 3)
+                if tuple(origins.shape) != expected:
                     raise ValueError(
-                        f"tile 原点形状 {tuple(origins.shape)} 与 (1, {num_envs}, 3) 不符")
+                        f"tile 原点形状 {tuple(origins.shape)} 与 {expected} 不符")
                 self.terrain_origins = origins
                 self.terrain_levels = torch.zeros(self.cfg.num_envs, dtype=torch.long,
                                                   device=self.device)
@@ -1549,7 +1584,8 @@ def main(args):
                 terrain_generator=TerrainGeneratorCfg(
                     class_type=PlayTestTileGenerator,
                     size=(BACK_M + FORWARD_M, 2.0 * HALF_WIDTH_M),
-                    num_rows=1, num_cols=num_envs, sub_terrains={}, curriculum=False),
+                    num_rows=len(args.slopes), num_cols=num_envs,
+                    sub_terrains={}, curriculum=False),
                 physics_material=sim_utils.RigidBodyMaterialCfg(
                     static_friction=args.ground_friction, dynamic_friction=args.ground_friction,
                     restitution=0.0, friction_combine_mode="average",
@@ -1627,9 +1663,10 @@ def main(args):
         cart_env_idx = torch.arange(num_envs, dtype=torch.int, device="cpu")
         # `get_masses()/get_inertias()` 是 **CPU** 缓冲（PhysX 视图约定），缩放系数必须同设备，
         # 否则 CPU×CUDA 直接报 "Expected all tensors to be on the same device"。
-        scales_host = mass_scales.detach().to("cpu").unsqueeze(1)
-        cart.root_physx_view.set_masses(nominal_masses.unsqueeze(0) * scales_host, cart_env_idx)
-        cart.root_physx_view.set_inertias(nominal_inertias.unsqueeze(0) * scales_host, cart_env_idx)
+        scaled_masses, scaled_inertias = scale_cart_mass_inertia(
+            nominal_masses, nominal_inertias, mass_scales.detach().to("cpu"))
+        cart.root_physx_view.set_masses(scaled_masses, cart_env_idx)
+        cart.root_physx_view.set_inertias(scaled_inertias, cart_env_idx)
         actual_masses = cart.root_physx_view.get_masses().sum(dim=1).tolist()
         torque_limits = robot.data.joint_effort_limits[0, policy_to_asset].tolist()
 
