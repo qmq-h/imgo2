@@ -158,6 +158,21 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 目录名 `env0000_col00_row00_compliant_L0.6_g0_v0.5_m5kg` 形式；`--write-csv` 默认 `failed`：只给非 `OK`
 的 env 留原始轨迹（800 环境每 5 物理步一行 ≈ 35 万行，全写约 0.5 GB）。
 
+## 交叉统计（超出 `report.md` 的分组）
+
+`report.md` 只按**坡度量级**分组；要回答「失败集中在哪一档」用
+[`play_test_stats.py`](../imgo2_rl/scripts/tools/play_test_stats.py)（纯标准库，读 `summaries/*.json`，
+**可以读正在跑的 run**，会显示「已判读 n/总数」）：
+
+```bash
+python3 imgo2_rl/scripts/tools/play_test_stats.py --latest            # 最新 run
+python3 imgo2_rl/scripts/tools/play_test_stats.py --latest --csv /tmp/play_stats.csv --list-codes
+```
+
+输出：判定码分布与失败原因计数、关键指标分位数（起步关节 RMS / 单关节峰值 / 跟速 MAE /
+停车最小几何间隙 / 滑移 / 横向 |y|max / 朝向 / 最低 base 高）、按 坡度·连接·质量·速度·行 的分组表、
+以及 连接×判定码 / 坡度×判定码 / 质量×判定码 / 速度×判定码 四张交叉表。
+
 ## 判定与结论的写法
 
 `report.md` 的「结论（任务是否有必要）」按 **平地 / 5° / 10°** 三组（= lane 的坡度量级）分别给：

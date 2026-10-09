@@ -97,6 +97,7 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 | 步态评估（占空比/步频/相位/关节幅值，需回放） | [eval_gait.py](imgo2_rl/scripts/tools/eval_gait.py) |
 | 步态指标口径（纯 numpy，可离线回归，`eval_gait.py` 只采样与打印） | [gait_metrics.py](imgo2_rl/scripts/tools/gait_metrics.py)、[test_gait_metrics.py](imgo2_rl/tests/test_gait_metrics.py)（18 项，无需 GPU） |
 | 参考轨迹回放（在 Isaac Lab 里放参考动作） | [play_reference_motion.py](imgo2_rl/scripts/tools/play_reference_motion.py) |
+| 拖曳必要性测试台的**离线统计**（判定码分布 / 按坡度·连接·质量·速度·行切分 / 指标分位数，纯标准库，可读正在跑的 run） | [play_test_stats.py](imgo2_rl/scripts/tools/play_test_stats.py) |
 | 参考步态基线（从 21 份动作直接算出，判读用尺子） | [gait_reference_baseline.json](docs/gait_reference_baseline.json) |
 | 24500 轮 AMP 的足端回放结果与逐腿对照 | [gait_eval_amp_24500_2026-09-18.md](docs/gait_eval_amp_24500_2026-09-18.md) |
 | 训练曲线（读 TensorBoard event 文件，纯标准库，训练中也能读；`--tags`/`--steps`/`--match`；**注意 `*/time` 系列 tag 的 x 轴是墙钟秒、不是迭代轮号**，工具会单独点名） | [read_tfevents.py](imgo2_rl/scripts/tools/read_tfevents.py)、[test_read_tfevents.py](imgo2_rl/tests/test_read_tfevents.py)（6 项，无需 GPU） |
