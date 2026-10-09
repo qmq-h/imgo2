@@ -288,7 +288,8 @@ class UpperEventsCfg:
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. 每条 lane 的剖面都是
-    # 「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」（`mdp/slope_geometry.py`）；
+    # 「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」（`mdp/slope_geometry.py`，
+    # 跑道总长 15 m）；
     # 列决定坡度量级：前 20 列是纯平地，之后 10 列 5°、10 列 10°（见 `connection_grid.py`）。
     # A non-multiple of 800 only covers a grid prefix, not all work conditions.
     scene: UpperTowingSceneCfg = UpperTowingSceneCfg(

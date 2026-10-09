@@ -65,9 +65,11 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 | 停止时机器人—小车距离维持 | `metrics.stop.clearance_at_stop_m` / `min_clearance_coast_m` / `final_clearance_m` / `time_to_contact_after_stop_s` / `contact` / `contact_channels` | **车头到机器人后腿的几何间隙**（全腿 FK，复用 `summarize_tow.py`），挂点距 `rope_distance_m` 另列；接触由三路见证判定：车斗接触力、几何间隙 ≤ 0、负载单步速度跃变（阈值按记录步长放大） |
 | 停止时的关节响应 | `metrics.stop.joint_rms_rad` / `joint_max_rad` / `worst_joint` / `torque_saturated_frac` / `settle_time_s` / `body_vx_rms_mps` | STOP 后 `--transition-window` 内的同一套关节跟踪误差，外加「指令归零到 `|vx| < 0.05 m/s` 的耗时」 |
 
-判定码（阈值可用 CLI 覆盖，全部进产物）：`OK` / `LOW` 停车余量低 / `JNT` 关节响应超限 /
-`SPD` 跟速超限 / `COL` 追尾接触 / `FALL` 跌倒 / `INV` 记录不可用；一个 case 可命中多条，
-`code` 取最严重的一条，`reasons` 保留全部。
+| 横向/朝向保持（`--lane-keeping pd` 时） | `metrics.lane.y_rms_m` / `y_max_abs_m` / `heading_rms_rad` / `heading_max_abs_rad` / `vy_saturated_frac` / `wz_saturated_frac` / `tow_y_*` | lane 系横向偏移（目标 0 = 中线）与朝向误差（目标 0 = 超前），全回合与牵引段各一份；再报 PD 指令是否顶到限幅 |
+
+判定码（阈值可用 CLI 覆盖，全部进产物）：`OK` / `LOW` 停车余量低 / `LAT` 横向或朝向保持超限 /
+`JNT` 关节响应超限 / `SPD` 跟速超限 / `COL` 追尾接触 / `FALL` 跌倒 / `INV` 记录不可用；
+一个 case 可命中多条，`code` 取最严重的一条，`reasons` 保留全部。
 
 ## 网格、摩擦与阈值默认值
 
@@ -90,7 +92,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 | 后端 | 地形 | 重力 | 出生姿态 | 度量坐标系 | 用途 |
 |---|---|---|---|---|---|
 | `gravity`（默认） | `TowSceneCfg` 现有平地 | 旋转重力 `(−g·sinθ, 0, −g·cosθ)` | 平地（单位四元数） | 平地系（行程 = x、离面高度 = z、俯仰 = 世界系） | 首轮；度量最简单、代码路径最短 |
-| `terrain` | **真实剖面 mesh**（`slope_geometry.tile_mesh`：平地→上坡→坡顶→下坡→平地，每档一块紧凑网格） | 世界竖直 | **出生在平地段**（姿态竖直，无旋转） | lane 系（x 行程、`z − profile_height(档位,x)` 离面高度、世界系俯仰 + 局部坡度） | 与训练场景对齐复核 |
+| `terrain` | **真实剖面 mesh**（`slope_geometry.tile_mesh`：平地 2.25 / 上坡 3 / 坡顶 0.75 / 下坡 3 / 平地 2.25 m，每档一块紧凑网格） | 世界竖直 | **出生在平地段**（姿态竖直，无旋转） | lane 系（x 行程、`z − profile_height(档位,x)` 离面高度、世界系俯仰 + 局部坡度） | 与训练场景对齐复核 |
 
 ### gravity 后端（物理等价）
 
@@ -132,6 +134,31 @@ g = (−g·sinθ, 0, −g·cosθ)        # +θ = 沿 +x 上坡
 恒 0，于是退化成 x 位移 / 绝对 z / 世界系俯仰（与旧版记录逐位一致）；`terrain` 后端上是真实
 剖面量。**跌倒判据因此改用离面高度与相对俯仰** —— 在剖面上拿绝对 z 会把走上坡的机器人
 （坡面已抬升 0.7 m）判成正常，或把下坡判成跌倒。
+
+## 横向/朝向保持：PD 压中线 + 保持超前（`--lane-keeping pd`，默认）
+
+用户要求（2026-10-09 原话）：「用 pd 控制，保证机器人在中线运行，heading 保持超前，前进速度不要
+设置 pd 控制而是单纯给指令」。实现方式：**冻结策略的 3 维速度指令 `(vx, vy, wz)` 里，`vx` 完全由
+脚本调度给出（不参与任何反馈），`vy`/`wz` 由横向/朝向 PD 生成**：
+
+```
+e_lat  = −y · cos(yaw)                 # lane 系横向误差投到机体系横向轴（目标 y = 0 = 中线）
+e_yaw  = wrap_pi(0 − yaw)              # 目标朝向 = +x（超前）
+vy_cmd = clamp(kp_y·e_lat − kd_y·vy_body, ±vy_limit)
+wz_cmd = clamp(kp_yaw·e_yaw − kd_yaw·wz_body, ±wz_limit)
+```
+
+- 默认增益 `kp_y = 1.0`、`kd_y = 0.3`、`kp_yaw = 1.5`、`kd_yaw = 0.3`；限幅
+  `vy ≤ 0.4 m/s`、`wz ≤ 0.8 rad/s`（都落在 AMP 训练过的指令范围内：`lin_vel_y ±1.0`、
+  `ang_vel_z ±1.57`，见 `velocity_env_cfg.py`）。
+- D 项用**机体系**实测速度/角速度（`root_lin_vel_b[:,1]`、`root_ang_vel_b[:,2]`），因为冻结策略的
+  速度指令本来就是机体系；横向误差也投影到机体系横向轴（`−y·cos(yaw)`），朝向误差跨 ±π 归一化。
+- `--lane-keeping off` 回到旧行为（指令只有 vx），便于对照「没有横向反馈时机器人漂多少」。
+- **新记录列**：`velocity_cmd_vy_mps`、`velocity_cmd_wz_radps`、`lane_offset_m`、`lane_heading_rad`、
+  `robot_vy_b_mps`、`robot_wz_b_radps`、`load_offset_m`（小车横向）。
+- **新指标 `metrics.lane`**：横向偏移与朝向误差的 RMS/峰值（全回合 + 牵引段）、`vy`/`wz` 指令的
+  限幅占比（顶满说明简单 PD 的权限不够，是任务必要性的一类证据）。
+- **新判定码 `LAT`**：`|y| > 0.30 m` 或 `|yaw| > 10°` ⇒ 横向保持失败（阈值未标定，CLI 可改）。
 
 ## 坡上站定段：驻车制动仿真（`--slope-settle hold`，默认）
 

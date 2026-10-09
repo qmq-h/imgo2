@@ -1,7 +1,8 @@
 """Offline geometry/deadline checks against the actual terrain mesh generator.
 
 2026-10-09：地形从「每格一个恒定坡度、按行列交替正负」改成**一条连续剖面**
-（平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m，见 `mdp/slope_geometry.py`），
+（平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m，跑道总长 15 m，
+见 `mdp/slope_geometry.py`），
 所以这里检查的性质也跟着换：lane 的坡度量级（0/5/10）、闭合实体拓扑、剖面分段与弧长、
 出生点仍在平地段且挂点距/安全边界成立、最慢速度仍能在 timeout 内到达目标。
 """
@@ -57,22 +58,26 @@ class SlopeGeometryTests(unittest.TestCase):
                              [grade] * grid.ROWS)
 
     def test_profile_segments_and_local_slopes(self):
+        # 跑道 15 m（后 2.25 + 前 12.75），剖面 11.25 m：平地 2.25 / 上坡 3 / 坡顶 0.75 / 下坡 3 / 平地 2.25
+        self.assertEqual((geometry.BACK_M, geometry.FORWARD_M), (2.25, 12.75))
+        self.assertEqual((geometry.FLAT_IN_M, geometry.UP_M, geometry.CREST_M,
+                          geometry.DOWN_M, geometry.EXIT_M), (2.25, 3.0, 0.75, 3.0, 2.25))
+        self.assertEqual(geometry.PROFILE_LENGTH_M, 11.25)
         for grade in (0.0, 5.0, 10.0):
             rise = math.tan(math.radians(grade))
             # 分段高度：平地 → 上坡 → 坡顶 → 下坡 → 平地
             self.assertAlmostEqual(geometry.profile_height(grade, 0.0), 0.0, places=12)
-            self.assertAlmostEqual(geometry.profile_height(grade, 3.0), 0.0, places=12)
-            self.assertAlmostEqual(geometry.profile_height(grade, 5.0), 2.0*rise, places=12)
-            self.assertAlmostEqual(geometry.profile_height(grade, 7.0), 4.0*rise, places=12)
-            self.assertAlmostEqual(geometry.profile_height(grade, 8.0), 4.0*rise, places=12)
-            self.assertAlmostEqual(geometry.profile_height(grade, 12.0), 0.0, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, 2.25), 0.0, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, 3.75), 1.5*rise, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, 5.25), 3.0*rise, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, 6.0), 3.0*rise, places=12)
+            self.assertAlmostEqual(geometry.profile_height(grade, 9.0), 0.0, places=12)
             self.assertAlmostEqual(geometry.profile_height(grade, 20.0), 0.0, places=12)
             # 局部坡度：上坡 +grade、坡顶 0、下坡 −grade、两头平地 0
             self.assertEqual([geometry.profile_slope_degrees(grade, x)
-                              for x in (1.0, 5.0, 7.5, 10.0, 13.0)],
+                              for x in (1.0, 3.75, 5.6, 7.5, 11.0)],
                              [0.0, grade, 0.0, -grade, 0.0])
-            self.assertAlmostEqual(geometry.profile_height(grade, 7.5), 4.0*rise, places=12)
-        self.assertEqual(geometry.PROFILE_LENGTH_M, 15.0)
+            self.assertAlmostEqual(geometry.profile_height(grade, 5.6), 3.0*rise, places=12)
         self.assertLessEqual(geometry.PROFILE_LENGTH_M, geometry.FORWARD_M)
         with self.assertRaises(ValueError):
             geometry.profile_height(50.0, 5.0)
@@ -82,14 +87,16 @@ class SlopeGeometryTests(unittest.TestCase):
     def test_arc_length_is_longer_than_the_plane_projection(self):
         for grade in (0.0, 5.0, 10.0):
             cosine = math.cos(math.radians(grade))
-            self.assertAlmostEqual(geometry.profile_arc_length(grade, 3.0), 3.0, places=12)
-            # 走过整条剖面后 = 平地 3 + 上坡 4/cos + 坡顶 1 + 下坡 4/cos + 出口平地
-            self.assertAlmostEqual(geometry.profile_arc_length(grade, 18.0), 10.0 + 8.0/cosine,
+            self.assertAlmostEqual(geometry.profile_arc_length(grade, 2.25), 2.25, places=12)
+            # 走过整条剖面后 = 平地 2.25 + 上坡 3/cos + 坡顶 0.75 + 下坡 3/cos + 出口平地
+            self.assertAlmostEqual(geometry.profile_arc_length(grade, 18.0),
+                                   2.25 + 6.0/cosine + 0.75 + (18.0 - geometry.FLAT_OUT_START_M),
                                    places=12)
             self.assertGreaterEqual(geometry.profile_arc_length(grade, 10.0), 10.0 - 1e-12)
         worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.GOAL_DISTANCE_M)
-        # 10 m 水平目标在 10° 剖面上 = 3 + 6/cos10 + 1
-        self.assertAlmostEqual(worst, 3.0 + 6.0/math.cos(math.radians(10.0)) + 1.0, places=9)
+        # 10 m 目标落在出口平地上（9.0–11.25）⇒ 弧长 = 2.25 + 6/cos10 + 0.75 + 1.0
+        self.assertAlmostEqual(worst, 2.25 + 6.0/math.cos(math.radians(10.0)) + 0.75 + 1.0,
+                               places=9)
         self.assertLess(worst, 10.2)
 
     def test_closed_mesh_top_normal_and_origin_match_logical_cells(self):
@@ -111,9 +118,13 @@ class SlopeGeometryTests(unittest.TestCase):
                 edge_counts = Counter(tuple(sorted((f[i], f[(i+1) % 3])))
                                       for f in tris for i in range(3))
                 self.assertEqual(set(edge_counts.values()), {2})
-                # 绕向朝外：有符号体积 = 剖面面积 × 板宽
+                # 绕向朝外：有符号体积 = 剖面多边形（鞋带公式）面积 × 板宽
                 local = [(x-origin[0], y-origin[1], z-origin[2]) for x, y, z in verts]
-                area = 20.0*geometry.THICKNESS_M + 5.0*4.0*math.tan(math.radians(grade))
+                polygon = geometry.profile_polyline(grade)
+                area = 0.5*abs(sum(polygon[i][0]*polygon[(i+1) % len(polygon)][1]
+                                   - polygon[(i+1) % len(polygon)][0]*polygon[i][1]
+                                   for i in range(len(polygon))))
+                self.assertGreater(area, 0.0)
                 self.assertAlmostEqual(geometry._signed_volume(local, tris),
                                        area*2.0*geometry.HALF_WIDTH_M, places=6)
                 # 上表面高度 = profile_height，最高点 = 坡顶高度
@@ -126,7 +137,7 @@ class SlopeGeometryTests(unittest.TestCase):
                 for x, z in top_z.items():
                     self.assertAlmostEqual(z, geometry.profile_height(grade, x), places=10)
                 self.assertAlmostEqual(max(z for _, _, z in local),
-                                       4.0*math.tan(math.radians(grade)), places=10)
+                                       3.0*math.tan(math.radians(grade)), places=10)
                 # 上表面的面法向朝上（三个顶点都在上层）
                 for face in tris:
                     points = [local[i] for i in face]
@@ -200,11 +211,11 @@ class TorchProfileTests(unittest.TestCase):
             self.skipTest("需要 torch 才能核对 profile_torch")
         import torch
         grades = torch.tensor([0.0, 5.0, 10.0])
-        xs = torch.tensor([5.0, 5.0, 5.0])
+        xs = torch.tensor([3.75, 3.75, 3.75])          # 上坡段中点 ⇒ 高度 = 1.5·tan(grade)
         values = module.profile_height_tensor(grades, xs).tolist()
         self.assertAlmostEqual(values[0], 0.0, places=9)
-        self.assertAlmostEqual(values[1], 2.0*math.tan(math.radians(5.0)), delta=1e-6)
-        self.assertAlmostEqual(values[2], 2.0*math.tan(math.radians(10.0)), delta=1e-6)
+        self.assertAlmostEqual(values[1], 1.5*math.tan(math.radians(5.0)), delta=1e-6)
+        self.assertAlmostEqual(values[2], 1.5*math.tan(math.radians(10.0)), delta=1e-6)
 
 
 if __name__ == '__main__':

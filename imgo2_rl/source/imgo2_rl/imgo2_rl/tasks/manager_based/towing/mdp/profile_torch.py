@@ -1,7 +1,7 @@
 """Torch-vectorised version of the continuous towing profile height.
 
-与 `slope_geometry.profile_height` **同一分段**（平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m →
-平地 3 m）；`slope_geometry` 保持纯标准库（离线机器也能 import），torch 版本单独放这里，
+与 `slope_geometry.profile_height` **同一分段**（平地 2.25 m → 上坡 3 m → 坡顶 0.75 m →
+下坡 3 m → 平地 2.25 m；跑道总长 15 m）；`slope_geometry` 保持纯标准库（离线机器也能 import），torch 版本单独放这里，
 两边的等价性由 `tests/test_towing_slope_geometry.py` 逐点交叉核对（有 torch 时）。
 
 奖励/终止里每个控制步都要对 N 个环境算离面高度（`robot_fall`），逐 env 调用标量函数太慢，

@@ -90,7 +90,10 @@ def build_episode(*, command=1.0, dt=0.005, station_steps=20, tow_steps=100, coa
                        slope_backend="gravity", cart_mass_kg=10.0,
                        robot_z_m=robot_height, body_pitch_rad=pitch,
                        body_pitch_rel_rad=pitch, robot_surface_height_m=robot_height,
-                       load_surface_height_m=0.15, rope_taut=1.0)
+                       load_surface_height_m=0.15, rope_taut=1.0,
+                       velocity_cmd_vy_mps=0.0, velocity_cmd_wz_radps=0.0,
+                       lane_offset_m=0.0, lane_heading_rad=0.0,
+                       robot_vy_b_mps=0.0, robot_wz_b_radps=0.0, load_offset_m=0.0)
         row.update(overrides)
         rows.append(row)
 
@@ -351,6 +354,98 @@ class SpeedStatsTests(unittest.TestCase):
         self.assertGreaterEqual(stats["p95_abs_err_mps"], 0.2)
 
 
+class LaneKeepingTests(unittest.TestCase):
+    """横向/朝向 PD：把机器人压回 lane 中线（y=0）并保持超前（yaw=0）；vx 不参与。"""
+
+    def _pd(self, **overrides):
+        kwargs = dict(kp_y=1.0, kd_y=0.3, kp_yaw=1.5, kd_yaw=0.3,
+                      vy_limit=0.4, wz_limit=0.8, lane_y=0.0, lane_yaw=0.0,
+                      body_vy=0.0, body_wz=0.0)
+        kwargs.update(overrides)
+        return play.lane_keeping_command(**kwargs)
+
+    def test_zero_error_gives_zero_correction(self):
+        self.assertEqual(self._pd(), (0.0, 0.0))
+
+    def test_lateral_error_pushes_back_to_the_centreline(self):
+        vy_left_of_centre, _ = self._pd(lane_y=0.2)          # 在中线左侧 ⇒ 往右（vy<0）
+        self.assertAlmostEqual(vy_left_of_centre, -0.2, places=9)
+        vy_right_of_centre, _ = self._pd(lane_y=-0.2)        # 在中线右侧 ⇒ 往左（vy>0）
+        self.assertAlmostEqual(vy_right_of_centre, 0.2, places=9)
+
+    def test_heading_error_turns_back_towards_forward(self):
+        _, wz_pointing_left = self._pd(lane_yaw=0.2)         # 朝左偏 ⇒ 往右转（wz<0）
+        self.assertAlmostEqual(wz_pointing_left, -0.3, places=9)
+        _, wz_pointing_right = self._pd(lane_yaw=-0.2)
+        self.assertAlmostEqual(wz_pointing_right, 0.3, places=9)
+
+    def test_heading_error_wraps_across_pi(self):
+        # 误差在 ±π 附近不能跳变：yaw = π−0.1、目标 0 ⇒ 误差 −(π−0.1) ≈ −3.04（不是 +3.24）
+        # 放开 wz 限幅以便看原始值（默认 0.8 rad/s 会把它夹住）
+        _, wz = self._pd(lane_yaw=math.pi - 0.1, body_wz=0.0, wz_limit=10.0)
+        self.assertLess(wz, 0.0)
+        self.assertAlmostEqual(wz, 1.5 * (-(math.pi - 0.1)), places=6)
+        self.assertAlmostEqual(play.wrap_to_pi(math.pi + 0.1), -math.pi + 0.1, places=9)
+        self.assertAlmostEqual(play.wrap_to_pi(-math.pi - 0.1), math.pi - 0.1, places=9)
+
+    def test_damping_uses_body_rates(self):
+        vy, wz = self._pd(body_vy=0.5, body_wz=0.5)
+        self.assertAlmostEqual(vy, -0.15, places=9)
+        self.assertAlmostEqual(wz, -0.15, places=9)
+
+    def test_commands_are_clamped_to_the_training_range(self):
+        vy, _ = self._pd(lane_y=5.0)                         # 横向误差 5 m ⇒ P 项 −5 m/s
+        self.assertAlmostEqual(vy, -0.4, places=9)           # vy 限幅
+        _, wz = self._pd(lane_yaw=math.pi / 2)               # 朝向误差 π/2 ⇒ P 项 −2.36 rad/s
+        self.assertAlmostEqual(wz, -0.8, places=9)           # wz 限幅
+
+    def test_lateral_error_uses_the_body_lateral_axis(self):
+        # 朝向偏 90° 时「机体系横向」与 lane 横向正交 ⇒ 误差投影为 0
+        vy, _ = self._pd(lane_y=0.3, lane_yaw=math.pi / 2)
+        self.assertAlmostEqual(vy, 0.0, places=9)
+
+    def test_invalid_arguments_rejected(self):
+        for bad in (float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                self._pd(lane_y=bad)
+        for bad in (0.0, -1.0):
+            with self.assertRaises(ValueError):
+                self._pd(vy_limit=bad)
+
+
+class LaneStatsTests(unittest.TestCase):
+    def test_reports_offset_heading_and_saturation(self):
+        rows = [base_row(lane_offset_m=0.1, lane_heading_rad=0.05,
+                         velocity_cmd_vy_mps=-0.4, velocity_cmd_wz_radps=0.0),
+                base_row(lane_offset_m=-0.3, lane_heading_rad=-0.15,
+                         velocity_cmd_vy_mps=0.1, velocity_cmd_wz_radps=0.8)]
+        stats = play.lane_stats(rows, vy_limit=0.4, wz_limit=0.8)
+        self.assertAlmostEqual(stats["y_max_abs_m"], 0.3, places=12)
+        self.assertAlmostEqual(stats["heading_max_abs_rad"], 0.15, places=12)
+        self.assertAlmostEqual(stats["vy_saturated_frac"], 0.5, places=12)
+        self.assertAlmostEqual(stats["wz_saturated_frac"], 0.5, places=12)
+        self.assertAlmostEqual(stats["y_rms_m"], math.sqrt((0.1**2 + 0.3**2) / 2), places=12)
+
+    def test_lane_deviation_is_flagged_only_when_enabled(self):
+        rows = build_episode()
+        for row in rows:
+            row["lane_offset_m"] = 0.5
+        metrics = play.compute_case_metrics(
+            rows, command_mps=1.0, slope_deg=0.0, connection="compliant", cart_mass_kg=10.0,
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05,
+            lane_keeping="pd", lane_vy_limit=0.4, lane_wz_limit=0.8)
+        self.assertIn("lane_deviation", metrics["verdict"]["reasons"])
+        self.assertEqual(metrics["verdict"]["code"], "LAT")
+        metrics_off = play.compute_case_metrics(
+            rows, command_mps=1.0, slope_deg=0.0, connection="compliant", cart_mass_kg=10.0,
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05, lane_keeping="off")
+        self.assertNotIn("lane_deviation", metrics_off["verdict"]["reasons"])
+
+
 class ContactWitnessTests(unittest.TestCase):
     def test_deck_force_triggers(self):
         rows = build_episode(deck_fx_coast=12.0)
@@ -575,7 +670,10 @@ class ReportTests(unittest.TestCase):
             args_dict={"velocities": [1.5], "connections": ["rigid"], "cart_masses": [25.0],
                        "ground_friction": 0.8, "command_shaping": "direct", "ramp_time_s": 1.0,
                        "slope_backend": "gravity", "slope_settle": "hold", "record_every": 1,
-                       "write_csv": "failed", "env_spacing": 16.0},
+                       "write_csv": "failed", "env_spacing": 16.0,
+                       "lane_keeping": "pd", "lane_kp_y": 1.0, "lane_kd_y": 0.3,
+                       "lane_kp_yaw": 1.5, "lane_kd_yaw": 0.3,
+                       "lane_vy_limit": 0.4, "lane_wz_limit": 0.8},
             thresholds=play.DEFAULT_THRESHOLDS,
             schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
                                         coast_duration=5.0, dt=0.005),

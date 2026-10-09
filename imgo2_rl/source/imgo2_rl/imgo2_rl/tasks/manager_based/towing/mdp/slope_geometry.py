@@ -3,12 +3,14 @@
 2026-10-09：坡面从「每格一个恒定坡度、按行列交替正负」改成**整合到一起的一条连续剖面**
 （一整座小土包），每条 lane 沿 +X 依次是：
 
-    平地 3 m  →  上坡 4 m  →  坡顶平段 1 m  →  下坡 4 m  →  平地 3 m
-    x: 0 ─────── 3 ───────── 7 ──────────── 8 ───────── 12 ─────── 15   (lane 局部坐标)
+    平地 2.25 m → 上坡 3 m → 坡顶平段 0.75 m → 下坡 3 m → 平地 2.25 m
+    x: 0 ──────── 2.25 ───── 5.25 ─────────── 6.0 ─────── 9.0 ─────── 11.25   (lane 局部坐标)
 
-机器人出生在 x=0（**平地上、姿态竖直**），走完 10 m 目标时正好到达下坡中段；上坡与下坡
-在**同一条 lane 内成对出现**，所以不再需要「坡度正负号交替」来平衡方向。坡度量级由列决定
-（`connection_grid.slope_degrees` = 0 / 5 / 10 deg），lane 之间只差这个量级。
+跑道总长也按同一比例从 **20 m 收到 15 m**（`BACK_M + FORWARD_M = 2.25 + 12.75`；用户
+2026-10-09：「收窄的意思是不要 20 m，而是 15 m，对应缩小上下坡+平地的长度」）。机器人出生在
+x=0（**平地上、姿态竖直**），走完 10 m 目标时落在**出口平地**上（剖面 11.25 m，出口平地
+从 9.0 m 起）；上坡与下坡在**同一条 lane 内成对出现**，所以不再需要「坡度正负号交替」来
+平衡方向。坡度量级由列决定（`connection_grid.slope_degrees` = 0 / 5 / 10 deg）。
 
 坐标约定：`x` 沿坡前进，`y` 横向（±`HALF_WIDTH_M`），`z` 向上；lane 原点是剖面在
 `x = 0` 处的表面点（`profile_height(·, 0) = 0`），因此 `body_z − origin_z − profile_height(x)`
@@ -24,8 +26,8 @@ if __package__:
 else:
     from connection_grid import COLUMNS, ROWS, slope_degrees
 
-BACK_M = 3.0
-FORWARD_M = 17.0
+BACK_M = 2.25
+FORWARD_M = 12.75
 HALF_WIDTH_M = 3.0
 ROW_SPACING_M = BACK_M + FORWARD_M + 2.0
 COLUMN_SPACING_M = 2.0 * HALF_WIDTH_M + 2.0
@@ -33,20 +35,23 @@ THICKNESS_M = 0.35
 BOUNDARY_MARGIN_M = 0.6
 
 # ---- 连续剖面（「平地 → 上坡 → 坡顶 → 下坡 → 平地」）各段边界（lane 局部 x） ---------------
-FLAT_IN_M = 3.0                 # 出生点前方的平地：机器人 + 小车都在这一段
-UP_M = 4.0                      # 上坡的水平长度
-CREST_M = 1.0                   # 坡顶平段
-DOWN_M = 4.0                    # 下坡的水平长度
-EXIT_M = 3.0                    # 出坡后的平地（仍在 17 m 前向余量内）
-UP_START_M = FLAT_IN_M                          # 3.0  上坡起点
-CREST_START_M = UP_START_M + UP_M               # 7.0  坡顶起点
-DOWN_START_M = CREST_START_M + CREST_M          # 8.0  下坡起点
-FLAT_OUT_START_M = DOWN_START_M + DOWN_M        # 12.0 回到平地
-PROFILE_LENGTH_M = FLAT_OUT_START_M + EXIT_M    # 15.0
+# 各段长度（2026-10-09：跑道 20 m → 15 m，剖面按同一比例 0.75 缩放）
+FLAT_IN_M = 2.25                # 出生点前方的平地：机器人 + 小车都在这一段
+UP_M = 3.0                      # 上坡的水平长度
+CREST_M = 0.75                  # 坡顶平段
+DOWN_M = 3.0                    # 下坡的水平长度
+EXIT_M = 2.25                   # 出坡后的平地（仍在 12.75 m 前向余量内）
+UP_START_M = FLAT_IN_M                          # 2.25  上坡起点
+CREST_START_M = UP_START_M + UP_M               # 5.25  坡顶起点
+DOWN_START_M = CREST_START_M + CREST_M          # 6.0   下坡起点
+FLAT_OUT_START_M = DOWN_START_M + DOWN_M        # 9.0   回到平地
+PROFILE_LENGTH_M = FLAT_OUT_START_M + EXIT_M    # 11.25
 MAX_GRADE_DEG = 10.0            # 剖面的最大坡度量级（= 网格里最陡的一档）
 
 if PROFILE_LENGTH_M > FORWARD_M:
     raise ValueError("剖面长度超过 lane 的前向长度（FORWARD_M），出生/边界假设不再成立")
+if BACK_M + FORWARD_M != 15.0:
+    raise ValueError("跑道总长应为 15 m（2026-10-09 用户要求从 20 m 收到 15 m）")
 
 
 def tile_origin(row, column):

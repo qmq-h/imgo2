@@ -53,7 +53,7 @@ def column_spec(column: int):
 def slope_degrees(column: int, row: int = 0) -> float:
     """这条 lane 的**坡度量级**（deg）：0 = 纯平地 lane，5 / 10 = 剖面上的上/下坡档。
 
-    每条 lane 的剖面都是「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」，
+    每条 lane 的剖面都是「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」，
     上坡与下坡成对出现在同一条 lane 里，所以这里只给量级、没有方向。`row` 只为兼容旧签名
     保留（不再影响取值）。
     """

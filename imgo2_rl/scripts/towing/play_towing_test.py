@@ -49,8 +49,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   `projected_gravity` 会自然看到倾斜后的重力。度量坐标系最简单（行程 = x 位移、
   离面高度 = 绝对 z、俯仰 = 世界系俯仰），首轮建议先跑这个。
 - **`terrain`**：用远端 2026-10-09 的**真实坡面剖面**（`mdp/slope_geometry`，与训练场景
-  同源）：每条 lane 沿 +x 依次是「平地 3 m → 上坡 4 m → 坡顶平段 1 m → 下坡 4 m → 平地 3 m」
-  （板厚 0.35 m、前 17 m / 后 3 m / 半宽 3 m），坡度量级由列决定（0 / 5 / 10，**每条 lane 自带
+  同源）：每条 lane 沿 +x 依次是「平地 2.25 m → 上坡 3 m → 坡顶平段 0.75 m → 下坡 3 m → 平地 2.25 m」
+  （板厚 0.35 m、跑道总长 15 m = 后 2.25 m + 前 12.75 m、半宽 3 m），坡度量级由列决定（0 / 5 / 10，**每条 lane 自带
   一段上坡和一段下坡**，所以 `--slopes` 只接受这三个量级）。每轮的每个 case 拿一块同量级的
   lane（cell 由 `slope_cells()` 从训练侧 40×20 网格里挑），平移到本测试台自己的紧凑网格上；
   出生点在剖面的**平地段起点**（姿态竖直、无出生旋转），两挂点三维距 = `L0 − slack`。
@@ -145,7 +145,10 @@ CONNECTIONS = ("compliant", "inextensible", "rigid")
 FACTORY_FLOOR_FRICTION = 0.8
 DEFAULT_VELOCITIES = (0.5, 1.0, 1.5)
 DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
+# 坡度默认按后端给：gravity 用带符号的恒定坡度（含上/下坡），terrain 只用剖面的坡度量级
+# （每条 lane 自带一段上坡一段下坡 ⇒ 没有负档）。
 DEFAULT_SLOPES_DEG = (0.0, 5.0, -5.0, 10.0, -10.0)
+DEFAULT_SLOPES_TERRAIN_DEG = (0.0, 5.0, 10.0)
 N_JOINTS = 12
 PHASES = ("station", "tow", "coast")
 
@@ -194,6 +197,10 @@ EXTRA_FIELDS = (
     "robot_surface_height_m", "load_surface_height_m",
     # 相对坡面参考姿态的俯仰（terrain 后端扣掉出生时的 −θ，gravity 后端就是世界系俯仰）
     "body_pitch_rel_rad",
+    # 横向/朝向保持：送冻结策略的 (vy, wz) 指令、lane 系横向偏移与朝向误差、机体系实测
+    "velocity_cmd_vy_mps", "velocity_cmd_wz_radps",
+    "lane_offset_m", "lane_heading_rad", "robot_vy_b_mps", "robot_wz_b_radps",
+    "load_offset_m",
     "slope_deg", "gravity_x_mps2", "gravity_z_mps2", "slope_backend",
     "connection", "cart_mass_kg",
 )
@@ -205,13 +212,14 @@ TEST_FIELDS = ("phase", *recording.TOW_NUMERIC_FIELDS,
                *JOINT_TARGET_FIELDS, *JOINT_TORQUE_FIELDS, *EXTRA_FIELDS)
 
 #: 逐 case 判定码。数值越大越严重（`classify_case` 取最严重的一条作为 `code`）。
-VERDICT_CODES = ("OK", "LOW", "JNT", "SPD", "COL", "FALL", "INV")
+VERDICT_CODES = ("OK", "LOW", "LAT", "JNT", "SPD", "COL", "FALL", "INV")
 VERDICT_SEVERITY = {code: index for index, code in enumerate(VERDICT_CODES)}
 _REASON_TO_CODE = {
     "invalid_record": "INV",
     "robot_fell": "FALL",
     "stop_collision": "COL",
     "stop_margin_low": "LOW",
+    "lane_deviation": "LAT",
     "speed_track_error": "SPD",
     "startup_joint_error": "JNT",
     "stop_joint_error": "JNT",
@@ -225,6 +233,16 @@ SUMMARIZE_TOW_NOTE = (
     "summarize_tow.valid 是绳语义判据（要求 tow 段出现过 T>0）；rigid 连杆张力有符号，"
     "其失败项（如 rope_never_taut_during_tow）不代表工况失败。本脚本的 verdict 不依赖它。")
 
+#: 横向/朝向保持（PD）与对应判据阈值：默认值取训练分布内的保守量
+#: （AMP 的训练指令范围是 lin_vel_y ±1.0 m/s、ang_vel_z ±1.57 rad/s，见 velocity_env_cfg.py）。
+DEFAULT_LANE_OPTIONS = {
+    "lane_kp_y": 1.0,             # 横向位置 P 增益 [1/s]
+    "lane_kd_y": 0.3,             # 横向速度 D 增益 [-]
+    "lane_kp_yaw": 1.5,           # 朝向 P 增益 [1/s]
+    "lane_kd_yaw": 0.3,           # 偏航角速度 D 增益 [-]
+    "lane_vy_limit": 0.4,         # 送冻结策略的 vy 指令限幅 [m/s]（训练范围 ±1.0 之内）
+    "lane_wz_limit": 0.8,         # 送冻结策略的 wz 指令限幅 [rad/s]（训练范围 ±1.57 之内）
+}
 DEFAULT_THRESHOLDS = {
     # 关节跟踪误差（rad）：起步与停车两段的 RMS 上限、单关节绝对值上限。
     # 初值是工程占位（AMP 稳态跟踪误差量级 0.05 rad，加载后到 0.2 rad 量级都会超限），
@@ -239,6 +257,9 @@ DEFAULT_THRESHOLDS = {
     "fall_height_limit_m": 0.15,
     "pitch_limit_rad": 0.80,
     "pitch_fraction_limit": 0.20,
+    # 横向/朝向保持（`--lane-keeping pd` 时生效）：超过阈值 ⇒ 判定码 `LAT`。阈值未标定。
+    "lane_y_limit_m": 0.30,
+    "lane_heading_limit_deg": 10.0,
 }
 
 
@@ -299,6 +320,46 @@ class PhaseSchedule:
                 "total_s": self.total_steps * self.dt}
 
 
+def wrap_to_pi(angle_rad: float) -> float:
+    """把角度归一化到 (−π, π]（PD 的朝向误差必须跨 ±π 不跳变）。"""
+    if not math.isfinite(angle_rad):
+        raise ValueError(f"角度必须是有限值，收到 {angle_rad!r}")
+    wrapped = math.fmod(angle_rad + math.pi, 2.0 * math.pi)
+    if wrapped <= 0.0:
+        wrapped += 2.0 * math.pi
+    return wrapped - math.pi
+
+
+def lane_keeping_command(*, kp_y: float, kd_y: float, kp_yaw: float, kd_yaw: float,
+                         vy_limit: float, wz_limit: float, lane_y: float, lane_yaw: float,
+                         body_vy: float, body_wz: float, yaw_target: float = 0.0) -> tuple:
+    """横向/朝向 PD → 送给冻结策略的 `(vy, wz)` 指令；**前进速度不参与**（只给指令）。
+
+    目标：机器人沿 lane 中线走（lane 系 `y = 0`），朝向超前（`yaw = yaw_target`，默认 0 = +x）。
+
+    - 横向：误差向量 `(0, −y, 0)`（lane 系）投到**机体系横向轴**上 ⇒ `−y·cos(yaw)`（小角度下
+      就是 `−y`）。P 项把机器人推回中线，D 项用**机体系**横向速度阻尼——冻结策略的
+      `velocity_commands` 本来就是机体系，所以两项都要在同一坐标系里。
+    - 朝向：`yaw_target − yaw` 归一化后用 P 项，D 项用机体系 yaw 角速度。
+    - 两路输出都限幅在训练分布内（AMP 训练范围：`lin_vel_y ±1.0 m/s`、`ang_vel_z ±1.57 rad/s`）。
+
+    纯算术、可离线测；张量版在主循环里按同一公式逐项实现。
+    """
+    for name, value in (("lane_y", lane_y), ("lane_yaw", lane_yaw), ("body_vy", body_vy),
+                        ("body_wz", body_wz), ("yaw_target", yaw_target)):
+        if not math.isfinite(value):
+            raise ValueError(f"{name} 必须是有限值，收到 {value!r}")
+    for name, value in (("vy_limit", vy_limit), ("wz_limit", wz_limit)):
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{name} 必须是有限正数，收到 {value!r}")
+    lateral_error = -lane_y * math.cos(lane_yaw)
+    heading_error = wrap_to_pi(yaw_target - lane_yaw)
+    vy_command = kp_y * lateral_error - kd_y * body_vy
+    wz_command = kp_yaw * heading_error - kd_yaw * body_wz
+    return (max(-vy_limit, min(vy_limit, vy_command)),
+            max(-wz_limit, min(wz_limit, wz_command)))
+
+
 def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
     """`gravity` 后端用的重力向量（世界系）。
 
@@ -318,7 +379,7 @@ def slope_gravity(slope_deg: float, g: float = GRAVITY_MPS2) -> tuple:
 def surface_frame(slope_deg: float, backend: str) -> dict:
     """度量用的坐标系与**剖面档位**：`(切向, 法向)` 都是 lane 系（+x 前 / +z 上）。
 
-    2026-10-09 远端把训练地形改成「平地 3 m → 上坡 4 m → 坡顶 1 m → 下坡 4 m → 平地 3 m」
+    2026-10-09 远端把训练地形改成「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」
     的连续剖面（每条 lane 自带上下坡，坡度量级 0/5/10 由列决定），所以：
 
     - `terrain`：度量系 = lane 系；**离面高度 = z − profile_height(档位, x)**、
@@ -367,7 +428,7 @@ def slope_ground_plan(slope_deg: float, backend: str) -> dict:
 def slope_cells(grade_deg: float) -> list:
     """训练侧 40×20 网格里**坡度量级**等于 `grade_deg` 的 `(row, column)` 列表。
 
-    2026-10-09 起训练地形是连续剖面：每条 lane 自带「上坡 4 m + 下坡 4 m」，`slope_degrees`
+    2026-10-09 起训练地形是连续剖面：每条 lane 自带「上坡 3 m + 下坡 3 m」，`slope_degrees`
     只给量级（0 / 5 / 10，见 `mdp/connection_grid.py`）。本测试台复用这同一张表，
     于是「5° 的 tile」与训练场景里 5° 的 lane 是同一块几何。可用 cell 数：0° 400 个、
     5° 与 10° 各 200 个。
@@ -389,7 +450,7 @@ def compact_tile_origins(count: int, *, row_spacing: float, column_spacing: floa
 
     训练场景用 40×20 的固定 cell 原点（x 跨度 ~200 m），本测试台每轮只用几十块、
     且同一轮坡度相同，所以自己排布：x 是上下坡方向（按 row_spacing 留出行距，
-    保证 17 m 前进 + 3 m 后退不串场），y 是横向（按 column_spacing）。
+    保证 12.75 m 前进 + 2.25 m 后退不串场），y 是横向（按 column_spacing）。
     """
     if count < 1:
         raise ValueError("tile 数量必须 ≥ 1")
@@ -735,6 +796,44 @@ def speed_track_stats(rows, command_mps: float, *, steady_fraction: float = 0.5)
     }
 
 
+def lane_stats(rows, *, vy_limit: float, wz_limit: float, tow_rows=None) -> dict:
+    """横向/朝向保持质量：偏移与朝向误差的 RMS/峰值 + 指令限幅占比。
+
+    `rows` 传整个回合或只传牵引段（`tow_rows`）都可以：偏移/朝向按传进来的那段统计，
+    限幅占比用 `vy_limit` / `wz_limit` 判「PD 是否已经顶到上限」——顶满说明这条工况的
+    侧向扰动超出简单 PD 的权限，是任务必要性的一类证据。
+    """
+    if not rows:
+        return _nan_summary("没有记录")
+    if vy_limit <= 0.0 or wz_limit <= 0.0:
+        raise ValueError("vy/wz 限幅必须是正数")
+    offsets = _col(rows, "lane_offset_m")
+    headings = [wrap_to_pi(value) if abs(value) <= math.pi else value
+                for value in _col(rows, "lane_heading_rad")]
+    vy_commands = _col(rows, "velocity_cmd_vy_mps")
+    wz_commands = _col(rows, "velocity_cmd_wz_radps")
+    tow_rows = rows if tow_rows is None else tow_rows
+    saturated_vy = sum(1 for value in vy_commands if abs(value) >= 0.999 * vy_limit)
+    saturated_wz = sum(1 for value in wz_commands if abs(value) >= 0.999 * wz_limit)
+    return {
+        "available": True,
+        "samples": len(rows),
+        "tow_samples": len(tow_rows),
+        "y_rms_m": _rms(offsets),
+        "y_max_abs_m": max(abs(value) for value in offsets),
+        "heading_rms_rad": _rms(headings),
+        "heading_max_abs_rad": max(abs(value) for value in headings),
+        "vy_saturated_frac": saturated_vy / len(vy_commands),
+        "wz_saturated_frac": saturated_wz / len(wz_commands),
+        "vy_limit_mps": vy_limit,
+        "wz_limit_radps": wz_limit,
+        # 牵引段的横向/朝向（负载侧向力最大的那段）
+        "tow_y_rms_m": _rms(_col(tow_rows, "lane_offset_m")),
+        "tow_y_max_abs_m": (max(abs(value) for value in _col(tow_rows, "lane_offset_m"))
+                            if tow_rows else None),
+    }
+
+
 def contact_witness(rows, *, record_dt: float, deck_limit_n: float = 1.0,
                     dv_limit_at_5ms: float = 0.015) -> dict:
     """追尾的三路见证（与 `summarize_tow.py` 同口径，但对记录步长做了标定）。
@@ -886,7 +985,8 @@ def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connecti
                          cart_mass_kg: float, schedule: PhaseSchedule, record_dt: float,
                          tow_summary: dict, thresholds: dict, joint_names=None,
                          torque_limits=None, transition_window_s: float = 1.0,
-                         slope_backend: str = "gravity") -> dict:
+                         slope_backend: str = "gravity", lane_keeping: str = "off",
+                         lane_vy_limit: float = 0.4, lane_wz_limit: float = 0.8) -> dict:
     """由逐物理步记录算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。"""
     station = phase_rows(rows, "station")
     tow = phase_rows(rows, "tow")
@@ -916,6 +1016,8 @@ def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connecti
                       command_mps=command_mps, transition_window_s=transition_window_s,
                       gap_margin_limit_m=thresholds["gap_margin_limit_m"],
                       joint_names=joint_names, torque_limits=torque_limits)
+    lane = lane_stats(rows, vy_limit=lane_vy_limit, wz_limit=lane_wz_limit, tow_rows=tow)
+    lane.update({"mode": lane_keeping, "yaw_target_rad": 0.0})
     stability = stability_stats(rows, transition_window_s=transition_window_s,
                                 record_dt=record_dt,
                                 fall_height_limit_m=thresholds["fall_height_limit_m"],
@@ -930,6 +1032,7 @@ def compute_case_metrics(rows, *, command_mps: float, slope_deg: float, connecti
         "startup": startup,
         "speed": speed,
         "stop": stop,
+        "lane": lane,
         "stability": stability,
     }
     metrics["verdict"] = classify_case(metrics, thresholds)
@@ -968,6 +1071,14 @@ def classify_case(metrics: dict, thresholds: dict) -> dict:
         reasons.append("stop_collision")
     elif stop.get("gap_margin_low"):
         reasons.append("stop_margin_low")
+    lane = metrics.get("lane", {})
+    if lane.get("available") and lane.get("mode") != "off":
+        if lane.get("y_max_abs_m") is not None and \
+                lane["y_max_abs_m"] > thresholds["lane_y_limit_m"]:
+            reasons.append("lane_deviation")
+        elif lane.get("heading_max_abs_rad") is not None and \
+                lane["heading_max_abs_rad"] > math.radians(thresholds["lane_heading_limit_deg"]):
+            reasons.append("lane_deviation")
     if speed.get("available") and speed.get("mae_mps") is not None and \
             speed["mae_mps"] > thresholds["speed_mae_ratio_limit"] * metrics["case"]["velocity_mps"]:
         reasons.append("speed_track_error")
@@ -1012,6 +1123,13 @@ def case_report_row(metrics: dict) -> dict:
         "speed_rmse_mps": speed.get("rmse_mps"),
         "speed_ratio_mean": speed.get("ratio_mean"),
         "speed_steady_mae_mps": speed.get("steady_mae_mps"),
+        "lane_mode": metrics.get("lane", {}).get("mode"),
+        "lane_y_rms_m": metrics.get("lane", {}).get("y_rms_m"),
+        "lane_y_max_abs_m": metrics.get("lane", {}).get("y_max_abs_m"),
+        "lane_heading_rms_rad": metrics.get("lane", {}).get("heading_rms_rad"),
+        "lane_heading_max_abs_rad": metrics.get("lane", {}).get("heading_max_abs_rad"),
+        "lane_vy_saturated_frac": metrics.get("lane", {}).get("vy_saturated_frac"),
+        "lane_wz_saturated_frac": metrics.get("lane", {}).get("wz_saturated_frac"),
         "stop_cart_coast_distance_m": stop.get("cart_coast_distance_m"),
         "stop_cart_coast_to_rest_m": stop.get("cart_coast_to_rest_m"),
         "stop_cart_speed_at_stop_mps": stop.get("cart_speed_at_stop_mps"),
@@ -1163,8 +1281,16 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
              f"{thresholds['fall_height_limit_m']:g} m 或 |pitch| > "
              f"{thresholds['pitch_limit_rad']:g} rad 的样本 > "
              f"{thresholds['pitch_fraction_limit'] * 100:g}%",
-             "", "判定码：`OK` 通过；`LOW` 停车余量低；`JNT` 关节响应超限；`SPD` 跟速超限；"
-             "`COL` 追尾接触；`FALL` 跌倒；`INV` 记录不可用。", "",
+             "", "判定码：`OK` 通过；`LOW` 停车余量低；`LAT` 横向/朝向保持超限；`JNT` 关节响应超限；"
+             "`SPD` 跟速超限；`COL` 追尾接触；`FALL` 跌倒；`INV` 记录不可用。", "",
+             "横向/朝向保持："
+             + ("**关闭**（指令只有 vx）" if args_dict["lane_keeping"] == "off" else
+                f"PD（kp_y={args_dict['lane_kp_y']:g}、kd_y={args_dict['lane_kd_y']:g}、"
+                f"kp_yaw={args_dict['lane_kp_yaw']:g}、kd_yaw={args_dict['lane_kd_yaw']:g}；"
+                f"vy 限幅 {args_dict['lane_vy_limit']:g} m/s、wz 限幅 "
+                f"{args_dict['lane_wz_limit']:g} rad/s）")
+             + f"；判据 |y| ≤ {thresholds['lane_y_limit_m']:g} m 且 |yaw| ≤ "
+               f"{thresholds['lane_heading_limit_deg']:g}°（**前进速度不参与 PD，只给指令**）", "",
              "## 逐坡度判定矩阵", "", format_verdict_matrix(case_summaries, slopes=slopes), "",
              "## 分组统计", ""]
     for name, label in (("flat", "平地"), ("uphill", "上坡"), ("downhill", "下坡")):
@@ -1211,9 +1337,10 @@ def parse_args(argv=None):
                         help="小车目标总质量档（kg，质量与惯量同比例缩放）")
     parser.add_argument("--connections", nargs="+", choices=list(CONNECTIONS),
                         default=list(CONNECTIONS), help="连接类型（三类）")
-    parser.add_argument("--slopes", type=float, nargs="+", default=list(DEFAULT_SLOPES_DEG),
+    parser.add_argument("--slopes", type=float, nargs="+", default=None,
                         help="坡度（deg）：gravity 后端用带符号的恒定坡度（+ = 上坡）；"
-                             "terrain 后端只接受坡度量级 0/5/10，每条 lane 的剖面自带上下坡")
+                             "terrain 后端只接受坡度量级 0/5/10，每条 lane 的剖面自带上下坡。"
+                             "缺省按后端给（gravity 0/±5/±10；terrain 0/5/10）")
     parser.add_argument("--slope-backend", choices=("gravity", "terrain"), default="gravity",
                         help="坡度实现：gravity = 现有平地 + 旋转重力（默认，物理等价）；"
                              "terrain = 将来的坡面地形资产（尚未实现，会报错）")
@@ -1263,12 +1390,28 @@ def parse_args(argv=None):
     parser.add_argument("--device", default="cuda:0", help="仿真设备")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将执行的网格与命令，不启动 Isaac Sim（标准库即可运行）")
+    # 横向/朝向保持（PD）：默认开，前进速度不参与
+    parser.add_argument("--lane-keeping", choices=("pd", "off"), default="pd",
+                        help="横向/朝向保持：pd = 用 PD 生成 vy/wz 指令把机器人压在中线并保持超前；"
+                             "off = 只给 vx 指令（旧行为）")
+    for name, value in DEFAULT_LANE_OPTIONS.items():
+        parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value, dest=name,
+                            help=f"横向/朝向 PD 参数（默认 {value}）")
     # 阈值
     for name, value in DEFAULT_THRESHOLDS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value,
                             dest=name, help=f"判定阈值（默认 {value}）")
     args = parser.parse_args(argv)
 
+    if args.slopes is None:
+        args.slopes = list(DEFAULT_SLOPES_TERRAIN_DEG if args.slope_backend == "terrain"
+                           else DEFAULT_SLOPES_DEG)
+    for name, value in DEFAULT_LANE_OPTIONS.items():
+        if not math.isfinite(getattr(args, name)) or getattr(args, name) < 0.0:
+            parser.error(f"--{name.replace('_', '-')} 必须是非负有限数")
+    for name in ("lane_vy_limit", "lane_wz_limit"):
+        if getattr(args, name) <= 0.0:
+            parser.error(f"--{name.replace('_', '-')} 必须是正数")
     if not args.velocities:
         parser.error("--velocities 不能为空")
     for velocity in args.velocities:
@@ -1388,6 +1531,15 @@ def planned_grid_lines(args) -> list:
                      else f"真实坡面剖面（平地→上坡→坡顶→下坡→平地；每档一个 {per_slope} 块的"
                           f"紧凑网格，cell 取自训练网格的 mdp/connection_grid）"))
     lines.append(frame_line)
+    if args.lane_keeping == "off":
+        lines.append("[plan] 横向/朝向保持：**关闭**（指令只有 vx，机器人可能漂离中线）")
+    else:
+        lines.append(
+            f"[plan] 横向/朝向保持：PD（kp_y={args.lane_kp_y:g} kd_y={args.lane_kd_y:g} "
+            f"kp_yaw={args.lane_kp_yaw:g} kd_yaw={args.lane_kd_yaw:g}；"
+            f"vy≤{args.lane_vy_limit:g} m/s、wz≤{args.lane_wz_limit:g} rad/s）"
+            f"⇒ 目标 y=0（lane 中线）、yaw=0（超前）；**vx 只给指令、不参与 PD**"
+            f"；判据 |y|≤{args.lane_y_limit_m:g} m、|yaw|≤{args.lane_heading_limit_deg:g}°")
     return lines
 
 
@@ -1430,6 +1582,15 @@ def main(args):
         "thresholds": thresholds,
         "ground_friction": args.ground_friction,
         "wheel_damping_nms_per_rad": args.wheel_damping,
+        "lane_keeping": {
+            "mode": args.lane_keeping,
+            "note": "横向/朝向由 PD 生成送冻结策略的 vy/wz 指令把机器人压在中线并保持超前；"
+                    "前进速度 vx 只给脚本指令，不参与 PD",
+            "yaw_target_rad": 0.0,
+            "gains": {name: getattr(args, name) for name in DEFAULT_LANE_OPTIONS},
+            "limits": {name: getattr(args, name)
+                       for name in ("lane_y_limit_m", "lane_heading_limit_deg")},
+        },
         "slope": {"backend": args.slope_backend, "settle": args.slope_settle,
                   "hold_damping_nms_per_rad": args.hold_damping,
                   "frames": {f"{slope:+g}": slope_ground_plan(slope, args.slope_backend)
@@ -1788,14 +1949,37 @@ def main(args):
             cart.set_joint_effort_target(effort)
             return state
 
+        def lane_command(vx_command):
+            """组装送冻结策略的 3 维速度指令 `(vx, vy, wz)`。
+
+            `vx` 是**单纯给指令**（脚本调度，用户要求不参与 PD）；`vy`/`wz` 由横向/朝向 PD
+            按当前状态算出（`--lane-keeping pd`），目标是 lane 中线（`y = 0`）与超前朝向
+            （`yaw = 0`，即 lane 的 +x 方向）。PD 关掉时 vy = wz = 0，与旧行为一致。
+            """
+            zeros = torch.zeros_like(vx_command)
+            if args.lane_keeping == "off":
+                return torch.stack([vx_command, zeros, zeros], dim=1)
+            local = robot.data.root_pos_w - origins
+            lane_y = local[:, 1]
+            quat = robot.data.root_quat_w
+            qw, qx, qy, qz = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+            lane_yaw = torch.atan2(2.0 * (qw * qz + qx * qy),
+                                   1.0 - 2.0 * (qy * qy + qz * qz))
+            body_vy = robot.data.root_lin_vel_b[:, 1]
+            body_wz = robot.data.root_ang_vel_b[:, 2]
+            # 与 `lane_keeping_command()` 同一公式（横向误差投到机体系横向轴：−y·cos(yaw)）
+            vy_command = args.lane_kp_y * (-lane_y * torch.cos(lane_yaw)) - args.lane_kd_y * body_vy
+            wz_command = args.lane_kp_yaw * (0.0 - lane_yaw) - args.lane_kd_yaw * body_wz
+            return torch.stack([vx_command,
+                                vy_command.clamp(-args.lane_vy_limit, args.lane_vy_limit),
+                                wz_command.clamp(-args.lane_wz_limit, args.lane_wz_limit)], dim=1)
+
         def policy_step(command_tensor):
             parts = parts_from_robot_state(
                 base_ang_vel=robot.data.root_ang_vel_b,
                 projected_gravity=math_utils.quat_apply_inverse(
                     robot.data.root_quat_w, per_env(gravity_world)),
-                velocity_command=torch.stack(
-                    [command_tensor, torch.zeros_like(command_tensor),
-                     torch.zeros_like(command_tensor)], dim=-1),
+                velocity_command=command_tensor,
                 joint_pos=robot.data.joint_pos[:, policy_to_asset],
                 joint_vel=robot.data.joint_vel[:, policy_to_asset])
             out = policy.step(parts)
@@ -1846,7 +2030,10 @@ def main(args):
         def make_row(env_index: int, *, phase: str, step: int, command: float,
                      gravity, joint_targets, joint_err_rms: float, joint_err_max: float,
                      frame: dict, progress_robot, progress_load,
-                     robot_height, load_height, pitch_offsets) -> dict:
+                     robot_height, load_height, pitch_offsets,
+                     command_vy: float, command_wz: float, lane_offset: float,
+                     lane_heading: float, body_vy: float, body_wz: float,
+                     load_offset: float) -> dict:
             quat = robot.data.root_quat_w[env_index]
             qw, qx, qy, qz = (float(value) for value in quat)
             pitch = math.asin(max(-1.0, min(1.0, 2 * (qw * qy - qz * qx))))
@@ -1890,6 +2077,13 @@ def main(args):
                 "slope_deg": slope_cases[env_index].slope_deg,
                 "gravity_x_mps2": float(gravity[0]),
                 "gravity_z_mps2": float(gravity[2]),
+                "velocity_cmd_vy_mps": command_vy,
+                "velocity_cmd_wz_radps": command_wz,
+                "lane_offset_m": lane_offset,
+                "lane_heading_rad": lane_heading,
+                "robot_vy_b_mps": body_vy,
+                "robot_wz_b_radps": body_wz,
+                "load_offset_m": load_offset,
                 "slope_backend": frame["backend"],
                 "connection": slope_cases[env_index].connection,
                 "cart_mass_kg": actual_masses[env_index],
@@ -1962,19 +2156,23 @@ def main(args):
                                         dtype=torch.float32, device=args.device)
             command_tensor = torch.zeros(num_envs, dtype=torch.float32, device=args.device)
             pass_started = time.time()
+            command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32,
+                                         device=args.device)
             for step in range(args.schedule.total_steps):
                 phase = args.schedule.phase_of(step)
                 step_in_phase = args.schedule.step_in_phase(step)
                 if phase == "tow":
                     if args.command_shaping == "direct":
-                        command_tensor = velocities
+                        vx_command = velocities
                     else:
-                        command_tensor = velocities * shaped_command(
+                        vx_command = velocities * shaped_command(
                             phase="tow", step_in_phase=step_in_phase, velocity=1.0,
                             shaping="ramp", ramp_time_s=args.ramp_time_s, dt=dt)
                 else:
-                    command_tensor = torch.zeros_like(velocities)
+                    vx_command = torch.zeros_like(velocities)
                 if step % decimation == 0:
+                    # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变
+                    command_tensor = lane_command(vx_command)
                     joint_targets = policy_step(command_tensor)
                 hold = args.hold_damping if (phase == "station" and args.slope_settle == "hold") else 0.0
                 state = apply_rope_and_resistance(wheel_damping=args.wheel_damping,
@@ -1988,6 +2186,14 @@ def main(args):
                 err_rms = joint_err.pow(2).mean(dim=1).sqrt().tolist()
                 err_max = joint_err.abs().amax(dim=1).tolist()
                 commands = command_tensor.tolist()
+                lane = (robot.data.root_pos_w - origins)[:, 1].tolist()
+                quat = robot.data.root_quat_w
+                qw, qx, qy, qz = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
+                headings = torch.atan2(2.0 * (qw * qz + qx * qy),
+                                       1.0 - 2.0 * (qy * qy + qz * qz)).tolist()
+                body_vy = robot.data.root_lin_vel_b[:, 1].tolist()
+                body_wz = robot.data.root_ang_vel_b[:, 2].tolist()
+                load_lane = (cart.data.root_pos_w - origins)[:, 1].tolist()
                 # 坡面坐标（一次张量运算，避免逐 env 做设备同步）
                 relative_robot = robot.data.root_pos_w - origins
                 relative_load = cart.data.root_pos_w - origins
@@ -2015,13 +2221,19 @@ def main(args):
                     pitch_offsets = [0.0] * num_envs
                 for env_index in range(num_envs):
                     case_rows[env_index].append(make_row(
-                        env_index, phase=phase, step=step, command=commands[env_index],
+                        env_index, phase=phase, step=step,
+                        command=commands[env_index][0],
                         gravity=gravity, joint_targets=joint_targets,
                         joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
                         frame=frame,
                         progress_robot=progress_robot, progress_load=progress_load,
                         robot_height=height_robot, load_height=height_load,
-                        pitch_offsets=pitch_offsets))
+                        pitch_offsets=pitch_offsets,
+                        command_vy=commands[env_index][1],
+                        command_wz=commands[env_index][2],
+                        lane_offset=lane[env_index], lane_heading=headings[env_index],
+                        body_vy=body_vy[env_index], body_wz=body_wz[env_index],
+                        load_offset=load_lane[env_index]))
             print(f"[pass slope {slope:+g} deg] 完成，用时 {time.time() - pass_started:.1f} s",
                   flush=True)
 
@@ -2049,7 +2261,8 @@ def main(args):
                     schedule=args.schedule, record_dt=record_dt, tow_summary=tw_summary,
                     thresholds=thresholds, joint_names=list(policy_cfg.joint_names),
                     torque_limits=torque_limits, transition_window_s=args.transition_window,
-                    slope_backend=args.slope_backend)
+                    slope_backend=args.slope_backend, lane_keeping=args.lane_keeping,
+                    lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit)
                 metrics["summarize_tow"] = tw_summary
                 summary = {
                     "case": case.to_dict(),
@@ -2102,7 +2315,9 @@ def main(args):
         labels = {name: getattr(args, name) for name in
                   ("velocities", "connections", "cart_masses", "ground_friction",
                    "command_shaping", "ramp_time_s", "slope_backend", "slope_settle",
-                   "record_every", "write_csv", "env_spacing")}
+                   "record_every", "write_csv", "env_spacing", "lane_keeping",
+                   "lane_kp_y", "lane_kd_y", "lane_kp_yaw", "lane_kd_yaw",
+                   "lane_vy_limit", "lane_wz_limit")}
         report = {
             "question": experiment["question"],
             "grid": experiment["grid"], "thresholds": thresholds,
