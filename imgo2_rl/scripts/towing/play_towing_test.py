@@ -1355,6 +1355,9 @@ def parse_args(argv=None):
     parser.add_argument("--write-csv", choices=("failed", "all", "none"), default="failed",
                         help="逐记录步 CSV 的写入范围（all = 800 环境全写，可能数百 MB）")
     parser.add_argument("--headless", action="store_true", help="无显示运行")
+    parser.add_argument("--compact-log", action="store_true",
+                        help="逐 case 只打印非 OK 的行（+ 每 100 个 case 一条进度）；"
+                             "800 环境完整网格默认会刷 800 行逐 env 判读")
     parser.add_argument("--device", default="cuda:0", help="仿真设备")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将执行的网格、逐 env 分配与代价，不启动 Isaac Sim（标准库即可运行）")
@@ -2230,15 +2233,21 @@ def main(args):
             if should_write:
                 write_case_artifacts(case, rows)
             verdict = metrics["verdict"]
-            print(f"[case] env{case.env_index:04d} c{case.column:02d}r{case.row:02d} "
-                  f"g{case.grade_deg:g} v{case.velocity_mps:g} {case.connection} "
-                  f"L{case.length_m:.2f} m{actual_masses[env_index]:g}kg ⇒ {verdict['code']}"
-                  f"{(' [' + ','.join(verdict['reasons']) + ']') if verdict['reasons'] else ''}"
-                  f"  起步关节RMS={_fmt(metrics['startup']['joint_rms_rad'])} "
-                  f"跟速MAE={_fmt(metrics['speed'].get('mae_mps'))} "
-                  f"滑移={_fmt(metrics['stop'].get('cart_coast_distance_m'))} "
-                  f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
-                  f"横向|y|max={_fmt(metrics['lane'].get('y_max_abs_m'))}", flush=True)
+            # 逐 case 判读行：800 环境完整网格会刷 800 行（每行还带 5 个指标）⇒ 提供与训练脚本
+            # 同名的 `--compact-log`：只打非 OK 的行 + 每 100 个 case 一条进度。分项指标仍然逐 env
+            # 完整写进 `summaries/<case>.json` 与 `report.*`，只是不再往终端倒。
+            if not args.compact_log or verdict["code"] != "OK":
+                print(f"[case] env{case.env_index:04d} c{case.column:02d}r{case.row:02d} "
+                      f"g{case.grade_deg:g} v{case.velocity_mps:g} {case.connection} "
+                      f"L{case.length_m:.2f} m{actual_masses[env_index]:g}kg ⇒ {verdict['code']}"
+                      f"{(' [' + ','.join(verdict['reasons']) + ']') if verdict['reasons'] else ''}"
+                      f"  起步关节RMS={_fmt(metrics['startup']['joint_rms_rad'])} "
+                      f"跟速MAE={_fmt(metrics['speed'].get('mae_mps'))} "
+                      f"滑移={_fmt(metrics['stop'].get('cart_coast_distance_m'))} "
+                      f"停车最小间隙={_fmt(metrics['stop'].get('min_clearance_coast_m'))} "
+                      f"横向|y|max={_fmt(metrics['lane'].get('y_max_abs_m'))}", flush=True)
+            if args.compact_log and (env_index + 1) % 100 == 0:
+                print(f"[cases] 已判读 {env_index + 1}/{len(cases)}", flush=True)
 
         # ------------------------------------------------------------ 报告
         grades = sorted({case.grade_deg for case in cases})
