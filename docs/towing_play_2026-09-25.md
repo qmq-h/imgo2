@@ -1,5 +1,7 @@
 # 拖曳上层策略回放指令、结果与 `model_2000.pt` 前置核对（2026-09-25）
 
+> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励）；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为 `spawn_margin(0.85) × 出生间隙`、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
+
 > **2026-10-08 起本文的复现步骤已失效**：动作/观测契约已改为 57 维帧 + 6 维 decoder + 12 维关节残差动作，`model_2000.pt`（56 维 actor／5 维 decoder）与新契约不兼容，按本文命令回放会因维数不符而失败。本文保留为该次 run 的记录，现行契约见 [残差动作与三维拉力记录](towing_deltapos_residual_2026-10-08.md) 与 README TOW-06。
 
 关联问题：TOW-03（上层训练／验收）、TOW-05（导出件与 sim2sim 闭环）。

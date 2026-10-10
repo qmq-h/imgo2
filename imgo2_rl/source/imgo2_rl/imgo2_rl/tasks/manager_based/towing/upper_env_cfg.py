@@ -9,7 +9,7 @@
 
 回合结构（2026-10-09 恢复三段制）：settle（指令 0，静止稳定）→ tow（指令 = tow_speed）
 → **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
-让 `stop_towing_force`／`extra_distance` 有真实相位可用。任务已注册为
+让 `stop_towing_force` 有真实相位可用。任务已注册为
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing_training_prep_2026-09-22.md``。
 
@@ -136,9 +136,12 @@ class UpperActionsCfg:
 
     残差尺度取冻结策略契约的 `action_scale`，所以这里不再有 `acceleration_*`／
     `reference_*` 两组限制：送给冻结策略的速度指令由脚本调度产生，不由网络积分。
-    偏移头（cmd vel 头）的三个尺度与两个「停机之后」开关都在
+    偏移头的三个尺度与「停机之后」开关 `stop_command_ramp_s` 都在
     `mdp.HierarchicalVelocityActionCfg` 上（默认值 = 用户 2026-10-10 建议值，
-    `stop_command_ramp_s` / `post_stop_allowance_m` 默认 0.0 = 今天的行为）。
+    `stop_command_ramp_s` 默认 0.0 = 今天的行为）。
+    另一个「停机之后」旋钮 `post_stop_allowance_m` **不在本文件**：它是
+    `mdp.post_stop_distance` 的形参，而该函数自 2026-10-10 起**已不作为奖励项**
+    （`extra_distance` 被删除），所以它目前未接入奖励、只保留供复用。
     """
 
     high_level_velocity = mdp.HierarchicalVelocityActionCfg(
@@ -205,7 +208,9 @@ class UpperRewardsCfg:
     `low_level_pos_error` 罚**实际离底层期望多远**：冻结策略自己输出的关节位置 vs 实测（参考量不含残差；残差 δ 是补偿这项误差的执行器））；
     拉力方向一项（`towing_force_y`：机体系 y 分量占比，要求拉力落在矢状面内）；
     足端一项（`feet_slide`：着地脚的滑动速度，与 PPO rough 同式同权重）；
-    停止类两项（`stop_towing_force`／`extra_distance`，只在指令归零之后生效）。
+    停止类**一项**（`stop_towing_force`，只在指令归零之后生效）。
+    **2026-10-10 删除 `extra_distance`**（`mdp.post_stop_distance`，用户决定；理由见该函数
+    docstring：与 `tracking_velocity` 在停车段冗余、量级小 20 倍）。
     **横向与朝向不在这里**：2026-10-09 用户决定用 PD 外环负责，`tracking_velocity` 也只算纵向 `vx`。
     原先与之并列的 `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
     `reference_command`，该式恒为 0；其"起步即有效、全域有梯度"的作用由
@@ -254,15 +259,23 @@ class UpperRewardsCfg:
     # 无小车环境用 cart_present 屏蔽。
     clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
-    # 【硬最小间距】间隙低于 `ratio × 本 env 连接长度` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
+    # 【硬最小间距】间隙低于 `spawn_margin × 出生间隙` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
     # 与上面 clearance 的分工：clearance 是"近了要缓"的软障碍；本项是"不得拉太近"的硬约束，
-    # 且按**连接长度比例**给出阈值（不是绝对量）。weight 的单位是"每米缺口扣多少"。
-    # **ratio=0.25（2026-10-08 随 20 行长度网格由 0.40 下调）**：阈值逐 env 用
-    # `term.connection_length`，不再是单一 `rope_length`。spawn 间隙 =
-    # sqrt((0.5·L0)² − 0.17²) + 0.0025，最短行 L0=0.6 时约 0.250 m > 0.25×0.6=0.15 m，
-    # 故**网格所有行 spawn 都精确为 0**（用户 2026-09-23 要求初始不生效）。
-    min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0,
-                            params={"ratio": 0.25, "softness": 0.02})
+    # 且按**出生几何**给出阈值（不是绝对量、也不再是"连接长度的固定比例"）。
+    # **2026-10-10 口径变更（用户批准）**：`ratio=0.25 × 连接长度` → `spawn_margin=0.85 × 出生间隙`
+    # （出生间隙 = sqrt((spawn_ratio·L)² − Δz²) + base_offset，逐 env 由
+    # `connection_grid.initial_attachment_distance` / 出生高度差 / 四个表面常量解析算出，
+    # 缓存在 `upper_mdp.HierarchicalVelocityAction.spawn_clearance`；推导与逐行数值见
+    # `mdp.min_clearance_violation` 的 docstring）。**权重 −2.0 → −5.0**：每步代价
+    # = w × 缺口 × step_dt ⇒ 超阈值 0.2 m 时 ≈ −0.05/步 = `tracking_velocity` 满额，
+    # 有动机但不压倒；旧的 −2 只有 −0.02/步（满额的 40%），停车段太弱。
+    # **留 15% 余量（spawn_margin = 0.85 < 1）的原因**：取 1.0 则出生瞬间缺口恰为 0，
+    # 任何沉降/微动都会在出生那一拍误罚，破坏已被测试钉住的不变量「spawn 处精确为 0」。
+    # 语义：绳行阈值 ≈ 0.62–0.67·L（L=0.5 → 0.310 m、L=1.5 → 1.012 m），牵引段绳绷直时
+    # 间隙 ≈L ≫ 0.68L 不触发，停车后车斗逼近穿过阈值时才开始出力（＝"鼓励停车后再走几步"
+    # 的梯度）；杆行由连杆固定挂点距 ⇒ 间隙恒等于出生间隙 > 0.85×它 ⇒ **永不触发**（物理正确）。
+    min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-5.0,
+                            params={"spawn_margin": 0.85, "softness": 0.02})
 
     # 【朝向惩罚：2026-10-09 已关闭】横向与朝向改由 **PD 外环**负责（`upper_mdp` 的
     # `_lane_keeping_vy/_wz` 写 `loco_command[:,1:3]`，用户决定），所以这里**不再注册**
@@ -279,19 +292,20 @@ class UpperRewardsCfg:
     # 【停车后卸力】`‖F‖/(‖F‖+10)`，有界归一化。表达"停车后应松绳"：别一直拽着、
     # 也别把小车当锚。门控是 `elapsed_s >= stop_time_s`；`stop_time_s` 在进度越过
     # `stop_distance_m`（**已越过坡**）那一拍写入，未停车前是 `+inf` ⇒ 本项精确为 0。
-    # 与 `extra_distance` 配对，防"为卸载拉力而继续前冲"与"停死后被追尾"两种极端。
+    # 2026-10-10：原先与它配对的 `extra_distance`（`mdp.post_stop_distance`, −0.1）已删除
+    # （`post_stop_distance` 函数与它的 `post_stop_allowance_m` 形参保留供复用/诊断；
+    # 删除理由见该函数 docstring）。停车段现在**只剩本项**：「停车后继续走几步」由
+    # `min_clearance` 的出生几何梯度与动作侧的 1 维 vx 偏移头表达，不再被距离项反向惩罚。
     stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
                                 params={"force_scale": 10.0})
 
-    # 【停车后额外位移】`relu(x − x_stop − allowance)`：越过停车点的距离，罚"停不住继续滑"。
-    # 基线 `stop_origin_x` 是指令归零那一拍的 x，所以不含牵引段的前进。
-    # `post_stop_allowance_m`（2026-10-10 新增，**默认 0.0 = 今天的行为**，公式退化为
-    # `relu(x − x_stop)`）：要让策略学会「STOP 后按车重/坡度再走两步」就把 `extra_distance`
-    # 的这个参数与 `actions.high_level_velocity.stop_command_ramp_s` 一起改成 0.5–1.0 m /
-    # 1.0–2.0 s，否则本项（−0.1）与新增的 1 维 vx 偏移头对打 —— 偏移头一让机器人前进，
-    # 本项立刻扣分，策略学到的最优解是"永远不碰偏移头"。
-    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1,
-                             params={"post_stop_allowance_m": 0.0})
+    # 【停车后额外位移】**2026-10-10 用户决定删除本奖励项**（原先注册为 −0.1 的
+    # `mdp.post_stop_distance`；函数本体与其 `post_stop_allowance_m` 形参保留在 `upper_mdp`）。
+    # 因此 `post_stop_allowance_m` **目前未接入奖励**，只作为该函数的形参保留供复用：
+    # 0.0 = 历史口径 `relu(x − x_stop)`；0.5–1.0 m 表示"停车后允走量"。日后要恢复本项就往
+    # `UpperRewardsCfg` 里加一条以 `mdp.post_stop_distance` 为 func 的 `RewTerm`
+    # （AST 守卫 `test_extra_distance_reward_term_is_removed_but_helper_survives` 同时钉住
+    # "现在没有"与"函数仍在"）。
 
     # ============================ 拉力方向（机体系 y 分量为 0）============================
 

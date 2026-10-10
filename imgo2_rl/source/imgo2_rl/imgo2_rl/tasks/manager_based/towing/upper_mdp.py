@@ -116,8 +116,10 @@ class HierarchicalVelocityAction(ActionTerm):
         self.tow_start_s = torch.full((env.num_envs,), cfg.tow_start_s, device=env.device)
         self.start_progress = torch.zeros(env.num_envs, device=env.device)
         # STOP 相位状态（2026-10-09 恢复）：走到 `stop_distance_m`（必须已越过坡）那一刻把指令
-        # 置零，并记下**该时刻**与**该时刻的 x**——两条 post_stop 奖励就靠这两个量定相位。
-        # `stop_time_s` 初值 +inf ⇒ `elapsed_s >= stop_time_s` 恒假，未停车前两条奖励精确为 0。
+        # 置零，并记下**该时刻**与**该时刻的 x**——post_stop 奖励就靠这两个量定相位。
+        # `stop_time_s` 初值 +inf ⇒ `elapsed_s >= stop_time_s` 恒假，未停车前该项精确为 0。
+        # 2026-10-10：`post_stop_distance`（`extra_distance`）已从奖励表删除（见其 docstring），
+        # `stop_origin_x` 保留——它仍是「停车那一拍」的唯一记录，供复用/诊断。
         self.stop_time_s = torch.full((env.num_envs,), math.inf, device=env.device)
         self.stop_origin_x = self._asset.data.root_pos_w[:, 0].clone()
         self._was_stopped = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -161,10 +163,27 @@ class HierarchicalVelocityAction(ActionTerm):
         # 连接长度：绳是 L0、刚体是杆长 L（同一行的数值相同）。
         self.connection_length = torch.tensor(
             [[spec["length"]] for spec in specs], dtype=torch.float32, device=env.device)
-        # spawn 时的目标三维挂点距：绳 = 0.5·L0（留松弛）、刚体 = L。摆放小车时用。
+        # spawn 时的目标三维挂点距：绳 = SLACK_RATIO·L（留松弛）、刚体 = L。摆放小车时用。
         self.initial_distance = torch.tensor(
             [[spec["initial_distance"]] for spec in specs],
             dtype=torch.float32, device=env.device)
+        # **出生瞬间的「后表面 → 车斗前表面」间隙**（逐 env，摆位几何的解析解）。
+        # 与 `reset_towing_episode` 的摆位同源：三维挂点距被钉在 `initial_distance` 上，
+        # 水平分量 = `attachment_horizontal_gap(target, Δz)`（Δz = 两挂点高差；两个挂点的
+        # z 偏移都是 0，所以 Δz = 机器人/小车的出生高度之差，直接取各自的 `init_state.pos[2]`
+        # ——与 `reset_towing_episode` 读 `default_root_state[:, 2]` 是同一个值，但不依赖数据
+        # 缓冲区的初始化时机）；再减去两表面相对挂点的固定偏移
+        # `−robot_rear_surface_x − robot_attachment_x + cart_attachment_x − cart_front_surface_x`
+        # （= 0.0025 m，全部从 cfg 取，不手抄）。
+        # 2026-10-10：`min_clearance_violation` 的阈值改成 `spawn_margin × 它`（出生几何口径），
+        # 所以这里一次算好缓存；出生位姿固定（`robot_x/y/yaw_range` 全 0）⇒ 逐回合不变。
+        attachment_height_difference = (
+            self._asset.cfg.init_state.pos[2] - self._cart.cfg.init_state.pos[2])
+        self.spawn_clearance = (
+            attachment_horizontal_gap(self.initial_distance[:, 0],
+                                      delta_z=attachment_height_difference)
+            - cfg.robot_rear_surface_x - cfg.robot_attachment[0]
+            + cfg.cart_attachment[0] - cfg.cart_front_surface_x)
         # 弹性档 k/c：非弹性环境填第一档占位值（会被 MultiRopeModel 的掩码忽略），
         # 但不能填 0——`CompliantRope` 要求 k > 0。
         placeholder_k, placeholder_c = ELASTIC_KC[0]
@@ -604,7 +623,10 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     #: 它必须覆盖脚本速度范围（`episode_geometry.SPEED_RANGE = 0.4–1.5`），
     #: `upper_env_cfg.__post_init__` 有断言守着这条 —— 否则零偏移时脚本自己就被裁掉。
     amp_vx_range: tuple[float, float] = (-1.0, 1.5)
-    # ---- 2026-10-10 新增：两个「停机之后」开关，默认全关 = 今天的行为（不得在本轮改默认）----
+    # ---- 2026-10-10 新增：「停机之后」开关，默认关闭 = 今天的行为 ----
+    # 同批落地的另一个「停机之后」旋钮 `post_stop_allowance_m` 是 `post_stop_distance` 的
+    # **奖励 params**（不在本 cfg 上）；该奖励项已于 2026-10-10 删除（见 `post_stop_distance`
+    # 的 docstring），形参保留供复用。
     #: STOP 之后脚本 vx 在多少秒内从 tow_speed 线性降到 0。**0.0 = 关闭**（今天的脚本调度，
     #: 到点直接归零）。要让策略学会「停机续走」就设成 1.0–2.0 s：脚本侧先给出可跟的
     #: 参考量，偏移头只做按车重/坡度的自适应修正，而不是从零学一个不存在的步态。
@@ -924,33 +946,55 @@ def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
     return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
             * term.cart_present[:, 0])
-def min_clearance_violation(env, ratio, softness=0.02):
-    """铰链式「最小间距」惩罚：间隙低于 `ratio × 本 env 的连接长度` 时线性加大。
+def min_clearance_violation(env, spawn_margin, softness=0.02):
+    """铰链式「最小间距」惩罚：间隙低于 `spawn_margin × 出生间隙` 时与缺口成正比，高于则**精确为 0**。
 
-    为什么单独加一项（而不是复用 `clearance_barrier`）：`clearance_barrier` 是
-    softplus 软障碍，其"警戒距离"是绝对量（0.20 m）且线性区在警戒线**下方**；本项是
-    按**连接长度比例**给出的硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是
-    「不得拉得太近」，与「近了要缓」互补。
+    为什么单独加一项（而不是复用 `clearance_barrier`）：`clearance_barrier` 是 softplus
+    软障碍，其"警戒距离"是绝对量（0.20 m）且线性区在警戒线**下方**；本项是**相对出生几何**的
+    硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是「不得拉得太近」，与「近了要缓」互补。
 
-    **阈值必须逐 env 用连接长度**（2026-10-08 起）：场景是 40 列 × 20 行的网格，且 **2026-10-09
-    起绳与杆各有长度区间**（绳 0.5–1.5 m、杆 0.5–1.0 m；出生比 0.8 / 1.0）。写死单一长度会让短的
-    行走 spawn 就低于阈值而满额惩罚。用逐 env 的连接长度后，`ratio=0.25` 在**所有行**的 spawn
-    都低于实际间隙：
+    **2026-10-10 口径变更（用户批准）**：阈值基准由「`ratio × 本 env 连接长度`」改成
+    「`spawn_margin × 本 env 出生瞬间的间隙`」，权重由 −2.0 提到 **−5.0**；
+    `ratio` 形参删除，改传 `spawn_margin`（= 0.85）。
 
-    - 最短绳行 L=0.5：出生挂点距 0.8×0.5 = 0.4 m、间隙 ≈ √(0.4²−0.17²)+0.0025 ≈
-      **0.365 m** > 0.25×0.5 = **0.125 m** ⇒ 初始精确为 0；
-    - 最短杆行 L=0.5：出生挂点距 = 全长 0.5 m、间隙 ≈ √(0.5²−0.17²)+0.0025 ≈
-      **0.473 m** > **0.125 m** ⇒ 同样为 0。
+        threshold = spawn_margin × spawn_clearance
+        spawn_clearance = sqrt((spawn_ratio · L)² − Δz²) + base_offset
 
-    历史（2026-09-23，单一 L0=0.8 时）：初始「后表面→车斗」间隙约 0.349 m，ratio 由 0.6 降到
-    0.40 才让 spawn 不触发；2026-10-08 随 20×20 网格改为逐 env + ratio 0.25；2026-10-09 长度区间
-    先调到 0.6–1.2、同日再解耦为绳 0.5–1.5 / 杆 0.5–1.0 并把出生比提到 0.8，上述结论按新数值
-    复算仍成立。
+    其中（全部逐 env、从现有常量派生，不手抄数字）：
+
+    - `spawn_ratio` = 绳 `connection_grid.SLACK_RATIO`（现 0.8）/ 杆 **1.0**（连杆出生即全长）
+      —— 已经体现在 `term.initial_distance`（= `connection_grid.initial_attachment_distance`）里；
+    - `Δz` = 两挂点高差 = 机器人/小车 `default_root_state` 的高度差（现 0.17 m）；
+    - `base_offset = −robot_rear_surface_x − robot_attachment_x + cart_attachment_x
+      − cart_front_surface_x`（现 0.0025 m）——即「后表面↔车斗前表面」比挂点距多出来的固定量；
+    - `spawn_clearance` 在 `HierarchicalVelocityAction.__init__` 里一次算好并缓存。
+
+    **为什么留 15% 余量（`spawn_margin = 0.85 < 1`）**：若取 1.0，出生瞬间缺口恰好为 0，
+    任何沉降/微动都会在出生那一拍开始扣分，破坏本仓库已被测试钉住的不变量
+    「`min_clearance` 在 spawn 精确为 0」（用户 2026-09-23 要求初始不生效）。
+
+    **逐行语义**（L = 连接长度，网格见 `mdp/connection_grid.py`）：
+
+    - 绳行（L = 0.5–1.5 m，spawn_ratio 0.8）：阈值 ≈ **0.62–0.67 · L**
+      （L=0.5 → 0.310 m、L=1.5 → 1.012 m）。牵引段绳绷直 ⇒ 间隙 ≈ L ≫ 0.68·L，**不触发**；
+      停车后车斗逼近、间隙穿过阈值时才开始出力 —— 这正是用户要的「鼓励停车后继续走几步」的梯度；
+    - 杆行（L = 0.5–1.0 m，spawn_ratio 1.0）：连杆把三维挂点距固定在 L ⇒ 间隙恒等于出生间隙
+      ⇒ 阈值 = 0.85 × 间隙 < 间隙 ⇒ **永不触发**（物理正确：杆不会缩短，不存在「拉太近」）。
+
+    **权重的标定依据**：`RewardManager` 每步代价 = `weight × func × step_dt`（`step_dt = 0.05 s`）
+    ⇒ `w = −5` 时超出阈值 0.2 m 的违规 ≈ **−0.05/步**，恰等于 `tracking_velocity` 满额
+    （+1.0 × 0.05 = +0.05/步）⇒ **有动机但不压倒**跟踪项；旧的 −2 只有 −0.02/步（满额的 40%），
+    在停车段惯性/车重面前太弱，不足以改变「停车后是否再走两步」的取舍。
+
+    历史（2026-09-23 → 2026-10-09）：初始「后表面→车斗」间隙约 0.349 m，`ratio` 由 0.6 降到 0.40
+    才让 spawn 不触发；2026-10-08 随 20×20 网格改为逐 env + ratio 0.25；2026-10-09 长度区间解耦为
+    绳 0.5–1.5 / 杆 0.5–1.0 并把出生比提到 0.8。以上 ratio 口径已于 2026-10-10 全部作废。
     """
     term = _term(env)
     term.update_safety_state()
     clearance = term.rope_state[:, 0]
-    threshold = ratio * term.connection_length[:, 0]
+    # 出生几何阈值（逐 env 缓存）：`spawn_margin × 出生瞬间的间隙`。见上面 docstring。
+    threshold = spawn_margin * term.spawn_clearance
     gap = threshold - clearance
     if softness > 0:
         # 平滑只在**阈值下方**过渡：减去 softplus(0)*softness 使缺口 ≤ 0 时精确为 0，
@@ -1042,8 +1086,9 @@ def post_stop_towing_force(env, force_scale):
     （不是"一直生效"）。用有界归一化 `‖F‖/(‖F‖+force_scale)` 而不是原始范数，避免远端
     大拉力把回报尺度拉爆；无小车环境用 `cart_present` 屏蔽。
 
-    与 `extra_distance` 配对，防的是两种相反的极端：「为卸载拉力而继续前冲」与
-    「停死后被追尾」（后者由 `collision` 终止/惩罚兜底）。
+    与已删除的 `extra_distance`（2026-10-10）原是配对项，防的是两种相反的极端：「为卸载拉力而
+    继续前冲」与「停死后被追尾」（后者由 `collision` 惩罚兜底）。现在这一侧只剩本项；「停车后
+    继续走几步」由 `min_clearance` 的出生几何梯度（见其 docstring）与动作侧的 vx 偏移头表达。
     """
     term = _term(env)
     elapsed_s = env.episode_length_buf * env.step_dt
@@ -1060,10 +1105,19 @@ def post_stop_distance(env, post_stop_allowance_m=0.0):
     所以只统计 STOP 之后的滑行量，不含牵引段的前进。同样由 `stop_time_s` 门控，
     未停车前精确为 0。
 
-    ``post_stop_allowance_m``（2026-10-10 新增 cfg 参数，**默认 0.0 = 今天的行为**）：
-    允许停车后继续走的距离（m）。要让策略学会「STOP 后按车重/坡度再走两步」就设成
-    0.5–1.0 m —— 否则本项（−0.1）与新的 1 维 vx 偏移头**对打**：偏移头一让机器人前进，
-    本项立刻扣分。默认 0.0 时公式退化为 `relu(x − x_stop)`，与历史口径**逐位一致**。
+    **2026-10-10 用户决定：本函数已不作为奖励项**（`upper_env_cfg` 里的
+    `extra_distance = RewTerm(func=mdp.post_stop_distance, ...)` 已删除），函数本体与
+    `post_stop_allowance_m` 形参**保留**供复用/诊断。删除理由：
+
+    - 与 `tracking_velocity` 在停车段**高度冗余**：指令归零后 `vx → 0` 已经隐含位移只剩
+      不可避免的惯性滑行，再单独罚一次是同一个约束记两遍；
+    - **量级小 20 倍**：`w = −0.1` ⇒ 每步最多 −0.005（实际 −0.0025 量级），而
+      `tracking_velocity` 满额 +0.050/步 ⇒ 它压不住任何东西，还给「停车后按车重/坡度
+      再走两步」的动作侧方案凭空加一个反向梯度（偏移头一让机器人前进，本项立刻扣分）。
+
+    ``post_stop_allowance_m``（2026-10-10 TOW-21 落地时新增，默认 0.0）：允许停车后继续走的
+    距离（m）；若日后要重新启用本项，设 0.5–1.0 m 可让策略学会「STOP 后按车重/坡度再走两步」。
+    默认 0.0 时公式退化为 `relu(x − x_stop)`，与历史口径**逐位一致**。
     """
     term = _term(env)
     elapsed_s = env.episode_length_buf * env.step_dt

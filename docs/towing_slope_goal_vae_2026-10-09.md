@@ -7,6 +7,8 @@
 
 # 牵引坡面、目标终止与 VAE 构建记录
 
+> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励）；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为 `spawn_margin(0.85) × 出生间隙`、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
+
 日期：2026-10-09。目标基线为 main c49be10；桌面 imgo2_CMoE 分支的已有改动独立保留。
 
 ## 已修源码，待运行验证

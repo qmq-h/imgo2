@@ -1,5 +1,7 @@
 # 上层「双头」方案（cmd vel 头 + 关节残差头）与冲击窗口独立统计（2026-10-10，**已实现，v3**）
 
+> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励）；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为 `spawn_margin(0.85) × 出生间隙`、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
+
 ## 起因（用户 2026-10-10 的两点判断）
 
 1. **「用残差的方式很难学会在 cmd=0 之后继续前进」**。源码事实支持这一点：`upper_mdp.process_actions()`

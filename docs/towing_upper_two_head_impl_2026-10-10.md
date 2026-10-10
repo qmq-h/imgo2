@@ -45,10 +45,11 @@ vx 通道叠加偏移（这样奖励参考与送策略指令共享同一份 (vy,
 | `offset_min` / `offset_max` | 同上 | `-0.2` / `+0.6` | **偏移量本身**的头权限 |
 | `amp_vx_range` | 同上 | `(-1.0, 1.5)` | **合成后 vx** 的训练包络（见 §4） |
 | `stop_command_ramp_s` | 同上 | `0.0`（关闭） | STOP 后脚本 vx 在多少秒内线性降到 0 |
-| `post_stop_allowance_m` | `extra_distance` 的 `RewTerm.params` | `0.0`（关闭） | `relu(x − x_stop − allowance)` 的允走量 |
+| `post_stop_allowance_m` | `mdp.post_stop_distance` 的形参（原为 `extra_distance` 的 `RewTerm.params`） | `0.0`（关闭） | `relu(x − x_stop − allowance)` 的允走量。**2026-10-10 变更：`extra_distance` 已从奖励表删除 ⇒ 本参数目前未接入奖励**，只保留供复用（详见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README TOW-24） |
 
-两个「停机之后」开关默认全关 ⇒ 与迁移前的行为一致（见 §5 退化性）。用户明确要求本轮
-**不得**改默认值。
+「停机之后」开关 `stop_command_ramp_s` 默认关闭 ⇒ 与迁移前的行为一致（见 §5 退化性）。用户明确要求本轮
+**不得**改默认值。`post_stop_allowance_m` 在 2026-10-10 之后不再有任何奖励项消费它（同名形参仍在
+`mdp.post_stop_distance` 上）。
 
 ### 1.3 契约 v3
 
@@ -104,8 +105,12 @@ policy_frame(58) + robot_velocity(2) + cart_velocity(2) + rope_state(4)
    偏移在 `elapsed_s >= tow_start_s` 后生效。
 3. **脚本 ramp 作底** —— 落地 `stop_command_ramp_s`（默认 **0.0 = 关闭**，= 迁移前行为）。
    打开后 STOP 之后 `ramp_s` 秒内 `task_command[:,0]` 从 `tow_speed` 线性降到 0，
-   偏移头只做自适应修正而不是从零学步态；配套 `post_stop_allowance_m` 解除
-   `extra_distance`（−0.1）与新偏移头的对打。
+   偏移头只做自适应修正而不是从零学步态；配套 `post_stop_allowance_m`
+   （`post_stop_distance` 的允走量形参）解除 `extra_distance`（−0.1）与新偏移头的对打。
+   **2026-10-10 变更**：`extra_distance` 已从奖励表**删除**（理由：与 `tracking_velocity`
+   在停车段高度冗余、量级小 20 倍），所以这条「配套」只剩历史意义——`post_stop_allowance_m`
+   目前未接入奖励；停车段唯一的奖励项是 `stop_towing_force`。见
+   [奖励改动记录](towing_reward_retune_2026-10-10.md)。
 
 ---
 
@@ -172,7 +177,9 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
   逐值相等；`ramp_s=2.0` 时 5.0 s→0.8、6.0 s→0.4、7.0 s→0
   （`test_scheduled_vx_matches_the_old_schedule_when_ramp_is_off`）。
 - 纯函数 ③ `post_stop_distance(env, post_stop_allowance_m=0.0)` 的公式断言为
-  `relu(x − x_stop − 0)`（默认参数写法 + 公式字符串守卫）。
+  `relu(x − x_stop − 0)`（默认参数写法 + 公式字符串守卫）。**2026-10-10 起该函数不再是奖励项**
+  （`extra_distance` 删除），但公式与形参原样保留，测试也改成「AST 断言奖励表里没有它 +
+  把函数体抽出来实跑」两条。
 - 源码级 ④ 训练侧 `process_actions`：`task_command` 的脚本项与旧写法逐字相同
   （`torch.where(towing, self.tow_speed, torch.zeros_like(...))`）、ramp 代码块在
   `if self.cfg.stop_command_ramp_s > 0.0:` 内、偏移门控与 `_was_stopped` 无关、
@@ -227,7 +234,9 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
    的拒绝逻辑都只有纯 torch/AST 测试覆盖；训练机应真实地用旧 v2 checkpoint 试一次，
    确认报错信息可读且**没有**进入 `load_state_dict`。
 3. **`stop_command_ramp_s` / `post_stop_allowance_m` 未启用**：默认 0.0，本轮不训练。
-   它们的分支只有纯函数与源码级测试，**没有**任何训练证据说明 ramp 能否改善停车段。
+   两者的分支只有纯函数与源码级测试，**没有**任何训练证据说明 ramp 能否改善停车段。
+   **2026-10-10 起 `post_stop_allowance_m` 连奖励项都没有了**（`extra_distance` 删除），
+   要恢复得先往 `UpperRewardsCfg` 加回一条以 `mdp.post_stop_distance` 为 func 的 `RewTerm`。
 4. **偏移头的相位数**：`cmd_offset_scale` / `offset_min` / `offset_max` /
    `amp_vx_range` 的数值都是按源码包络推出来的，未经训练标定；1.5 m/s 段正半轴无梯度这一
    后果需要实跑日志（按相位分开记偏移）确认。
@@ -254,20 +263,24 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
 
 ## 7. 下一步：怎么开 ramp 与 allowance 跑训练
 
+> **2026-10-10 变更**：`extra_distance` 已从奖励表删除，§2/§6 里「开 `post_stop_allowance_m`
+> 解除对打」的做法**已失效**（该参数目前没有消费方）。下面的步骤保留为历史方案；
+> 现行停车段只由 `stop_towing_force`（−1.0）与 `min_clearance`（出生几何阈值，−5.0）塑形。
+> 见 [奖励改动记录](towing_reward_retune_2026-10-10.md)。
+
 前提：**先新建 run**（旧 v2 checkpoint 一律失效，不续训）。
 
-1. **先跑 v3 基线（两个开关保持 0.0）**，确认新契约能起环境、奖励分项与 v2 基线可比
+1. **先跑 v3 基线（开关保持 0.0）**，确认新契约能起环境、奖励分项与 v2 基线可比
    （退化性：偏移=0 时 `loco_command == task_command == v2 的脚本指令`）。这一轮主要看
    `Episode_Reward/tracking_velocity`、`obs_stop_reached`、`stop_towing_force`、
-   `extra_distance` 的量级是否与 v2 接近。
-2. 想验证「停机续走」，按顺序打开：
+   `min_clearance`（新口径）的量级。
+2. 想验证「停机续走」，打开：
 
    - `actions.high_level_velocity.stop_command_ramp_s = 1.0 ~ 2.0`（脚本侧先给出可跟的参考量，
      `task_command` 与 `loco_command` 一起 ramp ⇒ 跟踪奖励在 ramp 段有非零目标）；
-   - `rewards.extra_distance.params["post_stop_allowance_m"] = 0.5 ~ 1.0`（解除 `extra_distance`
-     与偏移头的对打）。
-   - 只开 ramp 不开 allowance：`post_stop_distance`（−0.1）仍会惩罚停车后前进，策略会被
-     两个信号拉扯 ⇒ 建议**成对**打开。
+   - 若仍要用「允走量」这一路，需要先往 `UpperRewardsCfg` 加回一条以 `mdp.post_stop_distance`
+     为 func 的 `RewTerm`（形参 `post_stop_allowance_m` 仍在），再设 0.5 ~ 1.0 m；
+     否则**不需要**（2026-10-10 起停车后前进不再被`extra_distance` 惩罚）。
 3. 观察量：把偏移按相位分开记（牵引段 / 停车段）——建议在 `play.py` 侧先手工看
    `action_term.processed_actions[:, 0]` 与 `task_command[:,0]`、`loco_command[:,0]` 三条曲线；
    若停车段偏移长期贴在 `+0.5` 且 `tracking_velocity` 掉，说明包络/尺度需要重标定。

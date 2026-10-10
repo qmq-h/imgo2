@@ -273,8 +273,10 @@ class TowingOnPolicyRunner:
             # 2026-10-08：`reference_tracking` 已随残差方案删除（没有 reference_command 了）。
             # 2026-10-09：`yaw_heading` 已关闭（横向/朝向改由 PD 外环负责），从 picks 去掉；
             # 换成这天新加的四项——否则终端上看不到它们，只能去 TensorBoard 翻。
+            # 2026-10-10：`extra_distance` 奖励项已删除（用户决定，见 `mdp.post_stop_distance`
+            # 的 docstring），从 picks 去掉；`min_clearance` 权重改为 −5.0、阈值改成出生几何口径。
             picks = ("tracking_velocity", "low_level_pos_error", "towing_force_y",
-                     "feet_slide", "stop_towing_force", "extra_distance",
+                     "feet_slide", "stop_towing_force", "min_clearance",
                      "obs_stop_reached", "collision", "fall", "action_rate")
             detail = "  ".join(
                 f"{k.replace('Episode_Reward/', '')[:9]}={episode_stats[k]:+.3f}"
