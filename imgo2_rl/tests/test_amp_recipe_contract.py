@@ -2,7 +2,10 @@
 
 import ast
 from pathlib import Path
+import re
+from types import SimpleNamespace
 import unittest
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +16,7 @@ TASKS = BASE / "__init__.py"
 
 
 def _tree(path):
-    return ast.parse(path.read_text(encoding="utf-8"))
+    return ast.parse(path.read_text(encoding="utf-8-sig"))
 
 
 def _class(tree, name):
@@ -25,6 +28,56 @@ def _class_source(path, name):
 
 
 class AMPRunnerContractTests(unittest.TestCase):
+    def test_height_air_time_deficit_selects_feet_and_fanziqi_removes_it(self):
+        """Execute the reward selectors without importing Isaac Sim."""
+        tree = _tree(ENV_CFG)
+        cls = _class(tree, "Imgo2AmpMoveEnvCfg")
+        method = next(node for node in cls.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "_keep_only_amp_task_rewards")
+        helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                      and node.name == "apply_rlamp_task_rewards")
+        constants = [node for node in tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id in {
+                         "RLAMP_TRACK_LIN_VEL_RAW", "RLAMP_TRACK_ANG_VEL_RAW", "RLAMP_KEEP_REWARDS",
+                         "FEET_AIR_TIME_THRESHOLD_S", "FEET_AIR_TIME_DEFICIT_PER_STEP",
+                     } for target in node.targets)]
+        deficit_marker = object()
+        namespace = {
+            "RewTerm": lambda **kwargs: SimpleNamespace(**kwargs),
+            "SceneEntityCfg": lambda name, **kwargs: SimpleNamespace(name=name, **kwargs),
+            "mdp": SimpleNamespace(feet_air_time_deficit=deficit_marker),
+        }
+        exec(compile(ast.Module(body=constants + [method, helper], type_ignores=[]),
+                     str(ENV_CFG), "exec"), namespace)
+        base_cfg = _class(_tree(BASE.parent / "velocity_env_cfg.py"), "RewardsCfg")
+        terms = {
+            node.targets[0].id: SimpleNamespace(weight=0.0, params={
+                "sensor_cfg": SimpleNamespace(body_names=""),
+                "asset_cfg": SimpleNamespace(body_names=""),
+            })
+            for node in base_cfg.body if isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+        }
+        cfg = SimpleNamespace(rewards=SimpleNamespace(**terms),
+                              sim=SimpleNamespace(dt=0.005), decimation=4,
+                              foot_link_name=".*_FOOT", base_link_name="base",
+                              foot_body_names=["FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"])
+        namespace[method.name](cfg)
+        self.assertIsNone(cfg.rewards.feet_air_time)
+        air = cfg.rewards.feet_air_time_deficit
+        self.assertIs(air.func, deficit_marker)
+        self.assertAlmostEqual(air.weight * 0.02, namespace["FEET_AIR_TIME_DEFICIT_PER_STEP"])
+        self.assertLess(air.weight, 0)
+        self.assertEqual(air.params["threshold"], namespace["FEET_AIR_TIME_THRESHOLD_S"])
+        robot = ET.parse(ROOT.parent / "imgo2_description/urdf/imgo2.urdf").getroot()
+        matched = [link.attrib["name"] for link in robot.findall("link")
+                   if any(re.fullmatch(pattern, link.attrib["name"])
+                          for pattern in air.params["sensor_cfg"].body_names)]
+        self.assertEqual(set(matched), {"FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"})
+        namespace[helper.name](cfg)
+        active = {name for name, term in vars(cfg.rewards).items() if term is not None}
+        self.assertEqual(active, {"track_lin_vel_xy_exp", "track_ang_vel_z_exp"})
+
     def test_only_two_runner_configs_remain(self):
         tree = _tree(AGENT_CFG)
         classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]

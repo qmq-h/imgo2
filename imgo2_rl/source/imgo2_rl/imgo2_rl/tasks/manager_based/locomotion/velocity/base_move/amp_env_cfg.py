@@ -189,7 +189,7 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
     def _keep_only_amp_task_rewards(self):
         # AMP-06 任务项（2026-09-17 第二次调参）：
         #   速度项从 1.0 抬到 4.0（**只抬 4 倍**，不是上一轮的 50 倍），
-        #   高度项从 -10 降到 -5（**仍强于单个速度项**，避免重演「趴低滑行」），
+        #   高度项从 -10 降到 -5；它乘高度误差平方，不能仅按系数判断实际贡献。
         #   并补三个轻量姿态约束，使姿态不再只由一个超强高度项独自承担。
         #   依据：a1 论文代码的真实每步系数是 1.67（不是 50——它配置里的 50 还会被
         #   legged_robot.py:710 再乘一次 dt），go2 用 4.0/2.0 + 一组辅助项 + 任务主导 lerp。
@@ -226,7 +226,7 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # 单位换算：AMP 风格奖励是**每步**（runner 里直接算，不进 RewardManager），
         # 而 RewardManager 计算 `term × weight × dt`，weight 的语义是「每秒」。
-        # 因此 weight 一律写成 `每步系数 / step_dt`，由代码换算，不手写魔数。
+        # 六项基础任务奖励与滞空缺口项均用 `每步系数 / step_dt` 换算。
         #
         # 历史（勿重复）：
         #   Run1（1.0 / 0.3 / -10）：策略只站不走（速度误差恒 1.65 m/s，1000 轮后全平）。
@@ -235,7 +235,7 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     根因之一是高度项相对速度项弱了约 3000 倍。
         TRACK_LIN_VEL_PER_STEP = 4.0      # Run1 1.0 / Run2 50；go2 用 4.0
         TRACK_ANG_VEL_PER_STEP = 2.0      # Run1 0.3 / Run2 17；go2 用 2.0
-        BASE_HEIGHT_PER_STEP = -5.0       # Run1 -10 / Run2 -1；比单个速度项强、比两项之和小
+        BASE_HEIGHT_PER_STEP = -5.0       # 乘 (z-0.30)^2；需用实际分项奖励判断贡献
         LIN_VEL_Z_PER_STEP = -1.0         # go2 的 lin_vel_z
         ANG_VEL_XY_PER_STEP = -0.05       # go2 的 ang_vel_xy
         JOINT_POS_LIMITS_PER_STEP = -2.0  # go2 的 dof_pos_limits
@@ -246,6 +246,9 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.lin_vel_z_l2.weight = LIN_VEL_Z_PER_STEP / step_dt
         self.rewards.ang_vel_xy_l2.weight = ANG_VEL_XY_PER_STEP / step_dt
         self.rewards.joint_pos_limits.weight = JOINT_POS_LIMITS_PER_STEP / step_dt
+
+        # The legacy feet_air_time term is filtered to None above.
+        # Only the deficit term below is enabled; do not assign legacy params.
 
         # 高度约束目标 0.30 m（参考动作的平均根高），平地不读高度扫描传感器。
         self.rewards.base_height_l2.weight = BASE_HEIGHT_PER_STEP / step_dt
@@ -312,7 +315,7 @@ RLAMP_KEEP_REWARDS = ("track_lin_vel_xy_exp", "track_ang_vel_z_exp")
 def apply_rlamp_task_rewards(cfg) -> None:
     """把任务奖励换成 rl_amp（fan-ziqi）的配方：**只留线/角速度跟踪**，其余全为 0。
 
-    与 `Imgo2AmpMoveEnvCfg._keep_only_amp_task_rewards()`（AMP-only 6 项、每步 4.0/2.0/−5.0）
+    与 `Imgo2AmpMoveEnvCfg._keep_only_amp_task_rewards()`（高度/姿态任务项 + 滞空奖励）
     的区别就是"谁负责步态与姿态"：参考把这个责任完全交给 AMP 风格项，因此**没有高度项、
     没有姿态项、没有任何步态项**。这也是它唯一的防退化机制是「base 触地终止」的原因
     （rl_amp 的 `terminate_after_contacts_on = ["base"]`、`collision` 权重为 0）。

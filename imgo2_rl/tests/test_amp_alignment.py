@@ -190,7 +190,7 @@ class RewardContractTests(unittest.TestCase):
         for dt in (0.01, 0.02, 0.04):
             with self.subTest(step_dt=dt):
                 terms = SimpleNamespace(**{name: SimpleNamespace(weight=0.0, params={}) for name in (
-                    *expected_per_step, "feet_slide")})
+                    *expected_per_step, "feet_slide", "feet_air_time")})
                 terms.base_height_l2.params["asset_cfg"] = SimpleNamespace(body_names="")
                 cfg = SimpleNamespace(rewards=terms, sim=SimpleNamespace(dt=dt / 4), decimation=4,
                                       base_link_name="base",
@@ -199,6 +199,7 @@ class RewardContractTests(unittest.TestCase):
 
                 # 其它奖励项仍被过滤掉
                 self.assertIsNone(terms.feet_slide)
+                self.assertIsNone(terms.feet_air_time, "旧滞空奖励应关闭，避免与缺口项重复结算")
 
                 # 高度项保留：目标 0.30 m、无高度扫描传感器、body 名已解析成具体 body
                 self.assertAlmostEqual(terms.base_height_l2.params["target_height"], 0.30)
