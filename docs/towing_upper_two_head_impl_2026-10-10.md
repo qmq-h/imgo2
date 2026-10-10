@@ -90,9 +90,13 @@ policy_frame(58) + robot_velocity(2) + cart_velocity(2) + rope_state(4)
 | `imgo2_rl/tests/test_towing_upper_rl_contract.py`、`test_towing_upper_policy_runtime.py` | 契约断言全部更新 + 新增守卫（见 §5、§6） |
 
 **未动**（另一并行任务 TOW-23 的文件）：`imgo2_rl/scripts/towing/play_towing_test.py`、
-`imgo2_rl/tests/test_towing_play_test.py`、`README.md`。因此测试台仍是 v2 口径，其 13 维接线
-（尤其偏移头）**由用户随后补**；`upper_policy_runtime.act()` 仍返回 **12 维** `delta` 给调用方，
-避免在用户改测试台之前把它打断。README 的维护记录也留给用户补。
+`imgo2_rl/tests/test_towing_play_test.py`、`README.md`。因此本轮落地时测试台仍是 v2 口径，其
+13 维接线（尤其偏移头）**由用户随后补**；`upper_policy_runtime.act()` 返回 **12 维** `delta`
+给调用方，避免在用户改测试台之前把它打断。
+**2026-10-10 晚已接线**（README TOW-26）：测试台改 v3 口径（帧 58 / 动作 13）、用
+`command_offset_vx`/`compose_loco_vx` 在冻结策略推理**之前**合成 `loco_command`（两层限幅 +
+`elapsed_s >= tow_start_s` 门控，STOP 之后仍生效）、残差仍在底层输出之后叠加；
+见 [测试台上层开关记录](towing_upper_switch_2026-10-10.md) 的「v3 接线」一节。
 
 ---
 
@@ -102,7 +106,7 @@ policy_frame(58) + robot_velocity(2) + cart_velocity(2) + rope_state(4)
    动作里没有 vy/ω 头。
 2. **加性 + 有界** —— 落地为「两层限幅」：`offset` 先限在头权限 `[-0.2, +0.6]`，
    再把**和**裁进冻结策略训练包络 `[-1.0, +1.5]`（见 §4 的修正）。
-   偏移在 `elapsed_s >= tow_start_s` 后生效。
+   偏移在 `elapsed_s >= tow_start_s` 后生效；**测试台已按同一顺序接线**（2026-10-10 晚）。
 3. **脚本 ramp 作底** —— 落地 `stop_command_ramp_s`（默认 **0.0 = 关闭**，= 迁移前行为）。
    打开后 STOP 之后 `ramp_s` 秒内 `task_command[:,0]` 从 `tow_speed` 线性降到 0，
    偏移头只做自适应修正而不是从零学步态；配套 `post_stop_allowance_m`
@@ -254,11 +258,12 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
    - `export_policy_as_jit` 产物契约（`towing_contract` v3、输入 58/80）；
    - `play.py` 导出的 `policy.pt` 需要按新维数重新导出（旧产物一律不可用）。
 
-7. **测试台 13 维接线**（用户负责）：`play_towing_test.py` 仍是 v2 口径（帧 57 / 12 维动作 /
-   contract version 2），`--upper-checkpoint` 在 v3 下会**被运行时的契约校验直接拒绝**。
-   接线要做的事：帧 58、动作 13 切分、用 `command_offset_vx`/`compose_loco_vx` 组
-   `loco_command`（并做 `elapsed >= tow_start_s` 门控）、`held = 冻结目标 + delta`（delta 仍是
-   12 维）。`upper_policy_runtime.act()` 已经为此保留了 12 维 `delta` 的返回签名。
+7. **测试台 13 维接线** —— **2026-10-10 晚已完成**（README TOW-26；当时这里的「待办」清单
+   已逐条落地）：`play_towing_test.py` 改成 v3 口径（帧 58 / 动作 13 / `contract version 3`），
+   用 `command_offset_vx` / `compose_loco_vx` 在冻结策略推理**之前**组 `loco_command`
+   （两层限幅 + `elapsed_s >= tow_start_s` 门控，STOP 之后仍生效），`held = 冻结目标 + delta`
+   （delta 仍 12 维）。详见 [测试台上层开关记录](towing_upper_switch_2026-10-10.md) 的
+   「v3 接线」一节。**运行期仍未验证**（本机无 Isaac Lab）。
 
 ---
 
@@ -293,5 +298,5 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
 
 - 设计依据与 9 项接口清单：[双头方案（未实现 → 已实现）](towing_upper_two_head_2026-10-10.md)；
 - 冲击窗口独立统计（同一批工作的另一半）：[impact window](towing_impact_window_2026-10-10.md)；
-- 测试台上层开关（TOW-20，v2 口径，待接线）：[upper switch](towing_upper_switch_2026-10-10.md)；
+- 测试台上层开关（TOW-20 加开关 / **TOW-26 已接到 v3**）：[upper switch](towing_upper_switch_2026-10-10.md)；
 - 残差方案来源：[deltapos residual](towing_deltapos_residual_2026-10-08.md)。

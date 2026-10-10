@@ -12,6 +12,10 @@ TOW-19 里记录：`imgo2_rl/scripts/towing/play_towing_test.py` 是「冻结 AM
 
 ## 契约（逐条核对了源码，不是从文档抄的）
 
+> ⚠ 本节是 2026-10-10 **白天**的 v2 口径（帧 57 / actor 79 / 动作 12、`version: 2`）。
+> 当晚双头迁移落地后测试台已接到 **v3**（帧 58 / 动作 13 / `version: 3`）：**以本文后面的
+> 「v3 接线」一节为准**，本节保留为当时的核对记录。
+
 | 项 | 结论 | 出处 |
 |---|---|---|
 | 57 维帧 | `cat(loco_command(3), processed_actions(12), base_ang_vel_b(3)·0.25, projected_gravity(3), last_loco_action(12), joint_pos−default(12), joint_vel(12)·0.05)` | `upper_mdp.policy_frame`；顺序/维数与 `upper_logic.UpperObservationSpec.terms` 一致 |
@@ -80,6 +84,59 @@ dones is None: return`），所以**全量复位**只能把 `memory_a/memory_c.h
 因此本轮选**两次运行 + 报告里自动对照**（第 2 轮用 `--compare-report` 指向第 1 轮的
 `report.json`），并在本文件与脚本 docstring 里写清这个选择。两轮参数除开关外必须完全一致。
 
+## v3 接线（2026-10-10 晚：测试台接到**双头**契约）
+
+> 本节覆盖上面「契约」表里的 v2 口径（帧 57 / actor 79 / 动作 12 / `version: 2`）：双头迁移
+> （[实现记录](towing_upper_two_head_impl_2026-10-10.md)）之后**上层 checkpoint 契约是 v3**
+> （帧 58 / explicit 6 / latent 16 / 动作 13），旧 v2 一律被拒；上表保留为当时的记录。
+> README 问题表 **[TOW-26](../README.md)** 就是这次记录失真 + 接线的收口。
+
+链路与 `upper_mdp.HierarchicalVelocityAction` 同序（偏移进底层**输入**、残差加底层**输出**）：
+
+    task_command ──(速度头: +有界偏移, 裁进 AMP 包络 −1.0…1.5)──→ loco_command
+                                                                      │
+                                                          （冻结策略推理，50 Hz）
+                                                                      ↓
+                                                             冻结关节目标
+                                                                      │
+                                        (+ 12 维关节残差 → PD 位置目标) ┘
+                                                                      ↓
+                                                  set_joint_position_target
+
+| 项 | 测试台实现 | 出处 |
+|---|---|---|
+| 帧 | **58** = `loco_command(3) + last_action(13) + base_ang_vel·0.25(3) + projected_gravity(3) + last_loco_action(12) + joint_pos−default(12) + joint_vel·0.05(12)`；`last_action` 由 `UpperPolicyRuntime` 自己持有（**上一拍** clamp 后的 13 维动作），`loco_command` 取上一拍合成的那条 | `upper_mdp.policy_frame`、`upper_policy_runtime.FRAME_TERMS`（离线测试逐项核对） |
+| 动作 | **13** = 1 维 vx 偏移 + 12 维关节残差 | `upper_mdp.process_actions`、`upper_policy_runtime.ACTION_DIM` |
+| 偏移（第 1 层） | `offset = clamp(clamp(u_cmd, ±1) × 0.5, −0.2, +0.6)` m/s —— 限的是**偏移量本身**，不是「和」 | `upper.command_offset_vx`（与 cfg 的 `cmd_offset_scale`/`offset_min`/`offset_max` 同值） |
+| 合成（第 2 层） | `loco_vx = clamp(task_vx + offset, −1.0, +1.5)`（冻结 AMP 策略的训练包络），再拼回 `loco_command = (loco_vx, task_vy, task_wz)` | `upper.compose_loco_vx` / `play_towing_test.compose_loco_vx_offset` |
+| 门控 | `elapsed_s = step · dt`，`elapsed_s >= tow_start_s`（训练侧 `tow_start_s = SETTLE_TIME_S = 1.0 s`）才叠加；**STOP 之后仍生效**（`task_vx = 0` ⇒ `loco_vx = offset`） | `upper_mdp.process_actions` 的 `offset_active` |
+| 顺序 | 合成偏移 → 喂**冻结策略** ⇒ 冻结关节目标 → `held = 冻结目标 + delta`（12 维残差） | `upper_mdp.apply_actions`（`velocity_command=self.loco_command`） |
+| JNT 参考 | `robot_jt_*` = `held`（真正下发的目标），同训练侧 `reference="commanded"` | `upper_mdp.low_level_position_error_l2` |
+| 节拍 | 上层每 `upper_control_decimation`（= `upper_control_dt/dt` = 10 步 = 50 ms）一拍，**与冻结策略的 4 步刷新（20 ms）独立**；偏移与残差在两次上层 tick 之间保持不变 | `UpperTowingEnvCfg.decimation = 10`、`apply_actions` 的 `low_level_decimation = 4` |
+
+**退化性（关开关）**：`upper = None` 时主循环只走基线分支——`command_tensor = lane_command(vx_command)`
+（任务指令，含 PD 的 vy/wz）**原样**喂冻结策略、下发目标 = 冻结策略自己的输出，残差与偏移恒 0；
+本轮新增的代码全部落在 `else`（开关开）分支。离线证据三条：① 基线分支被 AST 测试**逐字钉住**
+（`test_switch_branch_order_offset_then_frozen_then_residual`）；② `compose_loco_vx_offset(task, 0)`
+与任务指令 `torch.equal`（`test_compose_is_bit_identical_when_the_offset_is_zero`）；③ 关时
+`experiment.json.upper_policy` 仍然记下 v3 期望契约（`towing_contract_expected` + 偏移边界）。
+**运行读数（两轮 800 环境的逐 case 对照）只能由训练机给出。**
+
+改动清单：
+
+- `play_towing_test.py`：docstring / `[plan]` 行 / `experiment.json.upper_policy` 一律改 v3
+  （帧 58、动作 13、偏移两层限幅 + 门控，TOW-26）；新增 `upper_policy_record()` 把期望契约与
+  偏移边界做成**可离线核对的纯函数**；实跑时用 `expected_towing_contract(upper.spec)` 覆写期望值
+  并与离线镜像**逐字段核对**（不一致直接 `RuntimeError`，防两处漂移）；主循环按上表接线
+  （上层 tick 与冻结刷新解耦、偏移在策略推理前合成、残差在输出后叠加）。
+- `upper_policy_runtime.py`：只改两处 docstring（「测试台 13 维接线由用户随后补」→ 已接线）。
+- 新增 10 项离线测试（`UpperV3WiringTests`）：契约/偏移常量与运行时逐项一致、v2 被拒、
+  门控阈值 = `SETTLE_TIME_S`、偏移为 0 时逐位相等、门控/两层限幅、与运行时
+  `compose_loco_vx` **逐位相等**、`upper_policy_record()` 的字段、链路顺序 + 基线路径逐字钉住。
+- **未验证项照旧**：本机无 Isaac Lab（无 GPU），**仿真一次都没跑**——偏移门控/两层限幅的实际
+  读数、20 Hz 上层与 50 Hz 冻结策略的解耦、真实 v3 checkpoint 的 strict 加载、以及两轮
+  800 环境的策略/基线读数都要训练机验证。
+
 ## 验收（用 towing test 口径，全网格 800）
 
 ```bash
@@ -123,6 +180,13 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 - `python3 imgo2_rl/scripts/towing/play_towing_test.py --dry-run` 仍可跑（无 torch / 无 GPU），
   plan 行输出「上层网络：**关闭**…」；加 `--upper-checkpoint <存在的文件>` 后输出「**开启**…」
   且 `torch` 不在 `sys.modules` 里（用 `runpy` 验证）。
+
+**2026-10-10 晚（v3 接线，见上节）**：全量 `python3 -m pytest imgo2_rl/tests -q` ⇒
+**564 passed**（553 基线 + 11 项：`UpperV3WiringTests` 10 项 + `--dry-run --upper-checkpoint` 1 项：契约/偏移常量与运行时逐项一致、
+v2 契约被拒、门控阈值 = `SETTLE_TIME_S`、偏移 0 时逐位相等、门控与两层限幅、
+与运行时 `compose_loco_vx` 逐位相等、`upper_policy_record()` 字段、链路顺序 + 基线路径逐字钉住）；
+`--dry-run`（默认与 `--upper-checkpoint` 两条路径）都退出 0 且 `torch` 不在 `sys.modules`；
+`py_compile` / `git diff --check` / `git ls-files -i -c --exclude-standard` 通过。**运行期仍然未验证。**
 
 ## 未验证（必须写清）
 

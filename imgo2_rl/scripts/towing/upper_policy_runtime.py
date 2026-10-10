@@ -31,8 +31,9 @@
    `compose_loco_vx()` 给出 `clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`（训练包络
    = −1.0…1.5，出处 `amp_env_cfg` 的 `lin_vel_x`）。**链路顺序**：偏移加在底层策略推理
    **之前**（它进底层观测），关节残差加在底层输出**之后** ⇒ 上层同时影响底层输入与输出，
-   两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 的 13 维接线由用户
-   随后补，本轮不动那个文件。
+   两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 已按本条接线
+   （帧 58 / 动作 13 / 偏移在冻结策略推理前合成 + `elapsed_s >= tow_start_s` 门控），
+   见 `docs/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
 5. **checkpoint**：`torch.load(path, map_location="cpu", weights_only=False)` ⇒ 键
    `model_state_dict`、`decoder_state_dict`、`towing_contract`
    （`{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
@@ -500,8 +501,9 @@ class UpperPolicyRuntime:
         - `delta`：**12 维**关节位置残差（`u_joint · action_scale`），直接加到冻结策略的
           关节目标上（`held = frozen_joint_targets + delta`）；
         - `processed`：**13 维** clamp 后的动作（前 1 维是 vx 偏移头），进入下一拍帧的
-          `last_action` 位；偏移头的最终接线由调用方用 `command_offset_vx` 完成
-          （`play_towing_test.py` 的 13 维接线由用户随后补，本轮不改那个文件）。
+          `last_action` 位；偏移头的最终接线由调用方用 `command_offset_vx` / `compose_loco_vx`
+          完成（`play_towing_test.py` 已接线：两层限幅合成 `loco_command` + 门控
+          `elapsed_s >= tow_start_s`，且合成发生在冻结策略推理**之前**）。
         """
         frame = self.build_frame(
             loco_command=loco_command, base_ang_vel=base_ang_vel,

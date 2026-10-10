@@ -15,25 +15,54 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 
 ## 上层网络开关（`--upper-checkpoint`，默认关）
 
-- **关（默认）**：残差恒 0，行为与加开关之前**逐位一致**——每 20 ms 把冻结策略的关节位置
-  目标原样下发；`JNT` 观测的口径不变（参考量 = 冻结策略当拍输出），但**默认不进判定**
-  （用户 2026-10-10 决定，见「判读与限制」；`--count-jnt` 可复现旧口径）。
+- **关（默认）**：残差恒 0、偏移恒 0（`loco_command` ≡ 任务指令），行为与加开关之前
+  **逐位一致**——每 20 ms 把冻结策略的关节位置目标原样下发；`JNT` 观测的口径不变
+  （参考量 = 冻结策略当拍输出），但**默认不进判定**（用户 2026-10-10 决定，见「判读与限制」；
+  `--count-jnt` 可复现旧口径）。
 - **开（给了 checkpoint 路径）**：从训练侧联合 checkpoint 恢复 actor + dynamics decoder
-  （57 维 policy 帧 → 6 维显式估计 + 16 维 latent → 79 维 actor → 12 维归一化残差），
-  按 `delta = clamp(action, ±1) ⊙ action_scale` 叠加在冻结策略的关节位置目标上：
-  `held = 冻结目标 + delta`。**`held` 既下发、又作为 `JNT` 指标的参考量**，与训练侧
-  `low_level_position_error_l2(reference="commanded")` 同口径。
+  （**v3 双头契约**：58 维 policy 帧 → 6 维显式估计 + 16 维 latent → 80 维 actor →
+  **13 维动作** = 1 维 vx 偏移 + 12 维关节残差），并按**训练侧的链路顺序**接线
+  （`upper_mdp.HierarchicalVelocityAction`）：
+
+      task_command ──(速度头: +有界偏移, 裁进 AMP 包络 −1.0…1.5)──→ loco_command
+                                                                        │
+                                                            （冻结策略推理，50 Hz）
+                                                                        ↓
+                                                                冻结关节目标
+                                                                        │
+                                          (+ 12 维关节残差 → PD 位置目标) ┘
+                                                                        ↓
+                                                    set_joint_position_target
+
+  1. 上层一拍（20 Hz）先组 **58 维帧**：`loco_command(3)` + `last_action(13)` +
+     `base_ang_vel·0.25(3)` + `projected_gravity(3)` + `last_loco_action(12)` +
+     `joint_pos−default(12)` + `joint_vel·0.05(12)`；`last_action` 取**上一拍** 13 维动作，
+     `loco_command` 取**上一拍合成、这一拍仍在驱动底层**的那条指令（训练侧观测在 action
+     之前算，看到的也是上一拍 `process_actions` 的结果）；
+  2. 取动作**第 1 维 = vx 偏移**，两层限幅合成送冻结策略的指令：先限**偏移量本身**
+     `[offset_min, offset_max] = [−0.2, +0.6] m/s`（`u_cmd` 先 clamp 到 ±1 再乘
+     `cmd_offset_scale = 0.5`），再把**和**裁进冻结 AMP 策略的训练包络
+     `amp_vx_range = (−1.0, 1.5)`；**门控 `elapsed_s >= tow_start_s`**（出生段不叠加偏移；
+     **STOP 之后偏移仍然生效** ⇒ `task_vx = 0` 时 `loco_vx = offset`，这是「停机续走」的
+     表达口）；
+  3. 合成后的 `loco_command`（含 PD 的 vy/wz）喂**冻结策略** ⇒ 冻结关节目标；
+  4. **再加 12 维残差**：`delta = clamp(action, ±1)[1:] ⊙ action_scale`，
+     `held = 冻结目标 + delta`。**`held` 既下发、又作为 `JNT` 指标的参考量**，与训练侧
+     `low_level_position_error_l2(reference="commanded")` 同口径。偏移加在**底层输入之前**、
+     残差加在**底层输出之后** ⇒ 两头不独立（别名/冗余，见 `upper_mdp` 的说明）。
 - 上层网络在训练侧是 **20 Hz**（`upper_control_dt = 0.05 s`），冻结策略是 50 Hz；
-  本脚本沿用该节拍：每 10 个物理步（50 ms）推理一次上层，两次之间残差保持不变，
-  冻结策略每 4 个物理步刷新一次并重算 `held`（与 `HierarchicalVelocityAction.apply_actions`
-  同一结构）。`--upper-stochastic` 时用 actor 的分布采样（默认取均值，与 `towing/play.py`
-  的确定性口径一致）。
+  本脚本沿用该节拍：每 10 个物理步（50 ms）推理一次上层（与冻结策略的 4 步刷新**独立**，
+  与训练侧 `process_actions`（env step 驱动）/ `apply_actions`（物理步驱动）同一结构），
+  两次之间偏移与残差都保持不变；冻结策略每 4 个物理步刷新一次并重算 `held`
+  （同 `HierarchicalVelocityAction.apply_actions`）。`--upper-stochastic` 时用 actor 的分布
+  采样（默认取均值，与 `towing/play.py` 的确定性口径一致）。
 - **契约校验（加载前硬校验，不匹配就抛错）**：`towing_contract` 必须精确等于
-  `{'version': 2, 'frame_dim': 57, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
+  `{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
   agent cfg（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`）建，然后
-  `load_state_dict(strict=True)`。旧 56/63 维 checkpoint（frame 51/56）会被拒绝。
+  `load_state_dict(strict=True)`。**旧 v2（帧 57 / actor 79 / 动作 12）与更早的 51/56/63 维
+  checkpoint 会被拒绝**（`TowingCheckpointContractError`）。
 - **未验证**：本机没有 Isaac Lab（无 GPU），仿真一次都没跑过；开关的运行时行为、
-  残差幅值、策略/基线对照读数都要在训练机实跑。见 README TOW-20。
+  偏移/残差幅值、策略/基线对照读数都要在训练机实跑。见 README TOW-20 / **TOW-26**。
 
 ## 场景 = 训练场景（2026-10-09 起，用户确认）
 
@@ -286,6 +315,33 @@ TRAINING_WHEEL_DAMPING = 0.032
 #: 质量 5–20 kg、速度 0.5–1.5 m/s）⇒ 默认质量档里的 25 kg **已超出训练分布**（外推检查），
 #: 20 kg 仍在域内。`--dry-run` 的 plan 行与 `experiment.json.caveats` 会显式标出域外档位。
 TRAINING_MASS_RANGE_KG = (5.0, 20.0)
+
+# ---- 上层 checkpoint 契约 / 偏移头的离线镜像（v3 双头，TOW-21/TOW-26）----
+#: `upper_policy_runtime` 顶部 import torch，而 `--dry-run`／`--help` 必须保持**纯标准库**可跑，
+#: 所以期望契约与偏移边界在这里重述一份；离线测试把每个字段与 `upper_policy_runtime` 的常量、
+#: `expected_towing_contract(UpperNetworkSpec())` 逐项交叉核对（两边漂移就报错），实跑时
+#: `experiment.json` 的 `towing_contract_expected` 还会被运行时的 spec 覆写。
+UPPER_CONTRACT_VERSION = 3
+UPPER_FRAME_DIM = 58               # = 3 + 13 + 3 + 3 + 12 + 12 + 12
+UPPER_EXPLICIT_DIM = 6
+UPPER_LATENT_DIM = 16
+UPPER_CMD_ACTION_DIM = 1           # 动作第 1 维 = vx 偏移头（`upper_mdp.CMD_ACTION_DIM`）
+UPPER_JOINT_ACTION_DIM = 12        # 动作后 12 维 = 关节位置残差头
+UPPER_ACTION_DIM = UPPER_CMD_ACTION_DIM + UPPER_JOINT_ACTION_DIM      # 13
+#: 期望契约（写进 plan 行与 `experiment.json.upper_policy.towing_contract_expected`）。
+UPPER_TOWING_CONTRACT_EXPECTED = {
+    "version": UPPER_CONTRACT_VERSION, "frame_dim": UPPER_FRAME_DIM,
+    "explicit_dim": UPPER_EXPLICIT_DIM, "latent_dim": UPPER_LATENT_DIM}
+#: 速度头偏移的尺度/限幅与合成包络（`upper_mdp.HierarchicalVelocityActionCfg` 的镜像，
+#: 与 `upper_policy_runtime.COMMAND_OFFSET_*` / `AMP_VX_*` 同值，由离线测试交叉核对）：
+#: 第 1 层限的是**偏移量本身**（不是「和」），第 2 层把「和」裁进冻结 AMP 策略的训练包络。
+UPPER_OFFSET_SCALE_MPS = 0.5
+UPPER_OFFSET_RANGE_MPS = (-0.2, 0.6)
+UPPER_AMP_VX_RANGE_MPS = (-1.0, 1.5)
+#: 上层控制周期（s）：训练侧 `HierarchicalVelocityActionCfg.upper_control_dt = 0.05`（20 Hz）。
+#: plan 行按它和 `--dt` 算出「每几个物理步推理一拍」；离线测试按 AST 交叉核对。
+UPPER_CONTROL_DT_S = 0.05
+
 DEFAULT_VELOCITIES = (0.5, 1.0, 1.5)
 DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
 #: 800 环境 × 2200 步逐物理步记录 ≈ 176 万行（约 2 GB），默认改成每 5 步（25 ms，等于
@@ -459,6 +515,15 @@ recording = _load_module(
 # 不自己写第二套网格表，保证「同一 env 编号 ⇒ 同一 cell」与训练逐位一致。
 connection_grid = _load_module("connection_grid", MDP_DIR / "connection_grid.py")
 slope_geometry = _load_module("slope_geometry", MDP_DIR / "slope_geometry.py")
+# 回合相位几何（纯标准库）：只需它的 `SETTLE_TIME_S` —— 训练侧
+# `HierarchicalVelocityActionCfg.tow_start_s` 的默认值就是它，用来给偏移门控一个
+# **离线可打印**的期望阈值（实跑时仍以 `action_cfg.tow_start_s` 为准）。
+episode_geometry = _load_module("episode_geometry", MDP_DIR / "episode_geometry.py")
+
+#: 偏移门控的时刻（s）：`elapsed_s >= UPPER_GATE_AFTER_S` 之后偏移才叠加到任务指令上。
+#: 取自训练侧 `mdp/episode_geometry.SETTLE_TIME_S`（= `HierarchicalVelocityActionCfg` 的默认
+#: `tow_start_s`，离线测试按 AST 交叉核对）；`--dry-run`／`experiment.json` 里打印的期望值。
+UPPER_GATE_AFTER_S = float(episode_geometry.SETTLE_TIME_S)
 
 #: 默认并行环境数 = 训练网格全集（40 列 × 20 行 = 800）。写成 800 的整数倍时每个 cell
 #: 会重复出现，同一 cell 的不同 env 拿到不同工作条件（见 `work_conditions`）。
@@ -947,6 +1012,27 @@ def shaped_command(*, phase: str, step_in_phase: int, velocity: float,
         return float(velocity)
     fraction = min(1.0, (step_in_phase + 1) * dt / ramp_time_s)
     return float(velocity) * fraction
+
+
+def compose_loco_vx_offset(task_vx, offset_vx, *, active: bool,
+                           amp_vx_min: float = UPPER_AMP_VX_RANGE_MPS[0],
+                           amp_vx_max: float = UPPER_AMP_VX_RANGE_MPS[1]):
+    """把**已限过幅的 vx 偏移**合成进任务指令：`clamp(task_vx + active·offset, min, max)`。
+
+    链路与训练侧 `upper_mdp.HierarchicalVelocityAction.process_actions` **同序**（第 1 层限
+    偏移量本身由 `upper.command_offset_vx` 完成，本函数做第 2 层包络裁剪 + 门控）：
+
+    1. 门控 `active = elapsed_s >= tow_start_s`：出生段偏移不生效；**STOP 之后门控仍打开**
+       （`task_vx = 0` ⇒ `loco_vx = offset`，这是「停机续走」的表达口）；
+    2. 把「和」裁进冻结 AMP 策略的训练包络 `amp_vx_range = (−1.0, 1.5)`。
+
+    **纯逻辑、不 import torch**（参数是 1 维张量或 float），所以「关开关时逐位一致」可以离线钉住：
+    `offset = 0`（或 `active = False`）时结果与包络内的 `task_vx` **逐位相等**。
+    门控放在裁剪之前 ⇒ 关掉时等价于「偏移先置 0 再走同一层包络裁剪」，与训练侧逐位一致
+    （脚本速度 0.5–1.5 全在包络内 ⇒ 关掉时就是恒等裁剪）。
+    """
+    gated = offset_vx if active else offset_vx * 0.0
+    return (task_vx + gated).clamp(amp_vx_min, amp_vx_max)
 
 
 def phase_rows(rows, phase: str) -> list:
@@ -2442,6 +2528,63 @@ def parse_args(argv=None):
     return args
 
 
+def upper_policy_record(args) -> dict:
+    """`experiment.json.upper_policy` 段（纯逻辑：离线测试直接构造并逐字段核对）。
+
+    记的是**期望契约**（v3 双头：帧 58 / explicit 6 / latent 16 / 动作 13 = 1 维 vx 偏移 +
+    12 维关节残差）与偏移头的**两层限幅 + 门控边界**。仿真路径（`main()`）会把
+    `towing_contract` / `iter` / 维数 / `residual_scale` 覆写成**实际加载到**的值，并把
+    `towing_contract_expected` 换成 `expected_towing_contract(upper.spec)`（从实际 spec 派生）；
+    开关关时这份期望值仍然留在产物里（TOW-26 的记录失真问题）。
+    """
+    return {
+        "enabled": args.upper_checkpoint is not None,
+        "checkpoint": (str(args.upper_checkpoint) if args.upper_checkpoint is not None
+                       else None),
+        "deterministic": not args.upper_stochastic,
+        "stochastic": bool(args.upper_stochastic),
+        "mode": "stochastic" if args.upper_stochastic else "deterministic",
+        # 加载后填充（见 sim 路径）：`towing_contract` = checkpoint 里的 4 个字段，`iter` = 训练轮数
+        "towing_contract": None,
+        "iter": None,
+        # 期望契约（离线镜像；实跑时由运行时的 spec 覆写，两者不一致会直接报错）
+        "towing_contract_expected": dict(UPPER_TOWING_CONTRACT_EXPECTED),
+        "frame_dim_expected": UPPER_FRAME_DIM,
+        "action_dim_expected": UPPER_ACTION_DIM,
+        "cmd_action_dim": UPPER_CMD_ACTION_DIM,
+        "joint_action_dim": UPPER_JOINT_ACTION_DIM,
+        # 节拍：训练侧 upper_control_dt（20 Hz）；实跑时按 `--dt` 换成物理步数
+        "control_dt_s": UPPER_CONTROL_DT_S,
+        # 速度头（第 1 维 vx 偏移）的边界：两层限幅 + 出生段门控
+        "offset": {
+            "cmd_offset_scale_mps": UPPER_OFFSET_SCALE_MPS,
+            "min_mps": UPPER_OFFSET_RANGE_MPS[0],
+            "max_mps": UPPER_OFFSET_RANGE_MPS[1],
+            "bounded": True,
+            "clip": "offset = clamp(clamp(u_cmd, ±1) × cmd_offset_scale_mps, min_mps, max_mps)",
+            "amp_vx_range_mps": list(UPPER_AMP_VX_RANGE_MPS),
+            "compose": "loco_vx = clamp(task_vx + offset, amp_vx_range_mps[0], "
+                       "amp_vx_range_mps[1])",
+            "gate": "elapsed_s >= tow_start_s",
+            "gate_after_s": UPPER_GATE_AFTER_S,
+            "gate_note": "出生段不叠加偏移；**STOP 之后仍然生效**"
+                         "（task_vx = 0 ⇒ loco_vx = offset）",
+            "applied_before_frozen_policy": True,
+        },
+        "note": "默认关（基线，残差与偏移都恒 0）。开启后每 50 ms（训练侧 upper_control_dt = "
+                "0.05 s = 20 Hz；默认 --dt 5 ms 时即每 10 个物理步）推理一次上层，"
+                "两次之间偏移与残差保持不变；速度头第 1 维 = "
+                "vx 偏移，两层限幅（先限偏移 [min_mps, max_mps]，再把和裁进 amp_vx_range_mps）"
+                "后合成 loco_command（门控 elapsed_s >= tow_start_s，STOP 之后仍生效），"
+                "合成后的指令送**冻结策略**得到冻结关节目标，再加 12 维残差 ⇒ held，"
+                "held 只在冻结策略刷新那一拍重算并下发（同训练侧 apply_actions），"
+                "既是下发目标也是 JNT 参考。加载前硬校验 towing_contract"
+                "（v3：帧 58 / explicit 6 / latent 16），旧 v2（帧 57 / actor 79 / 动作 12）"
+                "与 56/63 维 checkpoint 会被拒绝。",
+        "loaded": False,
+    }
+
+
 def planned_grid_lines(args) -> list:
     """`--dry-run` / 启动横幅：网格、逐 env 分配与代价（纯逻辑，标准库可跑）。"""
     schedule = args.schedule
@@ -2523,17 +2666,36 @@ def planned_grid_lines(args) -> list:
             f"⇒ 目标 y=0（lane 中线）、yaw=0（超前）；**vx 只给指令、不参与 PD**"
             f"；判据 |y|≤{args.lane_y_limit_m:g} m、|yaw|≤{args.lane_heading_limit_deg:g}°")
     if args.upper_checkpoint is None:
-        lines.append("[plan] 上层网络：**关闭**（基线；12 维关节位置残差恒 0，"
-                     "JNT 参考 = 冻结策略当拍输出——与加开关之前逐位一致）")
+        lines.append("[plan] 上层网络：**关闭**（基线；12 维关节位置残差恒 0、vx 偏移恒 0"
+                     "（`loco_command` ≡ 任务指令）；JNT 参考 = 冻结策略当拍输出"
+                     "——与加开关之前逐位一致）；打开后按 **v3 双头**契约："
+                     f"帧 {UPPER_FRAME_DIM} / 动作 {UPPER_ACTION_DIM}"
+                     f"（{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差）、"
+                     "offset 有界且门控（加 `--upper-checkpoint` 后打印完整边界/门控）")
     else:
         lines.append(
             f"[plan] 上层网络：**开启**（checkpoint={args.upper_checkpoint}；"
             f"{'随机采样' if args.upper_stochastic else '确定性均值'}；"
-            f"delta = clamp(action,±1)⊙action_scale（hip 0.125 / thigh·shank 0.25 rad），"
-            f"held = 冻结策略关节目标 + delta 既下发又作为 JNT 参考；"
-            f"训练节拍 20 Hz（每 10 物理步）推理、两次之间残差保持不变；"
-            f"加载前硬校验 towing_contract：version=2 / frame_dim=57 / explicit_dim=6 / "
-            f"latent_dim=16，旧 56/63 维 checkpoint 会被拒绝）")
+            f"契约 **v3 双头**：帧 {UPPER_FRAME_DIM} = loco_command 3 + last_action 13 "
+            f"+ base_ang_vel 3 + projected_gravity 3 + last_loco_action 12 + joint_pos 12 "
+            f"+ joint_vel 12，动作 {UPPER_ACTION_DIM} = "
+            f"{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差；"
+            f"vx 偏移 = clamp(clamp(u_cmd,±1)·{UPPER_OFFSET_SCALE_MPS:g}, "
+            f"{UPPER_OFFSET_RANGE_MPS[0]:g}, {UPPER_OFFSET_RANGE_MPS[1]:g}) m/s（**有界**）"
+            f" ⇒ loco_vx = clamp(task_vx + offset, {UPPER_AMP_VX_RANGE_MPS[0]:g}, "
+            f"{UPPER_AMP_VX_RANGE_MPS[1]:g})（AMP 训练包络，**两层限幅**）；"
+            f"偏移**门控**在 elapsed_s ≥ tow_start_s = {UPPER_GATE_AFTER_S:g} s"
+            f"（训练侧 SETTLE_TIME_S；出生段不叠加、**STOP 之后仍生效**）；"
+            f"合成后的 loco_command 送**冻结策略** ⇒ 冻结关节目标，再加残差 "
+            f"delta = clamp(action,±1)⊙action_scale（hip 0.125 / thigh·shank 0.25 rad）"
+            f" ⇒ held = 冻结目标 + delta 既下发又作为 JNT 参考；"
+            f"训练节拍 20 Hz（每 "
+            f"{max(1, int(round(UPPER_CONTROL_DT_S / args.dt)))} 物理步 = "
+            f"{UPPER_CONTROL_DT_S:g} s = 训练侧 `upper_control_dt`）推理一次、"
+            f"两次之间偏移与残差都不变；"
+            f"加载前硬校验 towing_contract：version=3 / frame_dim=58 / explicit_dim=6 / "
+            f"latent_dim=16，**旧 v2（帧 57 / actor 79 / 动作 12）与 56/63 维 checkpoint "
+            f"会被拒绝**）")
     if args.compare_report is not None:
         lines.append(f"[plan] 同版本基线对照：{args.compare_report}"
                      f"（report.md / report.json 的「策略 vs 基线」一节会给出同口径对照列；"
@@ -2611,10 +2773,15 @@ def main(args):
                 f"属于外推检查",
                 f"地面摩擦固定 {args.ground_friction:g}（训练随机 0.4–1.2）；轮轴阻尼固定 "
                 f"{args.wheel_damping:g} N·m·s/rad（训练随机 0.008–0.032）",
-                ("关节位置残差为 0：跑的是冻结策略 + 脚本指令的基线，**默认不加载**任何上层 "
-                 "checkpoint（可用 `--upper-checkpoint` 打开）"
+                ("关节位置残差与 vx 偏移都为 0（`loco_command` ≡ 任务指令）：跑的是冻结策略 + "
+                 "脚本指令的基线，**默认不加载**任何上层 checkpoint（可用 `--upper-checkpoint` "
+                 "打开）"
                  if args.upper_checkpoint is None else
-                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：残差 = "
+                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：v3 双头动作 13 维"
+                 f"（1 维 vx 偏移 + 12 维关节残差）；偏移经两层限幅"
+                 f"（[{UPPER_OFFSET_RANGE_MPS[0]:g}, {UPPER_OFFSET_RANGE_MPS[1]:g}] m/s → "
+                 f"clamp 进 [{UPPER_AMP_VX_RANGE_MPS[0]:g}, {UPPER_AMP_VX_RANGE_MPS[1]:g}]）"
+                 f"合成 loco_command 后送冻结策略，门控 elapsed_s >= tow_start_s；残差 = "
                  f"clamp(actor,±1)⊙action_scale，叠加在冻结策略关节目标上；JNT 指标参考 = "
                  f"实际下发的 held（与训练侧 reference=\"commanded\" 同口径）"),
             ],
@@ -2632,24 +2799,7 @@ def main(args):
             "limits": {name: getattr(args, name)
                        for name in ("lane_y_limit_m", "lane_heading_limit_deg")},
         },
-        "upper_policy": {
-            "enabled": args.upper_checkpoint is not None,
-            "checkpoint": (str(args.upper_checkpoint) if args.upper_checkpoint is not None
-                           else None),
-            "deterministic": not args.upper_stochastic,
-            "stochastic": bool(args.upper_stochastic),
-            "mode": "stochastic" if args.upper_stochastic else "deterministic",
-            # 加载后填充（见 sim 路径）：`towing_contract` = checkpoint 里的 4 个字段，`iter` = 训练轮数
-            "towing_contract": None,
-            "iter": None,
-            "towing_contract_expected": {"version": 2, "frame_dim": 57, "explicit_dim": 6,
-                                         "latent_dim": 16},
-            "note": "默认关（基线，残差恒 0）。开启后每 10 个物理步（50 ms = 训练侧 "
-                    "upper_control_dt）推理一次，两次之间残差保持不变；held = 冻结目标 + delta "
-                    "只在冻结策略刷新那一拍重算并下发（同训练侧 apply_actions）。加载前硬校验 "
-                    "towing_contract，旧 56/63 维 checkpoint 会被拒绝。",
-            "loaded": False,
-        },
+        "upper_policy": upper_policy_record(args),
         "connection": {
             "note": "连接类型/长度/弹性逐 env 由训练网格给定（env_spec），不可扫；"
                     "三类模型都用逐 env 的 rest_length 构造，非本类型的 k/c 填 "
@@ -2694,7 +2844,10 @@ def main(args):
         # `sys.path` 与训练脚本同一约定（把 imgo2_rl/scripts/rl_lab 加进路径）。
         if str(RL_ROOT / "scripts" / "rl_lab") not in sys.path:
             sys.path.insert(0, str(RL_ROOT / "scripts" / "rl_lab"))
-        from upper_policy_runtime import UpperPolicyRuntime
+        from upper_policy_runtime import (
+            AMP_VX_MAX, AMP_VX_MIN, CMD_ACTION_DIM, COMMAND_OFFSET_MAX, COMMAND_OFFSET_MIN,
+            COMMAND_OFFSET_SCALE, JOINT_ACTION_DIM, UpperPolicyRuntime,
+            expected_towing_contract)
         from imgo2_rl.assets.cart import resolve_cart_path
         from imgo2_rl.assets.cart_model import read_cart_model
         from imgo2_rl.tasks.manager_based.towing.agents.upper_ppo_cfg import (
@@ -2721,6 +2874,9 @@ def main(args):
         # ------------------------------------------------------------ 训练场景
         training_cfg = UpperTowingEnvCfg()
         action_cfg = training_cfg.actions.high_level_velocity
+        # 偏移门控以**训练 cfg 的实际值**为准（`--dry-run`／加载前记的是离线镜像
+        # `UPPER_GATE_AFTER_S = episode_geometry.SETTLE_TIME_S`，两者应当相等）。
+        experiment["upper_policy"]["offset"]["gate_after_s"] = float(action_cfg.tow_start_s)
         if num_envs != int(training_cfg.scene.num_envs):
             print(f"[info] 训练场景默认 {int(training_cfg.scene.num_envs)} 环境，本次用 "
                   f"{num_envs}（逐 env 参数仍按 `env_spec` 分配，非整数倍时只覆盖网格前缀）",
@@ -2810,9 +2966,9 @@ def main(args):
                         f"指令范围 ±{cap:g}：会给冻结策略喂分布外指令")
 
         # ------------------------------------------------------------ 上层网络开关（默认关）
-        # 关：`upper = None` ⇒ 主循环只走基线路径（残差恒 0，与加开关之前逐位一致）。
+        # 关：`upper = None` ⇒ 主循环只走基线路径（残差与偏移都恒 0，与加开关之前逐位一致）。
         # 开：从 checkpoint 恢复 actor + decoder。网络超参从**注册的 agent cfg** 建，
-        # 加载前硬校验 `towing_contract`（旧 56/63 维 checkpoint 直接抛错）。
+        # 加载前硬校验 `towing_contract`（v3：58/6/16；旧 v2 57/79 与 56/63 维 checkpoint 直接抛错）。
         upper = None
         if args.upper_checkpoint is not None:
             upper = UpperPolicyRuntime(
@@ -2824,15 +2980,43 @@ def main(args):
                   f"iter={upper.iteration} towing_contract={upper.contract} "
                   f"mode={upper_mode} frame={upper.spec.frame_dim} "
                   f"actor={upper.spec.actor_obs_dim} critic={upper.spec.num_critic_obs} "
-                  f"action={upper.spec.num_actions}", flush=True)
+                  f"action={upper.spec.num_actions}"
+                  f"（= {CMD_ACTION_DIM} 维 vx 偏移 + {JOINT_ACTION_DIM} 维关节残差）"
+                  f"；vx 偏移有界 [{COMMAND_OFFSET_MIN:g}, {COMMAND_OFFSET_MAX:g}] m/s"
+                  f"（scale {COMMAND_OFFSET_SCALE:g}）⇒ loco_vx 裁进 AMP 包络 "
+                  f"[{AMP_VX_MIN:g}, {AMP_VX_MAX:g}]；门控 elapsed_s >= "
+                  f"{float(action_cfg.tow_start_s):g} s（STOP 之后仍生效）", flush=True)
+            # 期望契约从**实际加载的 spec** 派生，并与离线镜像逐字段核对（防两处漂移）。
+            expected = expected_towing_contract(upper.spec)
+            if (expected != UPPER_TOWING_CONTRACT_EXPECTED
+                    or (upper.spec.num_actions, CMD_ACTION_DIM, JOINT_ACTION_DIM)
+                    != (UPPER_ACTION_DIM, UPPER_CMD_ACTION_DIM, UPPER_JOINT_ACTION_DIM)
+                    or (COMMAND_OFFSET_SCALE, COMMAND_OFFSET_MIN, COMMAND_OFFSET_MAX)
+                    != (UPPER_OFFSET_SCALE_MPS, *UPPER_OFFSET_RANGE_MPS)
+                    or (AMP_VX_MIN, AMP_VX_MAX) != UPPER_AMP_VX_RANGE_MPS):
+                raise RuntimeError(
+                    f"运行时期望契约 {expected} / 动作 {upper.spec.num_actions} / 偏移边界"
+                    f"（scale {COMMAND_OFFSET_SCALE:g}、[{COMMAND_OFFSET_MIN:g}, "
+                    f"{COMMAND_OFFSET_MAX:g}]）⇒ 包络 [{AMP_VX_MIN:g}, {AMP_VX_MAX:g}] "
+                    f"与测量台的离线镜像（{UPPER_TOWING_CONTRACT_EXPECTED} / "
+                    f"{UPPER_ACTION_DIM} / scale {UPPER_OFFSET_SCALE_MPS:g} / "
+                    f"{list(UPPER_OFFSET_RANGE_MPS)} ⇒ {list(UPPER_AMP_VX_RANGE_MPS)}）不一致："
+                    f"先同步 play_towing_test.py 的 UPPER_* 常量")
             experiment["upper_policy"].update(
-                loaded=True, towing_contract=upper.contract, iter=upper.iteration,
+                loaded=True, towing_contract=upper.contract,
+                towing_contract_expected=expected, iter=upper.iteration,
                 frame_dim=upper.spec.frame_dim, actor_obs_dim=upper.spec.actor_obs_dim,
                 critic_obs_dim=upper.spec.num_critic_obs, action_dim=upper.spec.num_actions,
                 residual_scale=[float(value) for value in upper.action_scale.tolist()])
+            experiment["upper_policy"]["offset"].update(
+                cmd_offset_scale_mps=float(COMMAND_OFFSET_SCALE),
+                min_mps=float(COMMAND_OFFSET_MIN), max_mps=float(COMMAND_OFFSET_MAX),
+                amp_vx_range_mps=[float(AMP_VX_MIN), float(AMP_VX_MAX)],
+                gate_after_s=float(action_cfg.tow_start_s))
             write_json(output / "experiment.json", experiment)
-        # 上层推理节拍 = 训练侧 `upper_control_dt`（0.05 s = 10 个物理步）；两次之间残差保持不变，
-        # 冻结策略每次刷新（每 `decimation` 步）都重算 held = 冻结目标 + 残差（同 apply_actions）。
+        # 上层推理节拍 = 训练侧 `upper_control_dt`（0.05 s = 10 个物理步）；两次之间偏移与残差
+        # 都保持不变，冻结策略每次刷新（每 `decimation` 步）都重算 held = 冻结目标 + 残差
+        # （同 apply_actions）。两者**独立**：上层 tick 可以落在两次冻结刷新之间。
         upper_control_decimation = max(1, int(round(float(action_cfg.upper_control_dt) / dt)))
         if not math.isclose(upper_control_decimation * dt, float(action_cfg.upper_control_dt),
                             rel_tol=1e-6):
@@ -2842,6 +3026,16 @@ def main(args):
                   f"（{upper_control_decimation * dt * 1000:g} ms，训练侧 upper_control_dt="
                   f"{float(action_cfg.upper_control_dt):g} s）；冻结策略每 {decimation} 步刷新",
                   flush=True)
+            gate_s = float(action_cfg.tow_start_s)
+            if not math.isclose(args.settle_time, gate_s, rel_tol=1e-9):
+                print(f"[warn] --settle-time {args.settle_time:g} s ≠ 训练侧 `tow_start_s` "
+                      f"{gate_s:g} s：偏移门控按训练侧阈值（elapsed_s ≥ {gate_s:g} s），"
+                      f"与脚本速度指令的相位不完全重合（那一段 `task_vx = 0`、偏移直接"
+                      f"变成 loco_vx）。要对齐就传 --settle-time {gate_s:g}。", flush=True)
+            if max(args.velocities) > AMP_VX_MAX:
+                print(f"[warn] --velocities 上限 {max(args.velocities):g} > 冻结 AMP 包络上界 "
+                      f"{AMP_VX_MAX:g}：开开关后合成 vx 一律裁进包络（训练侧同口径），"
+                      f"基线轮不裁 ⇒ 这一档的两轮不可逐位对照。", flush=True)
 
         # 相机：一次覆盖整张 40×20 网格（默认 800 环境时跨度约 230 m × 110 m）
         centre = origins.mean(dim=0)
@@ -3123,9 +3317,14 @@ def main(args):
             cart.set_external_force_and_torque(cart_zero_torque, cart_zero_torque)
             policy.reset()
             if upper is not None:
-                # 上层 GRU/残差同样回到零初值（本测试台每 env 只跑一个 episode，
+                # 上层 GRU/残差/偏移同样回到零初值（本测试台每 env 只跑一个 episode，
                 # 正常路径不会二次调用；保留是为了复用与「回合边界清零」语义完整）。
+                # `upper.reset()` 清 GRU 与上一拍 13 维动作；另三个是本循环持有的缓存
+                # （12 维残差、上一拍 13 维动作副本、上一拍合成出的 loco_command）。
                 upper.reset()
+                upper_delta.zero_()
+                upper_processed.zero_()
+                upper_loco_command.zero_()
             scene.reset()
             scene.update(dt)
 
@@ -3218,6 +3417,12 @@ def main(args):
         # 上层残差（rad，策略关节顺序）：首拍为零，之后每 `upper_control_decimation` 步刷新。
         upper_delta = (torch.zeros(num_envs, policy_cfg.num_joints, dtype=torch.float32,
                                    device=args.device) if upper is not None else None)
+        # 上一拍上层动作（13 维，clamp 后）与**上一拍合成出的** loco_command（送冻结策略、
+        # 也进本拍帧）：只有开关开时才被读/写；关时它们不参与任何计算（基线路径原样）。
+        upper_processed = (torch.zeros(num_envs, upper.spec.num_actions, dtype=torch.float32,
+                                       device=args.device) if upper is not None else None)
+        upper_loco_command = (torch.zeros(num_envs, 3, dtype=torch.float32,
+                                          device=args.device) if upper is not None else None)
         command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32, device=args.device)
         tangent_t = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=args.device)
         normal_t = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=args.device)
@@ -3228,7 +3433,8 @@ def main(args):
               f"{len({case.length_m for case in cases})} 种连接长度、"
               f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
               f"重力 {gravity}（世界竖直）；上层网络"
-              f"{'**开启**' if upper is not None else '关闭（基线，残差恒 0）'}", flush=True)
+              f"{'**开启**（v3 双头：帧 58 / 动作 13）' if upper is not None else '关闭（基线，残差与偏移恒 0）'}",
+              flush=True)
         started = time.time()
         # 进度打印节拍：全程约 20 行，够看出在走又不刷屏（长跑的黑盒问题见循环内的注释）。
         progress_every = max(1, args.schedule.total_steps // 20)
@@ -3244,27 +3450,51 @@ def main(args):
                         shaping="ramp", ramp_time_s=args.ramp_time_s, dt=dt)
             else:
                 vx_command = torch.zeros_like(velocities)
-            if step % decimation == 0:
-                # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变
-                command_tensor = lane_command(vx_command)
-                loco_joint_targets = policy_step(command_tensor)
-                if upper is None:
+            if upper is None:
+                # ---- 基线路径（开关关）：与加开关之前**逐位一致** ----
+                # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变；残差恒 0、
+                # 偏移恒 0（`loco_command` ≡ 任务指令）⇒ 冻结策略拿到原样的指令。
+                if step % decimation == 0:
+                    command_tensor = lane_command(vx_command)
+                    loco_joint_targets = policy_step(command_tensor)
                     joint_targets = loco_joint_targets
-                else:
-                    # 上层网络（训练侧 20 Hz）：每 `upper_control_decimation` 个物理步推理一拍，
-                    # 两次之间残差保持不变。帧里的量全部按 `upper_mdp.policy_frame` 的口径取：
-                    # 关节位置/速度按**策略关节顺序**，joint_pos 还要减默认角。
-                    if step % upper_control_decimation == 0:
-                        upper_delta, _upper_processed = upper.act(
-                            loco_command=command_tensor,
-                            base_ang_vel=robot.data.root_ang_vel_b,
-                            projected_gravity=projected_gravity_body(),
-                            last_loco_action=last_loco_action,
-                            joint_pos_rel=(robot.data.joint_pos[:, policy_to_asset]
-                                           - default_joint_pos_policy),
-                            joint_vel=robot.data.joint_vel[:, policy_to_asset])
-                    # 下发目标 = 冻结策略当拍输出 + 残差；它同时也是 JNT 指标的参考量
-                    # （与训练侧 `low_position_error(reference="commanded")` 同口径）。
+            else:
+                # ---- 上层 v3 双头接线（开关开）----
+                # 1) 上层一拍：训练侧 20 Hz（每 `upper_control_decimation` 个物理步），
+                #    **与冻结策略的 `decimation` 步刷新独立**（训练里 `process_actions` 由 env
+                #    step 驱动、`apply_actions` 由每个物理步驱动 ⇒ tick 会落在两次刷新之间）。
+                #    帧里的量全部按 `upper_mdp.policy_frame` 的口径取：`last_action` 由 runtime
+                #    自己持有（上一拍 clamp 后的 13 维动作）；`loco_command` 取**上一拍合成、
+                #    这一拍仍在驱动底层**的那条指令（训练侧观测在 action 之前算，同口径）；
+                #    关节位置/速度按**策略关节顺序**，joint_pos 还要减默认角。
+                if step % upper_control_decimation == 0:
+                    upper_delta, upper_processed = upper.act(
+                        loco_command=upper_loco_command,
+                        base_ang_vel=robot.data.root_ang_vel_b,
+                        projected_gravity=projected_gravity_body(),
+                        last_loco_action=last_loco_action,
+                        joint_pos_rel=(robot.data.joint_pos[:, policy_to_asset]
+                                       - default_joint_pos_policy),
+                        joint_vel=robot.data.joint_vel[:, policy_to_asset])
+                if step % decimation == 0:
+                    command_tensor = lane_command(vx_command)
+                    # 2) 速度头：动作第 1 维 = vx 偏移。**两层限幅**：先由 runtime 把偏移量本身
+                    #    限进 [offset_min, offset_max]（`u_cmd` 先 clamp 到 ±1 再乘尺度），再把
+                    #    「和」裁进冻结 AMP 策略的训练包络；门控 `elapsed_s >= tow_start_s`
+                    #    （出生段不叠加；**STOP 之后仍然生效**）。**必须在冻结策略推理之前**
+                    #    合成：偏移进的是底层观测（`velocity_command=self.loco_command`）。
+                    offset_vx = upper.command_offset_vx(upper_processed)
+                    loco_vx = compose_loco_vx_offset(
+                        command_tensor[:, :1], offset_vx,
+                        active=(step * dt) >= float(action_cfg.tow_start_s),
+                        amp_vx_min=AMP_VX_MIN, amp_vx_max=AMP_VX_MAX)
+                    # vy/wz 是 PD 外环给出的，原样透传（第 0 维才是 vx，同 `upper_mdp.CMD_ACTION_DIM`）
+                    upper_loco_command = command_tensor.clone()
+                    upper_loco_command[:, :1] = loco_vx
+                    # 3) 合成后的 loco_command 喂**冻结策略** ⇒ 冻结关节目标；
+                    # 4) 再加 12 维残差 ⇒ held。`held` 既下发、又作为 JNT 指标的参考量
+                    #    （与训练侧 `low_position_error(reference="commanded")` 同口径）。
+                    loco_joint_targets = policy_step(upper_loco_command)
                     # ⚠ 只在**冻结策略刷新**这一拍重算 held，与训练侧 `apply_actions` 一致
                     # （训练里 held 也只在 `_physics_step % low_level_decimation == 0` 时重算，
                     # 两次刷新之间即使 delta 刚变也不改下发目标）。
@@ -3550,6 +3780,15 @@ def main(args):
                                "reference_report": (str(args.compare_report)
                                                     if args.compare_report is not None else None),
                                "archived": ARCHIVED_BASELINE_2026_10_09,
+                               # 本轮开关状态 + 上层策略的动作/契约口径（v3 双头，TOW-26）：
+                               # 13 = 1 维 vx 偏移 + 12 维关节残差；关时策略轮不存在。
+                               "upper_policy_enabled": args.upper_checkpoint is not None,
+                               "upper_contract_version": UPPER_CONTRACT_VERSION,
+                               "policy_action_dim": UPPER_ACTION_DIM,
+                               "policy_action_dim_note": "上层策略的动作维数（13 = "
+                                                         "1 维 vx 偏移 + 12 维关节残差）；"
+                                                         "基线轮不加载上层策略（见 "
+                                                         "upper_policy_enabled）",
                                # JNT 移出判定统计量后的离线重判读数（本次变更的依据与验收基线）
                                "jnt_excluded_recount": JNT_EXCLUDED_RECOUNT_2026_10_10,
                                "count_jnt": bool(args.count_jnt),
