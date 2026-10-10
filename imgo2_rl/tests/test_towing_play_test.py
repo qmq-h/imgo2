@@ -9,6 +9,7 @@ import ast
 import importlib.util
 import math
 import sys
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -78,6 +79,31 @@ def joint_columns(error_by_joint, *, target=0.0, torque=0.0):
         columns[f"robot_jt_{joint:02d}"] = target
         columns[f"robot_tau_{joint:02d}"] = torque
     return columns
+
+
+def build_impact_episode(*, impact_error=0.05, steady_error=0.01, n=100, record_dt=0.005,
+                         takeup_index=10, takeup_force=5.0, contact_index=30,
+                         contact_force=12.0):
+    """为冲击窗口统计合成一段轨迹：t<takeup 无张力、t≥takeup 有张力、coast 里有一个撞击。
+
+    `n` 是 tow 段的行数（coast 段 40 行）。窗口边界用 `.5` 行错位取值（`0.025 s` = 5 行），
+    这样「时间过滤」与「按行数取整」两种实现会给出**不同**的关节 RMS，边界测试才有分辨力。
+    """
+    rows = []
+    for index in range(n):
+        tension = takeup_force if index >= takeup_index else 0.0
+        rows.append(base_row(
+            phase="tow", time_s=(index + 0.5) * record_dt, robot_vx_b_mps=1.0,
+            rope_tension_n=tension, load_vx_mps=1.0,
+            **joint_columns(impact_error if index >= takeup_index else steady_error)))
+    for index in range(40):
+        speed = 1.0 if index < contact_index else 0.2
+        rows.append(base_row(
+            phase="coast", time_s=(n + index + 1) * record_dt, robot_vx_b_mps=0.0,
+            rope_tension_n=0.0, load_vx_mps=speed,
+            cart_deck_fx_n=contact_force if index == contact_index else 0.0,
+            **joint_columns(impact_error if index >= contact_index else steady_error)))
+    return rows
 
 
 def build_episode(*, command=1.0, dt=0.005, station_steps=20, tow_steps=100, coast_steps=500,
@@ -400,6 +426,283 @@ class ContactWitnessTests(unittest.TestCase):
         self.assertFalse(coarse["contact"])
         self.assertAlmostEqual(coarse["load_dv_limit_mps"], 0.030, places=12)
         self.assertAlmostEqual(fine["load_dv_limit_mps"], 0.015, places=12)
+
+
+class ImpactWindowTests(unittest.TestCase):
+    """冲击窗口独立统计（`impact_stats`）：纯逻辑、离线可测。
+
+    四类时刻（起拖 / 绷直 / 指令归零 / 停车撞击）+ 稳态各自独立统计，并给「冲击 vs 稳态」的
+    比值/增量。**这些字段不参与判定码**（`classify_case` 只读既有 startup/stop），
+    所以这里的断言只钉统计口径，不钉安全性结论。
+    """
+
+    def test_defaults_are_the_documented_defaults(self):
+        self.assertAlmostEqual(play.DEFAULT_IMPACT_WINDOW_S, 0.2, places=12)
+        self.assertAlmostEqual(play.DEFAULT_STEADY_MARGIN_S, 1.0, places=12)
+        self.assertAlmostEqual(play.DEFAULT_TAKEUP_FORCE_THRESHOLD_N, 1.0, places=12)
+
+    def test_four_windows_align_to_different_moments(self):
+        rows = build_impact_episode()
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        # 起拖 = tow 首行；归零 = coast 首行（不是绷直/撞击时刻）
+        self.assertAlmostEqual(stats["startup"]["time_s"], 0.0025, places=12)
+        self.assertAlmostEqual(stats["stop"]["time_s"], 0.505, places=12)
+        # 绷直 = 首个 |张力| 越阈（takeup_index=10 => (10+0.5)·5 ms）
+        self.assertAlmostEqual(stats["takeup"]["time_s"], 0.0525, places=12)
+        self.assertAlmostEqual(stats["takeup"]["tension_n"], 5.0, places=12)
+        self.assertAlmostEqual(stats["takeup"]["vx_mps"], 1.0, places=12)
+        self.assertAlmostEqual(stats["takeup"]["time_since_tow_start_s"], 0.05, places=12)
+        # 停车撞击 = 首个接触见证（coast 第 30 行），与「指令归零」相差整整 150 ms
+        self.assertTrue(stats["stop_contact"]["contact"])
+        self.assertAlmostEqual(stats["stop_contact"]["time_s"], 0.655, places=12)
+        self.assertAlmostEqual(stats["stop_contact"]["time_since_stop_s"], 0.15, places=12)
+        self.assertGreater(stats["stop_contact"]["time_s"], stats["stop"]["time_s"])
+        self.assertIn("deck_contact_force", stats["stop_contact"]["channels"])
+
+    def test_window_uses_time_filtering_not_index_rounding(self):
+        """窗口按 `time_s` 闭区间取：0.025 s = 5 个记录步，两种口径的样本数不同。"""
+        rows = build_impact_episode()
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        # [0.0025, 0.0275] 住 0.0025..0.0275 共 6 行；按行数取整会得到 5 行
+        self.assertEqual(stats["startup"]["samples"], 6)
+        # 围绕 t 的窗口是 ±W ⇒ 总宽 2W，两端各住 5 行 + 中心 1 行 = 11
+        self.assertEqual(stats["takeup"]["samples"], 11)
+        self.assertAlmostEqual(stats["takeup"]["window_s"], 0.05, places=12)
+        self.assertAlmostEqual(stats["takeup"]["half_window_s"], 0.025, places=12)
+        self.assertEqual(stats["startup"]["aligned"], "forward")
+        self.assertEqual(stats["takeup"]["aligned"], "centred")
+
+    def test_steady_margin_trims_both_ends_of_the_tow_phase(self):
+        rows = build_impact_episode()
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        # tow 段 0.0025..0.4975（100 行），去首尾各 0.05 ⇒ 剩 79 行
+        self.assertEqual(stats["steady"]["samples"], 79)
+        self.assertAlmostEqual(stats["steady"]["margin_s"], 0.05, places=12)
+        self.assertAlmostEqual(stats["steady"]["start_s"], 0.0525, places=12)
+        self.assertAlmostEqual(stats["steady"]["end_s"], 0.4475, places=12)
+        self.assertAlmostEqual(stats["steady"]["span_s"], 0.495, places=12)
+        self.assertAlmostEqual(stats["steady"]["joint_rms_rad"], 0.05, places=9)
+        # 稳态不与自己比
+        self.assertIsNone(stats["steady"]["rms_over_steady"])
+        self.assertIsNone(stats["steady"]["rms_delta_rad"])
+
+    def test_ratios_and_deltas_are_reported_against_steady(self):
+        rows = build_impact_episode(impact_error=0.05, steady_error=0.02)
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        steady = stats["steady"]["joint_rms_rad"]
+        self.assertAlmostEqual(steady, 0.05, places=9)
+        # 起拖窗口整段还在 0.02 的平静期 ⇒ 比值 0.4、增量 −0.03
+        self.assertAlmostEqual(stats["startup"]["joint_rms_rad"], 0.02, places=9)
+        self.assertAlmostEqual(stats["startup"]["rms_over_steady"], 0.4, places=9)
+        self.assertAlmostEqual(stats["startup"]["rms_delta_rad"], -0.03, places=9)
+        # 绷直窗口横跨误差跳变 ⇒ RMS 落在两端之间，比值 > 起拖
+        self.assertGreater(stats["takeup"]["joint_rms_rad"], stats["startup"]["joint_rms_rad"])
+        self.assertGreater(stats["takeup"]["rms_over_steady"],
+                           stats["startup"]["rms_over_steady"])
+        self.assertAlmostEqual(stats["takeup"]["rms_delta_rad"],
+                               stats["takeup"]["joint_rms_rad"] - steady, places=9)
+        # 逐关节比值也在（与合并比值同量级）
+        per_joint = stats["takeup"]["per_joint_rms_over_steady"]
+        self.assertEqual(len(per_joint), 12)
+        for value in per_joint.values():
+            self.assertAlmostEqual(value, stats["takeup"]["rms_over_steady"], places=9)
+
+    def test_joint_rms_is_not_averaged_away_by_the_steady_window(self):
+        """核心诉求：一个只有 2 行（0.01 s）的尖峰，稳态窗里看不到，冲击窗里看得见。"""
+        rows = build_impact_episode()
+        for joint in range(12):
+            rows[3][f"robot_jp_{joint:02d}"] = rows[3][f"robot_jt_{joint:02d}"] + 0.5
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.05,
+                                  steady_margin_s=0.05)
+        # 尖峰在 tow 第 4 行（t=0.0225）⇒ 落在起拖窗口 [0.0025, 0.0525] 内（峰值与 RMS 都跳）
+        self.assertAlmostEqual(stats["startup"]["joint_max_rad"], 0.5, places=12)
+        self.assertGreater(stats["startup"]["joint_rms_rad"], 0.10)
+        # 稳态窗从 0.0575 起 ⇒ 尖峰整根被去掉，只剩 0.05 的常态误差
+        self.assertAlmostEqual(stats["steady"]["joint_max_rad"], 0.05, places=9)
+        self.assertAlmostEqual(stats["steady"]["joint_rms_rad"], 0.05, places=9)
+        self.assertGreater(stats["startup"]["rms_over_steady"], 2.0)
+
+    def test_no_takeup_sample_is_reported_not_crashed(self):
+        rows = build_impact_episode(takeup_force=0.5)          # 阈值 1 N 时永远不越阈
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertFalse(stats["takeup"]["available"])
+        self.assertEqual(stats["takeup"].get("samples", 0), 0)
+        self.assertIsNone(stats["takeup"]["joint_rms_rad"])
+        self.assertIsNone(stats["takeup"]["rms_over_steady"])
+        self.assertIn("没有 |rope_tension_n|", stats["takeup"]["note"])
+        self.assertAlmostEqual(stats["takeup"]["force_threshold_n"], 1.0, places=12)
+        # 其它三个窗口不受影响
+        self.assertTrue(stats["startup"]["available"])
+        self.assertTrue(stats["stop"]["available"])
+        self.assertTrue(stats["stop_contact"]["available"])
+
+    def test_negative_tension_counts_as_takeup_for_rigid_links(self):
+        """rigid 球铰连杆张力有符号（压缩为负）⇒ 判定必须用模长。"""
+        rows = build_impact_episode(takeup_force=0.0)
+        for row in rows:
+            if row["phase"] == "tow":
+                row["rope_tension_n"] = -8.0
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertTrue(stats["takeup"]["available"])
+        self.assertAlmostEqual(stats["takeup"]["tension_n"], -8.0, places=12)
+        self.assertAlmostEqual(stats["takeup"]["time_s"], 0.0025, places=12)
+
+    def test_no_contact_sample_is_reported_not_crashed(self):
+        rows = build_impact_episode(contact_force=0.0, contact_index=0)
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertFalse(stats["stop_contact"]["available"])
+        self.assertEqual(stats["stop_contact"].get("samples", 0), 0)
+        self.assertFalse(stats["stop_contact"]["contact"])
+        self.assertEqual(stats["stop_contact"]["channels"], [])
+        self.assertIsNone(stats["stop_contact"]["rms_over_steady"])
+        self.assertIn("没有接触见证", stats["stop_contact"]["note"])
+
+    def test_velocity_jump_alone_is_a_contact_witness(self):
+        rows = build_impact_episode(contact_force=0.0)
+        coast_index = next(i for i, row in enumerate(rows) if row["phase"] == "coast")
+        for row in rows[coast_index:]:
+            row["load_vx_mps"] = 0.2
+        rows[coast_index + 4]["load_vx_mps"] = 0.4     # 单步跃变 0.2 m/s > 0.015
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertTrue(stats["stop_contact"]["available"])
+        self.assertEqual(stats["stop_contact"]["channels"], ["load_velocity_jump"])
+        self.assertAlmostEqual(stats["stop_contact"]["load_vx_mps"], 0.4, places=12)
+
+    def test_window_beyond_the_record_end_is_clipped(self):
+        rows = build_impact_episode()
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=10.0,
+                                  steady_margin_s=0.05)
+        # 起拖窗口比整段都宽 ⇒ 只有 tow 段那 100 行（窗口不越 phase 边界）
+        self.assertEqual(stats["startup"]["available"], True)
+        # 窗口只吃 tow 段那 100 行，不会把 coast 段的行算进来（窗口不越 phase 边界）
+        self.assertEqual(stats["startup"]["samples"], 100)
+        self.assertTrue(stats["stop_contact"]["available"])
+
+    def test_single_step_record(self):
+        rows = [base_row(phase="tow", time_s=0.005, robot_vx_b_mps=1.0,
+                         rope_tension_n=4.0, load_vx_mps=1.0,
+                         **joint_columns(0.03))]
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.2)
+        self.assertEqual(stats["startup"]["samples"], 1)
+        self.assertAlmostEqual(stats["startup"]["joint_rms_rad"], 0.03, places=12)
+        self.assertAlmostEqual(stats["takeup"]["samples"], 1)
+        # 没有 coast 段：归零/撞击/稳态都不能是「有数据」，但也不能崩
+        self.assertFalse(stats["stop"]["available"])
+        self.assertFalse(stats["stop_contact"]["available"])
+        self.assertFalse(stats["steady"]["available"])
+        self.assertIsNone(stats["startup"]["rms_over_steady"])
+
+    def test_empty_record(self):
+        stats = play.impact_stats([], record_dt=0.005, impact_window_s=0.2)
+        for group in play.IMPACT_GROUPS:
+            self.assertFalse(stats[group]["available"], group)
+        self.assertTrue(stats["available"])
+
+    def test_zero_torque_saturation_and_saturated_case(self):
+        rows = build_impact_episode()
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertAlmostEqual(stats["startup"]["torque_saturated_frac"], 0.0, places=12)
+        # |τ| > 0.95 · 23.7 = 22.515 N·m
+        rows = build_impact_episode()
+        for index, row in enumerate(rows):
+            if row["phase"] == "tow" and index < 10:
+                for joint in range(12):
+                    row[f"robot_tau_{joint:02d}"] = 30.0
+        stats = play.impact_stats(rows, record_dt=0.005, impact_window_s=0.025,
+                                  steady_margin_s=0.05)
+        self.assertAlmostEqual(stats["startup"]["torque_saturated_frac"], 1.0, places=12)
+        self.assertAlmostEqual(stats["steady"]["torque_saturated_frac"], 0.0, places=12)
+
+    def test_invalid_parameters_rejected(self):
+        rows = build_impact_episode()
+        for kwargs in ({"impact_window_s": 0.0}, {"impact_window_s": float("nan")},
+                       {"steady_margin_s": -1.0}, {"steady_margin_s": float("inf")}):
+            with self.assertRaises(ValueError):
+                play.impact_stats(rows, record_dt=0.005, **kwargs)
+        with self.assertRaises(ValueError):
+            play._takeup_index(rows, 0.0)
+
+    def test_bad_parameters_must_not_change_the_verdict(self):
+        """新增的冲击窗口参数**不得**影响判定：同一条轨迹换窗口，判定码与既有指标逐位一致。"""
+        rows = build_impact_episode(contact_force=15.0)
+        base = play.compute_case_metrics(
+            rows, case=synthetic_case(), schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.05},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        other = play.compute_case_metrics(
+            rows, case=synthetic_case(), schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.05},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05,
+            impact_window_s=0.9, steady_margin_s=0.0, takeup_force_threshold_n=0.01)
+        self.assertEqual(base["verdict"], other["verdict"])
+        self.assertEqual(base["startup"], other["startup"])
+        self.assertEqual(base["stop"], other["stop"])
+        # 冲击统计本身确实随参数变了（否则这条测试没意义）
+        self.assertNotEqual(base["impact"]["window_s"], other["impact"]["window_s"])
+        self.assertNotEqual(base["impact"]["startup"]["samples"],
+                            other["impact"]["startup"]["samples"])
+        self.assertTrue(other["impact"]["takeup"]["available"])
+
+    def test_case_report_row_adds_impact_columns(self):
+        rows = build_impact_episode()
+        metrics = play.compute_case_metrics(
+            rows, case=synthetic_case(), schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05,
+            impact_window_s=0.025, steady_margin_s=0.05)
+        row = play.case_report_row(metrics)
+        for group in play.IMPACT_GROUPS:
+            for suffix in ("available", "joint_rms_rad", "rms_over_steady", "rms_delta_rad",
+                           "torque_sat_frac", "samples"):
+                self.assertIn(f"impact_{group}_{suffix}", row)
+        self.assertIn("impact_takeup_tension_n", row)
+        self.assertIn("impact_takeup_force_threshold_n", row)
+        self.assertIn("impact_stop_contact_hit", row)
+        self.assertIn("impact_stop_contact_channels", row)
+        self.assertIsNone(row["impact_steady_rms_over_steady"])
+        # 新增列不能顶掉既有列
+        for key in ("startup_joint_rms_rad", "stop_joint_rms_rad", "verdict"):
+            self.assertIn(key, row)
+
+    def test_impact_is_reported_for_every_episode(self):
+        metrics = play.compute_case_metrics(
+            build_episode(tow_steps=500, coast_steps=200), case=synthetic_case(),
+            schedule=play.make_schedule(settle_steps=20, tow_duration=2.5,
+                                        coast_duration=1.0, dt=0.005), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        impact = metrics["impact"]
+        self.assertTrue(impact["available"])
+        self.assertAlmostEqual(impact["window_s"], play.DEFAULT_IMPACT_WINDOW_S, places=12)
+        self.assertAlmostEqual(impact["steady_margin_s"], play.DEFAULT_STEADY_MARGIN_S,
+                               places=12)
+        self.assertAlmostEqual(impact["takeup_force_threshold_n"],
+                               play.DEFAULT_TAKEUP_FORCE_THRESHOLD_N, places=12)
+        self.assertTrue(impact["startup"]["available"])
+        self.assertTrue(impact["steady"]["available"])
+
+    def test_short_tow_phase_makes_the_steady_window_degenerate(self):
+        """默认 margin 1.0 s 在 0.5 s 的短回合上取不到稳态 ⇒ 标为不可用、比值 None（不抛错）。"""
+        metrics = play.compute_case_metrics(
+            build_episode(), case=synthetic_case(), schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        impact = metrics["impact"]
+        self.assertFalse(impact["steady"]["available"])
+        self.assertIsNone(impact["steady"]["joint_rms_rad"])
+        self.assertIsNone(impact["startup"]["rms_over_steady"])
+        self.assertIsNone(impact["startup"]["rms_delta_rad"])
+        # 既有指标与判定不受影响
+        self.assertEqual(metrics["verdict"]["code"], "OK")
 
 
 class EpisodeMetricTests(unittest.TestCase):
@@ -804,7 +1107,8 @@ class EnvCaseTests(unittest.TestCase):
         self.assertEqual(summary["cells"], 800)
         self.assertEqual(summary["cell_repeats"], 1.0)
         self.assertEqual(summary["grades_deg"], {"0": 400, "5": 200, "10": 200})
-        self.assertEqual(summary["length_m"], {"min": 0.6, "max": 1.2})
+        # 绳 0.5–1.5 与杆 0.5–1.0 的并集
+        self.assertEqual(summary["length_m"], {"min": 0.5, "max": 1.5})
         self.assertEqual(len(summary["work_condition_buckets"]), 15)
         self.assertLessEqual(max(summary["bucket_env_counts"]) -
                              min(summary["bucket_env_counts"]), 5)
@@ -868,18 +1172,25 @@ class SpawnGeometryTests(unittest.TestCase):
                                places=12)
         self.assertLess(cart_x, 0.0)                             # 小车在机器人后方（−x）
 
-    def test_rope_and_rigid_targets_differ_for_the_same_length(self):
-        # env_spec: 绳 = 0.5·L0、刚体 = L ⇒ 同一行的两类连接挂点距差一倍
-        rope_spec = connection_grid.env_spec(0)
-        rigid_spec = next(connection_grid.env_spec(index) for index in range(800)
-                          if connection_grid.env_spec(index)["model_name"] == "rigid"
-                          and abs(connection_grid.env_spec(index)["length"]
-                                  - rope_spec["length"]) < 1e-12)
-        self.assertAlmostEqual(rigid_spec["initial_distance"], rope_spec["length"], places=12)
-        self.assertAlmostEqual(rope_spec["initial_distance"], 0.5 * rope_spec["length"],
-                               places=12)
-        spec = self._spawn([rope_spec["initial_distance"], rigid_spec["initial_distance"]])
-        self.assertLess(spec["along_m"][0], spec["along_m"][1])
+    def test_rope_and_rigid_targets_follow_their_own_length_ranges(self):
+        """2026-10-09：绳与杆长度区间解耦（绳 0.5–1.5、杆 0.5–1.0），出生距规则也不同。
+
+        绳 = `SLACK_RATIO · L`（0.8，仍是松弛 ⇒ 第一拍无约束力）；杆 = `L`（全长 ⇒ C=0）。
+        两者不再是"同一长度按比例"，所以旧断言"同一行的两类挂点距差一倍"已作废。
+        """
+        def spec_for(model, row):
+            return next(connection_grid.env_spec(i) for i in range(800)
+                        if connection_grid.env_spec(i)["model_name"] == model
+                        and connection_grid.env_spec(i)["row"] == row)
+        for row in (0, connection_grid.ROWS // 2, connection_grid.ROWS - 1):
+            rope, rigid = spec_for("compliant", row), spec_for("rigid", row)
+            self.assertAlmostEqual(rope["initial_distance"],
+                                   connection_grid.SLACK_RATIO * rope["length"], places=12)
+            self.assertAlmostEqual(rigid["initial_distance"], rigid["length"], places=12)
+            # 同一行：绳不短于杆（区间上端 1.5 > 1.0，下端都是 0.5）
+            self.assertGreaterEqual(rope["length"], rigid["length"] - 1e-12)
+        # 出生比 0.8 ⇒ 最短绳行的真实实体间隙不再贴脸（旧的 0.5 只有 9 mm）
+        self.assertAlmostEqual(connection_grid.SLACK_RATIO, 0.8, places=12)
 
     def test_bad_arguments_rejected(self):
         for kwargs in ({"robot_height": 0.0}, {"cart_height": -0.1},
@@ -935,6 +1246,42 @@ class CliTests(unittest.TestCase):
         self.assertIn("轮轴阻尼 0.032", text)
         self.assertIn("「连接 × 质量」env 数", text)
 
+    def test_impact_window_defaults_and_plan_lines(self):
+        args = play.parse_args(["--dry-run"])
+        self.assertAlmostEqual(args.impact_window, play.DEFAULT_IMPACT_WINDOW_S, places=12)
+        self.assertAlmostEqual(args.steady_margin_s, play.DEFAULT_STEADY_MARGIN_S, places=12)
+        self.assertAlmostEqual(args.takeup_force_threshold,
+                               play.DEFAULT_TAKEUP_FORCE_THRESHOLD_N, places=12)
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("冲击窗口独立统计", text)
+        self.assertIn("--impact-window", text)
+        self.assertIn("--steady-margin-s", text)
+        self.assertIn("--takeup-force-threshold", text)
+        self.assertIn("`--impact-window` 0.2 s", text)
+        self.assertIn("`--takeup-force-threshold` 1 N", text)
+        # 口径并存的说明必须在 plan 里（避免读者以为既有 startup/stop 被换掉了）
+        self.assertIn("既有 `startup.*`/`stop.*` 语义逐位不变", text)
+
+    def test_impact_window_parameters_change_the_plan_line(self):
+        args = play.parse_args(["--dry-run", "--impact-window", "0.05",
+                                "--steady-margin-s", "0.5",
+                                "--takeup-force-threshold", "2.5"])
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("`--impact-window` 0.05 s", text)
+        self.assertIn("`--steady-margin-s` 0.5 s", text)
+        self.assertIn("`--takeup-force-threshold` 2.5 N", text)
+
+    def test_impact_window_bad_values_rejected(self):
+        for argv in (["--impact-window", "0"], ["--impact-window", "-0.1"],
+                     ["--impact-window", "10"],          # > tow-duration 5.0
+                     ["--steady-margin-s", "-1"],
+                     ["--takeup-force-threshold", "0"],
+                     ["--takeup-force-threshold", "-1"]):
+            with self.assertRaises(SystemExit):
+                play.parse_args(argv)
+        # 0 是合法的「不设边距」
+        self.assertEqual(play.parse_args(["--steady-margin-s", "0"]).steady_margin_s, 0.0)
+
     def test_bad_values_rejected(self):
         for argv in (["--num-envs", "0"], ["--num-envs", "-5"],
                      ["--cart-masses", "1"], ["--cart-masses", "60"],
@@ -956,6 +1303,398 @@ class CliTests(unittest.TestCase):
                                 "--cart-masses", "10"])
         self.assertEqual(len(args.cases), 1600)
         self.assertEqual(args.cases[0].cell_index, args.cases[800].cell_index)
+
+    def test_upper_switch_defaults_off(self):
+        """开关默认关：不给路径就是现在的基线（残差恒 0），确定性取均值。"""
+        args = play.parse_args([])
+        self.assertIsNone(args.upper_checkpoint)
+        self.assertFalse(args.upper_stochastic)
+
+    def test_upper_plan_lines_show_the_switch(self):
+        baseline = play.parse_args(["--dry-run"])
+        text = "\n".join(play.planned_grid_lines(baseline))
+        self.assertIn("上层网络：**关闭**", text)
+        self.assertIn("残差恒 0", text)
+        # 打开：需要真实存在的 checkpoint（parse_args 会在启动 Isaac Sim 之前校验）
+        with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
+            args = play.parse_args(["--dry-run", "--upper-checkpoint", handle.name])
+            self.assertEqual(args.upper_checkpoint, Path(handle.name).resolve())
+            opened = "\n".join(play.planned_grid_lines(args))
+            stochastic_args = play.parse_args(
+                ["--upper-checkpoint", handle.name, "--upper-stochastic"])
+            self.assertTrue(stochastic_args.upper_stochastic)
+            stochastic = "\n".join(play.planned_grid_lines(stochastic_args))
+        self.assertIn("上层网络：**开启**", opened)
+        self.assertIn("确定性均值", opened)
+        self.assertIn("towing_contract", opened)
+        self.assertIn("frame_dim=57", opened)
+        self.assertIn("57", opened)
+        self.assertIn("随机采样", stochastic)
+
+    def test_upper_switch_bad_values_rejected(self):
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--upper-stochastic"])              # 没给 checkpoint
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--upper-checkpoint", "/definitely/not/here.pt"])
+
+    def test_compare_report_cli(self):
+        self.assertIsNone(play.parse_args([]).compare_report)
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--compare-report", "/definitely/not/here.json"])
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.json"
+            bad.write_text('{"groups": {}}', encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                play.parse_args(["--compare-report", str(bad)])
+            good = Path(tmp) / "good.json"
+            good.write_text('{"cases": []}', encoding="utf-8")
+            args = play.parse_args(["--compare-report", str(good)])
+            self.assertEqual(args.compare_report, good.resolve())
+            plan = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("同版本基线对照", plan)
+        self.assertIn(str(good.resolve()), plan)
+
+
+class BaselineComparisonTests(unittest.TestCase):
+    """「策略 vs 基线」一节：同口径汇总（不给策略新造指标/不改阈值）+ 归档基线参照。"""
+
+    @staticmethod
+    def _summary(grade, code, *, startup=0.1, speed=0.2, coast=0.3, clearance=0.4,
+                 stop_joint=0.05):
+        metrics = {
+            "case": {"grade_deg": grade, "velocity_mps": 1.0, "connection": "compliant",
+                     "cart_mass_kg": 10.0, "cart_present": True},
+            "verdict": {"code": code, "reasons": []},
+            "startup": {"joint_rms_rad": startup},
+            "speed": {"mae_mps": speed},
+            "stop": {"cart_coast_distance_m": coast, "min_clearance_coast_m": clearance,
+                     "joint_rms_rad": stop_joint},
+        }
+        return {"case": metrics["case"], "metrics": metrics, "verdict": metrics["verdict"]}
+
+    @staticmethod
+    def _args_dict():
+        return {"num_envs": 800, "velocities": [1.5], "cart_masses": [25.0],
+                "ground_friction": 0.8, "wheel_damping": 0.032,
+                "command_shaping": "direct", "ramp_time_s": 1.0,
+                "record_every": 5, "write_csv": "failed",
+                "lane_keeping": "pd", "lane_kp_y": 1.0, "lane_kd_y": 0.3,
+                "lane_kp_yaw": 1.5, "lane_kd_yaw": 0.3,
+                "lane_vy_limit": 0.4, "lane_wz_limit": 0.8}
+
+    def test_summary_counts_codes_and_medians(self):
+        cases = [self._summary(0.0, "OK", speed=0.1),
+                 self._summary(0.0, "COL", speed=0.3),
+                 self._summary(5.0, "SPD", speed=0.2, clearance=None)]
+        summary = play.case_metric_summary(cases)
+        self.assertEqual(summary["envs"], 3)
+        self.assertEqual(summary["ok"], 1)
+        self.assertEqual(summary["codes"], {"OK": 1, "COL": 1, "SPD": 1})
+        self.assertAlmostEqual(summary["medians"]["speed.mae_mps"], 0.2, places=9)
+        # None（无小车环境没有几何间隙）不能进中位数，但样本数要如实报
+        self.assertAlmostEqual(summary["medians"]["stop.min_clearance_coast_m"], 0.4, places=9)
+        self.assertEqual(summary["samples"]["stop.min_clearance_coast_m"], 2)
+        self.assertEqual(summary["by_grade"]["grade0"]["cases"], 2)
+        self.assertEqual(summary["by_grade"]["grade0"]["ok"], 1)
+        self.assertEqual(summary["by_grade"]["grade5"]["ok"], 0)
+
+    def test_archived_constants_match_the_archived_report(self):
+        """参照列的常量必须等于归档 report.json 的复算值（防手抄漂移）。"""
+        path = play.REPO / play.ARCHIVED_BASELINE_2026_10_09["report"]
+        if not path.is_file():
+            self.skipTest(f"归档基线不在工作区：{path}")
+        import json as _json
+        summary = play.case_metric_summary(
+            _json.loads(path.read_text(encoding="utf-8"))["cases"])
+        archived = play.ARCHIVED_BASELINE_2026_10_09
+        self.assertEqual(summary["envs"], archived["num_envs"])
+        self.assertEqual(summary["ok"], archived["ok"])
+        self.assertEqual(summary["codes"], archived["codes"])
+        for key, value in archived["medians"].items():
+            self.assertAlmostEqual(summary["medians"][key], value, places=6)
+        for key, value in archived["median_samples"].items():
+            self.assertEqual(summary["samples"][key], value)
+        self.assertEqual({name: (entry["cases"], entry["ok"])
+                          for name, entry in summary["by_grade"].items()},
+                         archived["by_grade"])
+
+    def test_comparison_section_mentions_every_field_and_flags_jnt(self):
+        current = play.case_metric_summary([self._summary(0.0, "COL")])
+        reference = play.case_metric_summary([self._summary(0.0, "OK")])
+        text = "\n".join(play.format_baseline_comparison(current, reference=reference,
+                                                         upper_enabled=True))
+        self.assertIn("## 策略 vs 基线", text)
+        self.assertIn("上层策略驱动", text)
+        self.assertIn("同版本基线", text)
+        for _group, _field, label in play.FIVE_METRIC_FIELDS:
+            self.assertIn(label, text)
+        # 同版本基线列（通过 1/1）与本轮列（0/1）都在
+        self.assertIn("通过 **0/1**", text)
+        self.assertIn("通过 **1/1**", text)
+        # 归档基线参照 + 出处 + 不可逐格硬比 + JNT 说明
+        self.assertIn(play.ARCHIVED_BASELINE_2026_10_09["label"], text)
+        self.assertIn("1bbb405", text)
+        self.assertIn("6fac89a", text)
+        self.assertIn("不可逐格硬比", text)
+        self.assertIn("`JNT` 不能当结论", text)
+        self.assertIn("PD 静差", text)
+        self.assertIn("不是同一个量", text)
+
+    def test_switch_does_not_add_metrics_or_thresholds(self):
+        """验收口径必须与基线同一套：判据/指标/阈值函数里不得出现开关或新参数分支。"""
+        source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        tokens = ("upper_checkpoint", "upper_delta", "UpperPolicyRuntime", "upper.act(",
+                  "upper_stochastic", "compare_report",
+                  # 冲击窗口的新参数同样不得进判据/阈值（只进 metrics["impact"] 与报告）；
+                  # 它们的取值只允许出现在 compute_case_metrics 的签名/转发与报告层。
+                  "impact_window", "steady_margin_s", "takeup_force_threshold")
+        for name in ("classify_case", "joint_track_stats", "speed_track_stats", "stop_stats",
+                     "stability_stats", "lane_stats", "group_statistics",
+                     "necessity_conclusion"):
+            node = next(node for node in ast.walk(tree)
+                        if isinstance(node, ast.FunctionDef) and node.name == name)
+            segment = ast.get_source_segment(source, node) or ""
+            for token in tokens:
+                self.assertNotIn(token, segment, f"{name} 里不应出现开关/新参数 {token}")
+        # `compute_case_metrics` / `case_report_row` 只是**转发**新参数（签名默认值 + 传进
+        # `impact_stats`）与**抄写**结果，所以只对「开关」token 设黑名单；新参数本身必须在那里
+        # 出现（否则新统计永远拿不到 CLI 的值）。
+        for name in ("compute_case_metrics", "case_report_row"):
+            node = next(node for node in ast.walk(tree)
+                        if isinstance(node, ast.FunctionDef) and node.name == name)
+            segment = ast.get_source_segment(source, node) or ""
+            for token in tokens[:6]:
+                self.assertNotIn(token, segment, f"{name} 里不应出现开关相关代码 {token}")
+        # 新参数在 `compute_case_metrics` 里只准出现在签名与一次转发里：数一数引用次数上限，
+        # 防止有人把窗口/阈值拿去做分支（例如 `if impact_window_s > x:` 改判据）。
+        compute_source = ast.get_source_segment(
+            source, next(node for node in ast.walk(tree)
+                         if isinstance(node, ast.FunctionDef)
+                         and node.name == "compute_case_metrics")) or ""
+        # 各 3 次 = 签名形参 + 转发关键字 + 转发值；多出来就说明有人拿去做了别的判断
+        self.assertEqual(compute_source.count("impact_window_s"), 3)
+        self.assertEqual(compute_source.count("steady_margin_s"), 3)
+        self.assertEqual(compute_source.count("takeup_force_threshold_n"), 3)
+        thresholds_node = next(node for node in tree.body if isinstance(node, ast.Assign)
+                               and any(isinstance(target, ast.Name)
+                                       and target.id == "DEFAULT_THRESHOLDS"
+                                       for target in node.targets))
+        thresholds_source = ast.get_source_segment(source, thresholds_node) or ""
+        self.assertNotIn("upper", thresholds_source)
+        # 阈值口径冻结：默认阈值一个字都不变（归档对照依赖它们）
+        self.assertEqual(set(play.DEFAULT_THRESHOLDS), {
+            "joint_rms_limit_rad", "joint_max_limit_rad", "speed_mae_ratio_limit",
+            "gap_margin_limit_m", "fall_height_limit_m", "pitch_limit_rad",
+            "pitch_fraction_limit", "lane_y_limit_m", "lane_heading_limit_deg"})
+        self.assertEqual(play.DEFAULT_THRESHOLDS["joint_rms_limit_rad"], 0.10)
+        self.assertEqual(play.DEFAULT_THRESHOLDS["joint_max_limit_rad"], 0.30)
+        self.assertEqual(play.VERDICT_CODES, ("OK", "LOW", "LAT", "JNT", "SPD", "COL",
+                                              "FALL", "INV"))
+        # 冲击统计函数里不得读阈值字典（它是观测，不是判据）
+        impact_node = next(node for node in ast.walk(tree)
+                           if isinstance(node, ast.FunctionDef) and node.name == "impact_stats")
+        impact_source = ast.get_source_segment(source, impact_node) or ""
+        self.assertNotIn("thresholds", impact_source)
+        # 五项指标就是 docstring 里那五项（顺序即报告顺序）
+        self.assertEqual([field for _group, field, _label in play.FIVE_METRIC_FIELDS],
+                         ["joint_rms_rad", "mae_mps", "cart_coast_distance_m",
+                          "min_clearance_coast_m", "joint_rms_rad"])
+        self.assertEqual([group for group, _field, _label in play.FIVE_METRIC_FIELDS],
+                         ["startup", "speed", "stop", "stop", "stop"])
+
+    def _impact_summary(self, grade, code, *, startup_rms=0.2, steady=0.1, takeup_available=True,
+                        takeup_rms=0.3, contact_available=False, contact_rms=None):
+        metrics = self._summary(grade, code)["metrics"]
+        metrics["impact"] = {
+            "available": True, "window_s": 0.2, "steady_margin_s": 1.0,
+            "takeup_force_threshold_n": 1.0,
+            "startup": {"available": True, "samples": 8, "joint_rms_rad": startup_rms,
+                        "joint_max_rad": startup_rms, "worst_joint": "FL_hip_joint",
+                        "per_joint_rms_rad": {"FL_hip_joint": startup_rms},
+                        "torque_saturated_frac": 0.01, "rms_over_steady": startup_rms / steady,
+                        "rms_delta_rad": startup_rms - steady},
+            "takeup": {"available": takeup_available,
+                       "samples": 12 if takeup_available else 0,
+                       "joint_rms_rad": takeup_rms if takeup_available else None,
+                       "joint_max_rad": takeup_rms if takeup_available else None,
+                       "worst_joint": "FL_thigh_joint" if takeup_available else None,
+                       "per_joint_rms_rad": None,
+                       "torque_saturated_frac": 0.05 if takeup_available else None,
+                       "rms_over_steady": (takeup_rms / steady) if takeup_available else None,
+                       "rms_delta_rad": (takeup_rms - steady) if takeup_available else None},
+            "stop": {"available": True, "samples": 8, "joint_rms_rad": startup_rms * 2,
+                     "joint_max_rad": startup_rms * 3, "worst_joint": "RL_shank_joint",
+                     "per_joint_rms_rad": None, "torque_saturated_frac": 0.02,
+                     "rms_over_steady": 2.0 * startup_rms / steady,
+                     "rms_delta_rad": 2.0 * startup_rms - steady},
+            "stop_contact": {"available": contact_available,
+                             "samples": 11 if contact_available else 0,
+                             "joint_rms_rad": contact_rms if contact_available else None,
+                             "joint_max_rad": contact_rms if contact_available else None,
+                             "worst_joint": "RR_thigh_joint" if contact_available else None,
+                             "per_joint_rms_rad": None, "torque_saturated_frac": None,
+                             "rms_over_steady": ((contact_rms / steady)
+                                                 if contact_available else None),
+                             "rms_delta_rad": ((contact_rms - steady)
+                                               if contact_available else None)},
+            "steady": {"available": True, "samples": 300, "joint_rms_rad": steady,
+                       "joint_max_rad": steady * 2, "worst_joint": "FL_hip_joint",
+                       "per_joint_rms_rad": {"FL_hip_joint": steady},
+                       "torque_saturated_frac": 0.0, "rms_over_steady": None,
+                       "rms_delta_rad": None},
+        }
+        return {"case": metrics["case"], "metrics": metrics, "verdict": metrics["verdict"]}
+
+    def test_impact_medians_and_samples_are_summarised(self):
+        summaries = [self._impact_summary(0.0, "OK", startup_rms=0.2, steady=0.1),
+                     self._impact_summary(0.0, "COL", startup_rms=0.4, steady=0.2),
+                     self._impact_summary(5.0, "SPD", startup_rms=0.6, steady=0.3,
+                                          takeup_available=False, contact_available=True,
+                                          contact_rms=0.9)]
+        summary = play.case_metric_summary(summaries)
+        self.assertAlmostEqual(summary["impact_medians"]["impact.startup.joint_rms_rad"],
+                               0.4, places=9)
+        self.assertAlmostEqual(summary["impact_medians"]["impact.steady.joint_rms_rad"],
+                               0.2, places=9)
+        # 起拖比值 = 2.0（三个 case 都是 2.0）
+        self.assertAlmostEqual(summary["impact_medians"]["impact.startup.rms_over_steady"],
+                               2.0, places=9)
+        # 绷直只有 2 个 case 有样本（第三个 available=False）⇒ 样本数如实报
+        self.assertEqual(summary["impact_samples"]["impact.takeup.joint_rms_rad"], 2)
+        self.assertEqual(summary["impact_samples"]["impact.stop_contact.joint_rms_rad"], 1)
+        self.assertAlmostEqual(
+            summary["impact_medians"]["impact.stop_contact.joint_rms_rad"], 0.9, places=9)
+        # 最差关节众数（起拖 3/3 都是 FL_hip_joint）
+        self.assertEqual(summary["impact_modal_worst_joint"]["startup"], "FL_hip_joint")
+        self.assertEqual(summary["impact_modal_worst_joint"]["takeup"], "FL_thigh_joint")
+        # 窗口参数随逐 case 的 impact 一起带出来
+        self.assertAlmostEqual(summary["impact_window_s"], 0.2, places=12)
+        self.assertAlmostEqual(summary["impact_steady_margin_s"], 1.0, places=12)
+        self.assertAlmostEqual(summary["impact_takeup_force_threshold_n"], 1.0, places=12)
+
+    def test_impact_medians_are_none_without_impact_metrics(self):
+        """归档基线（旧版本 report.json）没有 impact.* ⇒ 必须显示 n/a 而不是崩。"""
+        summary = play.case_metric_summary([self._summary(0.0, "OK")])
+        self.assertIsNone(summary["impact_medians"]["impact.startup.joint_rms_rad"])
+        self.assertEqual(summary["impact_samples"]["impact.startup.joint_rms_rad"], 0)
+        self.assertIsNone(summary["impact_window_s"])
+        self.assertIsNone(summary["impact_modal_worst_joint"]["startup"])
+
+    def test_impact_section_renders_four_moments_plus_steady(self):
+        summaries = [self._impact_summary(0.0, "COL", contact_available=True, contact_rms=0.9)]
+        current = play.case_metric_summary(summaries)
+        reference = play.case_metric_summary([self._impact_summary(0.0, "OK")])
+        text = "\n".join(play.format_impact_section(
+            current, reference=reference, archived=play.ARCHIVED_BASELINE_2026_10_09))
+        self.assertIn("## 冲击窗口 vs 稳态（关节响应）", text)
+        for token in ("起拖", "绷直", "指令归零", "停车撞击", "稳态", "RMS/稳态", "RMS−稳态",
+                      "不参与判定", "最差关节（众数）", "FL_hip_joint"):
+            self.assertIn(token, text)
+        self.assertIn("W = 0.2 s", text)
+        self.assertIn("稳态 margin = 1 s", text)
+        self.assertIn("绷直阈值 = 1 N", text)
+        # 同版本基线列与归档缺字段说明
+        self.assertIn("同版本基线", text)
+        self.assertIn("该归档没有 `impact.*` 字段", text)
+        # 有/无数据的行都要出现（绷直不可用 => n/a）
+        self.assertIn("n/a", text)
+
+    def test_impact_section_without_any_impact_data_still_renders(self):
+        current = play.case_metric_summary([self._summary(0.0, "OK")])
+        text = "\n".join(play.format_impact_section(current))
+        self.assertIn("## 冲击窗口 vs 稳态（关节响应）", text)
+        self.assertIn("n/a", text)
+        self.assertNotIn("同版本基线", text)
+
+    def test_markdown_report_renders_the_impact_section(self):
+        summaries = [self._impact_summary(0.0, "COL", contact_available=True, contact_rms=0.9)]
+        groups = play.group_statistics(summaries)
+        conclusion = play.necessity_conclusion(groups, play.DEFAULT_THRESHOLDS)
+        current = play.case_metric_summary(summaries)
+        comparison = play.format_baseline_comparison(current)
+        impact = play.format_impact_section(current, archived=play.ARCHIVED_BASELINE_2026_10_09)
+        report = play.build_markdown_report(
+            case_summaries=summaries, groups=groups, conclusion=conclusion,
+            args_dict=self._args_dict(), thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None},
+            comparison=comparison, impact=impact)
+        self.assertIn("## 冲击窗口 vs 稳态（关节响应）", report)
+        self.assertIn("impact-window", report)
+        self.assertLess(report.index("## 分组统计"), report.index("## 冲击窗口"))
+        self.assertLess(report.index("## 冲击窗口"), report.index("## 结论"))
+        self.assertLess(report.index("## 结论"), report.index("## 策略 vs 基线"))
+        # 不给 impact 时保持旧结构（向后兼容）
+        without = play.build_markdown_report(
+            case_summaries=summaries, groups=groups, conclusion=conclusion,
+            args_dict=self._args_dict(), thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None})
+        self.assertNotIn("## 冲击窗口", without)
+
+    def test_markdown_report_renders_the_comparison_section(self):
+        summaries = [self._summary(0.0, "COL", speed=0.3)]
+        groups = play.group_statistics(summaries)
+        conclusion = play.necessity_conclusion(groups, play.DEFAULT_THRESHOLDS)
+        comparison = play.format_baseline_comparison(play.case_metric_summary(summaries))
+        report = play.build_markdown_report(
+            case_summaries=summaries, groups=groups, conclusion=conclusion,
+            args_dict=self._args_dict(), thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None},
+            comparison=comparison)
+        self.assertIn("## 策略 vs 基线", report)
+        self.assertIn("## 限制", report)
+        # 对照节在结论之后、限制之前
+        self.assertLess(report.index("## 结论"), report.index("## 策略 vs 基线"))
+        self.assertLess(report.index("## 策略 vs 基线"), report.index("## 限制"))
+        # 不给 comparison 时保持旧结构（向后兼容）
+        without = play.build_markdown_report(
+            case_summaries=summaries, groups=groups, conclusion=conclusion,
+            args_dict=self._args_dict(), thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None})
+        self.assertNotIn("## 策略 vs 基线", without)
+
+
+class DryRunTests(unittest.TestCase):
+    """`--dry-run` 只能在**标准库**下跑：子进程里跑一遍并检查 `torch` 从未进 `sys.modules`。
+
+    这是「不启动 Isaac Sim 也能看 plan」这条契约的实测（不是静态检查）：子进程从
+    `runpy` 走到 `main()` 返回，plan 行里必须体现新增的冲击窗口参数。
+    """
+
+    def test_dry_run_plan_lines_and_no_torch(self):
+        import subprocess
+        script = RL / "scripts/towing/play_towing_test.py"
+        code = (
+            "import runpy, sys\n"
+            f"sys.argv = ['{script}', '--dry-run']\n"
+            "try:\n"
+            f"    runpy.run_path(r'{script}', run_name='__main__')\n"
+            "except SystemExit as exc:\n"
+            "    assert exc.code in (0, None), exc.code\n"
+            "loaded = sorted(m for m in sys.modules if m == 'torch' or m.startswith('torch.'))\n"
+            "assert not loaded, loaded\n"
+            "print('DRY_RUN_OK')\n"
+        )
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                                timeout=300, cwd=str(RL.parent))
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+        self.assertIn("DRY_RUN_OK", result.stdout)
+        self.assertIn("--impact-window", result.stdout)
+        self.assertIn("--steady-margin-s", result.stdout)
+        self.assertIn("--takeup-force-threshold", result.stdout)
+        self.assertIn("冲击窗口独立统计", result.stdout)
+        # plan 里给出默认值
+        self.assertIn("`--impact-window` 0.2 s", result.stdout)
+        self.assertIn("`--steady-margin-s` 1 s", result.stdout)
+        self.assertIn("`--takeup-force-threshold` 1 N", result.stdout)
 
 
 class JsonSanitiseTests(unittest.TestCase):
@@ -1096,6 +1835,99 @@ class SimLoopStaticTests(unittest.TestCase):
         # 训练场景的重力就是世界竖直，不需要再往 PhysX 里写重力
         self.assertNotIn("set_gravity(", self.source)
         self.assertNotIn("carb.Float3", self.source)
+
+    def test_upper_switch_is_off_by_default_and_lazy(self):
+        """`--upper-checkpoint` 开关的静态守卫（仿真相位跑不了，只钉住几条顺序约定）。
+
+        1. 默认 `upper = None`，主循环只走基线路径（残差恒 0，与加开关前逐位一致）；
+        2. 开关关时**不构造** runtime：构造点唯一，且落在
+           `if args.upper_checkpoint is not None:` 块里（在 AppLauncher 之后的惰性块中）；
+        3. 注入点唯一：`joint_targets = loco_joint_targets + upper_delta`（= held）只出现在
+           `if upper is None: … else:` 的 **else（开关开）** 分支里，`held` 同时被下发、
+           又被当 JNT 参考；
+        4. 基线路径原样保留（`policy_step` 直接下发/返回冻结目标）；
+        5. 模块顶部仍然没有 torch / isaaclab（`--dry-run` 可跑）。
+        """
+        self.assertIn("upper = None", self.source)
+        tree = ast.parse(self.source)
+        self.assertEqual(self.source.count("UpperPolicyRuntime("), 1)
+        guarded = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                   and "args.upper_checkpoint is not None" in ast.unparse(node.test)]
+        self.assertTrue(guarded, "找不到 `if args.upper_checkpoint is not None:` 块")
+        self.assertTrue(any("UpperPolicyRuntime(" in (ast.get_source_segment(self.source, node) or "")
+                            for node in guarded),
+                        "runtime 的构造点必须在开关分支里（关时不能构造）")
+        # 开关状态进产物：experiment.json 的 upper_policy 段 + args 自动 dump
+        self.assertIn('"upper_policy"', self.source)
+        self.assertIn('"enabled": args.upper_checkpoint is not None', self.source)
+        # 注入点：held = 冻结目标 + 残差，唯一，且只在「开关开」分支（`if upper is None: … else:`）
+        held_assignments = [node for node in ast.walk(tree)
+                            if isinstance(node, ast.Assign) and len(node.targets) == 1
+                            and isinstance(node.targets[0], ast.Name)
+                            and node.targets[0].id == "joint_targets"
+                            and "loco_joint_targets + upper_delta" in ast.unparse(node.value)]
+        self.assertEqual(len(held_assignments), 1)
+        upper_blocks = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                        and ast.unparse(node.test) == "upper is None"]
+        self.assertTrue(upper_blocks, "找不到 `if upper is None:` 分支")
+        for node in upper_blocks:
+            baseline = "\n".join(ast.unparse(statement) for statement in node.body)
+            # 关时基线路径：直接下发冻结目标，绝不碰残差
+            self.assertIn("joint_targets = loco_joint_targets", baseline)
+            self.assertNotIn("upper_delta", baseline)
+            opened = "\n".join(ast.unparse(statement) for statement in node.orelse)
+            # 开时：先推理（可选地刷新残差），再 held = 冻结目标 + 残差，并下发同一个张量
+            self.assertIn("loco_joint_targets + upper_delta", opened)
+            self.assertIn("robot.set_joint_position_target(joint_targets[:, asset_to_policy])",
+                          opened)
+            self.assertIn("upper.act(", opened)
+        self.assertIn("step % upper_control_decimation == 0", self.source)
+        # 基线路径的其余部分逐位保留
+        self.assertIn("robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])",
+                      self.source)
+        self.assertIn("return out.joint_targets", self.source)
+        # 模块顶部不能 import torch / isaaclab
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                self.assertNotIn("torch", {alias.name.split(".")[0] for alias in node.names})
+            elif isinstance(node, ast.ImportFrom):
+                self.assertNotIn((node.module or "").split(".")[0], {"torch", "isaaclab"})
+
+    def test_upper_step_happens_at_the_training_rate(self):
+        """上层每 `upper_control_decimation`（= upper_control_dt / dt）个物理步推理一次，
+        两次之间残差保持不变（与 `HierarchicalVelocityAction` 同一结构）。"""
+        self.assertIn('action_cfg.upper_control_dt', self.source)
+        self.assertIn("step % upper_control_decimation == 0", self.source)
+        # 冻结策略的帧项全部按训练口径取：策略关节顺序 + joint_pos 减默认角
+        self.assertIn("robot.data.joint_pos[:, policy_to_asset]", self.source)
+        self.assertIn("default_joint_pos_policy", self.source)
+        self.assertIn("projected_gravity_body()", self.source)
+        # held 只在冻结刷新那一拍重算（与训练侧 apply_actions 一致）
+        self.assertIn("joint_targets = loco_joint_targets + upper_delta", self.source)
+        self.assertIn("只在**冻结策略刷新**这一拍重算 held", self.source)
+
+    def test_switch_state_is_recorded_for_traceability(self):
+        """plan 行 / experiment.json / report.json 都要能查到开关状态与 checkpoint 契约。"""
+        # experiment.json 的四要素（开关、路径、iter、完整契约）与 deterministic/stochastic
+        for token in ('"enabled": args.upper_checkpoint is not None',
+                      '"checkpoint": (str(args.upper_checkpoint)',
+                      '"mode": "stochastic" if args.upper_stochastic else "deterministic"',
+                      '"towing_contract": None',
+                      '"iter": None'):
+            self.assertIn(token, self.source)
+        # 加载后打印成 plan 行（含 iter + 4 字段契约 + mode），并写回 experiment.json
+        self.assertIn("[plan] 上层网络（checkpoint 已加载）：", self.source)
+        self.assertIn("towing_contract={upper.contract}", self.source)
+        self.assertIn("iter={upper.iteration}", self.source)
+        self.assertIn("towing_contract=upper.contract, iter=upper.iteration", self.source)
+        # report.json 带上层信息与对照节；report.md 用同一个汇总函数
+        self.assertIn('"upper_policy": experiment["upper_policy"]', self.source)
+        self.assertIn('"baseline_comparison": baseline_comparison', self.source)
+        self.assertIn("comparison=comparison_lines", self.source)
+        self.assertIn("case_metric_summary(case_summaries)", self.source)
+        # 对照节里三项同口径：本轮 / 同版本基线 / 归档基线
+        self.assertIn("reference=comparison_reference", self.source)
+        self.assertIn("ARCHIVED_BASELINE_2026_10_09", self.source)
 
 
 class MassScalingTests(unittest.TestCase):

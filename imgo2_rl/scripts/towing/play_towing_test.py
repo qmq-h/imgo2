@@ -9,7 +9,30 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 连杆）。如果这条基线在本脚本的网格上已经满足全部五项指标，那么上层任务在这些工况上
 就没有必要性证据；如果它系统性地在某一相失败，失败模式就是上层任务要修的对象。
 
-**本脚本不加载任何上层 checkpoint**：跑的是基线，不是策略回放。
+**默认不加载上层 checkpoint**：跑的是基线（关节位置残差恒 0），不是策略回放。
+给 `--upper-checkpoint PATH` 就打开上层网络（见下节），用**同一轮 run、同一网格、同一指标**
+做「策略 vs 基线」对照（TOW-19 里记录的待办）。
+
+## 上层网络开关（`--upper-checkpoint`，默认关）
+
+- **关（默认）**：残差恒 0，行为与加开关之前**逐位一致**——每 20 ms 把冻结策略的关节位置
+  目标原样下发；`JNT` 指标的口径不变（参考量 = 冻结策略当拍输出）。
+- **开（给了 checkpoint 路径）**：从训练侧联合 checkpoint 恢复 actor + dynamics decoder
+  （57 维 policy 帧 → 6 维显式估计 + 16 维 latent → 79 维 actor → 12 维归一化残差），
+  按 `delta = clamp(action, ±1) ⊙ action_scale` 叠加在冻结策略的关节位置目标上：
+  `held = 冻结目标 + delta`。**`held` 既下发、又作为 `JNT` 指标的参考量**，与训练侧
+  `low_level_position_error_l2(reference="commanded")` 同口径。
+- 上层网络在训练侧是 **20 Hz**（`upper_control_dt = 0.05 s`），冻结策略是 50 Hz；
+  本脚本沿用该节拍：每 10 个物理步（50 ms）推理一次上层，两次之间残差保持不变，
+  冻结策略每 4 个物理步刷新一次并重算 `held`（与 `HierarchicalVelocityAction.apply_actions`
+  同一结构）。`--upper-stochastic` 时用 actor 的分布采样（默认取均值，与 `towing/play.py`
+  的确定性口径一致）。
+- **契约校验（加载前硬校验，不匹配就抛错）**：`towing_contract` 必须精确等于
+  `{'version': 2, 'frame_dim': 57, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
+  agent cfg（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`）建，然后
+  `load_state_dict(strict=True)`。旧 56/63 维 checkpoint（frame 51/56）会被拒绝。
+- **未验证**：本机没有 Isaac Lab（无 GPU），仿真一次都没跑过；开关的运行时行为、
+  残差幅值、策略/基线对照读数都要在训练机实跑。见 README TOW-20。
 
 ## 场景 = 训练场景（2026-10-09 起，用户确认）
 
@@ -24,7 +47,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   （世界竖直）全部沿用训练配置；本脚本只覆盖**物理量标量**（地面摩擦、轮轴阻尼）与
   逐 env 的工作条件。
 - 出生点统一在每条 lane 剖面的**平地段起点**（姿态竖直、单位四元数，lane 系 = 世界系）；
-  两挂点三维距 = `env_spec(i)["initial_distance"]`（绳 = 0.5·L0、刚体 = L），由纯函数
+  两挂点三维距 = `env_spec(i)["initial_distance"]`（绳 = 0.8·L0、刚体 = L，2026-10-09 出生比由
+  0.5 提到 0.8、且绳/杆长度区间解耦），由纯函数
   `spawn_offsets()` 逐 env 解出。
 - **不再有 `--slope-backend` / `--slopes` / `--connections` / `--slope-settle`**：
   坡度量级与连接类型都是网格给定的，没有可扫的开关。
@@ -51,7 +75,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 
 | 指标 | 字段 | 口径 |
 |---|---|---|
-| 起步关节响应误差 | `startup.joint_rms_rad` / `joint_max_rad` / `worst_joint` / `torque_saturated_frac` | 起拖后 `--transition-window`（默认 1.0 s）内，12 关节 `q − q*` 的 RMS 与最大绝对值；`q*` 是**冻结策略当拍下发的关节位置目标**（上层残留动作改的就是它），另报力矩饱和（`|τ| > 0.95·limit`）步占比 |
+| 起步关节响应误差 | `startup.joint_rms_rad` / `joint_max_rad` / `worst_joint` / `torque_saturated_frac` | 起拖后 `--transition-window`（默认 1.0 s）内，12 关节 `q − q*` 的 RMS 与最大绝对值；`q*` 是**当拍真正下发的关节位置目标**（基线 = 冻结策略输出；开了 `--upper-checkpoint` 则 = 冻结输出 + 上层残差 `held`，与训练侧 `reference="commanded"` 同口径），另报力矩饱和（`|τ| > 0.95·limit`）步占比 |
 | 全程速度跟踪误差 | `speed.mae_mps` / `rmse_mps` / `bias_mps` / `ratio_mean` / `p95_abs_err_mps` | tow 段**全程**，**体系** x 速度（与冻结策略的观测同口径；坡上 ≠ 世界系速度）与指令之差；另有后半段稳态窗 `speed.steady_*` |
 | 停止时小车滑移距离 | `stop.cart_coast_distance_m` / `cart_coast_to_rest_m` / `cart_coast_time_to_rest_s` / `cart_speed_at_stop_mps` | 从 STOP 那一刻到回合结束小车沿 x 的位移；以及速度降到 0.02 m/s 以下那一刻的距离与耗时 |
 | 停止时机器人—小车距离维持 | `stop.clearance_at_stop_m` / `min_clearance_coast_m` / `final_clearance_m` / `time_to_contact_after_stop_s` / `contact` | **车头到机器人后腿的真实几何间隙**（全腿 FK，复用 `summarize_tow.py`，挂点距单独报）；接触由「车斗接触力 / 几何间隙 / 负载单步速度跃变」三路见证判定 |
@@ -96,7 +120,34 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
     ... --lane-keeping off
     ... --command-shaping ramp --ramp-time-s 1.0
     ... --write-csv failed|all|none
+
+# 策略 vs 基线：开关打开（同一网格、同一指标；`--dry-run` 也可先看开关状态）
+python3 imgo2_rl/scripts/towing/play_towing_test.py --dry-run \
+    --upper-checkpoint logs/towing_rl_lab/towing_upper/<run>/model_1000.pt
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py --headless \
+    --upper-checkpoint logs/towing_rl_lab/towing_upper/<run>/model_1000.pt
+# 需要采样动作（而不是均值）时另加 --upper-stochastic
 ```
+
+**对照的正确做法是跑两轮**（本测试台一次只跑一种模式：每个 env 只跑一个 episode，同一进程
+里没有第二次 rollout 可用；所以不做「同轮切换」，改成**两次运行 + 报告里对照**）：
+
+```
+# 第 1 轮：基线（不给 --upper-checkpoint）
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
+    --headless --num-envs 800 --no-cart-fraction 0.125 \
+    --output-dir imgo2_rl/logs/towing/play_test/upper_switch_baseline
+# 第 2 轮：策略（同一套参数 + 那个 checkpoint + 把基线的 report.json 传进来做同版本对照）
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
+    --headless --num-envs 800 --no-cart-fraction 0.125 \
+    --upper-checkpoint logs/towing_rl_lab/towing_upper/<run>/model_1000.pt \
+    --compare-report imgo2_rl/logs/towing/play_test/upper_switch_baseline/report.json \
+    --output-dir imgo2_rl/logs/towing/play_test/upper_switch_policy
+```
+
+两轮除开关（与 `--compare-report`）外参数必须完全一致（本测试台是确定性的，没有随机种子）。
+`report.md` 与 `report.json` 的「策略 vs 基线」一节给出三项同口径数字：本轮、同版本基线
+（`--compare-report`）、归档基线 2026-10-09（旧几何，只作参照、**不可逐格硬比**）。
 
 ## 产物
 
@@ -112,6 +163,37 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 `--record-every` 默认 **5**（25 ms = 冻结策略周期）：800 环境 × 2200 步逐物理步记录是
 176 万行（Python dict 约 2 GB 内存），不可行；接触的速度跃变阈值已按记录步长自动放大。
 
+## 冲击窗口 vs 稳态（`--impact-window` / `--steady-margin-s` / `--takeup-force-threshold`）
+
+**为什么**：只报全程/牵引段的关节 RMS 会把起步与停车的冲击**平均掉**，看不出安全性改善。
+所以把四个**不同时刻**各取一个窗口独立统计，并给出与稳态的比值/增量（2026-10-10 用户要求）：
+
+| 窗口 | 对齐到什么 | 取值范围 |
+|---|---|---|
+| `impact.startup`（`impact_startup_*`） | **起拖**（tow 段首行 = 速度指令阶跃那一刻） | `[t0, t0 + W]` |
+| `impact.takeup`（`impact_takeup_*`） | **真实绷直/穿绳时刻**：首个 `\\|rope_tension_n\\| > 阈值` 的样本 | `[t − W, t + W]` |
+| `impact.stop`（`impact_stop_*`） | **指令归零**（coast 段首行） | `[t0, t0 + W]` |
+| `impact.stop_contact`（`impact_stop_contact_*`） | **真实停车撞击**：coast 段首个接触见证样本（车斗接触力或负载速度跃变） | `[t − W, t + W]` |
+| `impact.steady`（`impact_steady_*`） | 牵引段**去掉首尾各 `--steady-margin-s`** | 分母 |
+
+`W = --impact-window`（默认 0.2 s）。每个窗口报 `joint_rms_rad` / `joint_max_rad` /
+`worst_joint` / 逐关节 `per_joint_rms_rad` / `torque_saturated_frac`，再加
+`rms_over_steady`（比值，>1 = 比稳态猛）、`rms_delta_rad`（增量 [rad]）与逐关节比值。
+`takeup` 另带 `time_s` / `tension_n` / `vx_mps`，`stop_contact` 另带 `time_s` / `channels` /
+`deck_fx_n`。**归零窗口与撞击窗口是两件事**（实测可能差数百毫秒），不要互相替代。
+
+**口径冻结**：`--transition-window`（默认 1.0 s）的既有 `startup.*` / `stop.*` 字段、
+`DEFAULT_THRESHOLDS`、判定码（`COL`/`JNT`/`SPD`/`LOW`…）与 `classify_case` **一律不动**，
+新增字段只进 `metrics["impact"]`；`impact_stats()` 里没有阈值字典、也不做任何判定分支，
+所以 `docs/towingdata/2026-10-09_necessity_800*/` 的归档对照不受影响（归档没有 `impact.*`，
+报告里那列只能显示 `n/a`）。读法见表头（`report.md` 的「## 冲击窗口 vs 稳态（关节响应）」）。
+
+`report.md` 增一节「## 冲击窗口 vs 稳态（关节响应）」（起拖 / 绷直 / 指令归零 / 停车撞击四行
++ 稳态一行 + `RMS/稳态`、`RMS−稳态` 两列），`report.json` 增顶层 `impact_statistics`（本轮 /
+同版本基线的逐 case 中位数、样本数、最差关节众数），`report.csv` 增 `impact_<窗口>_*` 扁平列。
+详见 README 问题表 **TOW-22** 与
+[双头方案记录](../docs/towing_upper_two_head_2026-10-10.md)（本机无 Isaac Lab，只做了离线验证）。
+
 ## 判读与限制
 
 - 结论只由「本网格 + 本阈值」给出，不能外推：未测训练侧的域随机化（质量 20/25 kg 超出、
@@ -123,6 +205,31 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
   本脚本的跟速指标一律用**体系** vx；两者都写在产物里，不要混用。
 - 关节跟踪误差阈值没有标定，首轮结果出来前不要把 `JNT` 当成定论。
 - 速度指令是体系 x 速度（与冻结策略观测一致），只研究直线拖曳。
+
+## 策略 vs 基线要对比哪些字段（`--upper-checkpoint` 对照用）
+
+同一格式的产物逐项比两轮（基线 vs 策略），按优先级：
+
+| 组 | 字段（`report.json.cases[].metrics`；`report.csv` 里加了 `startup_/speed_/stop_/lane_` 前缀） | 看什么 |
+|---|---|---|
+| 判定码 | `verdict.code` / `verdict.reasons`（分组计数在 `report.json.groups[*].reasons`） | 分组（坡度量级）里 `COL`（追尾）/`SPD`（跟速）/`JNT`（关节）的占比是否下降 |
+| 跟速 | `speed.mae_mps`、`speed.rmse_mps`、`speed.bias_mps`、`speed.ratio_mean`、`speed.p95_abs_err_mps`、`speed.steady_mae_mps`、`speed.steady_ratio_mean` | 拖曳代价的主战场：策略应把 MAE/偏差压下来（尤其重车 + 陡坡 + 高速） |
+| 追尾 | `stop.cart_coast_distance_m`、`stop.cart_coast_to_rest_m`、`stop.cart_coast_time_to_rest_s`、`stop.min_clearance_coast_m`、`stop.final_clearance_m`、`stop.contact`、`stop.time_to_contact_after_stop_s` | 停车段是否还撞上来；滑移衰减（`*_to_rest_*`）是否变好 |
+| 关节响应 | `startup.joint_rms_rad`、`startup.joint_max_rad`、`startup.worst_joint`、`startup.torque_saturated_frac`、`stop.joint_rms_rad`、`stop.joint_max_rad`、`stop.settle_time_s` | 口径已随开关改变（基线参考冻结输出、策略参考 `held`），**不要把它当纯粹的"改善"**；要同时看 `torque_saturated_frac` 是否恶化（残差顶掉底层动作的信号） |
+| 横向/朝向 | `lane.y_rms_m`、`lane.y_max_abs_m`、`lane.heading_rms_rad`、`lane.heading_max_abs_rad`、`lane.vy_saturated_frac`、`lane.wz_saturated_frac` | PD 外环与上层策略同在一轮里起作用；限幅占比上升说明 PD 在硬顶 |
+| 稳定性 | `stability.fell`、`stability.min_robot_surface_height_m`、`stability.max_abs_pitch_rel_rad`、`stability.pitch_over_limit_frac`、`stability.invalid_samples` | 策略不能把机器人开倒，也不能让记录失效 |
+| 策略自身 | `experiment.json.upper_policy`（checkpoint/契约/iter/确定性）与逐记录步 `robot_jp_*`（实测）− `robot_jt_*`（= 实际下发目标） | 先确认 checkpoint 与契约对上了；再用同一 case 的两轮 `tow.csv` 看残差到底改了什么 |
+| 归因 | 两轮 `report.csv` 的 `verdict` 做成逐 cell 对照表（`play_test_stats.py` 可读 `report.json`） | 逐 cell 看「基线失败 → 策略通过/更差」的分布，而不是只看均值 |
+
+**注意**：`JNT` 的参考量在两种开关下不是同一个东西（基线 = 冻结输出、策略 = 下发目标），
+所以 `startup.joint_rms_rad` 的差**不是**纯粹的"跟踪改善"；阈值也仍是未标定的占位值。
+**验收结论只读 `COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）**：归档基线里 `JNT` 在有负载
+（295/700）与无负载（100/100）两边都接近 100%，量的是 PD 静差 τ/kp，不是拖曳能力缺陷。
+
+`report.md` / `report.json` 里的「策略 vs 基线」一节把本轮、同版本基线（`--compare-report`）、
+归档基线 2026-10-09 三项放在一起（同一个 `case_metric_summary`：通过数、判定码分布、
+五项指标中位数、逐坡度量级通过数）；归档那列是**旧几何**（绳 0.6–1.2 m、出生比 0.5），
+只作 sanity check，**不可逐格硬比**。
 """
 
 from __future__ import annotations
@@ -135,6 +242,7 @@ import json
 import math
 import os
 import platform
+import statistics
 import subprocess
 import sys
 import time
@@ -173,6 +281,86 @@ DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
 DEFAULT_RECORD_EVERY = 5
 N_JOINTS = 12
 PHASES = ("station", "tow", "coast")
+
+#: 「策略 vs 基线」报告里统一用的五项指标中位数（与 docstring 的五项指标一一对应）。
+FIVE_METRIC_FIELDS = (
+    ("startup", "joint_rms_rad", "起步关节响应 RMS"),
+    ("speed", "mae_mps", "全程跟速 MAE"),
+    ("stop", "cart_coast_distance_m", "停车小车滑移"),
+    ("stop", "min_clearance_coast_m", "停车最小几何间隙"),
+    ("stop", "joint_rms_rad", "停车关节响应 RMS"),
+)
+
+#: 冲击窗口独立统计的默认参数（用户 2026-10-10 要求）。
+#: **只进 `metrics["impact"]`，不进任何判据/阈值**：`classify_case` 不读它、`DEFAULT_THRESHOLDS`
+#: 不含它（既有 `startup.*` / `stop.*` 字段与判定码语义逐位不变，归档对照不受影响）。
+DEFAULT_IMPACT_WINDOW_S = 0.2      # 冲击瞬态窗口宽度 [s]
+DEFAULT_STEADY_MARGIN_S = 1.0      # 稳态窗在牵引段首尾各去掉多少 [s]
+DEFAULT_TAKEUP_FORCE_THRESHOLD_N = 1.0   # 判定「绷直/穿绳」的绳张力模长阈值 [N]
+
+#: 冲击窗口统计的四个时刻 + 稳态（`metrics["impact"]` 的子键，报告表也按这个顺序）。
+IMPACT_GROUPS = ("startup", "takeup", "stop", "stop_contact", "steady")
+
+#: 冲击窗口统计里进「策略 vs 基线」中位数对照的字段（逐 case 中位数 + 样本数）。#: 与 `FIVE_METRIC_FIELDS` 同一套 `case_metric_summary` 汇总，读法：比值 ≈ 1 表示该时刻
+#: 的关节响应与稳态同量级（没有冲击）；比值越大冲击越猛（>1 的倍数即「猛多少倍」）。
+IMPACT_METRIC_FIELDS = (
+    ("impact.startup.joint_rms_rad", "起拖窗口关节 RMS"),
+    ("impact.takeup.joint_rms_rad", "绷直窗口关节 RMS"),
+    ("impact.stop.joint_rms_rad", "归零窗口关节 RMS"),
+    ("impact.stop_contact.joint_rms_rad", "停车撞击窗口关节 RMS"),
+    ("impact.steady.joint_rms_rad", "稳态（牵引段去首尾）关节 RMS"),
+    ("impact.startup.rms_over_steady", "起拖 RMS / 稳态"),
+    ("impact.takeup.rms_over_steady", "绷直 RMS / 稳态"),
+    ("impact.stop.rms_over_steady", "归零 RMS / 稳态"),
+    ("impact.stop_contact.rms_over_steady", "停车撞击 RMS / 稳态"),
+    ("impact.startup.rms_delta_rad", "起拖 RMS − 稳态 [rad]"),
+    ("impact.stop.rms_delta_rad", "归零 RMS − 稳态 [rad]"),
+    ("impact.startup.torque_saturated_frac", "起拖力矩饱和占比"),
+    ("impact.takeup.torque_saturated_frac", "绷直力矩饱和占比"),
+    ("impact.stop.torque_saturated_frac", "归零力矩饱和占比"),
+    ("impact.stop_contact.torque_saturated_frac", "停车撞击力矩饱和占比"),
+    ("impact.steady.torque_saturated_frac", "稳态力矩饱和占比"),
+)
+
+#: 归档基线（`docs/towingdata/2026-10-09_necessity_800_noload/`）的读数，作为
+#: report.md「策略 vs 基线」一节里的**参照列**（不是对照列）。
+#:
+#: ⚠ **不能逐格硬比**：该 run 的 `git.commit = 1bbb405` 且**工作树是脏的**（上层侧 6 个
+#: 文件当时未提交，随后成为 `6fac89a`；复现请用 `6fac89a`），而且用的是**旧几何**——
+#: 绳 0.6–1.2 m（长度未按类型解耦）、出生比 0.5；本次代码是绳 0.5–1.5 / 杆 0.5–1.0、
+#: 出生比 0.8。所以这一列只用于「同量级 sanity check」，有效对照必须在**同一版本里**
+#: 跑两轮（基线一次 + 开开关一次，参数完全相同）。
+#: 数值由 `case_metric_summary()` 从归档 report.json 复算（离线测试逐项核对）。
+ARCHIVED_BASELINE_2026_10_09 = {
+    "label": "归档基线 2026-10-09（旧几何，仅参照）",
+    "report": "docs/towingdata/2026-10-09_necessity_800_noload/report.json",
+    "git_commit": "1bbb4054e52c63be3bfaf5462f08a891a6ddae85",
+    "reproduce_commit": "6fac89a",
+    "working_tree_dirty": True,
+    "grid_note": "旧几何：绳 0.6–1.2 m（未按类型解耦）、出生比 0.5；当前代码是绳 0.5–1.5 / "
+                 "杆 0.5–1.0、出生比 0.8 ⇒ 不可逐格硬比，只能同版本内对照",
+    "num_envs": 800,
+    "no_cart_fraction": 0.125,
+    "ok": 0,
+    "codes": {"JNT": 395, "COL": 276, "SPD": 129},
+    "medians": {
+        "startup.joint_rms_rad": 0.215685,
+        "speed.mae_mps": 0.160643,
+        "stop.cart_coast_distance_m": 0.090157,
+        "stop.min_clearance_coast_m": 0.489744,
+        "stop.joint_rms_rad": 0.154061,
+    },
+    "median_samples": {
+        "startup.joint_rms_rad": 800,
+        "speed.mae_mps": 800,
+        "stop.cart_coast_distance_m": 800,
+        "stop.min_clearance_coast_m": 691,
+        "stop.joint_rms_rad": 800,
+    },
+    "by_grade": {"grade0": (400, 0), "grade5": (200, 0), "grade10": (200, 0)},
+    "jnt_note": "归档基线里 JNT 在有负载（295/700）与无负载（100/100）两边都接近 100%，"
+                "量的是 q − q* 的 PD 静差（≈ τ/kp），阈值未标定",
+}
 
 _JOINT_NAMES_FALLBACK = tuple(
     f"{leg}_{part}_joint" for leg in ("FL", "FR", "RL", "RR")
@@ -586,7 +774,7 @@ def spawn_offsets(initial_distances, *, robot_height: float, cart_height: float,
     姿态竖直（单位四元数，lane 系 = 世界系），于是只有切向（+x）与法向（+z）两个分量：
 
     - 机器人根 = `(0, 0, robot_height)`（`robot_height` 取资产 default root 的 z）；
-    - 小车根让两挂点三维距等于该 env 的 `initial_distance`（绳 = 0.5·L0、刚体 = L）：
+    - 小车根让两挂点三维距等于该 env 的 `initial_distance`（绳 = 0.8·L0、刚体 = L）：
       沿 +x 分开 `along`、沿 z 相差 `Δn = (robot 挂点高 − cart 挂点高)`；
     - 逐 env 的 `initial_distance` 不同（长度逐行不同、绳/刚体也不同），所以 `along` 是数组。
 
@@ -831,6 +1019,242 @@ def contact_witness(rows, *, record_dt: float, deck_limit_n: float = 1.0,
             "load_dv_limit_mps": limit}
 
 
+def _rows_in_span(rows, start_s: float, end_s: float) -> list:
+    """取**闭区间** `[start_s, end_s]` 内的记录行（按 `time_s` 过滤，与下标无关）。
+
+    记录行的时间戳是 `(step + 1) · dt`（见 `make_row`），所以窗口的两端只按时间对齐：
+    「指令归零那一刻」= coast 段第一行，`[t0, t0 + W]` 与 `[t0 − W, t0 + W]` 都从同一行起算。
+    """
+    return [row for row in rows
+            if start_s <= float(row["time_s"]) <= end_s]
+
+
+def _takeup_index(rows, threshold_n: float, *, phase: str = "tow"):
+    """首个 ‖F‖ 越阈的样本下标（`None` = 整段没有绷直/穿绳）。
+
+    绳张力是**有符号**的（rigid 球铰连杆压缩为负），所以判定用模长：`abs(rope_tension_n)`。
+    `phase` 给 None 时在整个记录里找（`stop_contact` 用不到它，但保持接口通用）。
+    """
+    if not (math.isfinite(threshold_n) and threshold_n > 0.0):
+        raise ValueError(f"绷直力阈值必须是有限正数，收到 {threshold_n!r}")
+    for index, row in enumerate(rows):
+        if phase is not None and row["phase"] != phase:
+            continue
+        if abs(float(row["rope_tension_n"])) > threshold_n:
+            return index
+    return None
+
+
+def _contact_index(rows, *, phase: str = "coast", deck_limit_n: float = 1.0,
+                   dv_limit_at_5ms: float = 0.015, record_dt: float = 0.005):
+    """停车撞击的首个接触见证样本下标（`None` = 没有见证）。
+
+    与 `contact_witness()` 同一套口径、同一套阈值：车斗接触力 `|cart_deck_fx_n| > deck_limit_n`
+    或负载单步速度跃变（阈值按 `record_dt / 5 ms` 放大）。**只看 coast 段**——拖曳之前
+    「生成/站定就贴上」是另一类问题（与 `stop_stats` 里的 witness 一致）。
+    返回 `(index, channels)`：`channels` 是**该样本**触发的通道（可能两个都触发）。
+    """
+    coast = [row for row in rows if row["phase"] == phase] if phase else list(rows)
+    if not coast:
+        return None, []
+    dv_limit = dv_limit_at_5ms * max(1.0, record_dt / 0.005)
+    for index, row in enumerate(coast):
+        channels = []
+        if abs(float(row["cart_deck_fx_n"])) > deck_limit_n:
+            channels.append("deck_contact_force")
+        if index > 0 and abs(float(row["load_vx_mps"])
+                             - float(coast[index - 1]["load_vx_mps"])) > dv_limit:
+            channels.append("load_velocity_jump")
+        if channels:
+            return index, channels
+    return None, []
+
+
+def impact_stats(rows, *, record_dt: float, impact_window_s: float = 0.2,
+                 steady_margin_s: float = 1.0, takeup_force_threshold_n: float = 1.0,
+                 deck_limit_n: float = 1.0, joint_names=None, torque_limits=None) -> dict:
+    """**冲击窗口 vs 稳态**的独立统计（用户 2026-10-10 要求；纯逻辑、离线可测）。
+
+    为什么要独立统计：把全程/牵引段的关节响应 RMS 一平均，起步与停车的冲击会被运动中的
+    小响应**抹平**，看不出安全性改善。这里把四个时刻各自取窗口单独报，并给出与稳态的
+    **比值/增量**（不要让读者心算两个绝对量）：
+
+    | 窗口 | 起点 | 对齐到什么 |
+    |---|---|---|
+    | `startup` | tow 段首行（**起拖**，指令阶跃那一刻） | `impact_startup_time_s` |
+    | `takeup` | 首个 `|rope_tension_n| > takeup_force_threshold_n` 的样本 | 真实绷直/穿绳时刻 |
+    | `stop` | coast 段首行（**指令归零**） | `impact_stop_time_s` |
+    | `stop_contact` | coast 段首个接触见证样本 | 真实停车撞击时刻 |
+
+    窗口宽度：`startup`/`stop` 是**向未来**取 `impact_window_s`（`[t0, t0 + W]`，与既有
+    `--transition-window` 同方向、只是更短）；`takeup`/`stop_contact` 是**围绕时刻**
+    取 `±impact_window_s`（`[t − W, t + W]`，因为冲量发生在时刻两侧）。
+
+    稳态基线 `steady`：牵引段去掉**首尾各** `steady_margin_s` 后的关节跟踪误差
+    （`[tow 首行 + margin, tow 末行 − margin]`），含逐关节 RMS。首尾都去掉是因为首端有
+    起步瞬态、末端有绳张力卸载前的抬升。
+
+    关节量口径与 `joint_track_stats` 完全一致：`q − q*`，`q*` = 当拍真正下发的关节位置目标。
+    `joint_rms_rad` 是**全 12 关节合并**的 RMS（各窗口独立算，不再被别的窗口平均）。
+    每个窗口都带 `available` / `samples` / `window_s`；取不到记录时是 `_nan_summary`，
+    不会抛错（800 环境里出现空窗口要能全量落盘）。
+    """
+    if not (math.isfinite(impact_window_s) and impact_window_s > 0.0):
+        raise ValueError(f"冲击窗口必须是有限正数，收到 {impact_window_s!r}")
+    if not (math.isfinite(steady_margin_s) and steady_margin_s >= 0.0):
+        raise ValueError(f"稳态边距必须是非负有限数，收到 {steady_margin_s!r}")
+    names = list(joint_names) if joint_names else list(_JOINT_NAMES_FALLBACK)
+    limits = list(torque_limits) if torque_limits is not None else [23.7] * N_JOINTS
+
+    def joint_block(window_rows, *, note: str) -> dict:
+        stats = joint_track_stats(window_rows, joint_names=names, torque_limits=limits)
+        if not stats.get("available"):
+            # 键集与「有数据」时**完全一致**（值为 None），下游（报告/CSV/JSON）不必分支，
+            # 800 环境里出现空窗口也能全量落盘。
+            block = {"available": False, "samples": 0,
+                     "joint_rms_rad": None, "joint_max_rad": None, "worst_joint": None,
+                     "per_joint_rms_rad": None, "torque_saturated_frac": None,
+                     "note": note or stats.get("note")}
+        else:
+            block = {"available": True, "samples": stats["samples"],
+                     "joint_rms_rad": stats["joint_rms_rad"],
+                     "joint_max_rad": stats["joint_max_rad"],
+                     "worst_joint": stats["worst_joint"],
+                     "per_joint_rms_rad": stats["per_joint_rms_rad"],
+                     "torque_saturated_frac": stats["torque_saturated_frac"]}
+        block.update({"rms_over_steady": None, "rms_delta_rad": None,
+                      "per_joint_rms_over_steady": None})
+        return block
+
+    def empty_block(note: str) -> dict:
+        return joint_block([], note=note)
+
+    def forward_window(rows_, time_s, label):
+        window = _rows_in_span(rows_, time_s, time_s + impact_window_s)
+        block = joint_block(window, note=f"{label} 窗口没有记录")
+        block.update({"time_s": time_s, "window_s": impact_window_s, "aligned": "forward"})
+        return block
+
+    def centred_window(rows_, time_s, label):
+        window = _rows_in_span(rows_, time_s - impact_window_s, time_s + impact_window_s)
+        block = joint_block(window, note=f"{label} 窗口没有记录")
+        block.update({"time_s": time_s, "window_s": 2.0 * impact_window_s,
+                      "half_window_s": impact_window_s, "aligned": "centred"})
+        return block
+
+    tow = phase_rows(rows, "tow")
+    coast = phase_rows(rows, "coast")
+
+    # ---------------------------------------------------------------- 起拖（tow 首行）
+    startup_time = float(tow[0]["time_s"]) if tow else None
+    startup = (forward_window(tow, startup_time, "起拖")
+               if tow else empty_block("tow 段没有记录"))
+
+    # ---------------------------------------------------------------- 指令归零（coast 首行）
+    stop_time = float(coast[0]["time_s"]) if coast else None
+    stop = (forward_window(coast, stop_time, "指令归零")
+            if coast else empty_block("coast 段没有记录"))
+
+    # ---------------------------------------------------------------- 绷直/穿绳（首个越阈样本）
+    takeup_index = _takeup_index(rows, takeup_force_threshold_n, phase="tow")
+    if takeup_index is None:
+        takeup = empty_block(f"tow 段没有 |rope_tension_n| > {takeup_force_threshold_n:g} N "
+                             f"的样本（未绷直/未穿绳，或该连接类型没有张力）")
+        takeup.update({"force_threshold_n": takeup_force_threshold_n, "vx_mps": None,
+                       "tension_n": None, "time_since_tow_start_s": None})
+    else:
+        takeup_row = tow[takeup_index]
+        takeup_time = float(takeup_row["time_s"])
+        takeup = centred_window(rows, takeup_time, "绷直")
+        takeup.update({
+            "force_threshold_n": takeup_force_threshold_n,
+            "tension_n": float(takeup_row["rope_tension_n"]),
+            "vx_mps": float(takeup_row["robot_vx_b_mps"]),
+            "time_since_tow_start_s": takeup_time - startup_time,
+        })
+
+    # ---------------------------------------------------------------- 停车撞击（首个接触见证）
+    contact_index, contact_channels = _contact_index(coast, record_dt=record_dt,
+                                                     deck_limit_n=deck_limit_n)
+    if contact_index is None:
+        stop_contact = empty_block("coast 段没有接触见证（没有追尾撞击）")
+        stop_contact.update({"contact": False, "channels": [], "deck_fx_n": None,
+                             "load_vx_mps": None, "time_since_stop_s": None})
+    else:
+        contact_row = coast[contact_index]
+        contact_time = float(contact_row["time_s"])
+        stop_contact = centred_window(coast, contact_time, "停车撞击")
+        stop_contact.update({
+            "contact": True,
+            "channels": contact_channels,
+            "deck_fx_n": float(contact_row["cart_deck_fx_n"]),
+            "load_vx_mps": float(contact_row["load_vx_mps"]),
+            "time_since_stop_s": contact_time - stop_time,
+        })
+
+    # ---------------------------------------------------------------- 稳态（牵引段去首尾）
+    if tow:
+        start_s = float(tow[0]["time_s"]) + steady_margin_s
+        end_s = float(tow[-1]["time_s"]) - steady_margin_s
+        steady_rows = _rows_in_span(tow, start_s, end_s) if start_s <= end_s else []
+        steady = joint_block(steady_rows, note="稳态窗没有记录")
+        steady.update({"window_s": end_s - start_s if end_s >= start_s else 0.0,
+                       "margin_s": steady_margin_s,
+                       "start_s": start_s, "end_s": end_s,
+                       "span_s": (float(tow[-1]["time_s"]) - float(tow[0]["time_s"]))})
+    else:
+        steady = empty_block("牵引段没有记录")
+        steady.update({"window_s": 0.0, "margin_s": steady_margin_s,
+                       "start_s": None, "end_s": None, "span_s": 0.0})
+
+    # ---------------------------------------------------------------- 冲击 vs 稳态
+    steady_rms = steady.get("joint_rms_rad")
+    steady_per_joint = steady.get("per_joint_rms_rad")
+
+    def ratio_against_steady(block):
+        value = block.get("joint_rms_rad")
+        if value is None or steady_rms is None or not math.isfinite(steady_rms) \
+                or steady_rms <= 0.0:
+            return None, None
+        return value / steady_rms, value - steady_rms
+
+    def per_joint_ratio(block):
+        values = block.get("per_joint_rms_rad")
+        if not values or not steady_per_joint:
+            return None
+        out = {}
+        for name in names:
+            base = steady_per_joint.get(name)
+            value = values.get(name)
+            out[name] = (value / base if value is not None and base not in (None, 0.0)
+                         and math.isfinite(float(base)) else None)
+        return out
+
+    def with_ratios(block):
+        out = dict(block)
+        ratio, delta = ratio_against_steady(block)
+        out["rms_over_steady"] = ratio
+        out["rms_delta_rad"] = delta
+        out["per_joint_rms_over_steady"] = per_joint_ratio(block)
+        return out
+
+    return {
+        "available": True,
+        "window_s": impact_window_s,
+        "steady_margin_s": steady_margin_s,
+        "takeup_force_threshold_n": takeup_force_threshold_n,
+        "startup": with_ratios(startup),
+        "takeup": with_ratios(takeup),
+        "stop": with_ratios(stop),
+        "stop_contact": with_ratios(stop_contact),
+        # 稳态不与自己比 ⇒ rms_over_steady / rms_delta_rad 保持 None（明确表示"分母"）
+        "steady": steady,
+        "joint_names": names,
+        "note": "四个冲击窗口各自独立统计，并与稳态（牵引段去首尾）比比值/增量；"
+                "既有 startup/stop（--transition-window）字段不动，两者并存。",
+    }
+
+
 def stop_stats(rows, *, record_dt: float, tow_summary: dict, command_mps: float,
                transition_window_s: float, gap_margin_limit_m: float,
                joint_names=None, torque_limits=None) -> dict:
@@ -959,7 +1383,10 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
                          thresholds: dict, joint_names=None, torque_limits=None,
                          transition_window_s: float = 1.0, lane_keeping: str = "off",
                          lane_vy_limit: float = 0.4, lane_wz_limit: float = 0.8,
-                         cart_present: bool = True) -> dict:
+                         cart_present: bool = True,
+                         impact_window_s: float = DEFAULT_IMPACT_WINDOW_S,
+                         steady_margin_s: float = DEFAULT_STEADY_MARGIN_S,
+                         takeup_force_threshold_n: float = DEFAULT_TAKEUP_FORCE_THRESHOLD_N) -> dict:
     """由逐记录步轨迹算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。
 
     `case` 是 `EnvCase.to_dict()`：带 env 序号、cell、连接、长度、坡度量级与工作条件。
@@ -1000,6 +1427,11 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
                       joint_names=joint_names, torque_limits=torque_limits)
     lane = lane_stats(rows, vy_limit=lane_vy_limit, wz_limit=lane_wz_limit, tow_rows=tow)
     lane.update({"mode": lane_keeping, "yaw_target_rad": 0.0})
+    # 冲击窗口独立统计（新增字段，与既有 startup/stop 并存；不参与 classify_case）
+    impact = impact_stats(rows, record_dt=record_dt, impact_window_s=impact_window_s,
+                          steady_margin_s=steady_margin_s,
+                          takeup_force_threshold_n=takeup_force_threshold_n,
+                          joint_names=joint_names, torque_limits=torque_limits)
     stability = stability_stats(rows, transition_window_s=transition_window_s,
                                 record_dt=record_dt,
                                 fall_height_limit_m=thresholds["fall_height_limit_m"],
@@ -1014,6 +1446,7 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
         "stop": stop,
         "lane": lane,
         "stability": stability,
+        "impact": impact,
         "cart_present": bool(cart_present),
     }
     if not cart_present:
@@ -1099,7 +1532,8 @@ def case_report_row(metrics: dict) -> dict:
     startup, speed, stop = metrics["startup"], metrics["speed"], metrics["stop"]
     stability = metrics["stability"]
     verdict = metrics["verdict"]
-    return {
+    impact = metrics.get("impact", {})
+    row = {
         "env_index": case.get("env_index"), "cell_index": case.get("cell_index"),
         "column": case.get("column"), "row": case.get("row"),
         "grade_deg": case.get("grade_deg"), "velocity_mps": case["velocity_mps"],
@@ -1140,6 +1574,30 @@ def case_report_row(metrics: dict) -> dict:
         "summarize_tow_valid": metrics.get("summarize_tow", {}).get("valid"),
         "summarize_tow_failures": "|".join(metrics.get("summarize_tow", {}).get("failures", [])),
     }
+    # 冲击窗口独立统计（新增列，与既有 startup_/stop_ 列并存）。
+    for name in ("startup", "takeup", "stop", "stop_contact", "steady"):
+        block = impact.get(name, {})
+        available = bool(block.get("available"))
+        row[f"impact_{name}_available"] = available
+        row[f"impact_{name}_samples"] = block.get("samples", 0)
+        row[f"impact_{name}_time_s"] = block.get("time_s")
+        row[f"impact_{name}_joint_rms_rad"] = block.get("joint_rms_rad")
+        row[f"impact_{name}_joint_max_rad"] = block.get("joint_max_rad")
+        row[f"impact_{name}_worst_joint"] = block.get("worst_joint")
+        row[f"impact_{name}_torque_sat_frac"] = block.get("torque_saturated_frac")
+        row[f"impact_{name}_rms_over_steady"] = block.get("rms_over_steady")
+        row[f"impact_{name}_rms_delta_rad"] = block.get("rms_delta_rad")
+    takeup = impact.get("takeup", {})
+    row["impact_takeup_tension_n"] = takeup.get("tension_n")
+    row["impact_takeup_vx_mps"] = takeup.get("vx_mps")
+    row["impact_takeup_force_threshold_n"] = takeup.get("force_threshold_n")
+    contact = impact.get("stop_contact", {})
+    row["impact_stop_contact_hit"] = contact.get("contact")
+    row["impact_stop_contact_channels"] = "|".join(contact.get("channels") or [])
+    row["impact_stop_contact_deck_fx_n"] = contact.get("deck_fx_n")
+    row["impact_window_s"] = impact.get("window_s")
+    row["impact_steady_margin_s"] = impact.get("steady_margin_s")
+    return row
 
 
 def group_of(case: dict) -> str:
@@ -1193,6 +1651,271 @@ def group_statistics(case_summaries) -> dict:
                               -(item["speed_mae_mps"] or 0.0)))
         entry["worst_cases"] = entry["worst_cases"][:5]
     return groups
+
+
+def case_metric_summary(case_summaries) -> dict:
+    """把一轮的 case 摘要压成「通过数 + 判定码分布 + 五项指标中位数」。
+
+    「策略 vs 基线」的对照列与参照列都走这一个函数，保证两边的口径、字段、样本计数完全一致
+    （不给策略新造指标、不改阈值）。可直接吃 `report.json["cases"]`（结构相同）。
+    """
+    codes = Counter(summary["metrics"].get("verdict", summary.get("verdict", {})).get("code")
+                    for summary in case_summaries)
+
+    def median_of(reader):
+        values = []
+        for summary in case_summaries:
+            value = reader(summary.get("metrics", {}))
+            if isinstance(value, (int, float)) and not isinstance(value, bool) \
+                    and math.isfinite(float(value)):
+                values.append(float(value))
+        return (float(statistics.median(values)) if values else None), len(values)
+
+    medians, samples = {}, {}
+    for group, field, _label in FIVE_METRIC_FIELDS:
+        key = f"{group}.{field}"
+        medians[key], samples[key] = median_of(
+            lambda metrics, group=group, field=field: metrics.get(group, {}).get(field))
+    # 冲击窗口独立统计：同样按逐 case 中位数汇总（空窗口/无绷直/无接触的 case 不计入样本数，
+    # 但样本数如实报出来 —— 与 `stop.min_clearance_coast_m` 的处理一致）。
+    impact_medians, impact_samples = {}, {}
+    for key, _label in IMPACT_METRIC_FIELDS:
+        _, _, tail = key.partition(".")
+        _, _, field = tail.rpartition(".")
+        impact_medians[key], impact_samples[key] = median_of(
+            lambda metrics, tail=tail, field=field: (
+                metrics.get("impact", {}).get(tail.rpartition(".")[0], {}) or {}).get(field))
+    # 增量（RMS − 稳态 [rad]）对四个冲击窗口都出中位数：报告表的「RMS−稳态」列直接读它。
+    for group in IMPACT_GROUPS:
+        if group == "steady":
+            continue
+        key = f"impact.{group}.rms_delta_rad"
+        impact_medians[key], impact_samples[key] = median_of(
+            lambda metrics, group=group: (
+                metrics.get("impact", {}).get(group, {}) or {}).get("rms_delta_rad"))
+    groups = group_statistics(case_summaries)
+    by_grade = {name: {"grade_deg": entry["grade_deg"], "cases": entry["cases"],
+                       "ok": entry["cases_ok"]}
+                for name, entry in groups.items()}
+    # 每个冲击窗口里「哪个关节是实测最差」的众数（中位数会把它抹掉）。
+    modal_worst_joint = {}
+    for group in IMPACT_GROUPS:
+        tally = Counter()
+        for summary in case_summaries:
+            block = (summary.get("metrics", {}).get("impact", {}) or {}).get(group, {}) or {}
+            name = block.get("worst_joint")
+            if block.get("available") and isinstance(name, str):
+                tally[name] += 1
+        modal_worst_joint[group] = (tally.most_common(1)[0][0] if tally else None)
+    window_s = steady_margin_s = takeup_force_threshold_n = None
+    for summary in case_summaries:
+        impact = summary.get("metrics", {}).get("impact", {}) or {}
+        window_s = window_s if window_s is not None else impact.get("window_s")
+        steady_margin_s = (steady_margin_s if steady_margin_s is not None
+                           else impact.get("steady_margin_s"))
+        takeup_force_threshold_n = (takeup_force_threshold_n
+                                    if takeup_force_threshold_n is not None
+                                    else impact.get("takeup_force_threshold_n"))
+    return {"envs": len(case_summaries), "ok": codes.get("OK", 0),
+            "codes": dict(codes), "medians": medians, "samples": samples,
+            "impact_medians": impact_medians, "impact_samples": impact_samples,
+            "impact_modal_worst_joint": modal_worst_joint,
+            "impact_window_s": window_s,
+            "impact_steady_margin_s": steady_margin_s,
+            "impact_takeup_force_threshold_n": takeup_force_threshold_n,
+            "by_grade": by_grade}
+
+
+def _fmt_comparison_summary(summary) -> list:
+    """一行摘要 + 一行中位数（`case_metric_summary` 的输出）。"""
+    if summary is None:
+        return ["- （未提供）"]
+    codes = "、".join(f"{code} {count}" for code, count in
+                      sorted(summary["codes"].items(), key=lambda item: -item[1])) or "无"
+    lines = [f"- 通过 **{summary['ok']}/{summary['envs']}**；判定码分布（每 case 取最严重项）：{codes}",
+             "- 五项指标中位数：" + "；".join(
+                 f"{label} {_fmt(summary['medians'].get(f'{group}.{field}'))}"
+                 f"（n={summary['samples'].get(f'{group}.{field}', 0)}）"
+                 for group, field, label in FIVE_METRIC_FIELDS)]
+    grade = "；".join(f"{name} {entry['ok']}/{entry['cases']}"
+                      for name, entry in sorted(summary["by_grade"].items()))
+    if grade:
+        lines.append(f"- 逐坡度量级通过数：{grade}")
+    return lines
+
+
+#: 「冲击窗口 vs 稳态」表里的行：`(metrics["impact"] 下的组, 显示标签, 对齐说明)`。
+IMPACT_TABLE_ROWS = (
+    ("startup", "起拖（tow 首行）", "t0 → +W"),
+    ("takeup", "绷直/穿绳（首个 ‖F‖ 越阈）", "t ± W"),
+    ("stop", "指令归零（coast 首行）", "t0 → +W"),
+    ("stop_contact", "停车撞击（首个接触见证）", "t ± W"),
+    ("steady", "稳态（牵引段去首尾 margin）", "去首尾 margin"),
+)
+
+
+def _impact_table_cell(impact_medians, group: str, field: str, samples=None) -> str:
+    """表单元格：`n/a` 或 `值（n=样本数）`（None/NaN 与空样本都显示 `n/a`）。"""
+    value = (impact_medians or {}).get(f"impact.{group}.{field}")
+    count = (samples or {}).get(f"impact.{group}.{field}")
+    if value is None:
+        return "n/a"
+    text = f"{float(value):.3f}"
+    if count is not None:
+        text += f"（n={count}）"
+    return text
+
+
+def format_impact_section(current: dict, *, reference=None, archived=None,
+                          window_s=None, steady_margin_s=None,
+                          takeup_force_threshold_n=None) -> list:
+    """`report.md` 的「冲击窗口 vs 稳态（关节响应）」一节。
+
+    一行一个时刻（起拖 / 绷直 / 指令归零 / 停车撞击）+ 稳态一行；每行的数字都是**逐 case
+    中位数**（与「策略 vs 基线」同一套 `case_metric_summary` 汇总），另取 `case_summaries`
+    里每个 case 的 `worst_joint` 众数（`modal_worst_joint`）报出来 —— 「哪个关节在扛冲击」
+    是中位数掩盖掉的信息。比值列与增量列直接给出「冲击相对稳态猛多少倍 / 高出多少 rad」，
+    不需要读者拿两个绝对量心算。
+
+    `current` 是 `case_metric_summary(...)` 的输出；`reference`（同版本基线，
+    `--compare-report`）与 `archived`（归档基线，**旧几何、无该字段**）只作对照列，
+    缺字段时显示 `n/a` 而不是报错。
+    """
+    window = current.get("impact_window_s", window_s)
+    margin = current.get("impact_steady_margin_s", steady_margin_s)
+    threshold = current.get("impact_takeup_force_threshold_n", takeup_force_threshold_n)
+    params = []
+    if window is not None:
+        params.append(f"W = {float(window):g} s")
+    if margin is not None:
+        params.append(f"稳态 margin = {float(margin):g} s")
+    if threshold is not None:
+        params.append(f"绷直阈值 = {float(threshold):g} N")
+    lines = ["## 冲击窗口 vs 稳态（关节响应）", ""]
+    if params:
+        lines.append("窗口参数：" + "；".join(params) + "。")
+        lines.append("")
+    lines += [
+        "**读法**：`joint_rms_rad` = 窗口内 12 关节跟踪误差 `q − q*` 的合并 RMS [rad]；"
+        "`RMS/稳态` 是同一 case 先取比值再取中位数（>1 = 比稳态猛，≈1 = 与稳态同量级）；"
+        "`RMS−稳态` 是差值 [rad]；`力矩饱和%` = `|τ| > 0.95·limit` 的步占比 ×100。"
+        "四行分别对齐「起拖 / 绷直 / 指令归零 / 停车撞击」四个**不同**时刻"
+        "（归零与撞击可能差数百毫秒），另有稳态一行作分母。"
+        "**这些是新增的观测字段，不参与判定码**（`classify_case` 只读既有 startup/stop）。", ""]
+    header = ("| 时刻（对齐） | 关节 RMS [rad] | 最差关节（众数） | 力矩饱和% | RMS/稳态 | "
+              "RMS−稳态 [rad] | 样本 n |")
+    lines += [header, "|---|---|---|---|---|---|---|"]
+    for group, label, aligned in IMPACT_TABLE_ROWS:
+        modal = (current.get("impact_modal_worst_joint") or {}).get(group) or "n/a"
+        lines.append("| " + " | ".join([
+            f"{label} `{aligned}`",
+            _impact_table_cell(current.get("impact_medians"), group, "joint_rms_rad",
+                               current.get("impact_samples")),
+            modal,
+            _impact_table_cell(current.get("impact_medians"), group, "torque_saturated_frac",
+                               current.get("impact_samples")),
+            _impact_table_cell(current.get("impact_medians"), group, "rms_over_steady",
+                               current.get("impact_samples")) if group != "steady" else "1.000（分母）",
+            _impact_table_cell(current.get("impact_medians"), group, "rms_delta_rad",
+                               current.get("impact_samples")) if group != "steady" else "0.000（分母）",
+            str((current.get("impact_samples") or {}).get(f"impact.{group}.joint_rms_rad", "n/a")),
+        ]) + " |")
+    lines += ["",
+              "- `最差关节（众数）` 是本轮各 case `impact.<时刻>.worst_joint` 里出现最多的那个；"
+              "逐 case 的 `worst_joint` 与逐关节 RMS（`per_joint_rms_rad`）在 "
+              "`report.json`／`summaries/<case>.json` 里，本表只给跨 case 汇总，"
+              "免得表格随关节名变宽。",
+              "- `绷直` 一行的 `n` 是**有绷直样本**的 case 数：绳/连杆张力全程不越阈（例如 "
+              "rigid 压缩、compliant 未拉直）时该 case 不进这一行的中位数（在 report.json 里是 "
+              "`available=false` + `note`）。`停车撞击` 一行同理（没有接触见证的 case 不计入）。",
+              "- 既有 `startup.*` / `stop.*`（`--transition-window` 默认 1.0 s）**语义未动**，"
+              "与本表并存：前者是归档对照口径，本表是缩短到 `--impact-window` 的冲击窗口。"]
+    if reference is not None or archived is not None:
+        lines += ["", "**与基线对照（逐 case 中位数，同口径）**", "",
+                  "| 时刻 | 本轮 关节 RMS [rad] | 本轮 RMS/稳态 | 本轮 RMS−稳态 [rad] |", "|---|---|---|---|"]
+        for group, label, _aligned in IMPACT_TABLE_ROWS:
+            lines.append("| " + " | ".join([
+                label,
+                _impact_table_cell(current.get("impact_medians"), group, "joint_rms_rad",
+                                   current.get("impact_samples")),
+                (_impact_table_cell(current.get("impact_medians"), group, "rms_over_steady",
+                                    current.get("impact_samples"))
+                 if group != "steady" else "1.000（分母）"),
+                (_impact_table_cell(current.get("impact_medians"), group, "rms_delta_rad",
+                                    current.get("impact_samples"))
+                 if group != "steady" else "0.000（分母）"),
+            ]) + " |")
+        if reference is not None:
+            lines += ["", "同版本基线（`--compare-report`）的同一张表：", "",
+                      "| 时刻 | 基线 关节 RMS [rad] | 基线 RMS/稳态 | 基线 RMS−稳态 [rad] |", "|---|---|---|---|"]
+            for group, label, _aligned in IMPACT_TABLE_ROWS:
+                lines.append("| " + " | ".join([
+                    label,
+                    _impact_table_cell(reference.get("impact_medians"), group, "joint_rms_rad",
+                                       reference.get("impact_samples")),
+                    (_impact_table_cell(reference.get("impact_medians"), group, "rms_over_steady",
+                                        reference.get("impact_samples"))
+                     if group != "steady" else "1.000（分母）"),
+                    (_impact_table_cell(reference.get("impact_medians"), group, "rms_delta_rad",
+                                        reference.get("impact_samples"))
+                     if group != "steady" else "0.000（分母）"),
+                ]) + " |")
+        else:
+            lines += ["", "同版本基线：未提供 `--compare-report`（冲击窗口的有效对照同样要**同一版本**"
+                          "跑两轮：一轮基线 + 一轮开开关，参数完全相同）。"]
+        if archived is not None:
+            lines += ["", f"归档基线参照（{archived.get('label', '归档')}）："
+                          + ("该归档没有 `impact.*` 字段（本统计晚于它），"
+                             "只能用既有 `startup.*` / `stop.*` 做同量级 sanity check。"
+                             if not any("impact" in key for key in (archived.get("medians") or {}))
+                             else "含 `impact.*` 字段。")]
+    lines.append("")
+    return lines
+
+
+def format_baseline_comparison(current: dict, *, reference=None, archived=None,
+                               upper_enabled: bool = False) -> list:
+    """report.md 的「策略 vs 基线」一节（同网格、同指标、同阈值）。
+
+    - `current`：本轮结果（`case_metric_summary`）；
+    - `reference`：**同版本**基线那轮的结果（`--compare-report <基线>/report.json`，可为 None）；
+    - `archived`：归档基线读数（默认 `ARCHIVED_BASELINE_2026_10_09`），只作参照。
+    """
+    archived = ARCHIVED_BASELINE_2026_10_09 if archived is None else archived
+    switch = ("**开启**（上层策略驱动 12 维关节位置残差）" if upper_enabled
+              else "**关闭**（基线，残差恒 0）")
+    lines = ["## 策略 vs 基线（同网格、同指标、同阈值）", "",
+             f"**本轮**（开关{switch}）："]
+    lines += _fmt_comparison_summary(current)
+    lines.append("")
+    if reference is not None:
+        lines.append("**同版本基线**（`--compare-report` 传入的上一轮结果）：")
+        lines += _fmt_comparison_summary(reference)
+    else:
+        lines.append("**同版本基线**：未提供 `--compare-report`。有效对照必须**同一版本**跑两轮"
+                     "（一轮基线 + 一轮开开关，参数完全相同），把基线那轮的 `report.json` 用 "
+                     "`--compare-report` 传进来；下面那列归档基线只是参照。")
+    lines += ["", f"**归档基线参照**（{archived['label']}，`{archived['report']}`；"
+                  f"git `{archived['git_commit'][:7]}`"
+                  + ("，**工作树脏**，复现请用 " + archived["reproduce_commit"]
+                     if archived.get("working_tree_dirty") else "")
+                  + f"，`--no-cart-fraction {archived['no_cart_fraction']:g}`）：",
+              f"- 通过 **{archived['ok']}/{archived['num_envs']}**；判定码分布（每 case 取最严重项）："
+              + "、".join(f"{code} {count}" for code, count in
+                          sorted(archived["codes"].items(), key=lambda item: -item[1])),
+              "- 五项指标中位数：" + "；".join(
+                  f"{label} {_fmt(archived['medians'].get(f'{group}.{field}'))}"
+                  f"（n={archived['median_samples'].get(f'{group}.{field}', 0)}）"
+                  for group, field, label in FIVE_METRIC_FIELDS),
+              "- ⚠ **不可逐格硬比**：" + archived["grid_note"] + "。",
+              "",
+              "**`JNT` 不能当结论**：" + archived["jnt_note"] + "；因此验收读数看 "
+              "`COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）的占比变化，`JNT` 只在阈值标定后才有意义。"
+              "另注意开了开关后 `JNT` 的参考量变成 `held = 冻结输出 + 残差`（训练侧 "
+              "`reference=\"commanded\"`），与基线的「冻结输出」**不是同一个量**，"
+              "这一项的差不能当改善看。",
+              ""]
+    return lines
 
 
 def necessity_conclusion(groups: dict, thresholds: dict) -> dict:
@@ -1283,8 +2006,8 @@ def format_verdict_matrix(case_summaries, *, grades) -> str:
 
 
 def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thresholds,
-                          schedule, grades, git) -> str:
-    """人读报告：配置、判定矩阵、失败模式、结论、限制。"""
+                          schedule, grades, git, comparison=None, impact=None) -> str:
+    """人读报告：配置、判定矩阵、失败模式、冲击窗口、结论、「策略 vs 基线」、限制。"""
     lines = ["# 拖曳上层任务必要性：冻结策略基线测试（训练场景）", "",
              f"- 生成时间：{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
              f"- git：`{git.get('commit')}`（worktree {git.get('working_tree') or 'clean'}）",
@@ -1307,6 +2030,12 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
              f"{schedule.tow_steps * schedule.dt:.2f} s + coast "
              f"{schedule.coast_steps * schedule.dt:.2f} s，共 {schedule.total_steps} 物理步 "
              f"（dt={schedule.dt:g} s，记录每 {args_dict['record_every']} 步一行）",
+             f"- 冲击窗口独立统计：`--impact-window` "
+             f"{args_dict.get('impact_window', DEFAULT_IMPACT_WINDOW_S):g} s、稳态去首尾 "
+             f"`--steady-margin-s` {args_dict.get('steady_margin_s', DEFAULT_STEADY_MARGIN_S):g} s、"
+             f"绷直阈值 `--takeup-force-threshold` "
+             f"{args_dict.get('takeup_force_threshold', DEFAULT_TAKEUP_FORCE_THRESHOLD_N):g} N"
+             f"（只进 `metrics.impact` 与本节，**不改判据/判定码**）",
              f"- 阈值：关节 RMS ≤ {thresholds['joint_rms_limit_rad']:g} rad / 单关节 ≤ "
              f"{thresholds['joint_max_limit_rad']:g} rad、跟速 MAE ≤ "
              f"{thresholds['speed_mae_ratio_limit'] * 100:g}% 指令、停车几何间隙 > "
@@ -1323,7 +2052,15 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
                 f"vy 限幅 {args_dict['lane_vy_limit']:g} m/s、wz 限幅 "
                 f"{args_dict['lane_wz_limit']:g} rad/s）")
              + f"；判据 |y| ≤ {thresholds['lane_y_limit_m']:g} m 且 |yaw| ≤ "
-               f"{thresholds['lane_heading_limit_deg']:g}°（**前进速度不参与 PD，只给指令**）", "",
+               f"{thresholds['lane_heading_limit_deg']:g}°（**前进速度不参与 PD，只给指令**）",
+             "上层网络："
+             + ("**关闭**（基线；12 维关节位置残差恒 0，JNT 参考 = 冻结策略当拍输出）"
+                if args_dict.get("upper_checkpoint") is None else
+                f"**开启**（checkpoint `{args_dict['upper_checkpoint']}`；"
+                + ("随机采样" if args_dict.get("upper_stochastic") else "确定性均值")
+                + "；每 10 个物理步 = 50 ms 推理一次，两次之间残差不变；"
+                  "`held = 冻结目标 + clamp(actor,±1)⊙action_scale` 既是下发目标也是 JNT 参考）"),
+             "",
              "## 逐坡度量级判定矩阵", "",
              format_verdict_matrix(case_summaries, grades=grades), "",
              "## 分组统计（按坡度量级）", ""]
@@ -1334,8 +2071,12 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
         reasons = ", ".join(f"{reason}×{count}" for reason, count in
                             sorted(entry["reasons"].items(), key=lambda item: -item[1])) or "无"
         lines.append(f"- **{label}**：{entry['cases_ok']}/{entry['cases']} 通过；失败模式：{reasons}")
+    if impact:
+        lines += ["", *impact]
     lines += ["", "## 结论（任务是否有必要）", ""]
     lines += conclusion["lines"]
+    if comparison:
+        lines += ["", *comparison]
     lines += ["", "## 限制", "",
               "- 只覆盖本网格与本阈值：连接类型/长度/坡度量级由训练网格决定，不能扫；"
               "未测训练侧的域随机化（摩擦 0.4–1.2、轮轴阻尼 0.008–0.032、"
@@ -1350,8 +2091,19 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
               "- 跟速一律用**体系** vx（与冻结策略观测同口径）；`summarize_tow` 的 "
               "`steady_tracking_ratio` 是世界系口径，坡上不要混用。",
               "- `progress` 是 x 行程（水平投影），不是坡面弧长：10° 剖面上两者差 < 1%。",
-              "- 关节跟踪误差阈值没有标定，首轮结果出来前不要把 `JNT` 当成定论。",
+              "- 关节跟踪误差阈值没有标定：归档基线里 `JNT` 在有负载（295/700）与无负载"
+              "（100/100）两边都接近 100%，量的是 `q − q*` 的**PD 静差**（≈ τ/kp）而不是拖曳"
+              "能力缺陷 ⇒ 验收读 `COL`/`SPD`/`LOW` 才有区分度，`JNT` 不能当结论；且开开关后"
+              "`JNT` 的参考量变成 `held`（与训练侧 `reference=\"commanded\"` 同口径），"
+              "与基线的「冻结输出」不是同一个量。",
               f"- {SUMMARIZE_TOW_NOTE}",
+              "- 冲击窗口统计（`metrics.impact.*`）是**观测字段，不进判定码**："
+              "`classify_case` 只读既有 `startup.*`/`stop.*`，`DEFAULT_THRESHOLDS` 也不含 "
+              "`--impact-window`/`--steady-margin-s`/`--takeup-force-threshold` 任何一项；"
+              "四行的样本数可能不同（无绷直/无接触的 case 不进那一行的中位数）。"
+              "绷直判定用 `|rope_tension_n|`，rigid 连杆压缩（负张力）也算「穿绳」的充要见证。",
+              "- 冲击窗口的 `1.0 s` 归档对照列（`startup.*`/`stop.*`）**没有** `impact.*` 字段："
+              "本统计晚于归档，只能同版本跑两轮做有效对照。",
               "- 仿真相位（PhysX 步进、绳力/轮阻施加、重力写入）只在训练机实跑验证；"
               "本脚本的离线测试只覆盖纯逻辑与记录字段契约。",
               ""]
@@ -1385,7 +2137,22 @@ def parse_args(argv=None):
     parser.add_argument("--tow-duration", type=float, default=5.0, help="拖曳时长（s）")
     parser.add_argument("--coast-duration", type=float, default=5.0, help="STOP 后滑行观测时长（s）")
     parser.add_argument("--transition-window", type=float, default=1.0,
-                        help="起步/停车瞬态窗口（s），用于关节响应与速度响应统计")
+                        help="起步/停车瞬态窗口（s），用于关节响应与速度响应统计"
+                             "（归档对照口径，语义不动）")
+    # 冲击窗口独立统计（用户 2026-10-10 要求）：只新增字段，不改既有口径。
+    parser.add_argument("--impact-window", type=float, default=DEFAULT_IMPACT_WINDOW_S,
+                        help=f"冲击瞬态窗口宽度 W（s，默认 {DEFAULT_IMPACT_WINDOW_S:g}）："
+                             "起拖/指令归零向未来取 [t0, t0+W]，绷直/停车撞击围绕时刻取 [t±W]；"
+                             "各窗口的关节 RMS/max/逐关节/力矩饱和独立统计，另与稳态比比值")
+    parser.add_argument("--steady-margin-s", type=float, default=DEFAULT_STEADY_MARGIN_S,
+                        help=f"稳态基线在牵引段**首尾各**去掉多少秒（默认 "
+                             f"{DEFAULT_STEADY_MARGIN_S:g} s），剩下的关节 RMS 作为冲击的分母")
+    parser.add_argument("--takeup-force-threshold", type=float,
+                        default=DEFAULT_TAKEUP_FORCE_THRESHOLD_N,
+                        help=f"判定「绷直/穿绳」的绳张力**模长**阈值（N，默认 "
+                             f"{DEFAULT_TAKEUP_FORCE_THRESHOLD_N:g}）：首个 "
+                             f"|rope_tension_n| 超过它的样本即真实冲击时刻（rigid 连杆张力有符号，"
+                             f"压缩为负，所以取模长）")
     parser.add_argument("--dt", type=float, default=0.005, help="物理步长（s）")
     parser.add_argument("--record-every", type=int, default=DEFAULT_RECORD_EVERY,
                         help="每 N 个物理步记一行（默认 5 = 25 ms = 冻结策略周期；"
@@ -1418,6 +2185,20 @@ def parse_args(argv=None):
     for name, value in DEFAULT_LANE_OPTIONS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value, dest=name,
                             help=f"横向/朝向 PD 参数（默认 {value}）")
+    # 上层网络开关：默认关 = 现在的基线（关节位置残差恒 0）；给了 checkpoint = 打开开关，
+    # 用同一轮 run / 同一网格 / 同一指标做「策略 vs 基线」对照（README TOW-19 的待办）。
+    parser.add_argument("--upper-checkpoint", type=Path, default=None,
+                        help="上层策略联合 checkpoint（towing runner 保存的 model_*.pt）。"
+                             "默认 None = 基线（12 维关节位置残差恒 0，行为与加开关前逐位一致）；"
+                             "给了路径就打开上层网络：delta = clamp(action,±1)⊙action_scale，"
+                             "held = 冻结策略关节目标 + delta 既下发又作为 JNT 指标参考")
+    parser.add_argument("--upper-stochastic", action="store_true",
+                        help="上层动作按 actor 分布采样（默认取均值，与 rl_lab/towing/play.py 的"
+                             "确定性口径一致）")
+    parser.add_argument("--compare-report", type=Path, default=None,
+                        help="上一轮（**同一版本、同一套参数**）的 report.json：在 report.md 的"
+                             "「策略 vs 基线」一节里给出同版本对照列。默认 None = 只给归档基线"
+                             "（docs/towingdata/2026-10-09_necessity_800_noload，旧几何）参照")
     # 阈值
     for name, value in DEFAULT_THRESHOLDS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value,
@@ -1449,12 +2230,22 @@ def parse_args(argv=None):
     if not math.isfinite(args.ground_friction) or not 0.0 < args.ground_friction <= 2.0:
         parser.error(f"--ground-friction 必须在 (0, 2] 内，收到 {args.ground_friction!r}")
     for name in ("settle_time", "tow_duration", "coast_duration", "transition_window", "dt",
-                 "ramp_time_s", "wheel_damping"):
+                 "ramp_time_s", "wheel_damping", "impact_window"):
         value = getattr(args, name)
         if not math.isfinite(value) or value <= 0.0:
             parser.error(f"--{name.replace('_', '-')} 必须是有限正数，收到 {value!r}")
+    if not math.isfinite(args.steady_margin_s) or args.steady_margin_s < 0.0:
+        parser.error(f"--steady-margin-s 必须是非负有限数，收到 {args.steady_margin_s!r}")
+    if not math.isfinite(args.takeup_force_threshold) or args.takeup_force_threshold <= 0.0:
+        parser.error("--takeup-force-threshold 必须是有限正数，收到 "
+                     f"{args.takeup_force_threshold!r}")
     if args.transition_window > args.tow_duration:
         parser.error("--transition-window 不能超过 --tow-duration（窗口取不到记录）")
+    if args.impact_window > args.tow_duration:
+        parser.error("--impact-window 不能超过 --tow-duration（起拖窗口取不到记录）")
+    # `--steady-margin-s` 故意**不设**「2·margin < tow_duration」的硬约束：短冒烟回合
+    # （如 --tow-duration 2.0 用默认 margin 1.0）稳态窗会退化，`impact_stats` 会把它标成
+    # `available=false` + `note` 并让比值变 None，而不是让 CLI 报错挡住整轮。
     if args.record_every < 1:
         parser.error("--record-every 必须是正整数")
     for name, value in DEFAULT_THRESHOLDS.items():
@@ -1463,6 +2254,27 @@ def parse_args(argv=None):
     args.num_envs = int(args.num_envs)
     if not 0.0 <= args.no_cart_fraction <= 1.0:
         parser.error(f"--no-cart-fraction 必须在 [0, 1]，收到 {args.no_cart_fraction!r}")
+    # 上层开关：默认关；给了 checkpoint 就必须真实存在（在 Isaac Sim 起来之前失败，
+    # 别把几分钟的启动浪费在一个拼错的路径上）。--upper-stochastic 单独给没有意义。
+    if args.upper_checkpoint is not None:
+        args.upper_checkpoint = args.upper_checkpoint.expanduser().resolve()
+        if not args.upper_checkpoint.is_file():
+            parser.error(f"--upper-checkpoint 指向的文件不存在：{args.upper_checkpoint}")
+    elif args.upper_stochastic:
+        parser.error("--upper-stochastic 只在同时给了 --upper-checkpoint 时有意义"
+                     "（默认是基线：残差恒 0，没有可采样的动作）")
+    # 同版本对照：只在这里校验「存在 + 是本测试台的 report.json」；解析后的数据**不放进
+    # args**（`experiment.json` 会把 vars(args) 整个 dump 出去，塞进去会变成几十 MB）。
+    if args.compare_report is not None:
+        args.compare_report = args.compare_report.expanduser().resolve()
+        if not args.compare_report.is_file():
+            parser.error(f"--compare-report 指向的文件不存在：{args.compare_report}")
+        try:
+            payload = json.loads(args.compare_report.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            parser.error(f"--compare-report 不是可读的 JSON：{type(exc).__name__}: {exc}")
+        if not isinstance(payload, dict) or not isinstance(payload.get("cases"), list):
+            parser.error("--compare-report 必须是本测试台的 report.json（顶层要含 cases 列表）")
     args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses,
                                  no_cart_fraction=args.no_cart_fraction)
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
@@ -1514,6 +2326,16 @@ def planned_grid_lines(args) -> list:
         f"[plan] 记录：每 {args.record_every} 物理步一行（{args.record_every * args.dt * 1000:g} ms）"
         f" ⇒ 每 env 约 {recorded} 行，共约 {recorded * len(cases)} 行；CSV 策略 "
         f"{args.write_csv}",
+        f"[plan] 冲击窗口独立统计（只新增字段，不改判据）：`--impact-window` "
+        f"{args.impact_window:g} s（起拖/归零向未来取、绷直/停车撞击围绕时刻取 ±）"
+        f"；稳态 = 牵引段去首尾各 `--steady-margin-s` {args.steady_margin_s:g} s"
+        f"（≈ 每 env {int(round(args.steady_margin_s / (args.record_every * args.dt))) * 2} 行"
+        f"不计入稳态）"
+        f"；绷直判定 = 首个 |rope_tension_n| > `--takeup-force-threshold` "
+        f"{args.takeup_force_threshold:g} N；另报与接触发生时刻对齐的 `stop_contact_*`",
+        f"[plan] 冲击口径与既有 `--transition-window` {args.transition_window:g} s "
+        f"（归档对照）**并存**：新增 `impact_startup_*`/`impact_takeup_*`/`impact_stop_*`/"
+        f"`impact_stop_contact_*`/`impact_steady_*`，既有 `startup.*`/`stop.*` 语义逐位不变",
         (f"[plan] **无小车（无负载参考）env**：{sum(1 for case in cases if not case.cart_present)}"
          f"/{len(cases)}（`--no-cart-fraction {args.no_cart_fraction:g}`；小车横向停 "
          f"{NO_CART_LATERAL_OFFSET_M:g} m、绳力与轮阻置 0、跳过 COL/LOW 判定）"),
@@ -1529,6 +2351,25 @@ def planned_grid_lines(args) -> list:
             f"vy≤{args.lane_vy_limit:g} m/s、wz≤{args.lane_wz_limit:g} rad/s）"
             f"⇒ 目标 y=0（lane 中线）、yaw=0（超前）；**vx 只给指令、不参与 PD**"
             f"；判据 |y|≤{args.lane_y_limit_m:g} m、|yaw|≤{args.lane_heading_limit_deg:g}°")
+    if args.upper_checkpoint is None:
+        lines.append("[plan] 上层网络：**关闭**（基线；12 维关节位置残差恒 0，"
+                     "JNT 参考 = 冻结策略当拍输出——与加开关之前逐位一致）")
+    else:
+        lines.append(
+            f"[plan] 上层网络：**开启**（checkpoint={args.upper_checkpoint}；"
+            f"{'随机采样' if args.upper_stochastic else '确定性均值'}；"
+            f"delta = clamp(action,±1)⊙action_scale（hip 0.125 / thigh·shank 0.25 rad），"
+            f"held = 冻结策略关节目标 + delta 既下发又作为 JNT 参考；"
+            f"训练节拍 20 Hz（每 10 物理步）推理、两次之间残差保持不变；"
+            f"加载前硬校验 towing_contract：version=2 / frame_dim=57 / explicit_dim=6 / "
+            f"latent_dim=16，旧 56/63 维 checkpoint 会被拒绝）")
+    if args.compare_report is not None:
+        lines.append(f"[plan] 同版本基线对照：{args.compare_report}"
+                     f"（report.md / report.json 的「策略 vs 基线」一节会给出同口径对照列；"
+                     f"另附归档基线 2026-10-09（旧几何）参照列）")
+    else:
+        lines.append("[plan] 同版本基线对照：未提供 `--compare-report`（report.md 只给归档基线"
+                     "参照列；有效对照需同一版本跑两轮并把基线那轮的 report.json 传进来）")
     preview = min(8, len(cases))
     lines.append(f"[plan] 前 {preview} 个 env 的分配（env → 列/行、连接、长度、坡度量级、"
                  f"速度、质量）：")
@@ -1580,7 +2421,7 @@ def main(args):
                                "（row-major：列 = i % 40、行 = i // 40）",
             "distribution": distribution,
             "spawn": "剖面平地段起点、姿态竖直（lane 系 = 世界系）；两挂点三维距 = "
-                     "env_spec(i)['initial_distance']（绳 = 0.5·L0、刚体 = L）",
+                     "env_spec(i)['initial_distance']（绳 = 0.8·L0、刚体 = L）",
             "work_conditions": {
                 "velocities_mps": list(args.velocities),
                 "cart_masses_kg": list(args.cart_masses),
@@ -1599,7 +2440,12 @@ def main(args):
                 f"属于外推检查",
                 f"地面摩擦固定 {args.ground_friction:g}（训练随机 0.4–1.2）；轮轴阻尼固定 "
                 f"{args.wheel_damping:g} N·m·s/rad（训练随机 0.008–0.032）",
-                "关节位置残差为 0：跑的是冻结策略 + 脚本指令的基线，不加载上层 checkpoint",
+                ("关节位置残差为 0：跑的是冻结策略 + 脚本指令的基线，**默认不加载**任何上层 "
+                 "checkpoint（可用 `--upper-checkpoint` 打开）"
+                 if args.upper_checkpoint is None else
+                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：残差 = "
+                 f"clamp(actor,±1)⊙action_scale，叠加在冻结策略关节目标上；JNT 指标参考 = "
+                 f"实际下发的 held（与训练侧 reference=\"commanded\" 同口径）"),
             ],
         },
         "schedule": args.schedule.to_dict(),
@@ -1614,6 +2460,24 @@ def main(args):
             "gains": {name: getattr(args, name) for name in DEFAULT_LANE_OPTIONS},
             "limits": {name: getattr(args, name)
                        for name in ("lane_y_limit_m", "lane_heading_limit_deg")},
+        },
+        "upper_policy": {
+            "enabled": args.upper_checkpoint is not None,
+            "checkpoint": (str(args.upper_checkpoint) if args.upper_checkpoint is not None
+                           else None),
+            "deterministic": not args.upper_stochastic,
+            "stochastic": bool(args.upper_stochastic),
+            "mode": "stochastic" if args.upper_stochastic else "deterministic",
+            # 加载后填充（见 sim 路径）：`towing_contract` = checkpoint 里的 4 个字段，`iter` = 训练轮数
+            "towing_contract": None,
+            "iter": None,
+            "towing_contract_expected": {"version": 2, "frame_dim": 57, "explicit_dim": 6,
+                                         "latent_dim": 16},
+            "note": "默认关（基线，残差恒 0）。开启后每 10 个物理步（50 ms = 训练侧 "
+                    "upper_control_dt）推理一次，两次之间残差保持不变；held = 冻结目标 + delta "
+                    "只在冻结策略刷新那一拍重算并下发（同训练侧 apply_actions）。加载前硬校验 "
+                    "towing_contract，旧 56/63 维 checkpoint 会被拒绝。",
+            "loaded": False,
         },
         "connection": {
             "note": "连接类型/长度/弹性逐 env 由训练网格给定（env_spec），不可扫；"
@@ -1655,8 +2519,15 @@ def main(args):
         import isaaclab.utils.math as math_utils
         import torch
         from isaaclab.scene import InteractiveScene
+        # 上层网络运行时：模块只 import torch + 标准库，桥接 rl_lab 的 actor/decoder。
+        # `sys.path` 与训练脚本同一约定（把 imgo2_rl/scripts/rl_lab 加进路径）。
+        if str(RL_ROOT / "scripts" / "rl_lab") not in sys.path:
+            sys.path.insert(0, str(RL_ROOT / "scripts" / "rl_lab"))
+        from upper_policy_runtime import UpperPolicyRuntime
         from imgo2_rl.assets.cart import resolve_cart_path
         from imgo2_rl.assets.cart_model import read_cart_model
+        from imgo2_rl.tasks.manager_based.towing.agents.upper_ppo_cfg import (
+            UpperTowingPPORunnerCfg)
         from imgo2_rl.tasks.manager_based.towing.mdp.profile_torch import (
             profile_height_tensor)
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
@@ -1717,6 +2588,9 @@ def main(args):
         reordered_default = [float(value) for value in robot.data.default_joint_pos[0, policy_to_asset]]
         if any(abs(a - b) > 1e-6 for a, b in zip(reordered_default, policy_cfg.default_dof_pos)):
             raise RuntimeError("关节置换核对失败：模型默认关节角与契约 default_dof_pos 不一致")
+        # 上层帧里的 `joint_pos` 项 = joint_pos − default_joint_pos（**策略关节顺序**），
+        # 与 `upper_mdp.joint_pos_rel_policy_order` 逐项同口径。
+        default_joint_pos_policy = robot.data.default_joint_pos[:, policy_to_asset].clone()
         base_ids, _ = robot.find_bodies([action_cfg.robot_body_name])
         cart_base_ids, _ = cart.find_bodies([action_cfg.cart_body_name])
         cart_joint_ids, _ = cart.find_joints(list(action_cfg.cart_wheel_joint_names),
@@ -1763,6 +2637,40 @@ def main(args):
                     raise RuntimeError(
                         f"--{name.replace('_', '-')} {getattr(args, name):g} 超出 AMP 训练过的"
                         f"指令范围 ±{cap:g}：会给冻结策略喂分布外指令")
+
+        # ------------------------------------------------------------ 上层网络开关（默认关）
+        # 关：`upper = None` ⇒ 主循环只走基线路径（残差恒 0，与加开关之前逐位一致）。
+        # 开：从 checkpoint 恢复 actor + decoder。网络超参从**注册的 agent cfg** 建，
+        # 加载前硬校验 `towing_contract`（旧 56/63 维 checkpoint 直接抛错）。
+        upper = None
+        if args.upper_checkpoint is not None:
+            upper = UpperPolicyRuntime(
+                args.upper_checkpoint, num_envs=num_envs,
+                action_scale=policy_cfg.action_scale, device=args.device,
+                deterministic=not args.upper_stochastic, agent_cfg=UpperTowingPPORunnerCfg())
+            upper_mode = "deterministic" if upper.deterministic else "stochastic"
+            print(f"[plan] 上层网络（checkpoint 已加载）：checkpoint={upper.checkpoint_path} "
+                  f"iter={upper.iteration} towing_contract={upper.contract} "
+                  f"mode={upper_mode} frame={upper.spec.frame_dim} "
+                  f"actor={upper.spec.actor_obs_dim} critic={upper.spec.num_critic_obs} "
+                  f"action={upper.spec.num_actions}", flush=True)
+            experiment["upper_policy"].update(
+                loaded=True, towing_contract=upper.contract, iter=upper.iteration,
+                frame_dim=upper.spec.frame_dim, actor_obs_dim=upper.spec.actor_obs_dim,
+                critic_obs_dim=upper.spec.num_critic_obs, action_dim=upper.spec.num_actions,
+                residual_scale=[float(value) for value in upper.action_scale.tolist()])
+            write_json(output / "experiment.json", experiment)
+        # 上层推理节拍 = 训练侧 `upper_control_dt`（0.05 s = 10 个物理步）；两次之间残差保持不变，
+        # 冻结策略每次刷新（每 `decimation` 步）都重算 held = 冻结目标 + 残差（同 apply_actions）。
+        upper_control_decimation = max(1, int(round(float(action_cfg.upper_control_dt) / dt)))
+        if not math.isclose(upper_control_decimation * dt, float(action_cfg.upper_control_dt),
+                            rel_tol=1e-6):
+            raise RuntimeError("upper_control_dt 必须是物理 dt 的整数倍")
+        if upper is not None:
+            print(f"[upper] 推理节拍：每 {upper_control_decimation} 个物理步"
+                  f"（{upper_control_decimation * dt * 1000:g} ms，训练侧 upper_control_dt="
+                  f"{float(action_cfg.upper_control_dt):g} s）；冻结策略每 {decimation} 步刷新",
+                  flush=True)
 
         # 相机：一次覆盖整张 40×20 网格（默认 800 环境时跨度约 230 m × 110 m）
         centre = origins.mean(dim=0)
@@ -1966,15 +2874,22 @@ def main(args):
                                 vy_command.clamp(-args.lane_vy_limit, args.lane_vy_limit),
                                 wz_command.clamp(-args.lane_wz_limit, args.lane_wz_limit)], dim=1)
 
+        def projected_gravity_body():
+            """机体系重力方向（单位向量）——冻结策略与上层帧共用同一个量。"""
+            return math_utils.quat_apply_inverse(robot.data.root_quat_w, per_env(gravity_world))
+
         def policy_step(command_tensor):
+            """冻结策略一拍：下发它自己的关节位置目标，返回该目标（基线口径）。"""
             parts = parts_from_robot_state(
                 base_ang_vel=robot.data.root_ang_vel_b,
-                projected_gravity=math_utils.quat_apply_inverse(
-                    robot.data.root_quat_w, per_env(gravity_world)),
+                projected_gravity=projected_gravity_body(),
                 velocity_command=command_tensor,
                 joint_pos=robot.data.joint_pos[:, policy_to_asset],
                 joint_vel=robot.data.joint_vel[:, policy_to_asset])
             out = policy.step(parts)
+            if upper is not None:
+                # 上层帧里的 `last_loco_action` 是**冻结策略自己**的动作（策略关节顺序）。
+                last_loco_action.copy_(out.action)
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out.joint_targets
 
@@ -2036,6 +2951,10 @@ def main(args):
             robot.set_external_force_and_torque(robot_zero_torque, robot_zero_torque)
             cart.set_external_force_and_torque(cart_zero_torque, cart_zero_torque)
             policy.reset()
+            if upper is not None:
+                # 上层 GRU/残差同样回到零初值（本测试台每 env 只跑一个 episode，
+                # 正常路径不会二次调用；保留是为了复用与「回合边界清零」语义完整）。
+                upper.reset()
             scene.reset()
             scene.update(dt)
 
@@ -2120,6 +3039,14 @@ def main(args):
         case_rows = [[] for _ in range(num_envs)]
         joint_targets = torch.zeros(num_envs, policy_cfg.num_joints,
                                     dtype=torch.float32, device=args.device)
+        # 冻结策略的关节位置目标（**不含**上层残差）与冻结策略自己的动作：
+        # 只有开了上层网络才会被读/写；关时它们不参与任何计算。
+        loco_joint_targets = torch.zeros_like(joint_targets)
+        last_loco_action = torch.zeros(num_envs, policy_cfg.num_joints,
+                                       dtype=torch.float32, device=args.device)
+        # 上层残差（rad，策略关节顺序）：首拍为零，之后每 `upper_control_decimation` 步刷新。
+        upper_delta = (torch.zeros(num_envs, policy_cfg.num_joints, dtype=torch.float32,
+                                   device=args.device) if upper is not None else None)
         command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32, device=args.device)
         tangent_t = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=args.device)
         normal_t = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=args.device)
@@ -2129,7 +3056,8 @@ def main(args):
               f"{len({case.grade_deg for case in cases})} 个坡度量级、"
               f"{len({case.length_m for case in cases})} 种连接长度、"
               f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
-              f"重力 {gravity}（世界竖直）", flush=True)
+              f"重力 {gravity}（世界竖直）；上层网络"
+              f"{'**开启**' if upper is not None else '关闭（基线，残差恒 0）'}", flush=True)
         started = time.time()
         # 进度打印节拍：全程约 20 行，够看出在走又不刷屏（长跑的黑盒问题见循环内的注释）。
         progress_every = max(1, args.schedule.total_steps // 20)
@@ -2148,7 +3076,29 @@ def main(args):
             if step % decimation == 0:
                 # 指令（含 PD 的 vy/wz）每控制步刷新一次，两次刷新之间保持不变
                 command_tensor = lane_command(vx_command)
-                joint_targets = policy_step(command_tensor)
+                loco_joint_targets = policy_step(command_tensor)
+                if upper is None:
+                    joint_targets = loco_joint_targets
+                else:
+                    # 上层网络（训练侧 20 Hz）：每 `upper_control_decimation` 个物理步推理一拍，
+                    # 两次之间残差保持不变。帧里的量全部按 `upper_mdp.policy_frame` 的口径取：
+                    # 关节位置/速度按**策略关节顺序**，joint_pos 还要减默认角。
+                    if step % upper_control_decimation == 0:
+                        upper_delta, _upper_processed = upper.act(
+                            loco_command=command_tensor,
+                            base_ang_vel=robot.data.root_ang_vel_b,
+                            projected_gravity=projected_gravity_body(),
+                            last_loco_action=last_loco_action,
+                            joint_pos_rel=(robot.data.joint_pos[:, policy_to_asset]
+                                           - default_joint_pos_policy),
+                            joint_vel=robot.data.joint_vel[:, policy_to_asset])
+                    # 下发目标 = 冻结策略当拍输出 + 残差；它同时也是 JNT 指标的参考量
+                    # （与训练侧 `low_position_error(reference="commanded")` 同口径）。
+                    # ⚠ 只在**冻结策略刷新**这一拍重算 held，与训练侧 `apply_actions` 一致
+                    # （训练里 held 也只在 `_physics_step % low_level_decimation == 0` 时重算，
+                    # 两次刷新之间即使 delta 刚变也不改下发目标）。
+                    joint_targets = loco_joint_targets + upper_delta
+                    robot.set_joint_position_target(joint_targets[:, asset_to_policy])
             state = apply_rope_and_resistance(wheel_damping=args.wheel_damping)
             scene.write_data_to_sim()
             # ⚠️ 物理步进**必须** `render=False`。`SimulationContext.step()` 的 render 默认是 True，
@@ -2289,7 +3239,9 @@ def main(args):
                 joint_names=list(policy_cfg.joint_names), torque_limits=torque_limits,
                 transition_window_s=args.transition_window, lane_keeping=args.lane_keeping,
                 lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit,
-                cart_present=case.cart_present)
+                cart_present=case.cart_present,
+                impact_window_s=args.impact_window, steady_margin_s=args.steady_margin_s,
+                takeup_force_threshold_n=args.takeup_force_threshold)
             if not case.cart_present:
                 # `summarize_tow` 的间隙/接触都是「机器人 ↔ 小车」的量；小车停在 2 m 外时它们
                 # 只是"很远"而不是"很好"，所以显式标注并清空，避免报告里出现误导性的读数。
@@ -2360,15 +3312,87 @@ def main(args):
         grades = sorted({case.grade_deg for case in cases})
         groups = group_statistics(case_summaries)
         conclusion = necessity_conclusion(groups, thresholds)
+        # 「策略 vs 基线」：本轮 + 同版本基线（--compare-report）+ 归档基线参照。
+        # 三项都用同一个 `case_metric_summary`（口径、字段、样本计数完全一致）。
+        comparison_current = case_metric_summary(case_summaries)
+        comparison_reference = None
+        if args.compare_report is not None:
+            payload = json.loads(args.compare_report.read_text(encoding="utf-8"))
+            comparison_reference = case_metric_summary(payload["cases"])
+            print(f"[cases] 同版本基线对照：{args.compare_report}"
+                  f"（{comparison_reference['envs']} 个 case，通过 "
+                  f"{comparison_reference['ok']}/{comparison_reference['envs']}）", flush=True)
+        # 冲击窗口 vs 稳态：与「策略 vs 基线」同一套逐 case 中位数汇总（本轮 / 同版本基线）。
+        # 归档那列的 `has_impact_fields` 是**算出来的**（不是硬写 False）：万一以后有人把带
+        # `impact.*` 的一轮归档进来，报告与 JSON 会自动改口径。
+        archived_has_impact = any(
+            key.startswith("impact.") for key in (ARCHIVED_BASELINE_2026_10_09.get("medians") or {}))
+        archived_impact = dict(ARCHIVED_BASELINE_2026_10_09)
+        archived_impact["has_impact_fields"] = archived_has_impact
+        impact_lines = format_impact_section(comparison_current,
+                                            reference=comparison_reference,
+                                            archived=archived_impact)
+        impact_report = {
+            "window_s": args.impact_window,
+            "steady_margin_s": args.steady_margin_s,
+            "takeup_force_threshold_n": args.takeup_force_threshold,
+            "steady_definition": "牵引段（tow）去掉首尾各 steady_margin_s 后的关节跟踪误差 RMS",
+            "startup_definition": "tow 段首行起 [t0, t0 + window_s]",
+            "stop_definition": "coast 段首行（指令归零）起 [t0, t0 + window_s]",
+            "takeup_definition": "tow 段首个 |rope_tension_n| > takeup_force_threshold_n 的样本 ± window_s",
+            "stop_contact_definition": "coast 段首个接触见证样本 ± window_s（车斗接触力或负载速度跃变）",
+            "current": {"medians": comparison_current.get("impact_medians"),
+                        "samples": comparison_current.get("impact_samples"),
+                        "modal_worst_joint": comparison_current.get("impact_modal_worst_joint"),
+                        "window_s": comparison_current.get("impact_window_s"),
+                        "steady_margin_s": comparison_current.get("impact_steady_margin_s"),
+                        "takeup_force_threshold_n":
+                            comparison_current.get("impact_takeup_force_threshold_n")},
+            "reference": (None if comparison_reference is None else
+                          {"medians": comparison_reference.get("impact_medians"),
+                           "samples": comparison_reference.get("impact_samples"),
+                           "modal_worst_joint":
+                               comparison_reference.get("impact_modal_worst_joint"),
+                           "window_s": comparison_reference.get("impact_window_s"),
+                           "steady_margin_s": comparison_reference.get("impact_steady_margin_s"),
+                           "takeup_force_threshold_n":
+                               comparison_reference.get("impact_takeup_force_threshold_n")}),
+            "reference_report": (str(args.compare_report)
+                                 if args.compare_report is not None else None),
+            "archived": {"label": ARCHIVED_BASELINE_2026_10_09["label"],
+                         "report": ARCHIVED_BASELINE_2026_10_09["report"],
+                         "has_impact_fields": archived_has_impact,
+                         "note": "归档基线早于本统计，没有 impact.* 字段；只能用既有 "
+                                 "startup.*/stop.* 做同量级 sanity check"},
+            "note": "新增观测字段，不参与判定码（classify_case 只读既有 startup/stop）；"
+                    "逐 case 的 impact.* 在 report.json.cases[].metrics.impact 与 "
+                    "summaries/<case>.json；逐窗口的比值 rms_over_steady 与增量 rms_delta_rad "
+                    "是同一 case 内先算再取中位数",
+        }
+        comparison_lines = format_baseline_comparison(
+            comparison_current, reference=comparison_reference, archived=archived_impact,
+            upper_enabled=args.upper_checkpoint is not None)
+        baseline_comparison = {"current": comparison_current,
+                               "reference": comparison_reference,
+                               "reference_report": (str(args.compare_report)
+                                                    if args.compare_report is not None else None),
+                               "archived": ARCHIVED_BASELINE_2026_10_09,
+                               "note": "三项同口径（同网格/同指标/同阈值）；归档基线是旧几何，"
+                                       "只作参照，不可逐格硬比"}
         labels = {name: getattr(args, name) for name in
                   ("num_envs", "velocities", "cart_masses", "ground_friction", "wheel_damping",
                    "command_shaping", "ramp_time_s", "record_every", "write_csv", "lane_keeping",
                    "lane_kp_y", "lane_kd_y", "lane_kp_yaw", "lane_kd_yaw",
-                   "lane_vy_limit", "lane_wz_limit")}
+                   "lane_vy_limit", "lane_wz_limit", "upper_checkpoint", "upper_stochastic",
+                   "compare_report", "impact_window", "steady_margin_s",
+                   "takeup_force_threshold")}
         report = {
             "question": experiment["question"],
             "scene": experiment["scene"], "thresholds": thresholds,
             "arguments": experiment["arguments"],
+            "upper_policy": experiment["upper_policy"],
+            "baseline_comparison": baseline_comparison,
+            "impact_statistics": impact_report,
             "groups": groups, "conclusion": conclusion,
             "cases": case_summaries,
             "csv_cases": case_dirs,
@@ -2386,7 +3410,8 @@ def main(args):
             build_markdown_report(case_summaries=case_summaries, groups=groups,
                                   conclusion=conclusion, args_dict=labels,
                                   thresholds=thresholds, schedule=args.schedule,
-                                  grades=grades, git=git),
+                                  grades=grades, git=git, comparison=comparison_lines,
+                                  impact=impact_lines),
             encoding="utf-8")
 
         print("\n" + format_verdict_matrix(case_summaries, grades=grades))

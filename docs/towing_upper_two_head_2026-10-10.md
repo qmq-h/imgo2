@@ -77,8 +77,22 @@
 
 **口径不变**：阈值、判定码、既有字段名与语义都不动，只新增字段；文档与测试同步。
 
+### 已实现（2026-10-10）
+
+**只新增、不动既有口径**：新增纯函数 `impact_stats()`（四个时刻各取窗口独立统计 + 稳态分母 +
+比值/增量）。CLI：`--impact-window`（默认 0.2 s）、`--steady-margin-s`（默认 1.0 s）、
+`--takeup-force-threshold`（默认 1.0 N，取 `|rope_tension_n|` 模长 ⇒ rigid 连杆负张力也算绷直）。
+`report.md` 增「## 冲击窗口 vs 稳态（关节响应）」一节、`report.json` 增 `impact_statistics`、
+`report.csv` 增 `impact_<窗口>_*`。既有 `--transition-window` 的 `startup.*`/`stop.*`、
+`DEFAULT_THRESHOLDS`、判定码与 `classify_case` **全未改**，新参数不进判据（AST 守卫）。
+字段名/单位/读法、验证方式与未验证项见 [独立记录](towing_impact_window_2026-10-10.md)。
+
 ## 状态
 
-- **未实现、未验证**：本机无 Isaac Lab（仿真一次都没跑）。上面 #1–#9 与冲击窗口统计都还没写代码；
+- **双头方案（#1–#9 的 13 维契约迁移）未实现、未验证**：本机无 Isaac Lab（仿真一次都没跑）；
+- **冲击窗口独立统计已实现**（2026-10-10，只新增字段；离线 **501 passed**），详见
+  [冲击窗口记录](towing_impact_window_2026-10-10.md) 与 README 问题表 **TOW-22**。
+  运行期行为（1 N 阈值是否合适、25 ms 记录下 ±0.2 s 窗口的样本数、比值能否区分基线/策略）
+  **待训练机验证**；
 - 前置：TOW-20 的测试台上层网络开关（已完成，离线测试 473 项通过）是这次验收的工具；
 - 顺序建议：先按 towing test 口径跑「基线 vs `model_1000`」看安全性与改善 → 再决定是否做 13 维迁移。
