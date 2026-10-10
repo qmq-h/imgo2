@@ -146,8 +146,9 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
 原始清单写的是 `loco_command[:,0] = clamp(scripted_vx + offset, OFFSET_MIN=-0.2, OFFSET_MAX=+0.6)`。
 **照字面实现会毁掉任务**：冻结 AMP 策略的训练指令范围是
 `lin_vel_x ∈ (−1.0, 1.5)`（出处 `tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py`
-的 `commands.base_velocity.ranges.lin_vel_x`），而拖曳脚本速度是 0.4–1.5 m/s
-（`mdp/episode_geometry.SPEED_RANGE`）——**牵引段本来就顶在上界 1.5**。把"和"裁到 +0.6 会把
+的 `commands.base_velocity.ranges.lin_vel_x`），而拖曳脚本速度是 0.5–1.5 m/s
+（`mdp/episode_geometry.SPEED_RANGE`；**2026-10-10 当天由 0.4–1.5 收紧为 0.5–1.5**，
+契约不受影响，见[工作域收紧记录](towing_work_domain_2026-10-10.md)）——**牵引段本来就顶在上界 1.5**。把"和"裁到 +0.6 会把
 1.5 m/s 的牵引指令压成 0.6，而奖励参考量 `task_command` 仍是 1.5 ⇒ 策略被要求跟一个它根本
 发不出的速度，退化性测试也不可能通过。
 

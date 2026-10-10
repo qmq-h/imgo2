@@ -457,11 +457,13 @@ class UpperEventsCfg:
         mode="reset",
         params={
             "speed_range": SPEED_RANGE,
-            # 2026-10-09 用户要求上限提到 30 kg（原 5–15）：更接近"重载"工况。
+            # 2026-10-09 用户要求上限提到 30 kg（原 5–15）；**2026-10-10 收紧为 (5, 20) kg**
+            # （用户确认工作域＝质量 5–20 kg、速度 0.5–1.5 m/s）：原 30 kg 档不再采样，
+            # 测量台的 25 kg 默认档从「分布内」变成「域外外推检查」。
             # 质量的**惯量按同一比例**缩放（见 `reset_towing_episode`），所以转动惯量自洽；
-            # 注意轮轴阻尼范围 (0.008, 0.032) 未随质量缩放 ⇒ 30 kg 时"单位质量的滚动阻力"
+            # 注意轮轴阻尼范围 (0.008, 0.032) 未随质量缩放 ⇒ 20 kg 时"单位质量的滚动阻力"
             # 比 5 kg 小，这是刻意保留的建模选择（与测量台同一套参数）。
-            "mass_range": (5.0, 30.0),
+            "mass_range": (5.0, 20.0),
             "friction_range": (0.4, 1.2),
             "wheel_damping_range": (0.008, 0.032),
             # 出生**固定**（用户 2026-10-09）：x/y/yaw 三个抖动全部归零 ⇒ 每个 env 的出生
@@ -593,10 +595,17 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
                 f"{(speed_min, speed_max)}，否则零偏移时脚本指令会被裁掉")
         # 正常回合一律由 `time_out` 收尾（用户 2026-10-09 确认）：timeout = settle +
         # （到 STOP 点的**坡面弧长**上界）/ 最小速度 + 停车窗口。弧长上界取最陡档：
-        # 10 m 水平在 10° 剖面上是 `profile_arc_length(10, 10)=10.093 m`
-        # ⇒ 1 + 10.093/0.4 + 3 = 29.23 s。`POST_STOP_WINDOW_S` 是最慢速度下的停车窗口；
-        # 速度越快 STOP 越早、尾巴越长（已与用户确认接受；"有没有走到 STOP 点"看
-        # `obs_stop_reached` 诊断量，不靠终止原因区分）。
+        # 10 m 水平在 10° 剖面上是 `profile_arc_length(10, 10)=10.0926 m`。
+        # 2026-10-10 工作域收紧：最小速度 0.4 → **0.5 m/s** ⇒ 1 + 10.0926/0.5 + 3 =
+        # **24.185 s**（`max_episode_length` = ceil(24.185/0.05) = **484 步** @ 20 Hz，
+        # 见 Isaac Lab 0.45.9 `manager_based_rl_env.py:104`），此前是
+        # 1 + 10.0926/0.4 + 3 = 29.231 s（585 步）。
+        # 计算完全由 `episode_geometry.SPEED_RANGE[0]` 经 `speed_range` 参数驱动，没有第二处
+        # 硬编码。`POST_STOP_WINDOW_S` 是最慢速度下的停车窗口；速度越快 STOP 越早、尾巴越长
+        # （已与用户确认接受；"有没有走到 STOP 点"看 `obs_stop_reached` 诊断量，不靠终止原因区分）。
+        # `decimation`（10，= 20 Hz 上层）与 `num_steps_per_env`（训练侧 rollout 长度）**不跟改**：
+        # 前者由 frozen AMP 策略的 50 Hz 与上层 20 Hz 契约决定、后者是采样长度（与回合上限无关，
+        # 只影响每轮 rollout 的步数）。
         surface_distance = profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)
         self.episode_length_s = episode_timeout_s(
             surface_distance, minimum_speed, action.tow_start_s,

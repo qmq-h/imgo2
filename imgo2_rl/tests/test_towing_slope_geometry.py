@@ -198,12 +198,16 @@ class SlopeGeometryTests(unittest.TestCase):
                                     episode.STOP_DISTANCE_M - 1e-12)
 
     def test_every_speed_arrives_before_the_discretized_timeout(self):
-        # timeout 用**最陡档的坡面弧长**（10 m 水平 STOP 点 → 10.093 m 弧长）
+        # timeout 用**最陡档的坡面弧长**（10 m 水平 STOP 点 → 10.0926 m 弧长）
         worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
         limit = episode.episode_timeout_s(worst, episode.SPEED_RANGE[0])
-        self.assertLess(abs(limit - 28.2315), 0.01)
-        for index in range(111):
-            speed = .4 + index*.01
+        # 2026-10-10 工作域收紧：最慢速度 0.4 → 0.5 m/s ⇒ 1 + 10.0926/0.5 + 2（默认 margin）
+        # = 23.185 s（此处的默认 margin 是 TIMEOUT_MARGIN_S=2；训练 cfg 用 POST_STOP_WINDOW_S=3
+        # ⇒ 24.185 s / 484 步（ceil），见下一个测试与 upper_env_cfg 注释）
+        self.assertLess(abs(limit - 23.1851), 0.01)
+        slowest = episode.SPEED_RANGE[0]
+        for index in range(int(round((episode.SPEED_RANGE[1] - slowest) / .01)) + 1):
+            speed = slowest + index*.01
             arrival = episode.SETTLE_TIME_S + worst/speed
             # Includes one 50 ms action interval and one termination sampling interval.
             self.assertLess(arrival+.1, limit)
@@ -211,6 +215,35 @@ class SlopeGeometryTests(unittest.TestCase):
         for args in ((0,.4), (10,0), (10,-1), (float('inf'),.4)):
             with self.assertRaises(ValueError):
                 episode.episode_timeout_s(*args)
+
+    def test_training_timeout_uses_the_stop_window_margin(self):
+        """训练 cfg 的 `episode_length_s` = 最慢速度 + **停车窗口** margin（与 0.5 m/s 自洽）。
+
+        `upper_env_cfg.__post_init__` 用的是 `margin=POST_STOP_WINDOW_S`（3.0 s），不是默认的
+        `TIMEOUT_MARGIN_S`（2.0 s）⇒ 工作域收紧后
+
+            1（settle/tow_start）+ 10.0926/0.5（最慢速度走完最陡档坡面弧长）+ 3（停车窗口）
+            = **24.185 s** ⇒ `max_episode_length` = **484 步**（20 Hz；Isaac Lab 0.45.9 的
+            `ManagerBasedRLEnv.max_episode_length` 用 `math.ceil(episode_length_s / step_dt)`，
+            见 `manager_based_rl_env.py:104`；截断口径是 483 步）。
+
+        旧值 0.4 m/s ⇒ 29.231 s / ceil ⇒ 585 步（2026-10-09 的记录写 564/584 是截断口径，
+        比运行值少 0–1 步）。这里钉住耦合关系本身（数值改了必须一起改），避免只改
+        `SPEED_RANGE` 而把超时/步数留在旧口径。
+        """
+        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
+        timeout = episode.episode_timeout_s(worst, episode.SPEED_RANGE[0],
+                                            episode.SETTLE_TIME_S,
+                                            margin=episode.POST_STOP_WINDOW_S)
+        self.assertLess(abs(timeout - 24.1851), 0.01)
+        self.assertEqual(int(timeout / 0.05), 483)          # 截断（2026-10-09 记录口径）
+        self.assertEqual(math.ceil(timeout / 0.05), 484)    # Isaac Lab 运行值
+        # 停车窗口自洽：最慢速度下到 STOP 点后仍剩约 POST_STOP_WINDOW_S 秒
+        arrival = episode.SETTLE_TIME_S + worst / episode.SPEED_RANGE[0]
+        self.assertLess(abs((timeout - arrival) - episode.POST_STOP_WINDOW_S), 0.01)
+        # 水平 10 m 在 0.5 m/s 下 20 s < 24.185 s（最慢速度也能走到 STOP 点）
+        self.assertLess(episode.SETTLE_TIME_S + episode.STOP_DISTANCE_M
+                        / episode.SPEED_RANGE[0], timeout)
 
 
 class TorchProfileTests(unittest.TestCase):

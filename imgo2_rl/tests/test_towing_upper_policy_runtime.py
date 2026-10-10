@@ -338,7 +338,7 @@ class RuntimeActTests(unittest.TestCase):
 
         运行时常量必须与 `upper_mdp.HierarchicalVelocityActionCfg` 的默认值逐项一致
         （训练侧是唯一事实来源，这里只是运行时的镜像 + 交叉守卫）。
-        包络 `lin_vel_x = (−1.0, 1.5)` 出处 `amp_env_cfg`：牵引速度 0.4–1.5 本来就顶在
+        包络 `lin_vel_x = (−1.0, 1.5)` 出处 `amp_env_cfg`：牵引速度 0.5–1.5 本来就顶在
         上界，把"和"裁到偏移头的 [−0.2, 0.6] 会把牵引指令砍成 0.6。
         """
         instance, actor, _, _ = make_runtime(self._tmp.name, num_envs=4)

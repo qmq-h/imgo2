@@ -152,6 +152,46 @@ class UpperLogicTests(unittest.TestCase):
         # 动作布局常量：13 = 1（vx 偏移）+ 12（关节残差），切分点唯一定义在 upper_logic
         self.assertEqual(logic.CMD_ACTION_DIM, 1)
 
+    def test_work_domain_ranges_do_not_touch_the_contract(self):
+        """工作域常量（质量 5–20 kg、速度 0.5–1.5 m/s）**不得**改动契约。
+
+        2026-10-10 用户收紧工作域：`reset_work_condition.mass_range` 与
+        `DecoderSpec.mass_range` 上限 30 → 20 kg、`episode_geometry.SPEED_RANGE` 下界
+        0.4 → 0.5 m/s（回合超时随之由 29.231 s 缩短到 24.185 s，见几何测试）。本守卫把
+        「工作域」与「契约」隔开：三个训练域常量必须**四处一致**（env cfg 源码 /
+        `DecoderSpec.mass_range` / `episode_geometry.SPEED_RANGE` / 测量台
+        `TRAINING_MASS_RANGE_KG`），而契约维数 **58 / 6 / 80 / 动作 13** 与
+        `towing_contract v3` 不受这些范围影响——`DecoderSpec.mass_range` 只作文档/派生用，
+        改它不动 `dim`。
+        """
+        import dataclasses
+
+        geometry = load("towing_episode_geometry_contract_test",
+                        PKG / "mdp/episode_geometry.py")
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        play = (RL / "scripts/towing/play_towing_test.py").read_text("utf-8")
+
+        # 工作域：训练侧四处常量逐项对齐（少改一处就会漂移）
+        self.assertEqual(geometry.SPEED_RANGE, (0.5, 1.5))
+        self.assertIn('"speed_range": SPEED_RANGE', cfg)
+        self.assertIn('"mass_range": (5.0, 20.0)', cfg)
+        self.assertEqual(logic.DecoderSpec().mass_range, (5.0, 20.0))
+        match = re.search(r"TRAINING_MASS_RANGE_KG = \(([0-9.]+), ([0-9.]+)\)", play)
+        self.assertIsNotNone(match, "测量台找不到 TRAINING_MASS_RANGE_KG")
+        self.assertEqual((float(match.group(1)), float(match.group(2))),
+                         logic.DecoderSpec().mass_range,
+                         "测量台的训练侧质量范围必须与 DecoderSpec.mass_range 一致")
+
+        # 契约：工作域改了也不许动这些维数/版本（改 mass_range 后 dim 不变）
+        spec = logic.UpperObservationSpec()
+        widened = dataclasses.replace(logic.DecoderSpec(), mass_range=(1.0, 99.0))
+        self.assertEqual(widened.dim, logic.DecoderSpec().dim)
+        self.assertEqual((spec.frame_dim, spec.decoder_dim, spec.actor_dim), (58, 6, 80))
+        self.assertEqual(dict(spec.terms)["last_action"], 13)
+        self.assertEqual(logic.CMD_ACTION_DIM, 1)
+        runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 3", runtime_src)
+
     def test_decoder_targets_are_physical_units(self):
         """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
 
@@ -236,7 +276,7 @@ class UpperLogicTests(unittest.TestCase):
         2. **和**再限在冻结 AMP 策略的训练包络 `amp_vx_range = (−1.0, 1.5)`
            （`amp_env_cfg` 的 `lin_vel_x`）—— 超出即 OOD、步态退化。
 
-        ⚠ 绝不能把和裁到 `[−0.2, +0.6]`：脚本速度 0.4–1.5，牵引段本来就顶在 AMP 上界 1.5，
+        ⚠ 绝不能把和裁到 `[−0.2, +0.6]`：脚本速度 0.5–1.5，牵引段本来就顶在 AMP 上界 1.5，
         那样会把正常牵引指令压成 0.6 而奖励参考仍是 1.5。**退化性**：`u_cmd = 0` 或
         `apply_offset=False` 时脚本值落在包络内 ⇒ 裁剪恒等 ⇒ 与旧口径逐位一致。
         """
@@ -284,7 +324,7 @@ class UpperLogicTests(unittest.TestCase):
 
         出处：`base_move/amp_env_cfg.py::__post_init__` 的
         `self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)`。
-        它是**分布约束**而不是权限：牵引速度 0.4–1.5 本来就顶在上界，超出即 OOD。
+        它是**分布约束**而不是权限：牵引速度 0.5–1.5 本来就顶在上界，超出即 OOD。
         """
         amp_cfg = (PKG.parent / "locomotion/velocity/base_move/amp_env_cfg.py").read_text("utf-8")
         match = re.search(r"ranges\.lin_vel_x\s*=\s*\(([-0-9.]+),\s*([-0-9.]+)\)", amp_cfg)
@@ -294,7 +334,7 @@ class UpperLogicTests(unittest.TestCase):
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         self.assertIn("amp_vx_range: tuple[float, float] = (-1.0, 1.5)", mdp)
         self.assertEqual(logic.UpperActionSpec(residual_scale=(0.25,) * 12).amp_vx_range, amp_range)
-        # 包络必须覆盖脚本速度范围（SPEED_RANGE 0.4–1.5），否则零偏移时脚本被裁
+        # 包络必须覆盖脚本速度范围（SPEED_RANGE 0.5–1.5），否则零偏移时脚本被裁
         geometry = load("towing_episode_geometry_amp_test", PKG / "mdp/episode_geometry.py")
         self.assertGreaterEqual(amp_range[0], -1.0)
         self.assertGreaterEqual(amp_range[1], geometry.SPEED_RANGE[1])
@@ -1436,7 +1476,7 @@ class UpperLogicTests(unittest.TestCase):
         """源码级：裁剪的顺序必须是「先限偏移、再裁和进 AMP 包络」。
 
         若顺序反了（先裁和到包络、再叠偏移），叠完的 vx 会重新越界；若用偏移头的
-        `[offset_min, offset_max]` 去裁和，牵引段（0.4–1.5）会被砍成 ≤0.6。
+        `[offset_min, offset_max]` 去裁和，牵引段（0.5–1.5）会被砍成 ≤0.6。
         """
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         body = mdp[mdp.index("    def process_actions(self, actions):"):]
@@ -1552,7 +1592,7 @@ class UpperLogicTests(unittest.TestCase):
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         for fragment in (
             '"speed_range": SPEED_RANGE',
-            '"mass_range": (5.0, 30.0)',
+            '"mass_range": (5.0, 20.0)',
             # 出生**固定**（用户 2026-10-09）：三个抖动必须都是 (0, 0)
             '"robot_x_range": (0.0, 0.0)',
             '"robot_y_range": (0.0, 0.0)',

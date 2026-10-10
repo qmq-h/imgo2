@@ -10,8 +10,15 @@
 `STOP_DISTANCE_M` 是**沿 lane 的水平前进距离**（从出生点起算），到达它就把指令置零；
 它必须**大于坡面出口** `slope_geometry.FLAT_OUT_START_M = 9.0 m`——用户要求
 「给 cmd vel 一定要在越过坡之后」，`upper_env_cfg.__post_init__` 里有显式断言。
-触发用**进度**而不是时间：最慢速度（0.4 m/s）下光是走到坡出口就要约 23 s，若用固定
+触发用**进度**而不是时间：最慢速度（0.5 m/s）下光是走到坡出口就要约 18 s，若用固定
 时间阈值，慢速环境会在坡上就被叫停，无法保证"越过坡"。
+
+2026-10-10 工作域收紧（用户确认）：`SPEED_RANGE` 下界 **0.4 → 0.5 m/s**（上界仍 1.5），
+配套的 `reset_work_condition.mass_range` 上限 **30 → 20 kg**。因为 `episode_timeout_s` 用
+`SPEED_RANGE[0]` 算「最慢速度走完 STOP 距离 + 余量」，下界抬高后**超时会变短**：
+最陡档坡面弧长 10.0926 m / 0.5 m/s ⇒ `episode_length_s` 由 29.23 s 降到 24.19 s
+（`max_episode_length` = ceil(24.185/0.05)：585 → **484 步**）。契约（帧 58 / actor 80 /
+critic 73 / 动作 13 / `towing_contract v3`）**不受工作域影响**，有守卫钉住。
 
 `POST_STOP_WINDOW_S` 是 STOP 之后的评分窗口，作为 `episode_timeout_s` 的 margin：
 timeout = settle + 到 STOP 点的坡面弧长 / 最小速度 + 窗口，所以**最慢速度下**
@@ -20,7 +27,7 @@ STOP 之后仍有约 `POST_STOP_WINDOW_S` 秒的步供 post_stop 奖励作用（
 
 import math
 
-SPEED_RANGE = (0.4, 1.5)
+SPEED_RANGE = (0.5, 1.5)
 # 指令归零的沿 lane 水平距离（m）。必须 > FLAT_OUT_START_M（坡面出口 9.0 m）。
 STOP_DISTANCE_M = 10.0
 SETTLE_TIME_S = 1.0

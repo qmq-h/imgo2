@@ -1347,6 +1347,8 @@ class CliTests(unittest.TestCase):
     def test_defaults_match_the_training_grid(self):
         args = play.parse_args([])
         self.assertEqual(list(args.velocities), list(play.DEFAULT_VELOCITIES))
+        # 默认速度下界与训练域下界（`episode_geometry.SPEED_RANGE[0]`）一致
+        self.assertEqual(play.DEFAULT_VELOCITIES[0], 0.5)
         self.assertEqual(list(args.cart_masses), list(play.DEFAULT_CART_MASSES))
         self.assertEqual(args.num_envs, connection_grid.GRID_SIZE)
         self.assertEqual(args.ground_friction, play.FACTORY_FLOOR_FRICTION)
@@ -1397,8 +1399,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("compliant 320", text)
         self.assertIn("0° 400", text)
         self.assertIn("env0000", text)
-        # 训练上限 2026-10-09 提到 30 kg ⇒ 默认质量档全部落在分布内
-        self.assertIn("本网格的质量档全部落在训练分布内", text)
+        # 训练上限 2026-10-10 收紧为 20 kg ⇒ 默认档里的 25 kg 是域外外推检查
+        self.assertEqual(play.TRAINING_MASS_RANGE_KG, (5.0, 20.0))
+        self.assertIn("超出该范围的质量档 25 kg", text)
+        self.assertIn("外推检查，判读要与分布内档位分开", text)
+        self.assertNotIn("本网格的质量档全部落在训练分布内", text)
         self.assertIn("轮轴阻尼 0.032", text)
         self.assertIn("「连接 × 质量」env 数", text)
 

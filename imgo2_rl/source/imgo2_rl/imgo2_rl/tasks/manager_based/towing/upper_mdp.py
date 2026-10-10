@@ -411,7 +411,7 @@ class HierarchicalVelocityAction(ActionTerm):
         # ---- 3) 送冻结策略的指令 = 任务指令 + 有界偏移，再裁进 AMP 训练包络 ----
         # 两层限幅，顺序不能反：
         #   a) 偏移本身限在头权限 [offset_min, offset_max]（**不是**把和裁到这个区间：
-        #      脚本速度 0.4–1.5，裁和会把牵引段砍到 0.6 而奖励参考仍是 1.5）；
+        #      脚本速度 0.5–1.5，裁和会把牵引段砍到 0.6 而奖励参考仍是 1.5）；
         #   b) **和**再限在冻结 AMP 策略的训练包络 amp_vx_range = (−1.0, 1.5)
         #      （`amp_env_cfg` 的 lin_vel_x）。超出即 OOD，步态会退化。
         # 因为包络覆盖整个脚本速度范围，u_cmd = 0 时 clamp 是恒等的 ⇒ 与旧口径逐位一致。
@@ -658,13 +658,13 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     #: offset = clip(u_cmd, ±1) × cmd_offset_scale（m/s）。
     cmd_offset_scale: float = 0.5
     #: 偏移量本身的限幅（m/s）——**不是** `task_vx + offset` 的绝对限幅。理由见
-    #: `upper_logic.UpperActionSpec`：脚本速度 0.4–1.5 m/s，裁和会把牵引指令砍到 0.6。
+    #: `upper_logic.UpperActionSpec`：脚本速度 0.5–1.5 m/s，裁和会把牵引指令砍到 0.6。
     offset_min: float = -0.2
     offset_max: float = 0.6
     #: **合成后 vx 的训练包络**（m/s），逐字取自冻结 AMP 策略的指令范围
     #: `amp_env_cfg.__post_init__`：`commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)`。
     #: 这不是"权限"，是**分布约束**：超出即 OOD，冻结策略的步态会退化。
-    #: 它必须覆盖脚本速度范围（`episode_geometry.SPEED_RANGE = 0.4–1.5`），
+    #: 它必须覆盖脚本速度范围（`episode_geometry.SPEED_RANGE = 0.5–1.5`），
     #: `upper_env_cfg.__post_init__` 有断言守着这条 —— 否则零偏移时脚本自己就被裁掉。
     amp_vx_range: tuple[float, float] = (-1.0, 1.5)
     # ---- 2026-10-10 新增：「停机之后」开关，默认关闭 = 今天的行为 ----
