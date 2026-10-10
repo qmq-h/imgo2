@@ -159,7 +159,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
     # 因此保留实测速度跟踪误差，另加 12 维关节残差幅值（判断上层到底动没动、动多大）。
     track_steps = torch.zeros(env.num_envs, device=env.device)
     err_track = torch.zeros(env.num_envs, device=env.device)     # |实际速度 − 指令速度|
-    res_norm = torch.zeros(env.num_envs, device=env.device)      # ‖12 维关节残差‖（rad）
+    # ‖12 维上层动作‖₂：**归一化单位**（= processed_actions.clamp(−1,1)），不是 rad；
+    # 换算成关节偏移要乘 action_scale（hip 0.125 / thigh·shank 0.25 rad），见 upper_mdp.apply_actions。
+    res_norm = torch.zeros(env.num_envs, device=env.device)
     # decoder 精度统计（decoder 直接输出物理量，故误差单位即 m/s、N、kg）
     d_vel = torch.zeros(env.num_envs, device=env.device)
     d_force = torch.zeros(env.num_envs, device=env.device)
@@ -174,7 +176,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
               f"{'mT':>6} {'mP':>6} {'|F|T':>7} {'|F|P':>7}")
     if args_cli.cmd_interval > 0:
         print("[cmd] 列含义：t=时刻s  cmd=脚本速度指令(送冻结策略)  achieved=实际体速  "
-              "|res|=12 维关节残差范数(rad)  res_x=残差第 1 维")
+              "|res|=12 维上层动作范数(归一化单位)  res_x=第 1 维")
         print(f"[cmd] {'step':>6} {'t(s)':>7} {'cmd':>8} {'achv':>8} "
               f"{'err_track':>9} {'|res|':>8} {'res_x':>8}")
 
