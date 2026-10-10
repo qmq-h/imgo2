@@ -1,6 +1,6 @@
 # 上层拖曳强化学习计划
 
-> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励）；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为 `spawn_margin(0.85) × 出生间隙`、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
+> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励）；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为「**出生间隙 − 绝对死区 `deadband_m`(0.02 m)**」（2026-10-10 当天先落成 `spawn_margin(0.85)` 相对余量、同日再微调为绝对死区；语义＝「不许比出生时更近」）、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
 
 > 最后维护：2026-10-08。本文是上层 RL 环境的实现规格。**2026-10-08 架构改动**（用户决定）：上层动作由「3 维参考加速度」改为 **12 维关节位置残差**，送冻结策略的速度指令改由脚本调度给出；decoder 牵引力由 2 维改为 **3 维**（速度保持 2 维）。改动细节、验证与限制见 [残差动作与三维拉力记录](towing_deltapos_residual_2026-10-08.md)；历史复审结论仍见 [上层拖曳 RL 链路复审](towing_upper_rl_review_2026-09-22.md)。
 

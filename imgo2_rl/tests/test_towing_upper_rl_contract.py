@@ -8,6 +8,7 @@ import re
 import statistics
 import sys
 import textwrap
+import types
 import unittest
 
 try:
@@ -34,12 +35,13 @@ grid = load("towing_connection_grid_test", PKG / "mdp/connection_grid.py")
 
 
 def _spawn_gap_constants():
-    """从源码读出「出生间隙」公式的全部常量（测试里不再硬编码一遍）。
+    """从源码读出「出生间隙 − 绝对死区」公式的全部常量（测试里不再硬编码一遍）。
 
-    `min_clearance` 的阈值自 2026-10-10 起是 `spawn_margin × 出生间隙`，其中
+    `min_clearance` 的阈值自 2026-10-10 起是 **`出生间隙 − deadband_m`**（绝对死区），其中
 
         spawn_gap(L, 类型) = sqrt(initial_attachment_distance(类型, L)² − Δz²) + base_offset
 
+    - `deadband_m` = `UpperRewardsCfg.min_clearance` 的 `params`（默认 0.02 m）；
     - `Δz` = 两挂点高差 = 机器人/小车的出生高度之差（`assets/imgo2.py` 的 `init_state.pos`
       与 `upper_env_cfg` 里 cart 的 `init_state.pos`；两挂点的 z 偏移都是 0）；
     - `base_offset = −robot_rear_surface_x − robot_attachment_x + cart_attachment_x
@@ -53,7 +55,7 @@ def _spawn_gap_constants():
     def one(pattern, text):
         return float(re.search(pattern, text).group(1))
 
-    spawn_margin = one(r'"spawn_margin": ([0-9.]+)', cfg)
+    deadband_m = one(r'"deadband_m": ([0-9.]+)', cfg)
     softness = one(r'"softness": ([0-9.]+)', cfg)
     robot_z = one(r"pos=\(0\.0, 0\.0, ([0-9.]+)\)", assets)
     cart_z = one(r"cart\.init_state\.pos = \(-?[0-9.]+, [0-9.]+, ([0-9.]+)\)", cfg)
@@ -62,13 +64,71 @@ def _spawn_gap_constants():
     robot_attach_x = one(r"robot_attachment: tuple\[float, float, float\] = \((-?[0-9.]+)", mdp)
     cart_attach_x = one(r"cart_attachment: tuple\[float, float, float\] = \((-?[0-9.]+)", mdp)
     base_offset = -rear - robot_attach_x + cart_attach_x - front
-    return spawn_margin, softness, robot_z - cart_z, base_offset
+    return deadband_m, softness, robot_z - cart_z, base_offset
 
 
 def _spawn_gap(model_name, length, delta_z, base_offset):
     """出生瞬间的「后表面 → 车斗前表面」间隙（与 `upper_mdp.spawn_clearance` 同式）。"""
     target = grid.initial_attachment_distance(model_name, length)
     return math.sqrt(target ** 2 - delta_z ** 2) + base_offset
+
+
+_FUNCTION_CACHE: dict = {}
+
+
+def _mdp_function(name):
+    """把 `upper_mdp.<name>` 的函数体从源码里抽出来，在只含 `torch` + `_term` 的 stub 里实跑。
+
+    本机没有 Isaac Lab（`upper_mdp` 顶层 import isaaclab，离线 import 不了），所以只能这样
+    拿到**真函数**；与 `test_towing_force_rate.py` 的做法一致。⚠ 返回的是普通函数，必须经
+    `_mdp_function(name)(env, ...)` 调用，不要挂到 `TestCase` 上（会变成方法绑定）。
+    """
+    if name not in _FUNCTION_CACHE:
+        source = (PKG / "upper_mdp.py").read_text("utf-8")
+        node = next(node for node in ast.parse(source).body
+                    if isinstance(node, ast.FunctionDef) and node.name == name)
+        body = textwrap.dedent(ast.get_source_segment(source, node))
+        namespace = {"torch": torch, "_term": lambda env: env.term}
+        exec(body, namespace)  # noqa: S102 - 源码来自本仓库，测试专用
+        _FUNCTION_CACHE[name] = namespace[name]
+    return _FUNCTION_CACHE[name]
+
+
+class _ClearanceTermStub:
+    """`min_clearance_violation` 需要的最小 term 接口。"""
+
+    def __init__(self, clearance, spawn_clearance, cart_present=1.0):
+        self.rope_state = torch.tensor([[clearance]])
+        self.spawn_clearance = torch.tensor([spawn_clearance])
+        # 真实 term 里 `cart_present` 是 [num_envs, 1]（函数里取 `[:, 0]`）
+        self.cart_present = torch.tensor([[cart_present]])
+        self.safety_updates = 0
+
+    def update_safety_state(self):
+        self.safety_updates += 1
+
+
+def _clearance_env(clearance, spawn_clearance, cart_present=1.0):
+    env = types.SimpleNamespace(term=_ClearanceTermStub(clearance, spawn_clearance, cart_present))
+    return env
+
+
+def _evaluate_min_clearance(clearance, spawn_clearance, deadband_m, softness=0.02, cart_present=1.0):
+    """在 stub term 上调用**源码里那个** `min_clearance_violation`，返回 python float。"""
+    env = _clearance_env(clearance, spawn_clearance, cart_present)
+    value = _mdp_function("min_clearance_violation")(env, deadband_m, softness)
+    assert env.term.safety_updates == 1, "必须先 update_safety_state() 再读 rope_state"
+    return float(value[0])
+
+
+def _float32_threshold(spawn_clearance, deadband_m):
+    """函数内那一步 `spawn_clearance − deadband_m` 的 **float32** 结果（边界用例要用同一步运算取）。
+
+    `term.spawn_clearance` 是 float32 张量，阈值在函数里就是 float32 减标量的结果；测试里若用
+    float64 的 `gap − deadband_m` 去当"阈值正好落在间隙上"的输入，会因为 float32 舍入差出
+    1e-8 量级（`compliant` row 5 实测 2.98e-8），把"阈值处精确 0"误判成失败。
+    """
+    return float(torch.tensor([spawn_clearance]) - deadband_m)
 
 
 class UpperLogicTests(unittest.TestCase):
@@ -823,19 +883,21 @@ class UpperLogicTests(unittest.TestCase):
         self.assertGreater(float(parts[2]), float(parts[0]))
 
     def test_min_clearance_reward_uses_spawn_geometry_and_is_gated(self):
-        """最小间距奖励：阈值按**出生几何**（`spawn_margin × 出生间隙`）给出，且对无小车环境屏蔽。
+        """最小间距奖励：阈值按**出生几何 − 绝对死区**（`出生间隙 − deadband_m`）给出，且对无小车环境屏蔽。
 
         2026-09-23 用户要求「维持小车与机器人距离不低于连接长度的 ratio 倍」；2026-10-10
-        用户批准改口径：**不再用 `ratio × 连接长度`**，改用 `spawn_margin × 出生间隙`
-        （理由：绳的出生间隙本来就随长度变化，直接用出生几何比"长度的一个固定比例"更贴物理，
-        且天然保证 spawn 不生效），权重由 −2.0 提到 **−5.0**（每步 0.2 m 缺口 ≈ −0.05/步
-        = `tracking_velocity` 满额，有动机但不压倒）。
+        用户批准改口径：**不再用 `ratio × 连接长度`**，先落成 `spawn_margin(0.85) × 出生间隙`，
+        **同日再微调成绝对死区** `出生间隙 − deadband_m(0.02)`——理由：①语义就是用户要的
+        「不许比出生时更近」，比 0.85 相对余量更贴；②解析出生间隙与仿真实际间隙有**几毫米**差
+        （落地/穿透/初始沉降）⇒ 2 cm 绝对值即可吸收，而相对余量对长绳行会浪费几十厘米；
+        ③出生点在 lane 的**后向平段**（坡从 +2.25 m 才起）⇒ 出生/停车都在平地、无重力驱动 ⇒
+        **没有被动的间隙漂移**，小死区就够。权重保持 **−5.0**（每步代价量级不变）。
         """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("def min_clearance_violation(env, spawn_margin, softness=0.02):", mdp)
-        # 阈值必须是 spawn_margin × 出生间隙（逐 env 缓存的 `term.spawn_clearance`）
-        self.assertIn("threshold = spawn_margin * term.spawn_clearance", mdp)
+        self.assertIn("def min_clearance_violation(env, deadband_m, softness=0.02):", mdp)
+        # 阈值必须是「出生间隙 − 绝对死区」（逐 env 缓存的 `term.spawn_clearance`）
+        self.assertIn("threshold = term.spawn_clearance - deadband_m", mdp)
         # 出生间隙的构造：目标三维挂点距来自 `connection_grid`，水平分量走勾股解，
         # 再减去四个表面常量派生的固定偏移（全部从 cfg 取，不手抄数字）
         self.assertIn("self.spawn_clearance = (", mdp)
@@ -844,16 +906,30 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("+ cfg.cart_attachment[0] - cfg.cart_front_surface_x)", mdp)
         # 无小车环境必须屏蔽（与 clearance/collision 同一约定）
         self.assertIn("return violation * term.cart_present[:, 0]", mdp)
-        # 新权重与 params；`ratio` 口径不得回潮
+        # 新权重与 params；旧口径不得回潮
         self.assertIn("min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-5.0", cfg)
-        self.assertIn('params={"spawn_margin": 0.85, "softness": 0.02})', cfg)
+        self.assertIn('params={"deadband_m": 0.02, "softness": 0.02})', cfg)
+        self.assertNotIn('"spawn_margin"', cfg)
         self.assertNotIn('"ratio": 0.25', cfg)
-        # 旧的注册行不得回潮（注释里提到历史权重是允许的）
         self.assertNotIn("min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-2.0", cfg)
+        self.assertNotIn("threshold = spawn_margin * term.spawn_clearance", mdp)
         self.assertNotIn("threshold = ratio * term.connection_length", mdp)
-        # 余量理由（spawn_margin < 1 ⇒ 出生瞬间缺口 > 0）必须写进 docstring
-        self.assertIn("**为什么留 15% 余量（`spawn_margin = 0.85 < 1`）**", mdp)
+        self.assertNotIn("def min_clearance_violation(env, spawn_margin", mdp)
+        # 三条改口径的理由（语义 / 几毫米解析差 / 后向平段无被动漂移）必须写进 docstring
+        self.assertIn("不许比出生时更近", mdp)
+        self.assertIn("几毫米", mdp)
+        self.assertIn("后向平段", mdp)
+        self.assertIn("没有重力驱动", mdp)
+        self.assertIn("坡上会溜车所以要留大余量", mdp)
         self.assertIn("`min_clearance` 在 spawn 精确为 0", mdp)
+        # "高于阈值精确为 0" 的既有实现方式必须保留：带截断的 softplus（减去 softplus(0) 的偏置），
+        # 不允许改成会在阈值上方留尾巴的裸 softplus
+        self.assertIn("bias = 0.6931471805599453 * softness", mdp)
+        self.assertIn("torch.nn.functional.softplus(gap / softness) * softness - bias", mdp)
+        # 停车段天然生效这一新事实 + 备选方案（gap_at_stop）必须写进 docstring
+        self.assertIn("0.64 · L", mdp)
+        self.assertIn("gap_at_stop", mdp)
+        self.assertIn("不需要", mdp)
         # 权重标定依据必须写进 docstring / cfg 注释
         self.assertIn("−0.05/步", mdp)
         self.assertIn("−0.02/步（满额的 40%）", cfg)
@@ -861,56 +937,97 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("杆行", mdp)
         self.assertIn("永不触发", mdp)
 
+    @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
+    def test_min_clearance_deadband_positive_and_spawn_value_is_exactly_zero(self):
+        """① `deadband_m > 0`；② 阈值严格小于出生间隙 ⇒ **spawn 处 func 精确为 0**，且余量恰为 `deadband_m`。
+
+        本测试**真的把源码里的 `min_clearance_violation` 抽出来在 stub term 上实跑**（不是复述公式）：
+        在 `clearance == spawn_clearance`（出生那一拍）给 0.0，在 `clearance == spawn − deadband_m`
+        （阈值正好落在间隙上）也给 0.0（无 softplus 尾巴），再低 1 µm 才 > 0 —— 这同时钉住
+        「余量恰等于 `deadband_m`」与「阈值上方精确为 0」两条。
+        """
+        deadband_m, softness, delta_z, base_offset = _spawn_gap_constants()
+        self.assertAlmostEqual(deadband_m, 0.02, places=12)
+        self.assertGreater(deadband_m, 0.0, "deadband_m 必须 > 0（绝对死区为正）")
+        self.assertAlmostEqual(softness, 0.02, places=12)
+        self.assertGreater(softness, 0.0)
+        for model_name in grid.LENGTH_RANGES:
+            for row in range(grid.ROWS):
+                length = grid.row_length(row, model_name)
+                gap = _spawn_gap(model_name, length, delta_z, base_offset)
+                # ①+② 余量恰为 deadband_m，且阈值严格小于出生间隙
+                self.assertAlmostEqual(gap - (gap - deadband_m), deadband_m, places=12)
+                self.assertLess(gap - deadband_m, gap)
+                # ② spawn 那一拍：真实函数给出**精确 0**
+                self.assertEqual(
+                    _evaluate_min_clearance(gap, gap, deadband_m, softness), 0.0,
+                    f"{model_name} row {row} 在 spawn 处非 0（应精确为 0）")
+                # 阈值正好落在间隙上（用函数内同一步 float32 运算取边界）：仍然精确 0
+                # —— 截断 softplus 的偏置修正生效，阈值上方没有尾巴
+                boundary = _float32_threshold(gap, deadband_m)
+                self.assertEqual(
+                    _evaluate_min_clearance(boundary, gap, deadband_m, softness), 0.0,
+                    f"{model_name} row {row} 在阈值处非 0")
+                # 再近 1 µm 就严格为正（说明阈值真的画在 spawn − deadband_m，不偏不倚）
+                self.assertGreater(
+                    _evaluate_min_clearance(boundary - 1e-6, gap, deadband_m, softness), 0.0)
+        # 无小车环境：即使深违规也必须被 `cart_present` 屏蔽为 0
+        self.assertEqual(_evaluate_min_clearance(0.0, 0.3646, deadband_m, softness, False), 0.0)
+
     def test_min_clearance_threshold_formula_matches_the_grid_row_by_row(self):
-        """阈值公式逐类型逐行核对：`spawn_margin × 出生间隙`，绳 0.62–0.67·L、杆 ≈0.80–0.84·L。
+        """③ 阈值公式逐类型逐行核对：`出生间隙 − deadband_m`，绳 0.689–0.780·L、杆 0.905–0.968·L。
 
         本测试只用仓库里既有的常量与网格（`connection_grid` + 源码 regex）复算，不重复硬编码；
-        若日后改 `SLACK_RATIO` / 长度区间 / 挂点常量，这里的数值会自动跟着变，只有量级断言会提醒。
+        若日后改 `SLACK_RATIO` / 长度区间 / 挂点常量 / 死区，这里的数值会自动跟着变，
+        只有量级断言会提醒。⑥ 同时断言**阈值恒 > 0**（最短绳行 0.3646 − 0.02 = 0.3446 m）。
         """
-        spawn_margin, softness, delta_z, base_offset = _spawn_gap_constants()
-        self.assertAlmostEqual(spawn_margin, 0.85, places=12)
+        deadband_m, softness, delta_z, base_offset = _spawn_gap_constants()
+        self.assertAlmostEqual(deadband_m, 0.02, places=12)
         self.assertAlmostEqual(softness, 0.02, places=12)
         self.assertAlmostEqual(delta_z, 0.17, places=6)
         self.assertAlmostEqual(base_offset, 0.0025, places=6)
-        # 逐行：绳行阈值 = 0.62–0.67·L；杆行 = 0.80–0.84·L（阈值恒 < 出生间隙）
-        for model_name, lo_ratio, hi_ratio in (("compliant", 0.61, 0.68),
-                                               ("inextensible", 0.61, 0.68),
-                                               ("rigid", 0.79, 0.85)):
+        # ③ 逐行：绳行阈值 = 出生间隙 − 0.02（= 0.689–0.780·L）；杆行 = 0.905–0.968·L
+        for model_name, lo_ratio, hi_ratio in (("compliant", 0.68, 0.79),
+                                               ("inextensible", 0.68, 0.79),
+                                               ("rigid", 0.90, 0.97)):
             ratios = []
             for row in range(grid.ROWS):
                 length = grid.row_length(row, model_name)
                 gap = _spawn_gap(model_name, length, delta_z, base_offset)
-                threshold = spawn_margin * gap
+                threshold = gap - deadband_m
                 ratios.append(threshold / length)
+                self.assertAlmostEqual(threshold, gap - 0.02, places=12,
+                                       msg=f"{model_name} row {row} 阈值 ≠ 出生间隙 − 0.02")
                 self.assertLess(threshold, gap, f"{model_name} row {row} 阈值未低于出生间隙")
+                # ⑥ 阈值恒 > 0（最短绳行 0.3646 − 0.02 = 0.3446）
                 self.assertGreater(threshold, 0.0)
             self.assertGreater(min(ratios), lo_ratio, f"{model_name} 阈值比低于预期区间")
             self.assertLess(max(ratios), hi_ratio, f"{model_name} 阈值比高于预期区间")
-            # 端点：绳 L=0.5 → 0.310 m、L=1.5 → 1.012 m（用户 2026-10-10 给的数值）
+            # 端点：绳 L=0.5 → 0.3446 m、L=1.5 → 1.1704 m；杆 L=0.5 → 0.4527 m、L=1.0 → 0.9679 m
             if model_name == "compliant":
                 self.assertAlmostEqual(
-                    spawn_margin * _spawn_gap("compliant", grid.ROPE_LENGTH_MIN_M,
-                                              delta_z, base_offset), 0.310, places=3)
+                    _spawn_gap("compliant", grid.ROPE_LENGTH_MIN_M, delta_z, base_offset) - deadband_m,
+                    0.3446, places=4)
                 self.assertAlmostEqual(
-                    spawn_margin * _spawn_gap("compliant", grid.ROPE_LENGTH_MAX_M,
-                                              delta_z, base_offset), 1.012, places=3)
+                    _spawn_gap("compliant", grid.ROPE_LENGTH_MAX_M, delta_z, base_offset) - deadband_m,
+                    1.1704, places=4)
             if model_name == "rigid":
                 self.assertAlmostEqual(
-                    spawn_margin * _spawn_gap("rigid", grid.RIGID_LENGTH_MIN_M,
-                                              delta_z, base_offset), 0.402, places=3)
+                    _spawn_gap("rigid", grid.RIGID_LENGTH_MIN_M, delta_z, base_offset) - deadband_m,
+                    0.4527, places=4)
                 self.assertAlmostEqual(
-                    spawn_margin * _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M,
-                                              delta_z, base_offset), 0.840, places=3)
+                    _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, delta_z, base_offset) - deadband_m,
+                    0.9679, places=4)
 
     def test_min_clearance_doc_table_matches_the_source_constants(self):
         """**文档表格与源码逐项一致**：`docs/towing_reward_retune_2026-10-10.md` §2.2 的
         两张逐行阈值表（绳/杆各 20 行）必须能用仓库常量复算到 4 位小数。
 
-        文档漂移是这一仓库的既有风险（DOC-01），奖励口径又刚改过一次，所以把表格钉进测试：
-        日后改 `SLACK_RATIO` / 长度区间 / 挂点常量，要么同步改表，要么这条测试先红。
+        文档漂移是这一仓库的既有风险（DOC-01），奖励口径又刚改过两次，所以把表格钉进测试：
+        日后改 `SLACK_RATIO` / 长度区间 / 挂点常量 / `deadband_m`，要么同步改表，要么这条测试先红。
         """
         doc = (RL.parent / "docs/towing_reward_retune_2026-10-10.md").read_text("utf-8")
-        spawn_margin, _softness, delta_z, base_offset = _spawn_gap_constants()
+        deadband_m, _softness, delta_z, base_offset = _spawn_gap_constants()
         row_pattern = re.compile(
             r"^\|\s*(\d+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|$")
         current = None
@@ -932,7 +1049,7 @@ class UpperLogicTests(unittest.TestCase):
                                                              for i in range(2, 6))
             length = grid.row_length(row_index, current)
             gap = _spawn_gap(current, length, delta_z, base_offset)
-            threshold = spawn_margin * gap
+            threshold = gap - deadband_m
             self.assertAlmostEqual(length_doc, length, places=4,
                                    msg=f"{current} row {row_index} 文档 L 与网格不一致")
             self.assertAlmostEqual(gap_doc, gap, places=4,
@@ -950,36 +1067,37 @@ class UpperLogicTests(unittest.TestCase):
         """意图守卫：**所有行、所有连接类型**的 spawn 间隙都必须高于 `min_clearance` 阈值。
 
         用户 2026-09-23 明确要求「初始的时候这个奖励不生效」。2026-10-10 阈值改成
-        `spawn_margin × 出生间隙` 后，这一条**构造上成立**（0.85 < 1 ⇒ 阈值 < 出生间隙）；
-        本测试把它逐行逐类型再钉一遍，并断言 `spawn_margin < 1`（若日后有人把它改成 1.0，
+        `出生间隙 − deadband_m` 后，这一条**构造上成立**（死区 > 0 ⇒ 阈值 < 出生间隙）；
+        本测试把它逐行逐类型再钉一遍，并断言 `deadband_m > 0`（若日后有人把死区改成 0 或负数，
         出生瞬间缺口会在浮点/沉降下变成非零，破坏该不变量）。
         """
-        spawn_margin, _softness, delta_z, base_offset = _spawn_gap_constants()
-        self.assertLess(spawn_margin, 1.0,
-                        "spawn_margin 必须 < 1，否则出生瞬间缺口恰为 0，任何沉降/微动都会误罚")
+        deadband_m, _softness, delta_z, base_offset = _spawn_gap_constants()
+        self.assertGreater(deadband_m, 0.0,
+                           "deadband_m 必须 > 0，否则出生瞬间缺口恰为 0，任何沉降/微动都会误罚")
         for model_name in grid.LENGTH_RANGES:
             for row in range(grid.ROWS):
                 length = grid.row_length(row, model_name)
                 gap = _spawn_gap(model_name, length, delta_z, base_offset)
-                threshold = spawn_margin * gap
+                threshold = gap - deadband_m
                 self.assertGreater(
                     gap, threshold,
                     f"{model_name} row {row}（L={length:.4f}）spawn 间隙 {gap:.4f} m "
                     f"未高于阈值 {threshold:.4f} m；用户要求 spawn 时该奖励不生效")
-                # spawn 时 func = threshold − clearance = gap − threshold = 0.15·gap > 0
+                # spawn 时 func = threshold − clearance = gap − threshold = deadband_m > 0
                 # ⇒ 铰链（含 softplus 偏置修正）**精确为 0**
                 self.assertGreater(gap - threshold, 0.0)
+                self.assertAlmostEqual(gap - threshold, deadband_m, places=12)
 
     def test_min_clearance_threshold_increases_with_length(self):
-        """阈值随 L 单调递增（每类型独立核对）。
+        """④ 阈值随 L 单调递增（每类型独立核对）。
 
-        这是「绳行的阈值 ≈ 0.62–0.67·L、杆行永不触发」两条结论的前提：出生间隙随 L 增大
-        （`sqrt((r·L)² − Δz²)` 在 L > Δz/r 后单调增），阈值又正比于它。
+        这是「绳行的阈值 ≈ 0.689–0.780·L、杆行永不触发」两条结论的前提：出生间隙随 L 增大
+        （`sqrt((r·L)² − Δz²)` 在 L > Δz/r 后单调增），阈值 = 它 − 常数。
         """
-        spawn_margin, _softness, delta_z, base_offset = _spawn_gap_constants()
+        deadband_m, _softness, delta_z, base_offset = _spawn_gap_constants()
         for model_name in grid.LENGTH_RANGES:
             lengths = [grid.row_length(row, model_name) for row in range(grid.ROWS)]
-            thresholds = [spawn_margin * _spawn_gap(model_name, length, delta_z, base_offset)
+            thresholds = [_spawn_gap(model_name, length, delta_z, base_offset) - deadband_m
                           for length in lengths]
             for lower, upper in zip(thresholds, thresholds[1:]):
                 self.assertLess(lower, upper, f"{model_name} 阈值未随 L 单调递增")
@@ -987,38 +1105,45 @@ class UpperLogicTests(unittest.TestCase):
             self.assertLess(thresholds[0], thresholds[-1])
 
     def test_min_clearance_never_fires_for_rigid_rows(self):
-        """**杆行永不触发**：连杆把三维挂点距固定在 L ⇒ 间隙恒 = 出生间隙 > 0.85×它。
+        """⑤ **杆行永不触发**：连杆把三维挂点距固定在 L ⇒ 在出生高差上间隙恒 = 出生间隙 > 阈值。
 
         论证分三层：
 
         1. **恒等式**：连杆约束 `|p_robot_attach − p_cart_attach| = L`（`RigidLink` 的双边约束，
-           已由 `test_towing_rope_models` 等钉住），所以实际间隙 = `sqrt(L² − Δz²) + base_offset`
-           = 出生间隙 ⇒ 缺口 = 0.15 × 出生间隙 > 0 ⇒ `func` 精确为 0（逐行断言）；
-        2. **Δz 扫描**：间隙随 Δz 单调减。在 `Δz ∈ [0.05, 0.25]`（出生 0.17 的
-           −0.12/+0.08，已远宽于步态里 base 高度的变化）上全部 20 行的间隙仍高于阈值，
-           最小余量 ≈ +0.034 m（出现在最短杆 L=0.5）；
-        3. **触发需要多大的 Δz**：解 `sqrt(L²−Δz²)+base_offset = 0.85×出生间隙` 得
-           `Δz*(L=0.5) = 0.301 m` … `Δz*(L=1.0) = 0.547 m`，即最短杆也要比出生高差再大
-           **0.13 m**（杆越长要求越大）。Δz 是两个挂点的高度差、由两体的地面接触与腿长决定，
-           刚性连杆自身还通过把水平间隙压小来抵抗 Δz 增大 ⇒ 实际不可达。
+           已由 `test_towing_rope_models` 等钉住），且 Δz = 出生值 0.17 m 时实际间隙 =
+           `sqrt(L² − Δz²) + base_offset` = 出生间隙 ⇒ 缺口 = `deadband_m = 0.02 m` > 0
+           ⇒ `func` 精确为 0（逐行断言）；
+        2. **Δz 扫描**：间隙随 Δz 单调减。在出生值 ±0.04 m（即 `Δz ∈ [0.13, 0.21]`，已宽于
+           步态里 base 高度的变化）上全部 20 行的间隙仍高于阈值，最小余量 ≈ +0.0036 m
+           （出现在最短杆 L=0.5、Δz=0.21）；
+        3. **触发需要多大的 Δz**：解 `sqrt(L²−Δz²)+base_offset = 出生间隙 − deadband_m` 得
+           `Δz*(L=0.5) = 0.2175 m` … `Δz*(L=1.0) = 0.2606 m`，即最短杆要 Δz 比出生高差再大
+           **+0.0475 m**（杆越长要求越大）。
+
+        **口径变更的代价（必须记住）**：旧的 `spawn_margin = 0.85` 相对余量下，间隙恒比阈值大
+        `0.15 × 间隙`（最短杆 +0.071 m）、Δz* 是 0.301/0.547 m（最短杆余量 +0.131 m）；
+        改成绝对死区 2 cm 后余量只剩 `deadband_m`，Δz 余量缩到 **+0.0475 m**。杆行"永不触发"
+        在物理上仍成立（Δz 由两体的地面接触与腿长决定、刚性连杆还会用压小水平间隙来抵抗 Δz 增大），
+        但对 Δz 漂移的稳健性明显变弱——训练机若看到最短杆行 `min_clearance` 非 0，先查 Δz。
         """
-        spawn_margin, _softness, delta_z, base_offset = _spawn_gap_constants()
+        deadband_m, _softness, delta_z, base_offset = _spawn_gap_constants()
         self.assertAlmostEqual(grid.initial_attachment_distance("rigid", 0.75), 0.75, places=12)
         for row in range(grid.ROWS):
             length = grid.row_length(row, "rigid")
             gap = _spawn_gap("rigid", length, delta_z, base_offset)
-            threshold = spawn_margin * gap
-            # 1) 恒等式：连杆下间隙 == 出生间隙 ⇒ 缺口恒为 0.15 × 出生间隙 > 0
+            threshold = gap - deadband_m
+            # 1) 恒等式：连杆下间隙 == 出生间隙 ⇒ 缺口恒为 deadband_m > 0
+            self.assertAlmostEqual(gap - threshold, deadband_m, places=12)
             self.assertGreater(gap - threshold, 0.0)
-            # 2) Δz 扫描（含出生值 0.17 与两侧 ±0.08）
-            for step in range(21):
-                swept = 0.05 + 0.20 * step / 20.0
+            # 2) Δz 扫描：出生值 ±0.04 m（远宽于步态里 base 高度的变化）
+            for step in range(9):
+                swept = delta_z - 0.04 + 0.08 * step / 8.0
                 if swept >= length:
                     continue
                 swept_gap = _spawn_gap("rigid", length, swept, base_offset)
                 self.assertGreater(swept_gap, threshold,
                                    f"rigid row {row}（L={length:.3f}）在 Δz={swept:.3f} 触发")
-            # 3) 触发所需的 Δz*（二分）必须比出生高差再大至少 0.10 m
+            # 3) 触发所需的 Δz*（二分）必须比出生高差再大至少 0.045 m（实测 0.0475–0.0906）
             low, high = 0.0, length
             for _ in range(80):
                 middle = (low + high) / 2.0
@@ -1026,13 +1151,16 @@ class UpperLogicTests(unittest.TestCase):
                     low = middle
                 else:
                     high = middle
-            self.assertGreater(low - delta_z, 0.10,
+            self.assertGreater(low - delta_z, 0.045,
                                f"rigid row {row}（L={length:.3f}）只需 Δz 再大 "
                                f"{low - delta_z:.3f} m 就触发，余量不足")
-        # L 上界（1.0 m）也核对一次：需要 Δz ≈ 0.55 m 才触发，显然不可达
+            self.assertLess(low - delta_z, 0.10,
+                            f"rigid row {row}（L={length:.3f}）Δz 余量 {low - delta_z:.3f} m "
+                            f"超出新口径的预期量级（绝对死区下应约 0.05–0.09 m）")
+        # L 上界（1.0 m）也核对一次：需要 Δz ≈ 0.26 m 才触发，仍不可达
         self.assertGreater(
-            _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, 0.25, base_offset),
-            spawn_margin * _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, delta_z, base_offset))
+            _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, 0.21, base_offset),
+            _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, delta_z, base_offset) - deadband_m)
 
     def test_extra_distance_reward_term_is_removed_but_helper_survives(self):
         """2026-10-10：`extra_distance` 奖励项删除，`mdp.post_stop_distance` 函数保留、公式不变。

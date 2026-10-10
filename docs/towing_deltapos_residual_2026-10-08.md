@@ -1,6 +1,6 @@
 # 上层拖曳：12 维关节位置残差 + 三维牵引力（2026-10-08）
 
-> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励），`--compact-log` 的分项 picks 里它也已被 `min_clearance` 取代；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为 `spawn_margin(0.85) × 出生间隙`、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
+> **2026-10-10 变更**：`extra_distance`（`mdp.post_stop_distance`，−0.1）已从奖励表**删除**（函数本体与 `post_stop_allowance_m` 形参保留、目前未接入奖励），`--compact-log` 的分项 picks 里它也已被 `min_clearance` 取代；`min_clearance` 的阈值由 `ratio(0.25) × 连接长度` 改为「**出生间隙 − 绝对死区 `deadband_m`(0.02 m)**」（2026-10-10 当天先落成 `spawn_margin(0.85)` 相对余量、同日再微调为绝对死区；语义＝「不许比出生时更近」）、权重由 −2.0 提到 **−5.0**。本文以下是变更**之前**的记录，现行口径见 [奖励改动记录](towing_reward_retune_2026-10-10.md) 与 README 问题表 TOW-24。
 
 > 本轮由用户决定两项改动并已落地：**① decoder 牵引力 2 维 → 3 维（机器人速度保持 2 维）**；
 > **② 上层动作由「3 维归一化加速度」改为「12 维关节位置残差」**，送冻结 AMP 策略的速度指令

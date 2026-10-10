@@ -192,8 +192,8 @@ class HierarchicalVelocityAction(ActionTerm):
         # 缓冲区的初始化时机）；再减去两表面相对挂点的固定偏移
         # `−robot_rear_surface_x − robot_attachment_x + cart_attachment_x − cart_front_surface_x`
         # （= 0.0025 m，全部从 cfg 取，不手抄）。
-        # 2026-10-10：`min_clearance_violation` 的阈值改成 `spawn_margin × 它`（出生几何口径），
-        # 所以这里一次算好缓存；出生位姿固定（`robot_x/y/yaw_range` 全 0）⇒ 逐回合不变。
+        # 2026-10-10：`min_clearance_violation` 的阈值改成 `它 − deadband_m`（出生几何口径 +
+        # 绝对死区），所以这里一次算好缓存；出生位姿固定（`robot_x/y/yaw_range` 全 0）⇒ 逐回合不变。
         attachment_height_difference = (
             self._asset.cfg.init_state.pos[2] - self._cart.cfg.init_state.pos[2])
         self.spawn_clearance = (
@@ -990,18 +990,20 @@ def clearance_barrier(env, warning_distance, scale):
     term = _term(env); term.update_safety_state(); clearance = term.rope_state[:, 0]
     return (torch.nn.functional.softplus((warning_distance - clearance) / scale)
             * term.cart_present[:, 0])
-def min_clearance_violation(env, spawn_margin, softness=0.02):
-    """铰链式「最小间距」惩罚：间隙低于 `spawn_margin × 出生间隙` 时与缺口成正比，高于则**精确为 0**。
+def min_clearance_violation(env, deadband_m, softness=0.02):
+    """铰链式「最小间距」惩罚：间隙低于 `出生间隙 − deadband_m` 时与缺口成正比，高于则**精确为 0**。
 
     为什么单独加一项（而不是复用 `clearance_barrier`）：`clearance_barrier` 是 softplus
     软障碍，其"警戒距离"是绝对量（0.20 m）且线性区在警戒线**下方**；本项是**相对出生几何**的
-    硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是「不得拉得太近」，与「近了要缓」互补。
+    硬阈值：高于阈值恒为 0、低于阈值与缺口成正比，语义是「不得比出生时更近」，与「近了要缓」互补。
+    实现是**带截断的 softplus**（`softplus 减去 softplus(0)` 再 `relu`）而不是纯铰链，但阈值
+    **上方精确为 0、没有 softplus 尾巴**——这正是本项与 `clearance_barrier` 的分界。
 
-    **2026-10-10 口径变更（用户批准）**：阈值基准由「`ratio × 本 env 连接长度`」改成
-    「`spawn_margin × 本 env 出生瞬间的间隙`」，权重由 −2.0 提到 **−5.0**；
-    `ratio` 形参删除，改传 `spawn_margin`（= 0.85）。
+    **2026-10-10 口径变更（用户批准，当天两次）**：阈值基准由「`ratio × 本 env 连接长度`」先改成
+    「`spawn_margin(0.85) × 本 env 出生瞬间的间隙`」，同日再微调为**绝对死区**：`spawn_margin`
+    形参删除、改传 `deadband_m`（默认口径 0.02 m），权重一直是 **−5.0**（由 −2.0 提上来）。
 
-        threshold = spawn_margin × spawn_clearance
+        threshold = spawn_clearance − deadband_m
         spawn_clearance = sqrt((spawn_ratio · L)² − Δz²) + base_offset
 
     其中（全部逐 env、从现有常量派生，不手抄数字）：
@@ -1013,32 +1015,67 @@ def min_clearance_violation(env, spawn_margin, softness=0.02):
       − cart_front_surface_x`（现 0.0025 m）——即「后表面↔车斗前表面」比挂点距多出来的固定量；
     - `spawn_clearance` 在 `HierarchicalVelocityAction.__init__` 里一次算好并缓存。
 
-    **为什么留 15% 余量（`spawn_margin = 0.85 < 1`）**：若取 1.0，出生瞬间缺口恰好为 0，
-    任何沉降/微动都会在出生那一拍开始扣分，破坏本仓库已被测试钉住的不变量
-    「`min_clearance` 在 spawn 精确为 0」（用户 2026-09-23 要求初始不生效）。
+    **为什么从「相对余量 0.85」改成「绝对死区 2 cm」**（用户 2026-10-10 决定，三条理由）：
+
+    1. **语义更贴**：用户要的就是「**不许比出生时更近**」。`出生间隙 − 死区` 直接表达它；
+       `0.85 × 出生间隙` 表达的是"比出生近 15%"，是个没有物理含义的相对量。
+    2. **量级正确**：`spawn_clearance` 是**解析**出生间隙（勾股解 + 四个表面常量），与仿真里的
+       实际间隙差**几毫米**（落地/穿透/初始沉降）⇒ 绝对 2 cm 死区正好吸收这个量级。相对余量却
+       随 L 放大：L=1.5 的绳行余量 `0.15 × 1.1904 = 0.179 m`，比需要的量大一个数量级，等于给
+       长绳行白开几十厘米的"可以靠近"口子。
+    3. **不需要大余量（纠正旧顾虑）**：出生点在 lane 的**后向平段**上——`slope_geometry` 的剖面
+       从 **+2.25 m** 才起坡（平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m）。
+       所以**出生与停车都发生在平地、没有重力驱动** ⇒ 间隙只受机器人动作影响，**不存在被动的
+       间隙漂移**。旧顾虑「坡上会溜车所以要留大余量」在本任务里不成立（停车滑行段在平地上由
+       黏性轮阻耗散、车斗自行停住），因此 2 cm 的死区就够。
 
     **逐行语义**（L = 连接长度，网格见 `mdp/connection_grid.py`）：
 
-    - 绳行（L = 0.5–1.5 m，spawn_ratio 0.8）：阈值 ≈ **0.62–0.67 · L**
-      （L=0.5 → 0.310 m、L=1.5 → 1.012 m）。牵引段绳绷直 ⇒ 间隙 ≈ L ≫ 0.68·L，**不触发**；
-      停车后车斗逼近、间隙穿过阈值时才开始出力 —— 这正是用户要的「鼓励停车后继续走几步」的梯度；
+    - 绳行（L = 0.5–1.5 m，spawn_ratio 0.8）：阈值 **0.3446–1.1704 m**（= 0.689–0.780 · L；
+      L=0.5 → 0.3446 = **0.945 × 出生间隙** = 0.689 · L，L=1.5 → 1.1704 = 0.983 × 出生间隙
+      = 0.780 · L）。牵引段绳绷直 ⇒ 3D 挂点距 = L > 0.8·L ⇒ 间隙 > 出生间隙 > 阈值，**不触发**；
+      绳一松、车斗逼近穿过阈值时才开始线性出力 —— 这正是用户要的「不许比出生时更近」+「停车后
+      继续走几步」的梯度（走得越近，缺口越大、惩罚越大）；
     - 杆行（L = 0.5–1.0 m，spawn_ratio 1.0）：连杆把三维挂点距固定在 L ⇒ 间隙恒等于出生间隙
-      ⇒ 阈值 = 0.85 × 间隙 < 间隙 ⇒ **永不触发**（物理正确：杆不会缩短，不存在「拉太近」）。
+      ⇒ 阈值 = 出生间隙 − 0.02 < 间隙 ⇒ **在出生高差上永不触发**（物理正确：杆不会缩短，
+      不存在"被拉太近"）。**注意余量比旧的相对口径小得多**：旧口径下间隙恒比阈值大
+      `0.15 × 间隙`（最短杆 +0.071 m），新口径只大 `deadband_m = 0.02 m`；而间隙随 Δz 增大
+      而变小（`sqrt(L²−Δz²)`）——解 `sqrt(L²−Δz²) + base_offset = 出生间隙 − 0.02` 得
+      Δz* = **0.218 m（L=0.5）** … **0.261 m（L=1.0）**，即最短杆只要 Δz 比出生值 0.17 m
+      再大 **4.75 cm** 就会触发（旧口径是 13.1 cm）。这是本次口径变更**换来的代价**，
+      逐行数值见 `docs/towing_reward_retune_2026-10-10.md` §2.5。
+
+    **停车段天然生效 ⇒ 不需要再单独做"停车参考间隙"**：停车瞬间的实测间隙 ≈ **0.64 · L**
+    （用户给的标定值；离线用归档 `docs/towingdata/2026-10-09_necessity_800{,_noload}/report.json`
+    复算 `stop.clearance_at_stop_m / L` 的中位数是 **0.700**（compliant 0.702）——两者同量级），
+    而新阈值 ≈ **0.945 × 出生间隙 ≈ 0.69 · L**（最短绳行）⇒ 停车段间隙**天然落在阈值之下约
+    `0.05 · L`**：L=1.0 时缺口约 0.05 m ⇒ 每步 `−5 × 0.05 × 0.05 ≈ −0.0125`（线性铰链值；
+    `softness = 0.02` 的截断 softplus 会把它压掉一些——缺口 0.05 m 时实际 ≈ 0.038 ⇒ 每步
+    ≈ **−0.0094**，缺口 ≥0.3 m 时 ≈0.96×线性值。量级结论不变），与 `tracking_velocity`
+    满额 +0.05/步 **同量级**。这正是用户要的「停车期间也保持间隙」，
+    因此**不需要**再单独做"用停车瞬间间隙当参考"的方案。**备选（本轮不实现）**：若训练机实测
+    停车段间隙反而**高于**阈值、本项不生效，再在 `process_actions`（20 Hz）里记录停车那一拍的
+    `gap_at_stop`（并识别"停下"时刻），把阈值改成 `gap_at_stop − deadband_m`；本机无 Isaac Lab，
+    实测未做。
 
     **权重的标定依据**：`RewardManager` 每步代价 = `weight × func × step_dt`（`step_dt = 0.05 s`）
     ⇒ `w = −5` 时超出阈值 0.2 m 的违规 ≈ **−0.05/步**，恰等于 `tracking_velocity` 满额
     （+1.0 × 0.05 = +0.05/步）⇒ **有动机但不压倒**跟踪项；旧的 −2 只有 −0.02/步（满额的 40%），
     在停车段惯性/车重面前太弱，不足以改变「停车后是否再走两步」的取舍。
 
-    历史（2026-09-23 → 2026-10-09）：初始「后表面→车斗」间隙约 0.349 m，`ratio` 由 0.6 降到 0.40
+    历史（2026-09-23 → 2026-10-10）：初始「后表面→车斗」间隙约 0.349 m，`ratio` 由 0.6 降到 0.40
     才让 spawn 不触发；2026-10-08 随 20×20 网格改为逐 env + ratio 0.25；2026-10-09 长度区间解耦为
-    绳 0.5–1.5 / 杆 0.5–1.0 并把出生比提到 0.8。以上 ratio 口径已于 2026-10-10 全部作废。
+    绳 0.5–1.5 / 杆 0.5–1.0 并把出生比提到 0.8；2026-10-10 先用 `spawn_margin` 相对余量、同日
+    改为 `deadband_m` 绝对死区。以上 ratio / spawn_margin 口径均已作废。
+
+    spawn 处的余量恒等于 `deadband_m`（`出生间隙 − 阈值 = deadband_m > 0`）⇒ 该拍 `func`
+    精确为 0，保持不变式「`min_clearance` 在 spawn 精确为 0」（用户 2026-09-23 要求初始不生效）。
     """
     term = _term(env)
     term.update_safety_state()
     clearance = term.rope_state[:, 0]
-    # 出生几何阈值（逐 env 缓存）：`spawn_margin × 出生瞬间的间隙`。见上面 docstring。
-    threshold = spawn_margin * term.spawn_clearance
+    # 出生几何阈值（逐 env 缓存）：`出生瞬间的间隙 − 绝对死区`。见上面 docstring。
+    threshold = term.spawn_clearance - deadband_m
     gap = threshold - clearance
     if softness > 0:
         # 平滑只在**阈值下方**过渡：减去 softplus(0)*softness 使缺口 ≤ 0 时精确为 0，
