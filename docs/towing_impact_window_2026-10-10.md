@@ -45,6 +45,11 @@ deck_limit_n, joint_names, torque_limits)` 与两个定位助手 `_takeup_index`
 `stop.*` 全未改；`impact_stats` 里**不读 `thresholds`**、不含任何判定分支，`compute_case_metrics`
 里新参数只出现 3 次（签名 + 一次转发）——这三条都由测试用 AST 钉住（见下）。
 
+> **后续口径变更（2026-10-10 晚，见 [JNT 移出判定统计量](towing_verdict_jnt_excluded_2026-10-10.md)
+> 与 README TOW-23）**：`classify_case` 之后新增了 `count_jnt` 口径开关并**默认把 JNT 移出判定**
+> （`DEFAULT_THRESHOLDS` 的键与数值、`VERDICT_CODES` 仍未改）。上面「`classify_case` 全未改」
+> 是本记录当时的时点陈述；**本节冲击窗口的口径不变**（`impact.*` 仍不进判定）。
+
 **验证方式**（本机无 Isaac Lab，全部离线）：`python3 -m pytest imgo2_rl/tests -q` ⇒
 **501 passed**（会话开始时基线 473 + 本轮新增 28，全部在同一文件 `test_towing_play_test.py` 里；`ImpactWindowTests` 19 项覆盖四个时刻的对齐与区分、
 `time_s` 闭区间取样（`samples` 与按行数取整不同）、稳态去首尾（79 行 / `start_s` / `end_s`）、

@@ -8,6 +8,7 @@
 import ast
 import importlib.util
 import math
+import statistics
 import sys
 import tempfile
 from pathlib import Path
@@ -729,14 +730,29 @@ class EpisodeMetricTests(unittest.TestCase):
         self.assertEqual(metrics["samples"]["station"], 20)
 
     def test_slow_startup_raises_joint_flag(self):
+        """默认口径：JNT **不进判定**（用户 2026-10-10 决定），但观测值照旧在。
+
+        `--count-jnt`（`count_jnt=True`）时必须逐位复现旧口径（判定码 `JNT` +
+        `startup_joint_error`）；两条口径下 `startup.joint_rms_rad` 完全相同（同一批观测）。
+        """
         rows = build_episode(startup_error=0.4)
         tow_summary = {"valid": True, "failures": [], "min_clearance_coast_m": 0.3}
-        metrics = play.compute_case_metrics(
-            rows, case=synthetic_case(grade_deg=0.0, connection="compliant", cart_mass_kg=10.0),
-            schedule=schedules(), record_dt=0.005, tow_summary=tow_summary,
-            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
-        self.assertEqual(metrics["verdict"]["code"], "JNT")
-        self.assertIn("startup_joint_error", metrics["verdict"]["reasons"])
+        common = dict(case=synthetic_case(grade_deg=0.0, connection="compliant",
+                                          cart_mass_kg=10.0),
+                      schedule=schedules(), record_dt=0.005, tow_summary=tow_summary,
+                      thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        metrics = play.compute_case_metrics(rows, **common)
+        # 新口径：不产生失败原因、判定码不是 JNT；观测值仍在（超过阈值但只是观测）
+        self.assertEqual(metrics["verdict"]["code"], "OK")
+        self.assertNotIn("startup_joint_error", metrics["verdict"]["reasons"])
+        self.assertGreater(metrics["startup"]["joint_rms_rad"],
+                           play.DEFAULT_THRESHOLDS["joint_rms_limit_rad"])
+        # 旧口径（--count-jnt）：逐位复现
+        legacy = play.compute_case_metrics(rows, count_jnt=True, **common)
+        self.assertEqual(legacy["verdict"]["code"], "JNT")
+        self.assertIn("startup_joint_error", legacy["verdict"]["reasons"])
+        self.assertEqual(metrics["startup"]["joint_rms_rad"],
+                         legacy["startup"]["joint_rms_rad"])
 
     def test_speed_shortfall_is_flagged(self):
         rows = build_episode(robot_vx_b=[0.5] * 100)
@@ -823,6 +839,53 @@ class ClassificationTests(unittest.TestCase):
                                 startup={})
         verdict = play.classify_case(metrics, play.DEFAULT_THRESHOLDS)
         self.assertEqual(verdict["code"], "INV")
+
+    def test_joint_error_is_not_counted_by_default(self):
+        """新口径：`startup_joint_error`/`stop_joint_error` 不产生失败原因与判定码。
+
+        合成 case 的关节 RMS/max 双双超限，其余全好 ⇒ 默认必须判 `OK` 且 `reasons == []`；
+        `JNT` 只是观测（字段仍在 metrics 里）。
+        """
+        metrics = self._metrics(stability={"fell": False, "invalid": False},
+                                stop={"contact": False, "gap_margin_low": False,
+                                      "joint_rms_rad": 0.9, "joint_max_rad": 2.0},
+                                speed={"available": True, "mae_mps": 0.01},
+                                startup={"joint_rms_rad": 0.9, "joint_max_rad": 2.0})
+        self.assertGreater(0.9, play.DEFAULT_THRESHOLDS["joint_rms_limit_rad"])
+        self.assertGreater(2.0, play.DEFAULT_THRESHOLDS["joint_max_limit_rad"])
+        verdict = play.classify_case(metrics, play.DEFAULT_THRESHOLDS)
+        self.assertEqual(verdict["code"], "OK")
+        self.assertEqual(verdict["reasons"], [])
+        # 观测字段仍在（不是把指标删了）
+        self.assertEqual(metrics["startup"]["joint_rms_rad"], 0.9)
+        self.assertEqual(metrics["stop"]["joint_max_rad"], 2.0)
+
+    def test_count_jnt_reproduces_the_legacy_caliber_bit_for_bit(self):
+        """`count_jnt=True`（`--count-jnt`）与旧口径逐位一致：原因顺序、判定码都不变。"""
+        metrics = self._metrics(stability={"fell": False, "invalid": False},
+                                stop={"contact": False, "gap_margin_low": False,
+                                      "joint_rms_rad": 0.9, "joint_max_rad": 2.0},
+                                speed={"available": True, "mae_mps": 0.01},
+                                startup={"joint_rms_rad": 0.9, "joint_max_rad": 2.0})
+        legacy = play.classify_case(metrics, play.DEFAULT_THRESHOLDS, count_jnt=True)
+        self.assertEqual(legacy["code"], "JNT")
+        # 旧实现的顺序：先 startup/stop RMS，再 startup/stop max（去重）
+        self.assertEqual(legacy["reasons"], ["startup_joint_error", "stop_joint_error"])
+        self.assertEqual(legacy["severity"], play.VERDICT_SEVERITY["JNT"])
+        # 只超单关节阈值（RMS 未超）也要复现
+        only_max = self._metrics(stability={"fell": False, "invalid": False},
+                                 stop={"contact": False, "gap_margin_low": False,
+                                       "joint_rms_rad": 0.01, "joint_max_rad": 0.5},
+                                 speed={"available": True, "mae_mps": 0.01},
+                                 startup={"joint_rms_rad": 0.01, "joint_max_rad": 0.05})
+        self.assertEqual(
+            play.classify_case(only_max, play.DEFAULT_THRESHOLDS, count_jnt=True)["reasons"],
+            ["stop_joint_error"])
+        self.assertEqual(
+            play.classify_case(only_max, play.DEFAULT_THRESHOLDS)["reasons"], [])
+        # 默认口径就是 count_jnt=False（省参等价）
+        self.assertEqual(play.classify_case(metrics, play.DEFAULT_THRESHOLDS),
+                         play.classify_case(metrics, play.DEFAULT_THRESHOLDS, count_jnt=False))
 
 
 class ReportTests(unittest.TestCase):
@@ -928,6 +991,75 @@ class ReportTests(unittest.TestCase):
         self.assertIn("## 限制", report)
         self.assertIn("deadbeef", report)
         self.assertIn("训练场景", report)
+
+    def test_markdown_report_excludes_jnt_but_keeps_the_observation_rows(self):
+        """③ 新口径报告：不再有 JNT 失败行，但关节观测的中位数行与口径说明都在。
+
+        用一条**关节误差超限**的合成轨迹走完整链路（`compute_case_metrics` → `group_statistics`
+        → `build_markdown_report`）：默认口径下判定是 OK、失败模式「无」，
+        `startup_joint_error` 不出现在报告文本里；`--count-jnt` 时才出现。
+        """
+        rows = build_episode(startup_error=0.4)
+        metrics = play.compute_case_metrics(
+            rows, case=synthetic_case(grade_deg=0.0, connection="compliant", cart_mass_kg=10.0),
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        summary = {"case": metrics["case"], "metrics": metrics, "verdict": metrics["verdict"]}
+        groups = play.group_statistics([summary])
+        conclusion = play.necessity_conclusion(groups, play.DEFAULT_THRESHOLDS)
+        comparison = play.format_baseline_comparison(play.case_metric_summary([summary]))
+        report = play.build_markdown_report(
+            case_summaries=[summary], groups=groups, conclusion=conclusion,
+            args_dict={"num_envs": 1, "velocities": [1.0], "cart_masses": [10.0],
+                       "ground_friction": 0.8, "wheel_damping": 0.032,
+                       "command_shaping": "direct", "ramp_time_s": 1.0,
+                       "record_every": 5, "write_csv": "failed",
+                       "lane_keeping": "pd", "lane_kp_y": 1.0, "lane_kd_y": 0.3,
+                       "lane_kp_yaw": 1.5, "lane_kd_yaw": 0.3,
+                       "lane_vy_limit": 0.4, "lane_wz_limit": 0.8,
+                       "count_jnt": False},
+            thresholds=play.DEFAULT_THRESHOLDS | {"count_jnt": False},
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None},
+            comparison=comparison)
+        # 失败原因以 `reason×count` 形式出现；`startup_joint_error` 只应出现在口径说明句里
+        self.assertNotIn("startup_joint_error×", report)
+        self.assertNotIn("stop_joint_error×", report)
+        self.assertIn("判定口径：**JNT 不计入**", report)
+        self.assertIn("**JNT 已按用户决定（2026-10-10）移出判定统计量**", report)
+        self.assertIn("PD 静差", report)
+        # 观测行仍在（五项指标中位数里两个关节项）
+        self.assertIn("起步关节响应 RMS", report)
+        self.assertIn("停车关节响应 RMS", report)
+        self.assertIn("失败模式：无", report)
+        # 打开旧口径后同样的轨迹渲染出 JNT 失败原因
+        legacy = play.compute_case_metrics(
+            rows, case=synthetic_case(grade_deg=0.0, connection="compliant", cart_mass_kg=10.0),
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05, count_jnt=True)
+        legacy_summary = {"case": legacy["case"], "metrics": legacy,
+                          "verdict": legacy["verdict"]}
+        legacy_groups = play.group_statistics([legacy_summary])
+        legacy_report = play.build_markdown_report(
+            case_summaries=[legacy_summary], groups=legacy_groups,
+            conclusion=play.necessity_conclusion(legacy_groups, play.DEFAULT_THRESHOLDS),
+            args_dict={"num_envs": 1, "velocities": [1.0], "cart_masses": [10.0],
+                       "ground_friction": 0.8, "wheel_damping": 0.032,
+                       "command_shaping": "direct", "ramp_time_s": 1.0,
+                       "record_every": 5, "write_csv": "failed",
+                       "lane_keeping": "pd", "lane_kp_y": 1.0, "lane_kd_y": 0.3,
+                       "lane_kp_yaw": 1.5, "lane_kd_yaw": 0.3,
+                       "lane_vy_limit": 0.4, "lane_wz_limit": 0.8,
+                       "count_jnt": True},
+            thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=play.make_schedule(settle_steps=200, tow_duration=5.0,
+                                        coast_duration=5.0, dt=0.005),
+            grades=[0.0], git={"commit": "deadbeef", "working_tree": None})
+        self.assertIn("startup_joint_error×", legacy_report)
+        self.assertIn("判定口径：**JNT 计入**", legacy_report)
 
     def test_case_report_row_keys(self):
         summary = self._summary(5.0, 1.0, "rigid", 20.0, "COL", ["stop_collision"])
@@ -1233,6 +1365,30 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 play.parse_args([flag, "1"])
 
+    def test_count_jnt_defaults_off_and_plan_line_shows_the_caliber(self):
+        """`--count-jnt` 默认关；plan 行必须打印当前口径（JNT 计入/不计入）。"""
+        args = play.parse_args(["--dry-run"])
+        self.assertFalse(args.count_jnt)
+        self.assertFalse(play.DEFAULT_COUNT_JNT)
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("判定口径：**JNT 不计入**", text)
+        self.assertIn("`--count-jnt`", text)
+        # 阈值参数保留（仍用于生成观测标记）
+        self.assertIn("--joint-rms-limit-rad", text)
+        self.assertIn("--joint-max-limit-rad", text)
+        # 口径标记跟阈值一起落到 report.json / experiment.json
+        thresholds = play.caliber_thresholds(args)
+        self.assertIs(thresholds["count_jnt"], False)
+        self.assertEqual(thresholds["joint_rms_limit_rad"], 0.10)
+        self.assertEqual(thresholds["joint_max_limit_rad"], 0.30)
+        # 打开后 plan 行与标记都翻面
+        opened = play.parse_args(["--dry-run", "--count-jnt"])
+        self.assertTrue(opened.count_jnt)
+        self.assertIs(play.caliber_thresholds(opened)["count_jnt"], True)
+        opened_text = "\n".join(play.planned_grid_lines(opened))
+        self.assertIn("判定口径：**JNT 计入**", opened_text)
+        self.assertIn("逐位一致", opened_text)
+
     def test_dry_run_plan_lines(self):
         args = play.parse_args(["--dry-run"])
         text = "\n".join(play.planned_grid_lines(args))
@@ -1436,9 +1592,21 @@ class BaselineComparisonTests(unittest.TestCase):
         self.assertIn("1bbb405", text)
         self.assertIn("6fac89a", text)
         self.assertIn("不可逐格硬比", text)
-        self.assertIn("`JNT` 不能当结论", text)
+        # 默认口径：JNT 移出统计量 + 归档旧口径不可比 + 新口径重判读数
+        self.assertIn("判定口径：**JNT 不计入**", text)
+        self.assertIn("`JNT` 已移出判定统计量", text)
         self.assertIn("PD 静差", text)
         self.assertIn("不是同一个量", text)
+        self.assertIn("口径不可比（JNT）", text)
+        recount = play.JNT_EXCLUDED_RECOUNT_2026_10_10
+        self.assertIn(f"基线 **{recount['ok']['baseline']}/{recount['num_envs']}**", text)
+        self.assertIn(f"策略 **{recount['ok']['policy']}/{recount['num_envs']}**", text)
+        # 关节观测的中位数行必须仍在（观测，不是判据）
+        self.assertIn("起步关节响应 RMS", text)
+        self.assertIn("停车关节响应 RMS", text)
+        # 打开 --count-jnt 时口径行改成「计入」
+        opened = "\n".join(play.format_baseline_comparison(current, count_jnt=True))
+        self.assertIn("判定口径：**JNT 计入**", opened)
 
     def test_switch_does_not_add_metrics_or_thresholds(self):
         """验收口径必须与基线同一套：判据/指标/阈值函数里不得出现开关或新参数分支。"""
@@ -1476,6 +1644,12 @@ class BaselineComparisonTests(unittest.TestCase):
         self.assertEqual(compute_source.count("impact_window_s"), 3)
         self.assertEqual(compute_source.count("steady_margin_s"), 3)
         self.assertEqual(compute_source.count("takeup_force_threshold_n"), 3)
+        # 判定口径开关 `count_jnt` 同理：只准「签名 + 一次转发给 classify_case」，
+        # 不得在指标计算里做分支（口径只影响 verdict，不影响任何观测值）。
+        self.assertEqual(compute_source.count("count_jnt"), 3)
+        # 口径标记只由 `caliber_thresholds()` 生成，且不塞进 DEFAULT_THRESHOLDS（阈值数值冻结）
+        self.assertNotIn("count_jnt", play.DEFAULT_THRESHOLDS)
+        self.assertIs(play.caliber_thresholds(play.parse_args([]))["count_jnt"], False)
         thresholds_node = next(node for node in tree.body if isinstance(node, ast.Assign)
                                and any(isinstance(target, ast.Name)
                                        and target.id == "DEFAULT_THRESHOLDS"
@@ -1662,6 +1836,154 @@ class BaselineComparisonTests(unittest.TestCase):
         self.assertNotIn("## 策略 vs 基线", without)
 
 
+class JntExclusionRecountTests(unittest.TestCase):
+    """**离线复算**（本变更最有力的验证，不依赖 Isaac Lab）。
+
+    用两轮同版本、同几何、800 cell 的 `report.json`（`git.commit = df593f4…`、
+    `--no-cart-fraction 0.125`）：
+
+    1. 把 `cases[].verdict.reasons` 里的 `startup_joint_error` / `stop_joint_error` 剔除后
+       重算通过数 / 逐坡度 / 逐连接 / 有负载-无负载 / 剩余失败原因，断言与
+       `play.JNT_EXCLUDED_RECOUNT_2026_10_10`（README TOW-23 与 docs 记录里的数字）逐项一致；
+    2. 反过来用 `classify_case(..., count_jnt=True)` 从 `cases[].metrics` 复算**旧口径**，
+       断言与归档里存的 `verdict`（code + reasons）**逐位一致** —— 这就是
+       「开 `--count-jnt` 时旧口径可复现」的证据；
+    3. 用 `count_jnt=False` 复算新口径，断言等于剔除 JNT 后的 reasons。
+    """
+
+    JNT_REASONS = ("startup_joint_error", "stop_joint_error")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.reports = {}
+        for tag in ("baseline", "policy"):
+            path = (RL / "logs/towing/play_test" / f"upper_switch_{tag}" / "report.json")
+            if not path.is_file():
+                raise unittest.SkipTest(f"重判所用的 report.json 不在工作区：{path}")
+            import json as _json
+            cls.reports[tag] = _json.loads(path.read_text(encoding="utf-8"))
+
+    @classmethod
+    def _new_reasons(cls, case):
+        return [reason for reason in case["verdict"]["reasons"]
+                if reason not in cls.JNT_REASONS]
+
+    def test_sources_are_the_documented_runs(self):
+        expected = play.JNT_EXCLUDED_RECOUNT_2026_10_10
+        for tag, payload in self.reports.items():
+            self.assertEqual(payload["git"]["commit"], expected["git_commit"], tag)
+            self.assertEqual(len(payload["cases"]), expected["num_envs"], tag)
+            self.assertEqual(float(payload["arguments"]["no_cart_fraction"]),
+                             expected["no_cart_fraction"], tag)
+        # 策略轮确实开了上层开关、且契约是 v2 / iter 1000
+        policy = self.reports["policy"]
+        self.assertTrue(policy["upper_policy"]["enabled"])
+        self.assertEqual(policy["upper_policy"]["iter"], 1000)
+        self.assertEqual(policy["upper_policy"]["towing_contract"]["version"], 2)
+        self.assertFalse(self.reports["baseline"]["upper_policy"]["enabled"])
+
+    def test_recount_matches_the_documented_numbers(self):
+        expected = play.JNT_EXCLUDED_RECOUNT_2026_10_10
+        for tag, payload in self.reports.items():
+            cases = payload["cases"]
+            ok = sum(1 for case in cases if not self._new_reasons(case))
+            self.assertEqual(ok, expected["ok"][tag], tag)
+            self.assertEqual(len(cases) - ok, len(cases) - expected["ok"][tag], tag)
+            # 旧口径：存下来的判定码里两轮都是 0 通过（JNT 800/800）
+            self.assertEqual(expected["old_caliber_ok"][tag], 0)
+            self.assertTrue(all("startup_joint_error" in case["verdict"]["reasons"]
+                                and "stop_joint_error" in case["verdict"]["reasons"]
+                                for case in cases), tag)
+            # 逐坡度
+            by_grade = {}
+            for case in cases:
+                key = play.grade_group_key(case["case"]["grade_deg"])
+                total, passed = by_grade.get(key, (0, 0))
+                by_grade[key] = (total + 1, passed + (0 if self._new_reasons(case) else 1))
+            self.assertEqual(by_grade, expected["by_grade"][tag], tag)
+            # 逐连接
+            by_connection = {}
+            for case in cases:
+                key = case["case"]["connection"]
+                total, passed = by_connection.get(key, (0, 0))
+                by_connection[key] = (total + 1,
+                                      passed + (0 if self._new_reasons(case) else 1))
+            self.assertEqual(by_connection, expected["by_connection"][tag], tag)
+            # 有负载 / 无负载
+            by_cart = {}
+            for case in cases:
+                key = "cart" if case["case"].get("cart_present", True) else "nocart"
+                total, passed = by_cart.get(key, (0, 0))
+                by_cart[key] = (total + 1, passed + (0 if self._new_reasons(case) else 1))
+            self.assertEqual(by_cart, expected["by_cart"][tag], tag)
+            # 剩余失败原因（逐原因计数，一个 case 可有多条）
+            reasons = {}
+            for case in cases:
+                for reason in self._new_reasons(case):
+                    reasons[reason] = reasons.get(reason, 0) + 1
+            self.assertEqual(reasons, expected["reasons"][tag], tag)
+            # 剩余失败里不再有 JNT
+            self.assertNotIn("startup_joint_error", reasons, tag)
+            self.assertNotIn("stop_joint_error", reasons, tag)
+            # 判定码分布里不再有 JNT（新口径）
+            codes = {}
+            for case in cases:
+                code = max((play._REASON_TO_CODE[reason] for reason in self._new_reasons(case)),
+                           key=lambda item: play.VERDICT_SEVERITY[item],
+                           default="OK")
+                codes[code] = codes.get(code, 0) + 1
+            self.assertNotIn("JNT", codes, tag)
+
+    def test_count_jnt_reproduces_the_archived_verdict_bit_for_bit(self):
+        """`classify_case(count_jnt=True)` 对 800+800 个 case 逐位复现归档 verdict。"""
+        for tag, payload in self.reports.items():
+            thresholds = dict(payload["thresholds"])
+            reproduced = 0
+            for case in payload["cases"]:
+                metrics = case["metrics"]
+                stored = case["verdict"]
+                legacy = play.classify_case(metrics, thresholds, count_jnt=True)
+                self.assertEqual(legacy["reasons"], stored["reasons"], tag)
+                self.assertEqual(legacy["code"], stored["code"], tag)
+                self.assertEqual(legacy["severity"], stored["severity"], tag)
+                # 新口径 = 旧口径剔除 JNT 两条（判定码取剩余最严重项）
+                fresh = play.classify_case(metrics, thresholds, count_jnt=False)
+                self.assertEqual(fresh["reasons"], self._new_reasons(case), tag)
+                expected_code = max((play._REASON_TO_CODE[reason] for reason in fresh["reasons"]),
+                                    key=lambda item: play.VERDICT_SEVERITY[item],
+                                    default="OK")
+                self.assertEqual(fresh["code"], expected_code, tag)
+                reproduced += 1
+            self.assertEqual(reproduced, play.JNT_EXCLUDED_RECOUNT_2026_10_10["num_envs"], tag)
+
+    def test_open_question_channel_composition_is_from_the_baseline_first_witness(self):
+        """待定问题（不在本轮实现）的数字出处：`impact.stop_contact.channels` 首个见证通道。
+
+        用户给的 `load_velocity_jump 254 / deck_contact_force 70` 正好等于**基线**轮
+        `cases[].metrics.impact.stop_contact.channels` 的计数；`deck |fx|` 中位 0 N。
+        （若改按 `stop.contact_channels` 的**并集**统计会得到 264/71 —— 口径不同，不是矛盾。）
+        """
+        payload = self.reports["baseline"]
+        channels = {"load_velocity_jump": 0, "deck_contact_force": 0}
+        union = {"load_velocity_jump": 0, "deck_contact_force": 0}
+        fx = []
+        for case in payload["cases"]:
+            if "stop_collision" not in case["verdict"]["reasons"]:
+                continue
+            contact = case["metrics"].get("impact", {}).get("stop_contact", {})
+            for name in contact.get("channels") or []:
+                channels[name] = channels.get(name, 0) + 1
+            for name in case["metrics"]["stop"].get("contact_channels") or []:
+                union[name] = union.get(name, 0) + 1
+            if contact.get("deck_fx_n") is not None:
+                fx.append(abs(float(contact["deck_fx_n"])))
+        self.assertEqual(channels["load_velocity_jump"], 254)
+        self.assertEqual(channels["deck_contact_force"], 70)
+        self.assertEqual(union["load_velocity_jump"], 264)
+        self.assertEqual(union["deck_contact_force"], 71)
+        self.assertEqual(statistics.median(fx), 0.0)
+
+
 class DryRunTests(unittest.TestCase):
     """`--dry-run` 只能在**标准库**下跑：子进程里跑一遍并检查 `torch` 从未进 `sys.modules`。
 
@@ -1695,6 +2017,9 @@ class DryRunTests(unittest.TestCase):
         self.assertIn("`--impact-window` 0.2 s", result.stdout)
         self.assertIn("`--steady-margin-s` 1 s", result.stdout)
         self.assertIn("`--takeup-force-threshold` 1 N", result.stdout)
+        # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
+        self.assertIn("判定口径：**JNT 不计入**", result.stdout)
+        self.assertIn("--count-jnt", result.stdout)
 
 
 class JsonSanitiseTests(unittest.TestCase):

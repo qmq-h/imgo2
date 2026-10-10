@@ -16,7 +16,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 ## 上层网络开关（`--upper-checkpoint`，默认关）
 
 - **关（默认）**：残差恒 0，行为与加开关之前**逐位一致**——每 20 ms 把冻结策略的关节位置
-  目标原样下发；`JNT` 指标的口径不变（参考量 = 冻结策略当拍输出）。
+  目标原样下发；`JNT` 观测的口径不变（参考量 = 冻结策略当拍输出），但**默认不进判定**
+  （用户 2026-10-10 决定，见「判读与限制」；`--count-jnt` 可复现旧口径）。
 - **开（给了 checkpoint 路径）**：从训练侧联合 checkpoint 恢复 actor + dynamics decoder
   （57 维 policy 帧 → 6 维显式估计 + 16 维 latent → 79 维 actor → 12 维归一化残差），
   按 `delta = clamp(action, ±1) ⊙ action_scale` 叠加在冻结策略的关节位置目标上：
@@ -82,8 +83,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 | 停止时的关节响应 | `stop.joint_rms_rad` / `joint_max_rad` / `worst_joint` / `settle_time_s` / `body_vx_rms_mps` | STOP 后 `--transition-window` 内的同一套关节跟踪误差 + 机器人从指令归零到 `|vx| < 0.05 m/s` 的耗时 |
 
 判据（阈值可用 CLI 覆盖）落成逐 case 码：`OK` / `LOW`（停车余量低）/ `LAT`（横向或朝向
-保持超限）/ `JNT`（关节响应超限）/ `SPD`（速度跟踪超限）/ `COL`（追尾接触）/ `FALL`
-（跌倒）/ `INV`（记录不可用）。
+保持超限）/ `SPD`（速度跟踪超限）/ `COL`（追尾接触）/ `FALL`（跌倒）/ `INV`（记录不可用）；
+`JNT`（关节响应超限）**默认不计入判定**（用户 2026-10-10 决定），只有 `--count-jnt` 时才评估。
 
 ## 横向/朝向保持（`--lane-keeping pd`，默认开）
 
@@ -182,11 +183,13 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 `takeup` 另带 `time_s` / `tension_n` / `vx_mps`，`stop_contact` 另带 `time_s` / `channels` /
 `deck_fx_n`。**归零窗口与撞击窗口是两件事**（实测可能差数百毫秒），不要互相替代。
 
-**口径冻结**：`--transition-window`（默认 1.0 s）的既有 `startup.*` / `stop.*` 字段、
-`DEFAULT_THRESHOLDS`、判定码（`COL`/`JNT`/`SPD`/`LOW`…）与 `classify_case` **一律不动**，
-新增字段只进 `metrics["impact"]`；`impact_stats()` 里没有阈值字典、也不做任何判定分支，
-所以 `docs/towingdata/2026-10-09_necessity_800*/` 的归档对照不受影响（归档没有 `impact.*`，
-报告里那列只能显示 `n/a`）。读法见表头（`report.md` 的「## 冲击窗口 vs 稳态（关节响应）」）。
+**口径冻结（冲击部分）**：`--transition-window`（默认 1.0 s）的既有 `startup.*` / `stop.*` 字段
+与 `DEFAULT_THRESHOLDS` 的**数值**不动，新增字段只进 `metrics["impact"]`；`impact_stats()` 里
+没有阈值字典、也不做任何判定分支。（**例外**：`classify_case` 于 2026-10-10 增加了
+`count_jnt` 开关，默认把 `JNT` 移出判定，见下节「判读与限制」；JNT 字段与阈值本身仍在。）
+所以 `docs/towingdata/2026-10-09_necessity_800*/` 的归档对照**在 JNT 这一点上不可比**
+（归档按旧口径算），报告里那列没有 `impact.*` 只能显示 `n/a`。
+读法见表头（`report.md` 的「## 冲击窗口 vs 稳态（关节响应）」）。
 
 `report.md` 增一节「## 冲击窗口 vs 稳态（关节响应）」（起拖 / 绷直 / 指令归零 / 停车撞击四行
 + 稳态一行 + `RMS/稳态`、`RMS−稳态` 两列），`report.json` 增顶层 `impact_statistics`（本轮 /
@@ -203,7 +206,11 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
   只覆盖网格前缀（脚本会警告）。
 - `summarize_tow` 的 `steady_tracking_ratio` 用的是**世界系** vx 除以指令，坡上口径不同，
   本脚本的跟速指标一律用**体系** vx；两者都写在产物里，不要混用。
-- 关节跟踪误差阈值没有标定，首轮结果出来前不要把 `JNT` 当成定论。
+- **JNT 已移出判定统计量（用户 2026-10-10 决定）**：`startup_joint_error` / `stop_joint_error`
+  不再产生失败原因、`JNT` 不再出现在判定码分布里；两条观测字段与关节阈值照旧保留并打印
+  （观测，不是判据）。原因：这两条在 800 cell 上基线 800/800、策略 800/800，零区分度，
+  量的是底层 PD 静差 τ/kp（阈值 0.10 rad 连最好的 case 都超 1.6 倍），不是上层任务的职责。
+  要复现旧口径（与归档对齐/追溯）加 `--count-jnt`，行为逐位一致。
 - 速度指令是体系 x 速度（与冻结策略观测一致），只研究直线拖曳。
 
 ## 策略 vs 基线要对比哪些字段（`--upper-checkpoint` 对照用）
@@ -212,10 +219,10 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 
 | 组 | 字段（`report.json.cases[].metrics`；`report.csv` 里加了 `startup_/speed_/stop_/lane_` 前缀） | 看什么 |
 |---|---|---|
-| 判定码 | `verdict.code` / `verdict.reasons`（分组计数在 `report.json.groups[*].reasons`） | 分组（坡度量级）里 `COL`（追尾）/`SPD`（跟速）/`JNT`（关节）的占比是否下降 |
+| 判定码 | `verdict.code` / `verdict.reasons`（分组计数在 `report.json.groups[*].reasons`） | 分组（坡度量级）里 `COL`（追尾）/`SPD`（跟速）的占比是否下降；`JNT` 默认已移出统计量（`--count-jnt` 才计入） |
 | 跟速 | `speed.mae_mps`、`speed.rmse_mps`、`speed.bias_mps`、`speed.ratio_mean`、`speed.p95_abs_err_mps`、`speed.steady_mae_mps`、`speed.steady_ratio_mean` | 拖曳代价的主战场：策略应把 MAE/偏差压下来（尤其重车 + 陡坡 + 高速） |
 | 追尾 | `stop.cart_coast_distance_m`、`stop.cart_coast_to_rest_m`、`stop.cart_coast_time_to_rest_s`、`stop.min_clearance_coast_m`、`stop.final_clearance_m`、`stop.contact`、`stop.time_to_contact_after_stop_s` | 停车段是否还撞上来；滑移衰减（`*_to_rest_*`）是否变好 |
-| 关节响应 | `startup.joint_rms_rad`、`startup.joint_max_rad`、`startup.worst_joint`、`startup.torque_saturated_frac`、`stop.joint_rms_rad`、`stop.joint_max_rad`、`stop.settle_time_s` | 口径已随开关改变（基线参考冻结输出、策略参考 `held`），**不要把它当纯粹的"改善"**；要同时看 `torque_saturated_frac` 是否恶化（残差顶掉底层动作的信号） |
+| 关节响应（观测） | `startup.joint_rms_rad`、`startup.joint_max_rad`、`startup.worst_joint`、`startup.torque_saturated_frac`、`stop.joint_rms_rad`、`stop.joint_max_rad`、`stop.settle_time_s` | **默认不进判定**（`JNT` 已移出）；只作观测：口径随开关改变（基线参考冻结输出、策略参考 `held`），**不要把它当纯粹的"改善"**；要同时看 `torque_saturated_frac` 是否恶化（残差顶掉底层动作的信号） |
 | 横向/朝向 | `lane.y_rms_m`、`lane.y_max_abs_m`、`lane.heading_rms_rad`、`lane.heading_max_abs_rad`、`lane.vy_saturated_frac`、`lane.wz_saturated_frac` | PD 外环与上层策略同在一轮里起作用；限幅占比上升说明 PD 在硬顶 |
 | 稳定性 | `stability.fell`、`stability.min_robot_surface_height_m`、`stability.max_abs_pitch_rel_rad`、`stability.pitch_over_limit_frac`、`stability.invalid_samples` | 策略不能把机器人开倒，也不能让记录失效 |
 | 策略自身 | `experiment.json.upper_policy`（checkpoint/契约/iter/确定性）与逐记录步 `robot_jp_*`（实测）− `robot_jt_*`（= 实际下发目标） | 先确认 checkpoint 与契约对上了；再用同一 case 的两轮 `tow.csv` 看残差到底改了什么 |
@@ -223,13 +230,14 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 
 **注意**：`JNT` 的参考量在两种开关下不是同一个东西（基线 = 冻结输出、策略 = 下发目标），
 所以 `startup.joint_rms_rad` 的差**不是**纯粹的"跟踪改善"；阈值也仍是未标定的占位值。
-**验收结论只读 `COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）**：归档基线里 `JNT` 在有负载
-（295/700）与无负载（100/100）两边都接近 100%，量的是 PD 静差 τ/kp，不是拖曳能力缺陷。
+**验收结论只读 `COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）**：`JNT` 已按用户决定移出统计量
+（800/800 零区分度，量的是 PD 静差 τ/kp）；重判读数（同一批 800 cell，仅剔除 JNT）见
+README TOW-23 与 `docs/towing_verdict_jnt_excluded_2026-10-10.md`。
 
 `report.md` / `report.json` 里的「策略 vs 基线」一节把本轮、同版本基线（`--compare-report`）、
 归档基线 2026-10-09 三项放在一起（同一个 `case_metric_summary`：通过数、判定码分布、
-五项指标中位数、逐坡度量级通过数）；归档那列是**旧几何**（绳 0.6–1.2 m、出生比 0.5），
-只作 sanity check，**不可逐格硬比**。
+五项指标中位数、逐坡度量级通过数）；归档那列是**旧几何**（绳 0.6–1.2 m、出生比 0.5）
+**且是旧口径**（JNT 计入判定），只作 sanity check，**不可逐格硬比**。
 """
 
 from __future__ import annotations
@@ -360,6 +368,64 @@ ARCHIVED_BASELINE_2026_10_09 = {
     "by_grade": {"grade0": (400, 0), "grade5": (200, 0), "grade10": (200, 0)},
     "jnt_note": "归档基线里 JNT 在有负载（295/700）与无负载（100/100）两边都接近 100%，"
                 "量的是 q − q* 的 PD 静差（≈ τ/kp），阈值未标定",
+    # 归档的通过数/判定码按**旧口径**（JNT 计入判定）算 ⇒ 与 2026-10-10 之后的新口径不可比。
+    "count_jnt": True,
+    "caliber_note": "归档的通过数（0/800）与判定码（JNT 395 / COL 276 / SPD 129）是按**旧口径**"
+                    "（JNT 计入判定）算的；2026-10-10 起默认把 JNT 移出判定统计量 ⇒ 两边的"
+                    "通过数与判定码分布**不可比**，要逐格对齐旧口径请用 `--count-jnt` 重跑",
+}
+
+#: 用户 2026-10-10 决定「JNT 移出判定统计量」后的**离线重判读数**（本变更的依据与验收基线）。
+#:
+#: 来源：同版本、同几何的两轮 800 cell ——
+#: `imgo2_rl/logs/towing/play_test/upper_switch_baseline/report.json`（基线）与
+#: `.../upper_switch_policy/report.json`（策略轮开 `--upper-checkpoint .../model_1000.pt`，
+#: `upper_policy.enabled=true / iter=1000 / contract v2`）；两轮
+#: `git.commit = df593f49d6469be0ec1bbd2637fa66bb5616cb3c`、800 cell、`--no-cart-fraction 0.125`。
+#:
+#: 复算方式 = 把 `cases[].verdict.reasons` 里的 `startup_joint_error`/`stop_joint_error` 剔除后
+#: 重算通过数与分布（`imgo2_rl/tests/test_towing_play_test.py` 的
+#: `JntExclusionRecountTests` 从上面两份 report.json 逐项核对，防手抄漂移）。
+JNT_EXCLUDED_RECOUNT_2026_10_10 = {
+    "source_report": "imgo2_rl/logs/towing/play_test/upper_switch_{baseline,policy}/report.json",
+    "git_commit": "df593f49d6469be0ec1bbd2637fa66bb5616cb3c",
+    "num_envs": 800,
+    "no_cart_fraction": 0.125,
+    #: 旧口径（JNT 计入）下两轮都是 0/800 —— 与重判值的差就是被移出统计量的那部分。
+    "old_caliber_ok": {"baseline": 0, "policy": 0},
+    "ok": {"baseline": 356, "policy": 436},
+    "by_grade": {
+        "baseline": {"grade0": (400, 213), "grade5": (200, 81), "grade10": (200, 62)},
+        "policy": {"grade0": (400, 245), "grade5": (200, 96), "grade10": (200, 95)},
+    },
+    "by_connection": {
+        "baseline": {"compliant": (320, 152), "inextensible": (160, 69), "rigid": (320, 135)},
+        "policy": {"compliant": (320, 174), "inextensible": (160, 88), "rigid": (320, 174)},
+    },
+    "by_cart": {
+        "baseline": {"cart": (700, 256), "nocart": (100, 100)},
+        "policy": {"cart": (700, 336), "nocart": (100, 100)},
+    },
+    "reasons": {
+        "baseline": {"stop_collision": 295, "speed_track_error": 234, "stop_margin_low": 28},
+        "policy": {"stop_collision": 283, "speed_track_error": 66, "stop_margin_low": 36,
+                   "lane_deviation": 1},
+    },
+    "note": "剔除 JNT 后剩下的失败全部与小车/停车/跟速有关（stop_collision / speed_track_error / "
+            "stop_margin_low / lane_deviation）⇒ 这正是上层任务该修的对象；JNT 的 800/800 "
+            "（≈ τ/kp 静差、阈值未标定）没有区分度。",
+    #: 待用户决定的**下一条过紧判据**（本次不实现，仅记录；见 README TOW-23 的「待定」）。
+    "open_question": {
+        "topic": "stop_collision 的 `load_velocity_jump` 通道是否也是过紧的占位阈值",
+        "evidence": "基线 `impact.stop_contact.channels`（首个接触见证）构成："
+                    "load_velocity_jump 254、deck_contact_force 70；`deck |fx|` 中位 0 N；"
+                    "策略轮同一口径为 load_velocity_jump 249 / deck_contact_force 62。"
+                    "（按 `stop.contact_channels` 的并集统计则是基线 264/71、策略 254/77。）",
+        "hypothesis": "用绳拖 5–25 kg 车斗在 20 Hz 急停时，速度在某一拍变化是物理必然 ⇒ "
+                      "「负载是否发生速度跃变」可能是过紧的占位阈值。",
+        "suggestion": "像冲击统计那样改成**相对量**（负载减速度 / 与无负载对照的增量），"
+                      "列入待用户决定，本轮不改判据。",
+    },
 }
 
 _JOINT_NAMES_FALLBACK = tuple(
@@ -480,6 +546,26 @@ DEFAULT_THRESHOLDS = {
     "lane_y_limit_m": 0.30,
     "lane_heading_limit_deg": 10.0,
 }
+
+#: 判定口径标记：**JNT（`startup_joint_error` / `stop_joint_error`）是否计入判定**。
+#:
+#: 用户 2026-10-10 决定：**默认不计入**（`False`）。依据：两条在 800 cell 上基线 800/800、
+#: 策略 800/800，零区分度；它们量的是底层 PD 静差 `τ/kp`（`joint_rms_limit_rad=0.10` 连
+#: 最好的 case 都超 1.6 倍：实测基线 startup RMS P1=0.161 / P50=0.221、stop RMS P1=0.126 /
+#: P50=0.154），不是上层任务的职责。字段与阈值**保留**（观测），`--count-jnt` 打开后逐位
+#: 复现旧口径（供与归档对齐/追溯）。详见 README TOW-23 与
+#: `docs/towing_verdict_jnt_excluded_2026-10-10.md`。
+DEFAULT_COUNT_JNT = False
+
+
+def caliber_thresholds(args) -> dict:
+    """阈值字典 + 口径标记（`report.json` / `experiment.json` 的 `thresholds` 用）。
+
+    `count_jnt` 只是**口径标注**（不参与 `classify_case` 的阈值比较），但它必须跟阈值一起
+    落盘：读归档的 `report.json` 时，先看这一位才知道某一轮的通过数/判定码是按哪套口径算的。
+    """
+    return {**{name: getattr(args, name) for name in DEFAULT_THRESHOLDS},
+            "count_jnt": bool(args.count_jnt)}
 
 
 # ---------------------------------------------------------------- 纯逻辑（离线可测）
@@ -1386,7 +1472,8 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
                          cart_present: bool = True,
                          impact_window_s: float = DEFAULT_IMPACT_WINDOW_S,
                          steady_margin_s: float = DEFAULT_STEADY_MARGIN_S,
-                         takeup_force_threshold_n: float = DEFAULT_TAKEUP_FORCE_THRESHOLD_N) -> dict:
+                         takeup_force_threshold_n: float = DEFAULT_TAKEUP_FORCE_THRESHOLD_N,
+                         count_jnt: bool = False) -> dict:
     """由逐记录步轨迹算出五项指标 + 判定。与仿真无关，可离线用合成轨迹复核。
 
     `case` 是 `EnvCase.to_dict()`：带 env 序号、cell、连接、长度、坡度量级与工作条件。
@@ -1459,7 +1546,7 @@ def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
             stop[key] = None
         stop["gap_margin_low"] = False
         stop["cart_present"] = False
-    metrics["verdict"] = classify_case(metrics, thresholds)
+    metrics["verdict"] = classify_case(metrics, thresholds, count_jnt=count_jnt)
     return metrics
 
 
@@ -1480,8 +1567,15 @@ def _time_to_fraction(rows, command_mps: float, *, fraction: float, hold_s: floa
     return None
 
 
-def classify_case(metrics: dict, thresholds: dict) -> dict:
-    """把五项指标折成判定码（`OK` 或最严重的一条）+ 全部原因。"""
+def classify_case(metrics: dict, thresholds: dict, *, count_jnt: bool = False) -> dict:
+    """把五项指标折成判定码（`OK` 或最严重的一条）+ 全部原因。
+
+    `count_jnt`（默认 **False**，用户 2026-10-10 决定）：是否把 `startup_joint_error` /
+    `stop_joint_error` 计入判定。**默认不计入** ⇒ `JNT` 不再出现在 `verdict.code` /
+    `verdict.reasons`；`startup.*` / `stop.*` 的关节观测值照旧计算并打印，阈值
+    （`joint_rms_limit_rad` / `joint_max_limit_rad`）也保留，只是不再产生失败原因。
+    `--count-jnt` 打开时逐位复现 2026-10-10 之前的旧口径（供与归档对齐/追溯）。
+    """
     reasons = []
     stability = metrics.get("stability", {})
     stop = metrics.get("stop", {})
@@ -1506,18 +1600,22 @@ def classify_case(metrics: dict, thresholds: dict) -> dict:
     if speed.get("available") and speed.get("mae_mps") is not None and \
             speed["mae_mps"] > thresholds["speed_mae_ratio_limit"] * metrics["case"]["velocity_mps"]:
         reasons.append("speed_track_error")
-    for key, limit_key in (("startup", "joint_rms_limit_rad"), ("stop", "joint_rms_limit_rad")):
-        section = metrics.get(key, {})
-        value = section.get("joint_rms_rad")
-        if value is not None and value > thresholds[limit_key]:
-            reasons.append(f"{key}_joint_error")
-    for key in ("startup", "stop"):
-        section = metrics.get(key, {})
-        value = section.get("joint_max_rad")
-        if value is not None and value > thresholds["joint_max_limit_rad"]:
-            reason = f"{key}_joint_error"
-            if reason not in reasons:
-                reasons.append(reason)
+    # 关节跟踪误差（JNT）：**默认不计入判定**（用户 2026-10-10 决定，见 docstring）。
+    # 打开 `count_jnt` 时逐位复现旧口径（先 RMS 阈值、再单关节阈值，顺序不变）。
+    if count_jnt:
+        for key, limit_key in (("startup", "joint_rms_limit_rad"),
+                               ("stop", "joint_rms_limit_rad")):
+            section = metrics.get(key, {})
+            value = section.get("joint_rms_rad")
+            if value is not None and value > thresholds[limit_key]:
+                reasons.append(f"{key}_joint_error")
+        for key in ("startup", "stop"):
+            section = metrics.get(key, {})
+            value = section.get("joint_max_rad")
+            if value is not None and value > thresholds["joint_max_limit_rad"]:
+                reason = f"{key}_joint_error"
+                if reason not in reasons:
+                    reasons.append(reason)
     codes = [_REASON_TO_CODE[reason] for reason in reasons]
     code = max(codes, key=lambda item: VERDICT_SEVERITY[item]) if codes else "OK"
     return {"code": code, "reasons": reasons, "severity": VERDICT_SEVERITY[code]}
@@ -1874,17 +1972,25 @@ def format_impact_section(current: dict, *, reference=None, archived=None,
 
 
 def format_baseline_comparison(current: dict, *, reference=None, archived=None,
-                               upper_enabled: bool = False) -> list:
+                               upper_enabled: bool = False,
+                               count_jnt: bool = DEFAULT_COUNT_JNT) -> list:
     """report.md 的「策略 vs 基线」一节（同网格、同指标、同阈值）。
 
     - `current`：本轮结果（`case_metric_summary`）；
     - `reference`：**同版本**基线那轮的结果（`--compare-report <基线>/report.json`，可为 None）；
-    - `archived`：归档基线读数（默认 `ARCHIVED_BASELINE_2026_10_09`），只作参照。
+    - `archived`：归档基线读数（默认 `ARCHIVED_BASELINE_2026_10_09`），只作参照；
+    - `count_jnt`：本轮判定口径（默认 False = JNT 不计入），写在节标题下方。
     """
     archived = ARCHIVED_BASELINE_2026_10_09 if archived is None else archived
     switch = ("**开启**（上层策略驱动 12 维关节位置残差）" if upper_enabled
               else "**关闭**（基线，残差恒 0）")
+    recount = JNT_EXCLUDED_RECOUNT_2026_10_10
     lines = ["## 策略 vs 基线（同网格、同指标、同阈值）", "",
+             "判定口径：**JNT " + ("计入**（`--count-jnt` 已打开，与 2026-10-10 之前的旧口径逐位一致）"
+                                   if count_jnt else
+                                   "不计入**（默认；用户 2026-10-10 决定）——"
+                                   "`startup_joint_error`/`stop_joint_error` 只作观测，"
+                                   "下面两个关节响应 RMS 中位数行仍在，但不产生失败原因"),
              f"**本轮**（开关{switch}）："]
     lines += _fmt_comparison_summary(current)
     lines.append("")
@@ -1908,22 +2014,45 @@ def format_baseline_comparison(current: dict, *, reference=None, archived=None,
                   f"（n={archived['median_samples'].get(f'{group}.{field}', 0)}）"
                   for group, field, label in FIVE_METRIC_FIELDS),
               "- ⚠ **不可逐格硬比**：" + archived["grid_note"] + "。",
+              "- ⚠ **口径不可比（JNT）**：" + archived["caliber_note"] + "。",
+              f"- **新口径重判（同一批 {recount['num_envs']} cell，仅把 JNT 剔除统计量）**："
+              f"基线 **{recount['ok']['baseline']}/{recount['num_envs']}**、"
+              f"策略 **{recount['ok']['policy']}/{recount['num_envs']}**"
+              f"（旧口径下两轮都是 {recount['old_caliber_ok']['baseline']}/"
+              f"{recount['num_envs']}）；剩余失败原因 基线 "
+              + " / ".join(f"{name} {count}" for name, count in
+                           sorted(recount["reasons"]["baseline"].items(),
+                                  key=lambda item: -item[1]))
+              + " → 策略 "
+              + " / ".join(f"{name} {count}" for name, count in
+                           sorted(recount["reasons"]["policy"].items(),
+                                  key=lambda item: -item[1]))
+              + f"。来源 `{recount['source_report']}`（git "
+              + f"`{recount['git_commit'][:7]}`）；逐坡度/连接/负载与依据见 README TOW-23。",
               "",
-              "**`JNT` 不能当结论**：" + archived["jnt_note"] + "；因此验收读数看 "
-              "`COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）的占比变化，`JNT` 只在阈值标定后才有意义。"
-              "另注意开了开关后 `JNT` 的参考量变成 `held = 冻结输出 + 残差`（训练侧 "
-              "`reference=\"commanded\"`），与基线的「冻结输出」**不是同一个量**，"
-              "这一项的差不能当改善看。",
+              "**`JNT` 已移出判定统计量（用户 2026-10-10 决定）**：" + archived["jnt_note"] + "。"
+              "因此默认口径下 `JNT` 不再出现为失败原因，验收读 `COL`/`SPD`/`LOW`"
+              "（以及 `LAT`/`FALL`）的占比变化。另注意开了开关后 `JNT` 的参考量变成 "
+              "`held = 冻结输出 + 残差`（训练侧 `reference=\"commanded\"`），与基线的"
+              "「冻结输出」**不是同一个量**，这一项的差不能当改善看"
+              "（只有 `--count-jnt` 追溯旧口径时才相关）。",
               ""]
     return lines
 
 
 def necessity_conclusion(groups: dict, thresholds: dict) -> dict:
-    """由分组统计给出「任务是否有必要」的判读（只依据本网格 + 本阈值）。"""
+    """由分组统计给出「任务是否有必要」的判读（只依据本网格 + 本阈值）。
+
+    `thresholds` 可带 `count_jnt`（`caliber_thresholds()` 落盘的那一位）：默认
+    **JNT 不计入**，于是「全部通过」的判据列表里不出现关节 RMS 阈值（它只是观测）。
+    """
+    count_jnt = bool(thresholds.get("count_jnt", DEFAULT_COUNT_JNT))
     lines = []
     verdict = {}
     if not groups:
         return {"verdict": {}, "lines": ["- 没有任何 case（记录为空）。"]}
+    joint_clause = ("关节 RMS ≤ " + f"{thresholds['joint_rms_limit_rad']:g} rad、"
+                    if count_jnt else "")
     for name, entry in groups.items():
         label = entry.get("label") or grade_group_label(entry.get("grade_deg", 0.0))
         if entry["cases"] == 0:
@@ -1936,8 +2065,7 @@ def necessity_conclusion(groups: dict, thresholds: dict) -> dict:
                                                         key=lambda item: -item[1])) or "无"
         if ok == total:
             verdict[name] = "baseline_sufficient"
-            lines.append(f"- {label}：{ok}/{total} 全部通过阈值（关节 RMS ≤ "
-                         f"{thresholds['joint_rms_limit_rad']:g} rad、跟速 MAE ≤ "
+            lines.append(f"- {label}：{ok}/{total} 全部通过阈值（{joint_clause}跟速 MAE ≤ "
                          f"{thresholds['speed_mae_ratio_limit']*100:g}% 指令、停车间隙 > "
                          f"{thresholds['gap_margin_limit_m']:g} m、无接触/跌倒）"
                          f"⇒ 该组不构成上层任务必要性的证据。")
@@ -2008,6 +2136,7 @@ def format_verdict_matrix(case_summaries, *, grades) -> str:
 def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thresholds,
                           schedule, grades, git, comparison=None, impact=None) -> str:
     """人读报告：配置、判定矩阵、失败模式、冲击窗口、结论、「策略 vs 基线」、限制。"""
+    count_jnt = bool(args_dict.get("count_jnt", DEFAULT_COUNT_JNT))
     lines = ["# 拖曳上层任务必要性：冻结策略基线测试（训练场景）", "",
              f"- 生成时间：{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
              f"- git：`{git.get('commit')}`（worktree {git.get('working_tree') or 'clean'}）",
@@ -2043,8 +2172,16 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
              f"{thresholds['fall_height_limit_m']:g} m 或 |pitch| > "
              f"{thresholds['pitch_limit_rad']:g} rad 的样本 > "
              f"{thresholds['pitch_fraction_limit'] * 100:g}%",
-             "", "判定码：`OK` 通过；`LOW` 停车余量低；`LAT` 横向/朝向保持超限；`JNT` 关节响应超限；"
-             "`SPD` 跟速超限；`COL` 追尾接触；`FALL` 跌倒；`INV` 记录不可用。", "",
+             f"- 判定口径：**JNT "
+             + ("计入**（`--count-jnt` 已打开）——`startup_joint_error`/`stop_joint_error` 按上面"
+                "两个关节阈值产生失败原因与判定码 `JNT`，与 2026-10-10 之前的旧口径**逐位一致**"
+                if count_jnt else
+                "不计入**（默认；用户 2026-10-10 决定）——`startup.*`/`stop.*` 的关节跟踪误差"
+                "只作**观测**（下面「策略 vs 基线」的 `起步/停车关节响应 RMS` 中位数行仍在），"
+                "不产生失败原因；要复现旧口径（归档对齐/追溯）加 `--count-jnt`"),
+             "", "判定码：`OK` 通过；`LOW` 停车余量低；`LAT` 横向/朝向保持超限；"
+             "`SPD` 跟速超限；`COL` 追尾接触；`FALL` 跌倒；`INV` 记录不可用；"
+             "`JNT` 关节响应超限（**默认不计入判定**，仅 `--count-jnt` 时评估）。", "",
              "横向/朝向保持："
              + ("**关闭**（指令只有 vx）" if args_dict["lane_keeping"] == "off" else
                 f"PD（kp_y={args_dict['lane_kp_y']:g}、kd_y={args_dict['lane_kd_y']:g}、"
@@ -2091,11 +2228,21 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
               "- 跟速一律用**体系** vx（与冻结策略观测同口径）；`summarize_tow` 的 "
               "`steady_tracking_ratio` 是世界系口径，坡上不要混用。",
               "- `progress` 是 x 行程（水平投影），不是坡面弧长：10° 剖面上两者差 < 1%。",
-              "- 关节跟踪误差阈值没有标定：归档基线里 `JNT` 在有负载（295/700）与无负载"
-              "（100/100）两边都接近 100%，量的是 `q − q*` 的**PD 静差**（≈ τ/kp）而不是拖曳"
-              "能力缺陷 ⇒ 验收读 `COL`/`SPD`/`LOW` 才有区分度，`JNT` 不能当结论；且开开关后"
-              "`JNT` 的参考量变成 `held`（与训练侧 `reference=\"commanded\"` 同口径），"
-              "与基线的「冻结输出」不是同一个量。",
+              "- **JNT 已按用户决定（2026-10-10）移出判定统计量**：`startup_joint_error` /"
+              "`stop_joint_error` 不再产生失败原因，`JNT` 从判定码分布里消失（要复现旧口径加 "
+              "`--count-jnt`，逐位一致）。**理由与实测分布**：这两条在 800 cell 上基线 800/800、"
+              "策略 800/800，零区分度；它们量的是 `q − q*` 的底层 PD 静差（≈ τ/kp，扛体重），"
+              "不是上层任务的职责 —— `joint_rms_limit_rad=0.10` 连最好的 case 都超 1.6 倍"
+              "（实测基线 startup RMS P1=0.161 / P50=0.221、stop RMS P1=0.126 / P50=0.154，"
+              "800/800 全部超限）。两条既有观测字段（`startup.*` / `stop.*` 的 `joint_rms_rad`、"
+              "`joint_max_rad`、`worst_joint`、`per_joint_rms_rad`、`torque_saturated_frac`）与"
+              "阈值 `--joint-rms-limit-rad` / `--joint-max-limit-rad` **照旧保留并在本节上方打印**"
+              "（见「策略 vs 基线」的 `起步关节响应 RMS` / `停车关节响应 RMS` 中位数行），"
+              "只是不再进判据。",
+              "- `JNT` 的参考量在两种开关下不是同一个东西（基线 = 冻结策略当拍输出、策略 = 下发的"
+              "`held = 冻结目标 + 残差`），所以即使开 `--count-jnt`，两轮的 `JNT` 差也不能直接当"
+              "改善读。归档对照（`docs/towingdata/2026-10-09_necessity_800*`）的通过数与判定码"
+              "（0/800、`JNT` 395 等）是按**旧口径**算的，与本节口径**不可比**。",
               f"- {SUMMARIZE_TOW_NOTE}",
               "- 冲击窗口统计（`metrics.impact.*`）是**观测字段，不进判定码**："
               "`classify_case` 只读既有 `startup.*`/`stop.*`，`DEFAULT_THRESHOLDS` 也不含 "
@@ -2203,6 +2350,14 @@ def parse_args(argv=None):
     for name, value in DEFAULT_THRESHOLDS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value,
                             dest=name, help=f"判定阈值（默认 {value}）")
+    # 判定口径：JNT 默认**不计入**（用户 2026-10-10 决定）；打开 = 复现旧口径。
+    parser.add_argument("--count-jnt", action="store_true", default=DEFAULT_COUNT_JNT,
+                        dest="count_jnt",
+                        help="把 JNT（startup/stop 关节跟踪误差）计入判定。默认**不计入**："
+                             "`classify_case` 不再产生 `startup_joint_error`/`stop_joint_error`，"
+                             "`JNT` 从判定码分布里消失；`startup.*`/`stop.*` 的观测值与 "
+                             "`--joint-rms-limit-rad`/`--joint-max-limit-rad` 照旧保留。"
+                             "打开后与 2026-10-10 之前的旧口径**逐位一致**，供与归档对齐/追溯")
     args = parser.parse_args(argv)
 
     if args.num_envs <= 0:
@@ -2336,6 +2491,18 @@ def planned_grid_lines(args) -> list:
         f"[plan] 冲击口径与既有 `--transition-window` {args.transition_window:g} s "
         f"（归档对照）**并存**：新增 `impact_startup_*`/`impact_takeup_*`/`impact_stop_*`/"
         f"`impact_stop_contact_*`/`impact_steady_*`，既有 `startup.*`/`stop.*` 语义逐位不变",
+        (f"[plan] 判定口径：**JNT 不计入**（默认；用户 2026-10-10 决定）"
+         f"——`classify_case` 不因 `startup_joint_error`/`stop_joint_error` 产生失败原因，"
+         f"`JNT` 从判定码分布里消失；两条观测值与 `--joint-rms-limit-rad` "
+         f"{args.joint_rms_limit_rad:g} rad / `--joint-max-limit-rad` "
+         f"{args.joint_max_limit_rad:g} rad 照旧保留（观测，不是判据）。"
+         f"要复现旧口径（归档对齐/追溯）加 `--count-jnt`")
+        if not args.count_jnt else
+        (f"[plan] 判定口径：**JNT 计入**（`--count-jnt` 已打开）"
+         f"——`startup_joint_error`/`stop_joint_error` 按 `--joint-rms-limit-rad` "
+         f"{args.joint_rms_limit_rad:g} rad / `--joint-max-limit-rad` "
+         f"{args.joint_max_limit_rad:g} rad 产生失败原因与判定码 `JNT`，"
+         f"与 2026-10-10 之前的旧口径**逐位一致**；不加 `--count-jnt` 时 `JNT` 只是观测"),
         (f"[plan] **无小车（无负载参考）env**：{sum(1 for case in cases if not case.cart_present)}"
          f"/{len(cases)}（`--no-cart-fraction {args.no_cart_fraction:g}`；小车横向停 "
          f"{NO_CART_LATERAL_OFFSET_M:g} m、绳力与轮阻置 0、跳过 COL/LOW 判定）"),
@@ -2402,7 +2569,7 @@ def main(args):
     output = output.expanduser().resolve()
 
     git = git_info()
-    thresholds = {name: getattr(args, name) for name in DEFAULT_THRESHOLDS}
+    thresholds = caliber_thresholds(args)
     cases = args.cases
     distribution = env_case_summary(cases)
     experiment = {
@@ -3241,7 +3408,8 @@ def main(args):
                 lane_vy_limit=args.lane_vy_limit, lane_wz_limit=args.lane_wz_limit,
                 cart_present=case.cart_present,
                 impact_window_s=args.impact_window, steady_margin_s=args.steady_margin_s,
-                takeup_force_threshold_n=args.takeup_force_threshold)
+                takeup_force_threshold_n=args.takeup_force_threshold,
+                count_jnt=args.count_jnt)
             if not case.cart_present:
                 # `summarize_tow` 的间隙/接触都是「机器人 ↔ 小车」的量；小车停在 2 m 外时它们
                 # 只是"很远"而不是"很好"，所以显式标注并清空，避免报告里出现误导性的读数。
@@ -3371,21 +3539,25 @@ def main(args):
         }
         comparison_lines = format_baseline_comparison(
             comparison_current, reference=comparison_reference, archived=archived_impact,
-            upper_enabled=args.upper_checkpoint is not None)
+            upper_enabled=args.upper_checkpoint is not None,
+            count_jnt=args.count_jnt)
         baseline_comparison = {"current": comparison_current,
                                "reference": comparison_reference,
                                "reference_report": (str(args.compare_report)
                                                     if args.compare_report is not None else None),
                                "archived": ARCHIVED_BASELINE_2026_10_09,
-                               "note": "三项同口径（同网格/同指标/同阈值）；归档基线是旧几何，"
-                                       "只作参照，不可逐格硬比"}
+                               # JNT 移出判定统计量后的离线重判读数（本次变更的依据与验收基线）
+                               "jnt_excluded_recount": JNT_EXCLUDED_RECOUNT_2026_10_10,
+                               "count_jnt": bool(args.count_jnt),
+                               "note": "三项同口径（同网格/同指标/同阈值）；归档基线是旧几何"
+                                       "**且是旧口径**（JNT 计入判定），只作参照，不可逐格硬比"}
         labels = {name: getattr(args, name) for name in
                   ("num_envs", "velocities", "cart_masses", "ground_friction", "wheel_damping",
                    "command_shaping", "ramp_time_s", "record_every", "write_csv", "lane_keeping",
                    "lane_kp_y", "lane_kd_y", "lane_kp_yaw", "lane_kd_yaw",
                    "lane_vy_limit", "lane_wz_limit", "upper_checkpoint", "upper_stochastic",
                    "compare_report", "impact_window", "steady_margin_s",
-                   "takeup_force_threshold")}
+                   "takeup_force_threshold", "count_jnt")}
         report = {
             "question": experiment["question"],
             "scene": experiment["scene"], "thresholds": thresholds,
