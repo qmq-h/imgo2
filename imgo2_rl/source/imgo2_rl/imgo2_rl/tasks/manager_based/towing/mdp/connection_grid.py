@@ -20,19 +20,46 @@ ELASTIC_COLUMNS = 16
 RIGID_COLUMNS = 16
 INEXTENSIBLE_COLUMNS = 8
 ROWS = 20
-LENGTH_MIN_M = 0.6
-LENGTH_MAX_M = 1.2
+# 2026-10-09 用户决定：**绳类与杆类用各自的长度范围**（同一行索引在两类里映射到各自的区间）。
+#   绳（compliant / inextensible）0.5–1.5 m：真实拖绳偏长，且出生比 0.8 让短绳也有实体间隙；
+#   杆（rigid）0.5–1.0 m：拖杆本来就短，而且杆出生用**全长**（无松弛）⇒ 太长会把小车顶出车道
+#   （车道后向边界 = −BACK_M + BOUNDARY_MARGIN_M = −1.65 m；r=0.8 的绳在 L=1.5 时小车在
+#    −1.598 m，已经接近上限，所以绳的上界就卡在 1.5）。
+ROPE_LENGTH_MIN_M = 0.5
+ROPE_LENGTH_MAX_M = 1.5
+RIGID_LENGTH_MIN_M = 0.5
+RIGID_LENGTH_MAX_M = 1.0
 GRID_SIZE = COLUMNS * ROWS
 
 # k [N/m], c [N s/m], unchanged from the flat towing baseline.
 ELASTIC_KC = ((1000.0, 50.0), (4000.0, 100.0), (20000.0, 220.0), (100000.0, 460.0))
-SLACK_RATIO = 0.5
+# 绳的出生挂点距 = SLACK_RATIO × L（<1 ⇒ 仍是松弛、第一拍无约束力）。
+# 2026-10-09 由 0.5 提到 0.8：出生间隙 = √((ratio·L)²−0.17²) − 0.238，0.5 在 L=0.6 时只有 9 mm，
+# 0.8 在同一长度下给出 211 mm；代价是松弛量从 50% 降到 20%（取绳空走变短、加载开始得更早）。
+SLACK_RATIO = 0.8
+
+# 兼容旧名：历史代码/文档把 `LENGTH_MIN_M` 当"绳的长度下界"用。
+LENGTH_MIN_M = ROPE_LENGTH_MIN_M
+LENGTH_MAX_M = ROPE_LENGTH_MAX_M
+
+LENGTH_RANGES = {
+    "compliant": (ROPE_LENGTH_MIN_M, ROPE_LENGTH_MAX_M),
+    "inextensible": (ROPE_LENGTH_MIN_M, ROPE_LENGTH_MAX_M),
+    "rigid": (RIGID_LENGTH_MIN_M, RIGID_LENGTH_MAX_M),
+}
 
 
-def row_length(row: int) -> float:
+def row_length(row: int, model_name: str = "compliant") -> float:
+    """该行在给定连接类型下的长度（等距 20 档，含两端）。
+
+    `model_name` 决定用绳还是杆的区间（见 `LENGTH_RANGES`）；默认绳区间，保持旧调用可用。
+    """
     if not 0 <= row < ROWS:
         raise ValueError(f"row must be in [0, {ROWS}), got {row}")
-    return LENGTH_MIN_M + (LENGTH_MAX_M - LENGTH_MIN_M) * row / (ROWS - 1)
+    if model_name not in LENGTH_RANGES:
+        raise ValueError(f"unknown connection model {model_name!r}")
+    low, high = LENGTH_RANGES[model_name]
+    return low + (high - low) * row / (ROWS - 1)
 
 
 def column_spec(column: int):
@@ -79,7 +106,8 @@ def env_spec(env_index: int) -> dict:
     index = env_index % GRID_SIZE
     column, row = index % COLUMNS, index // COLUMNS
     model_name, stiffness, damping = column_spec(column)
-    length = row_length(row)
+    # 长度按**该列的类型**取（绳/杆各自区间），不是全局一个区间
+    length = row_length(row, model_name)
     return {
         "env_index": env_index, "grid_index": index, "column": column, "row": row,
         "model_name": model_name, "model_index": MODEL_INDEX[model_name],

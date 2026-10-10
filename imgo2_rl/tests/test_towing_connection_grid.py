@@ -37,15 +37,25 @@ rope_model = load("towing_rope_model_grid_test", MDP / "rope_model.py")
 class GridShapeTests(unittest.TestCase):
     def test_dimensions_and_row_lengths(self):
         self.assertEqual((grid.COLUMNS, grid.ROWS, grid.GRID_SIZE), (40, 20, 800))
-        lengths = [grid.row_length(row) for row in range(grid.ROWS)]
-        self.assertAlmostEqual(lengths[0], 0.6, places=12)
-        self.assertAlmostEqual(lengths[-1], 1.2, places=12)
-        # 20 档等距（含两端），步长 = 0.4 / 19
-        step = (grid.LENGTH_MAX_M - grid.LENGTH_MIN_M) / (grid.ROWS - 1)
-        for previous, current in zip(lengths, lengths[1:]):
-            self.assertAlmostEqual(current - previous, step, places=12)
-        # 每行长度互不相同（长度就是行索引）
-        self.assertEqual(len(set(lengths)), grid.ROWS)
+        # 2026-10-09：绳与杆各有长度区间（绳 0.5–1.5、杆 0.5–1.0），20 档等距含两端
+        for model, low, high in (("compliant", grid.ROPE_LENGTH_MIN_M, grid.ROPE_LENGTH_MAX_M),
+                                 ("inextensible", grid.ROPE_LENGTH_MIN_M, grid.ROPE_LENGTH_MAX_M),
+                                 ("rigid", grid.RIGID_LENGTH_MIN_M, grid.RIGID_LENGTH_MAX_M)):
+            lengths = [grid.row_length(row, model) for row in range(grid.ROWS)]
+            self.assertAlmostEqual(lengths[0], low, places=12)
+            self.assertAlmostEqual(lengths[-1], high, places=12)
+            step = (high - low) / (grid.ROWS - 1)
+            for previous, current in zip(lengths, lengths[1:]):
+                self.assertAlmostEqual(current - previous, step, places=12)
+            # 每行长度互不相同（长度就是行索引）
+            self.assertEqual(len(set(lengths)), grid.ROWS)
+        # 默认参数 = 绳区间（兼容旧调用）；长度区间表与常量一致
+        self.assertEqual([grid.row_length(r) for r in range(grid.ROWS)],
+                         [grid.row_length(r, "compliant") for r in range(grid.ROWS)])
+        self.assertEqual(grid.LENGTH_RANGES["rigid"],
+                         (grid.RIGID_LENGTH_MIN_M, grid.RIGID_LENGTH_MAX_M))
+        self.assertEqual(grid.LENGTH_MIN_M, grid.ROPE_LENGTH_MIN_M)
+        self.assertEqual(grid.LENGTH_MAX_M, grid.ROPE_LENGTH_MAX_M)
 
     def test_column_split_is_eight_eight_four(self):
         names = [grid.column_spec(column)[0] for column in range(grid.COLUMNS)]
@@ -101,19 +111,22 @@ class GridShapeTests(unittest.TestCase):
 class GridSpawnTests(unittest.TestCase):
     def test_initial_distance_follows_type(self):
         for row in (0, grid.ROWS // 2, grid.ROWS - 1):
-            length = grid.row_length(row)
+            rigid_length = grid.row_length(row, "rigid")
             self.assertAlmostEqual(
-                grid.initial_attachment_distance("rigid", length), length, places=12)
+                grid.initial_attachment_distance("rigid", rigid_length), rigid_length,
+                places=12)
             for rope in ("compliant", "inextensible"):
+                rope_length = grid.row_length(row, rope)
                 self.assertAlmostEqual(
-                    grid.initial_attachment_distance(rope, length),
-                    grid.SLACK_RATIO * length, places=12)
+                    grid.initial_attachment_distance(rope, rope_length),
+                    grid.SLACK_RATIO * rope_length, places=12)
 
     def test_every_row_can_be_placed_above_the_attachment_height_difference(self):
         """三类、所有行的目标挂点距都必须大于两挂点高差，否则水平摆放无解。"""
         for model_name in ("compliant", "inextensible", "rigid"):
             for row in range(grid.ROWS):
-                target = grid.initial_attachment_distance(model_name, grid.row_length(row))
+                target = grid.initial_attachment_distance(
+                    model_name, grid.row_length(row, model_name))
                 self.assertGreater(target, MAX_ATTACHMENT_HEIGHT_DIFF_M,
                                    f"{model_name} row={row} target={target}")
                 # 勾股解应给出正的水平间距（与 upper_mdp 用的是同一个函数）

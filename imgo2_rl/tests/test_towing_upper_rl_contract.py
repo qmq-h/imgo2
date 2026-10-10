@@ -552,6 +552,24 @@ class UpperLogicTests(unittest.TestCase):
             mdp.index("        self._policy_to_asset = torch.tensor("),
             mdp.index("        self.loco_joint_targets = self._asset.data.default_joint_pos["))
 
+    def test_collision_is_a_small_sustained_penalty_not_a_termination(self):
+        """用户 2026-10-09：**碰撞不再终止**，只保留惩罚且幅度调小（−50 → −5.0）。
+
+        标定逻辑：以前 −50 是一次性的（触发即终止），现在碰撞可以持续整个回合 ⇒ 必须小一个
+        量级（每步 −0.25，顶住 1 s 约 −5，与一个回合的正奖励同量级）。
+        `mdp.cart_collision` 函数本身要保留（奖励与日志在用），只是不再注册成 DoneTerm。
+        """
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        active = [ln.strip() for ln in cfg.splitlines()
+                  if ln.strip().startswith("cart_collision = DoneTerm")]
+        self.assertEqual(active, [], f"碰撞不应再是终止条件：{active}")
+        self.assertIn("collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0)", cfg)
+        self.assertIn("def cart_collision(env):", mdp)
+        # 剩下的终止项：超时 + 倒地 + 出界
+        for name in ("time_out", "robot_fall", "terrain_exit"):
+            self.assertIn(f"{name} = DoneTerm(", cfg)
+
     def test_robot_domain_rand_matches_the_amp_velocity_task(self):
         """机器人侧 DR 必须与 AMP vel 跟踪任务逐项一致（用户 2026-10-09 要求「参考 amp 恢复」）。
 
@@ -692,13 +710,16 @@ class UpperLogicTests(unittest.TestCase):
         # clearance = (robot_x − rear) − (cart_x + front)，而 cart_x 由 target 反解，
         # 化简后 = h + (−rear − robot_attach_x + cart_attach_x − front)
         base_offset = -rear - robot_attach_x + cart_attach_x - front
-        for label, target in (("最短绳行", grid.SLACK_RATIO * grid.LENGTH_MIN_M),
-                              ("最短刚体行", grid.LENGTH_MIN_M)):
+        # 2026-10-09 起绳/杆各有长度区间（绳 0.5–1.5、杆 0.5–1.0），所以最短长度分别取
+        for label, length in (("最短绳行", grid.ROPE_LENGTH_MIN_M),
+                              ("最短刚体行", grid.RIGID_LENGTH_MIN_M)):
+            target = (grid.SLACK_RATIO * length if label.startswith("最短绳")
+                      else length)
             horizontal = math.sqrt(target ** 2 - final_z ** 2)
             gap = horizontal + base_offset
-            threshold = ratio * grid.LENGTH_MIN_M
+            threshold = ratio * length
             self.assertGreater(gap, threshold,
-                               f"{label}（L={grid.LENGTH_MIN_M}）spawn 间隙 {gap:.4f} m "
+                               f"{label}（L={length}）spawn 间隙 {gap:.4f} m "
                                f"未高于阈值 {threshold:.4f} m；用户要求 spawn 时该奖励不生效")
 
     def test_min_clearance_hinge_is_exactly_zero_above_threshold(self):

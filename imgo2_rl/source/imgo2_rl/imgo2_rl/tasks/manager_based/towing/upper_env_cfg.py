@@ -220,7 +220,14 @@ class UpperRewardsCfg:
     # 【撞车】车斗／四轮与机器人任一刚体的过滤接触力 > 1 N 时置 1，同时是终止条件。
     # 权重虽大（−50 ⇒ 每步 −2.5），但只在真撞上时才给，属稀疏信号。
     # 背景：修复 filter 通配前该判据恒假（碰撞完全不生效），详见 docs/towing_observability_2026-09-22.md。
-    collision = RewTerm(func=mdp.cart_collision_cost, weight=-50.0)
+    # 【碰撞】小车（车斗/四轮）与机器人 17 个 link 的接触力 > 1 N 即触发（判据见 `update_safety_state`）。
+    # 2026-10-09 用户要求：**不再作为终止条件**，只保留惩罚，且幅度调小。
+    # 标定逻辑：以前 −50 是"一次性"的（触发即终止、回合重置），每步 −2.5 只作用一步；
+    # 现在碰撞可以持续整个回合 ⇒ 它是**持续惩罚**，必须小一个量级：
+    # 每步 r = −5.0×0.05 = −0.25，约为 `tracking_velocity` 满额（+0.05/步）的 5 倍；
+    # 顶住 1 s（20 步）约 −5，与一个回合的正奖励（≈+6）同量级 ⇒ 有动机脱离但不至于
+    # 让早期学习被"一碰就废"支配。若日志里该项长期压过跟踪项再下调。
+    collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0)
 
     # 【跌倒】base 高度 < 0.18 m 时置 1，同时是终止条件。实测从未触发。
     fall = RewTerm(func=mdp.robot_fall_cost, weight=-50.0,
@@ -347,12 +354,15 @@ class UpperTerminationsCfg:
 
     到达 `stop_distance_m` 只把指令置零、进入 STOP 段，**不终止**（否则两条停车奖励没有相位）。
     因此没有 `goal_reached`／`stop_reached`／`post_stop_timeout` 终止项；"有没有走到 STOP 点"
-    由诊断量 `obs_stop_reached` 回答。剩下的都是**失败**退出：
-    `robot_fall`（离局部坡面高度 < 0.18 m ⇒ 倒地退出）、`cart_collision`、`terrain_exit`。
+    由诊断量 `obs_stop_reached` 回答。剩下的**只剩两条失败退出 + 超时**：
+    `robot_fall`（离局部坡面高度 < 0.18 m ⇒ 倒地退出）、`terrain_exit`，以及 `time_out`。
+    **`cart_collision` 自 2026-10-09 起不再是终止项**（用户要求改成惩罚），碰撞只由奖励项
+    `collision`（−5.0）表达；`mdp.cart_collision` 函数保留（奖励与日志在用）。
+    实测这样机器人**基本不避讳碰撞**（接触占用 0.39%/步、约 2.25 步/回合，而旧终止配置的
+    危险率只有 0.082%/步、威慑力约 18 倍）——见 README TOW-19。
     """
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     robot_fall = DoneTerm(func=mdp.robot_fall, params={"minimum_height": 0.18})
-    cart_collision = DoneTerm(func=mdp.cart_collision)
     terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)
 
 
