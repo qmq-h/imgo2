@@ -131,6 +131,23 @@ class HierarchicalVelocityAction(ActionTerm):
         # 2026-10-08 由 2 维改为 3 维：两挂点高差 Δz=0.17 m，绷紧时 |Fz| 占张力的
         # 0.17/L = 8.5%（绳 L=1.5）… 34%（杆 L=0.5），且 Fz 在 -0.16 m 挂点上产生俯仰力矩，丢掉它对 actor／惩罚都不可见。
         self.towing_force_b = torch.zeros(env.num_envs, 3, device=env.device)
+        # 【拉力变化率惩罚的状态（2026-10-10，TOW-25；物理理由见 `towing_force_rate_penalty`）】
+        # `prev_force_mag` = **上一个控制步**结束时的 ‖F‖（N）。只在 `process_actions`
+        # 每个控制步（20 Hz）更新一次，**不在 200 Hz 物理子步里**——20 Hz 有限差分与
+        # 奖励/动作同节拍，才有确定的「上一拍」。
+        self.prev_force_mag = torch.zeros(env.num_envs, device=env.device)
+        #: 本拍的「上一拍」样本是否真实存在：刚 `reset` 后的第一拍没有上一拍 ⇒ `False`
+        #: ⇒ 该项精确为 0（与仓库其它项「spawn 精确为 0」的纪律一致）。它由
+        #: `_force_rate_tick_seen` 决定，见 `process_actions` 里的注释。
+        self.force_rate_has_prev = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        #: `process_actions` 内部用：本控制步是否已经开始过（决定**下一拍**的
+        #: `force_rate_has_prev`）。`reset()` 清零 ⇒ 每回合的第一拍 rate 定义为 0。
+        self._force_rate_tick_seen = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+        #: **200 Hz 诊断**：本控制步内物理子步的 max |Δ‖F‖| / dt_phys（N/s）。
+        #: 每物理子步取最大、由 `obs_force_rate_max` **读后清零** ⇒ 每控制步一个值。
+        #: 存在的理由：20 Hz 的有限差分看不到 5 ms 级的冲量尖峰（见 `obs_force_rate_max`）。
+        self.force_rate_max = torch.zeros(env.num_envs, device=env.device)
+        self._phys_prev_force_mag = torch.zeros(env.num_envs, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.cart_mass = torch.full((env.num_envs, 1), cfg.initial_cart_mass, device=env.device)
         self.ground_friction = torch.full((env.num_envs, 1), cfg.initial_ground_friction, device=env.device)
@@ -354,6 +371,18 @@ class HierarchicalVelocityAction(ActionTerm):
             self.stop_time_s[newly_stopped] = elapsed_s[newly_stopped]
             self.stop_origin_x[newly_stopped] = self._asset.data.root_pos_w[newly_stopped, 0]
         self._was_stopped |= crossed
+        # ---- 0) 拉力变化率（TOW-25）的「上一拍」缓存：与 `_previous/_processed` 同一处，
+        #         每个控制步一次；**不在** `_apply_towing_physics` 的 200 Hz 子步里更新 ----
+        # 顺序即语义：
+        #   a) `force_rate_has_prev` 取**上一拍结束时**的 `_force_rate_tick_seen`——本拍能否
+        #      算 rate 由它决定（刚 reset 的第一拍为 False ⇒ rate 定义 0，精确不罚）；
+        #   b) `prev_force_mag` 取**当前** `towing_force_b`，即上一个控制步最后一个物理子步
+        #      留下的力（刚 reset 时被清零 ⇒ 0）；
+        #   c) 最后置位 `_force_rate_tick_seen`，让下一拍生效。
+        # 注意 b) 必须在 c) 之前、且 a) 必须在 c) 之前：写反会让第一拍就拿到「上一拍」。
+        self.force_rate_has_prev.copy_(self._force_rate_tick_seen)
+        self.prev_force_mag.copy_(torch.linalg.vector_norm(self.towing_force_b, dim=1))
+        self._force_rate_tick_seen.fill_(True)
         # ---- 1) 先更新本拍动作（偏移要读**本拍**的 u_cmd，不能读上一拍）----
         self._previous.copy_(self._processed)
         self._raw.copy_(actions)
@@ -550,6 +579,13 @@ class HierarchicalVelocityAction(ActionTerm):
             force_cart_b, zero_torque, positions=cart_offset.unsqueeze(1),
             body_ids=[self._cart_body_id])
         self.towing_force_b[:] = force_robot_b[:, 0, :3]
+        # 200 Hz 诊断（TOW-25）：物理子步内的 max |Δ‖F‖| / dt_phys。
+        # 只在这里累加、由 `obs_force_rate_max` 读后清零；**不参与** 20 Hz 的 rate 惩罚。
+        force_mag = torch.linalg.vector_norm(self.towing_force_b, dim=1)
+        self.force_rate_max.copy_(torch.maximum(
+            self.force_rate_max,
+            (force_mag - self._phys_prev_force_mag).abs() / self.cfg.physics_dt))
+        self._phys_prev_force_mag.copy_(force_mag)
 
         effort = torch.zeros_like(self._cart.data.joint_pos)
         effort[:, self._wheel_joint_ids] = (
@@ -572,6 +608,14 @@ class HierarchicalVelocityAction(ActionTerm):
         self.last_loco_action[env_ids] = 0
         self.rope_state[env_ids] = 0
         self.towing_force_b[env_ids] = 0
+        # 拉力变化率（TOW-25）的全套状态：缓存、首拍门、子步诊断都必须复位。
+        # `force_rate_has_prev` / `_force_rate_tick_seen` 置 False ⇒ reset 后第一拍
+        # rate 定义为 0（精确不罚）；`prev_force_mag` 清零与 `towing_force_b` 同源。
+        self.prev_force_mag[env_ids] = 0
+        self.force_rate_has_prev[env_ids] = False
+        self._force_rate_tick_seen[env_ids] = False
+        self.force_rate_max[env_ids] = 0
+        self._phys_prev_force_mag[env_ids] = 0
         self._held_joint_targets[env_ids] = self._asset.data.default_joint_pos[env_ids]
         self.loco_joint_targets[env_ids] = self._asset.data.default_joint_pos[
             env_ids][:, self._policy_to_asset]
@@ -1152,6 +1196,99 @@ def towing_force_y_ratio_sq(env):
     return (force[:, 1] / norm).square()
 
 
+def towing_force_rate_penalty(env, rate_limit_n_per_s=200.0, release_limit_n_per_s=600.0,
+                              slack_eps_n=1.0, clip_max=3.0):
+    """**拉力幅值变化率**惩罚，但放行「卸载到松弛」那一下（TOW-25，用户 2026-10-10 要求）。
+    参数全部是 `UpperRewardsCfg` 的 `RewTerm.params`（不写死在函数里）；默认值见下。
+
+    ------------------------------------------------------------------
+    为什么需要它 / 为什么掩码只放行一个方向（物理理由，本项存在的全部依据）
+    ------------------------------------------------------------------
+    **绳是单边约束**：只能拉、不能推 ⇒ **不存在"用绳缓慢刹车"**。绳行的停车机制不是靠绳
+    把车斗拉住，而是 **绳松弛 + 车斗自由滑行 + 机器人往前走两步避让**；所以绳的
+    **瞬间卸载（松弛）是正常且期望的**——那一下**必须允许突变**，否则奖励在惩罚一个
+    正确的物理行为（而且那个突变不是策略能"缓"下来的：绳一松，力就只能是 0）。
+    **刚性杆是双边约束**：可以主动管理力 ⇒ 杆行的目标是**缓慢卸载、避免冲击力过大**
+    （力尖峰才要罚）。
+
+    因此本项的语义 = **罚"拉力幅值的突变"，但放行"卸载到松弛"那一下**：
+
+    - 绷紧那侧（`rate > 0`，快速加载 = 被猛拽 / 绳被绷直的冲击）**要罚**；
+    - 卸载且**已经掉到 ≈0**（`mag_t < slack_eps_n`：绳松弛 / 杆卸载过零）**放行**
+      ——`down` 那一支被同一个 `slack` 掩码关掉；
+    - **仍是负载态（`mag_t ≥ slack_eps_n`）却断崖式掉力**才罚（`down` 那一支）：
+      那是杆行/负载在"卸载到一半"时被抽掉力，对应真实的冲击。
+
+    ------------------------------------------------------------------
+    公式（`mag = ‖towing_force_b‖`，与 `obs_towing_force` 同量纲 N；`dt = env.step_dt`）
+    ------------------------------------------------------------------
+    ```
+    rate    = (mag_t − mag_{t−1}) / dt                        # N/s，20 Hz 有限差分
+    up      = relu(rate − rate_limit_n_per_s) / rate_limit_n_per_s
+    slack   = mag_t < slack_eps_n                             # 卸载到 ≈0：绳松弛 / 杆卸载
+    down    = relu(−rate − release_limit_n_per_s) / release_limit_n_per_s * (1 − slack)
+    penalty = clamp(up + down, 0, clip_max)                   # 无量纲
+    ```
+
+    参数（默认值 = 用户 2026-10-10 建议值）：
+
+    | 参数 | 默认 | 含义 |
+    |---|---|---|
+    | `rate_limit_n_per_s` | **200.0** | 加载侧的免罚速率上限（N/s）；**调参只需要改它** |
+    | `release_limit_n_per_s` | **600.0** | 卸载侧的免罚速率上限（更宽松：绳松弛本身允许突变，这里只兜住"负载态断崖"） |
+    | `slack_eps_n` | **1.0** | 与既有 `towing_force_norm_active` 的 1 N 阈值**同口径**（源码一致，不是另立数值） |
+    | `clip_max` | **3.0** | 无量纲上限，防止极端峰值把回报尺度拉爆 |
+
+    **标定依据**：`up` 在 `rate = 2 × rate_limit` 时 = 1.0 ⇒ 每步代价
+    `−0.5 × 1.0 × step_dt(0.05) = −0.025`，即**约等于 `tracking_velocity` 满额（+0.05/步）的
+    一半**——"一次明显猛拽"约等于半秒的跟速收益，有动机但不压倒跟踪项。默认行为：
+    **"快速绷紧"必罚**；"卸载到 0"放行；"仍是负载态却断崖掉力"才罚。
+
+    ------------------------------------------------------------------
+    `mag_{t−1}` 从哪来 / 首拍为什么精确为 0
+    ------------------------------------------------------------------
+    `mag_{t−1}` 缓存在动作项 `HierarchicalVelocityAction.prev_force_mag` 上，**只在
+    `process_actions`（每个控制步一次，与 `_previous/_processed` 同一处）更新**，
+    不在 200 Hz 物理子步里更新——奖励与动作同节拍（20 Hz）才有唯一的「上一拍」。
+    `reset()` 清 `prev_force_mag` / `force_rate_has_prev` / `_force_rate_tick_seen`
+    ⇒ **每回合第一拍的 rate 精确为 0**（那一拍没有上一拍样本，`torch.where` 把它置 0），
+    与仓库其它项「spawn 精确为 0」的纪律一致：出生那一拍不会因为"从 0 到出生力"被误罚。
+    这**不是掩护真实猛拽的漏洞**：出生段是 settle（指令 0，`SETTLE_TIME_S = 1.0 s` ⇒
+    20 个控制步），真正的起步绷直发生在第几十拍、早过了首拍门。
+
+    ------------------------------------------------------------------
+    ⚠ 已知限制（写进文档，不当缺陷）：20 Hz 采样看不到 5 ms 级的冲量尖峰
+    ------------------------------------------------------------------
+    控制步长 `step_dt = 0.05 s`，而物理步长只有 5 ms：**一次在一个控制步内完成
+    "猛拽→回弹"的冲量在 20 Hz 的 `mag_t` 上可能与"缓慢加载到同一水平"完全一样**，
+    本项对它没有梯度。这就是诊断项 `obs_force_rate_max`（200 Hz 子步的
+    `max |Δmag| / dt_phys`）存在的理由：它用来量化"被 20 Hz 采样漏掉了多少"。
+
+    ⚠ **符号约定（以源码为准）**：`towing_force_b` 是**作用在机器人挂点上的力**（base 机体系），
+    `mag` 是它的**模长**，因此只对两套绳成立"力恒为拉力"。`RigidLink` 的
+    `rope_tension` 是**有符号的**（`mdp/rope_model.py`：负值 = 推力），杆被压时
+    `force_on_robot` 整个反向 ⇒ `mag` 无法区分"拉"与"推"。但杆**过零**（拉→推 / 推→拉）
+    必然经过 `mag ≈ 0 < slack_eps_n` ⇒ **同一个 `slack` 掩码覆盖过零那一下**，
+    不会把"杆卸载穿过零点"罚成突变；而穿过零点之后在另一侧重新快速加载，按上面的
+    `up` 规则处理（那确实是"快速绷紧"）。**若将来要区分拉/推两向的加载**，需要改的是
+    有符号投影而不是这个掩码——目前不做（用户要求量的是幅值）。
+
+    ⚠ 无小车环境（`cart_present == False`）这里**不再乘掩码**：`_apply_towing_physics`
+    已把 `towing_force_b` 整体乘 `present` ⇒ 那些 env 的 `mag ≡ 0`、rate ≡ 0、本项恒 0，
+    与显式掩码等价（`reset` 也清零）。
+    """
+    term = _term(env)
+    mag = torch.linalg.vector_norm(term.towing_force_b, dim=1)
+    rate = (mag - term.prev_force_mag) / env.step_dt
+    # 刚 reset 的第一拍没有「上一拍」样本 ⇒ rate 精确为 0（不是拿 0 当上一拍去算）。
+    rate = torch.where(term.force_rate_has_prev, rate, torch.zeros_like(rate))
+    up = torch.relu(rate - rate_limit_n_per_s) / rate_limit_n_per_s
+    slack = mag < slack_eps_n
+    down = (torch.relu(-rate - release_limit_n_per_s) / release_limit_n_per_s
+            * (~slack).to(rate.dtype))
+    return torch.clamp(up + down, 0.0, clip_max)
+
+
 def stop_reached_flag(env):
     """本回合**是否走到过 STOP 点**（1.0 = 到过，0.0 = 没到过）。只进 TensorBoard。
 
@@ -1206,6 +1343,30 @@ def towing_force_norm_active(env):
     「有拉力但只有少数步有效」（该值明显>1 而 `towing_force_norm` 被稀释）。"""
     return torch.where(towing_force_norm(env) > 1.0, towing_force_norm(env),
                        torch.zeros_like(towing_force_norm(env)))
+
+
+def obs_force_rate_max(env):
+    """**诊断**：200 Hz 物理子步内的 `max |Δ‖F‖| / dt_phys`（N/s）；每控制步取最大、**读后清零**。
+
+    存在的理由（TOW-25）：`towing_force_rate_penalty` 的 rate 是 **20 Hz** 的有限差分
+    （`step_dt = 0.05 s`），而物理步长只有 **5 ms**——**一次在一个控制步内完成的
+    "猛拽→回弹"冲量在 20 Hz 采样上可能与"缓慢加载到同一水平"完全一样**，惩罚项对它
+    没有梯度。本诊断量用 200 Hz 的 `|Δmag| / dt_phys` 给出同一段过程里**最大的那一跳**，
+    用来量化"被 20 Hz 采样漏掉了多少"：若它在 TensorBoard 上远大于 `up` 的
+    `rate_limit_n_per_s`（200 N/s），说明真实冲量主要发生在子步尺度、只能靠提高
+    控制频率（或改物理侧限速）解决，而不是继续加这个奖励的权重。
+
+    实现：`_apply_towing_physics` 每物理子步 `max` 累积、本函数读取后把缓存清零
+    （`clone()` 再 `zero_()`，返回的是清零前的值）⇒ `Episode_Reward/obs_force_rate_max ÷ 1e-6`
+    是每控制步那个 max 的回合和。`reset()` 同步清零，出生那一拍不会带着上回合的尖峰。
+
+    ⚠ 与所有 `1e-6` 诊断项一样：不参与策略优化，只进 TensorBoard；`weight` 不能填 0
+    （`RewardManager` 对 0 权重直接 `continue`，连日志都不产生）。
+    """
+    term = _term(env)
+    value = term.force_rate_max.clone()
+    term.force_rate_max.zero_()
+    return value
 
 
 

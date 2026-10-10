@@ -207,6 +207,9 @@ class UpperRewardsCfg:
     抖动/可控性类三项（`action_magnitude`／`action_rate` 罚**残差本身**，
     `low_level_pos_error` 罚**实际离底层期望多远**：冻结策略自己输出的关节位置 vs 实测（参考量不含残差；残差 δ 是补偿这项误差的执行器））；
     拉力方向一项（`towing_force_y`：机体系 y 分量占比，要求拉力落在矢状面内）；
+    **拉力变化率一项**（`towing_force_rate`，2026-10-10 新增：罚拉力幅值的突变，但用
+    `slack` 掩码放行"卸载到松弛"那一下——绳单边不能刹车、瞬间卸载是正常行为；杆双边要
+    缓慢卸载。物理理由/公式/标定见 `mdp.towing_force_rate_penalty`）；
     足端一项（`feet_slide`：着地脚的滑动速度，与 PPO rough 同式同权重）；
     停止类**一项**（`stop_towing_force`，只在指令归零之后生效）。
     **2026-10-10 删除 `extra_distance`**（`mdp.post_stop_distance`，用户决定；理由见该函数
@@ -319,6 +322,40 @@ class UpperRewardsCfg:
     #   要真正闭环修正需把 F_y（或比值）加进 actor 帧，见 README 问题表 TOW-14。
     towing_force_y = RewTerm(func=mdp.towing_force_y_ratio_sq, weight=-10.0)
 
+    # ============================ 拉力变化率（TOW-25，2026-10-10 用户要求）============================
+    #
+    # 【拉力幅值的变化率】罚"拉力幅值的突变"，但**放行"卸载到松弛"那一下**（`slack` 掩码）：
+    # - 绳是**单边约束**（只能拉、不能推）⇒ 不存在"用绳缓慢刹车"；绳行的停车靠 **绳松弛 +
+    #   车斗自由滑行 + 机器人往前走两步避让**，**瞬间卸载是正常且期望的** ⇒ 必须允许突变；
+    # - 刚性杆是**双边约束**，可以主动管理力 ⇒ 杆行的目标是**缓慢卸载、避免冲击力过大**。
+    # 因此方向是不对称的：**快速绷紧（被猛拽/绷直冲击）要罚**；**卸载且已掉到 ≈0
+    # （绳松弛 / 杆卸载过零）放行**；**仍是负载态却断崖式掉力**才罚（`down` 那支）。
+    #
+    # 公式（`mag = ‖towing_force_b‖`，N；`dt = env.step_dt = 0.05 s`）：
+    #   rate   = (mag_t − mag_{t−1}) / dt
+    #   up     = relu(rate − rate_limit_n_per_s) / rate_limit_n_per_s
+    #   slack  = mag_t < slack_eps_n
+    #   down   = relu(−rate − release_limit_n_per_s) / release_limit_n_per_s × (1 − slack)
+    #   penalty = clamp(up + down, 0, clip_max)      # 无量纲
+    # `mag_{t−1}` 缓存在动作项（`process_actions` 每控制步一次更新；`reset()` 清零
+    # ⇒ 第一拍 rate 精确为 0）。完整推导/标定/20 Hz vs 200 Hz 采样限制见
+    # `mdp.towing_force_rate_penalty` 的 docstring 与
+    # docs/towing_force_rate_2026-10-10.md。
+    #
+    # **权重 −0.5 的标定依据**：`RewardManager` 每步 = `weight × func × step_dt`；
+    # `up` 在 `rate = 2 × rate_limit_n_per_s` 时 = 1.0 ⇒ 每步 **−0.5 × 1.0 × 0.05 = −0.025**，
+    # ≈ `tracking_velocity` 满额（+1.0 × 0.05 = +0.05）的**一半**——"一次明显猛拽"约等于
+    # 半秒的跟速收益：有动机但不压倒跟踪项。初始值取得保守（容易调），**调参只需要改
+    # `rate_limit_n_per_s`**（改它等于平移"多快算猛拽"的判据；`clip_max` 只兜极端峰值）。
+    # `slack_eps_n = 1.0` 与既有 `obs_towing_force_active` 的 1 N 阈值**同口径**。
+    # ⚠ **未验证**：本机无 Isaac Lab，权重/阈值一个都没实跑标定；且 20 Hz 有限差分看不到
+    #   5 ms 级冲量尖峰（见诊断项 `obs_force_rate_max`）。
+    towing_force_rate = RewTerm(func=mdp.towing_force_rate_penalty, weight=-0.5,
+                                params={"rate_limit_n_per_s": 200.0,
+                                        "release_limit_n_per_s": 600.0,
+                                        "slack_eps_n": 1.0,
+                                        "clip_max": 3.0})
+
     # ============================ 支撑脚不许打滑 ============================
 
     # 【足端打滑】Σ_feet ‖v_foot,xy‖·1(着地)，着地判据 = 接触合力**历史最大值** > 1 N。
@@ -375,6 +412,13 @@ class UpperRewardsCfg:
     obs_cart_present = RewTerm(func=mdp.cart_present_flag, weight=1.0e-6)
     obs_towing_force = RewTerm(func=mdp.towing_force_norm, weight=1.0e-6)
     obs_towing_force_active = RewTerm(func=mdp.towing_force_norm_active, weight=1.0e-6)
+    # 【20 Hz 采样漏掉了多少】200 Hz 物理子步内 `max |Δ‖F‖| / dt_phys`（N/s），
+    # 每控制步取最大、**读后清零**。`towing_force_rate` 的 rate 是 20 Hz 有限差分，
+    # 一次在一个控制步内完成的"猛拽→回弹"在它看来与"缓慢加载到同一水平"一样 ⇒
+    # 本项量化真实冲量发生在子步尺度的程度（若远大于 `rate_limit_n_per_s`=200 N/s，
+    # 说明该提高控制频率/改物理侧限速，而不是继续加 `towing_force_rate` 的权重）。
+    # 读法：`Episode_Reward/obs_force_rate_max ÷ 1e-6`。**未验证**（本机无 Isaac Lab）。
+    obs_force_rate_max = RewTerm(func=mdp.obs_force_rate_max, weight=1.0e-6)
     # 【是否走到 STOP 点】0/1 粘性标志：回合一律由 timeout 收尾，所以"走没走到 STOP 点"
     # 只能靠这个诊断量回答，而不是靠终止原因。读法：`Episode_Reward/obs_stop_reached ÷ 1e-6`
     # = 处于 STOP 相位的步数占比（时间占比），**> 0 就是走到了**；恒 0 表示没走到
