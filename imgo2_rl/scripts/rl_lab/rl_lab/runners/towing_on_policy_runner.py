@@ -17,6 +17,13 @@ from rl_lab.modules import (
 )
 
 
+#: 上层拖曳 checkpoint 契约版本。**v3**（2026-10-10 双头迁移）= policy 帧 58
+#: （`last_action` 12 → 13）/ actor 80 / critic 73 / 动作 13（1 维 vx 偏移 + 12 维关节残差）。
+#: 旧 v2（frame 57 / actor 79 / 动作 12）checkpoint 一律拒绝，必须新建 run。
+#: 与 `scripts/towing/upper_policy_runtime.CHECKPOINT_CONTRACT_VERSION` 同值（离线测试交叉核对）。
+TOWING_CONTRACT_VERSION = 3
+
+
 class TowingOnPolicyRunner:
     """Repository-owned recurrent PPO plus supervised towing dynamics decoder."""
 
@@ -367,8 +374,11 @@ class TowingOnPolicyRunner:
                                     start_iter), flush=True)
 
     def save(self, path, infos=None):
+        # 契约 **v3**（2026-10-10 双头迁移）：frame_dim 58 / 动作 13。旧 v2 的 57/79
+        # checkpoint 会被 `load()` 明确拒绝（必须新建 run，不续训）。
         torch.save({
-            "towing_contract": {"version": 2, "frame_dim": self.decoder.frame_dim,
+            "towing_contract": {"version": TOWING_CONTRACT_VERSION,
+                                "frame_dim": self.decoder.frame_dim,
                                 "explicit_dim": self.decoder.output_dim,
                                 "latent_dim": self.decoder.latent_dim},
             "model_state_dict": self.alg.actor_critic.state_dict(),
@@ -382,10 +392,14 @@ class TowingOnPolicyRunner:
 
     def load(self, path, load_optimizer=True):
         checkpoint = torch.load(path, map_location=self.device)
-        expected = {"version": 2, "frame_dim": self.decoder.frame_dim,
+        expected = {"version": TOWING_CONTRACT_VERSION, "frame_dim": self.decoder.frame_dim,
                     "explicit_dim": self.decoder.output_dim, "latent_dim": self.decoder.latent_dim}
         if checkpoint.get("towing_contract") != expected:
-            raise ValueError("Checkpoint predates/mismatches the towing VAE contract; start a new run.")
+            raise ValueError(
+                f"Checkpoint predates/mismatches the towing contract "
+                f"(got {checkpoint.get('towing_contract')!r}, expected {expected!r}); "
+                f"旧 v2 的 57 维帧 / 79 维 actor / 12 维动作 checkpoint 已随双头迁移失效，"
+                f"start a new run.")
         self.alg.actor_critic.load_state_dict(checkpoint["model_state_dict"])
         self.decoder.load_state_dict(checkpoint["decoder_state_dict"])
         self.critic_normalizer.load_state_dict(checkpoint["critic_normalizer_state_dict"])

@@ -1,13 +1,20 @@
 """Class-based configuration for the hierarchical towing RL environment.
 
-架构（2026-10-08 起）：送给冻结 AMP 底层策略的速度指令由脚本调度给出，上层网络输出
-**12 维关节位置残差**叠加在冻结策略的关节目标上。
+架构（2026-10-10 起，**双头**）：送给冻结 AMP 底层策略的速度指令 = 脚本调度 + 上层
+**1 维 vx 偏移**（``loco_command``）；上层网络另有 **12 维关节位置残差**叠加在冻结策略的
+关节目标上。两个命令量**解耦**（防作弊红线）：
+
+    task_command —— 脚本调度、到点归零 —— **只给奖励**（`tracking_velocity` 等）；
+    loco_command —— task_command + 有界偏移 —— **给冻结策略 + 进 actor 帧**。
 
 回合结构（2026-10-09 恢复三段制）：settle（指令 0，静止稳定）→ tow（指令 = tow_speed）
 → **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
 让 `stop_towing_force`／`extra_distance` 有真实相位可用。任务已注册为
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing_training_prep_2026-09-22.md``。
+
+契约 v3（2026-10-10）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、actor **80**、
+critic **73**、decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
 """
 
 from dataclasses import MISSING
@@ -125,10 +132,13 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class UpperActionsCfg:
-    """12 维归一化关节残差（2026-10-08 起）。
+    """13 维动作（2026-10-10 起）= 1 维 vx 偏移 + 12 维归一化关节残差。
 
     残差尺度取冻结策略契约的 `action_scale`，所以这里不再有 `acceleration_*`／
     `reference_*` 两组限制：送给冻结策略的速度指令由脚本调度产生，不由网络积分。
+    偏移头（cmd vel 头）的三个尺度与两个「停机之后」开关都在
+    `mdp.HierarchicalVelocityActionCfg` 上（默认值 = 用户 2026-10-10 建议值，
+    `stop_command_ramp_s` / `post_stop_allowance_m` 默认 0.0 = 今天的行为）。
     """
 
     high_level_velocity = mdp.HierarchicalVelocityActionCfg(
@@ -188,8 +198,9 @@ class UpperRewardsCfg:
     **记录口径**：TensorBoard 的 `Episode_Reward/<项>` = 该回合的加权和 ÷ `max_episode_length_s`，
     量级比"每步值"小约 5~10 倍，不要直接与每步值比较。
 
-    **设计取向（截至 2026-10-09）**：回合是三段制（settle → tow → STOP/滑行），所以奖励按
-    相位分四组——跟踪类只有 `tracking_velocity`（实测速度 vs 命令，正向驱动，全程生效）；
+    **设计取向（截至 2026-10-10）**：回合是三段制（settle → tow → STOP/滑行），所以奖励按
+    相位分四组——跟踪类只有 `tracking_velocity`（实测速度 vs **任务指令 `task_command`**
+    ——脚本调度、不含策略偏移，防止策略自己给自己发目标；正向驱动，全程生效）；
     抖动/可控性类三项（`action_magnitude`／`action_rate` 罚**残差本身**，
     `low_level_pos_error` 罚**实际离底层期望多远**：冻结策略自己输出的关节位置 vs 实测（参考量不含残差；残差 δ 是补偿这项误差的执行器））；
     拉力方向一项（`towing_force_y`：机体系 y 分量占比，要求拉力落在矢状面内）；
@@ -205,10 +216,13 @@ class UpperRewardsCfg:
 
     # 【实际速度 vs 命令期望】唯一的正奖励，是策略的主要驱动。
     # exp(−(Δlin/0.5)² − (Δyaw/1.0)²)：完全跟上给 1.0，误差到 0.5 m/s 掉到 0.37、到 1.0 掉到 0.018。
-    # 全程生效（settle 段 `loco_command` 为 0，即"保持零速"）。
+    # 全程生效（settle 段指令为 0，即"保持零速"）。
     # 2026-10-08 修正：线性项原先误用 `reference_command − user_command`（上层自己的积分指令
     # vs 任务指令），与函数名和奖励文档都不符，且与 reference_tracking 重复；现在比实测
     # 机体系线速度，口径与测量台的 `steady_tracking_ratio` 一致。
+    # ⚠ 2026-10-10 防作弊红线：参考量是 **`task_command`**（脚本调度），**不是**
+    #   `loco_command`（含策略自己的 1 维 vx 偏移）。若拿后者当参考，策略只要把偏移开大
+    #   就能自己给自己发目标。有 AST 守卫（`test_reward_terms_never_read_loco_command`）。
     # ⚠ 已知缺陷：误差 >1 m/s 后梯度趋零（exp 的尾部），而牵引段起步瞬间正落在该区，
     #   属"探索与奖励脱钩"的来源之一，尚未修改。
     tracking_velocity = RewTerm(func=mdp.velocity_tracking_exp, weight=1.0,
@@ -269,9 +283,15 @@ class UpperRewardsCfg:
     stop_towing_force = RewTerm(func=mdp.post_stop_towing_force, weight=-1.0,
                                 params={"force_scale": 10.0})
 
-    # 【停车后额外位移】`relu(x − x_stop)`：越过停车点的距离，罚"停不住继续滑"。
+    # 【停车后额外位移】`relu(x − x_stop − allowance)`：越过停车点的距离，罚"停不住继续滑"。
     # 基线 `stop_origin_x` 是指令归零那一拍的 x，所以不含牵引段的前进。
-    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1)
+    # `post_stop_allowance_m`（2026-10-10 新增，**默认 0.0 = 今天的行为**，公式退化为
+    # `relu(x − x_stop)`）：要让策略学会「STOP 后按车重/坡度再走两步」就把 `extra_distance`
+    # 的这个参数与 `actions.high_level_velocity.stop_command_ramp_s` 一起改成 0.5–1.0 m /
+    # 1.0–2.0 s，否则本项（−0.1）与新增的 1 维 vx 偏移头对打 —— 偏移头一让机器人前进，
+    # 本项立刻扣分，策略学到的最优解是"永远不碰偏移头"。
+    extra_distance = RewTerm(func=mdp.post_stop_distance, weight=-0.1,
+                             params={"post_stop_allowance_m": 0.0})
 
     # ============================ 拉力方向（机体系 y 分量为 0）============================
 
@@ -497,6 +517,16 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
                 f"STOP 触发点 {action.stop_distance_m} m 必须越过坡面出口 "
                 f"{FLAT_OUT_START_M} m，否则停车段落在坡上/坡中")
         minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
+        # 速度头把 `task_vx + 有界偏移` 裁进冻结 AMP 策略的**训练包络**（−1.0, 1.5，
+        # 出处 `amp_env_cfg` 的 `commands.base_velocity.ranges.lin_vel_x`）。该包络必须
+        # **覆盖整个脚本速度范围**：否则零偏移时脚本自己就被裁掉，退化性（偏移=0 时与旧口径
+        # 逐位一致）直接失效，而且奖励参考量 `task_command` 与实际送策略的指令会分叉。
+        amp_vx_min, amp_vx_max = action.amp_vx_range
+        speed_min, speed_max = self.events.reset_work_condition.params["speed_range"]
+        if not (amp_vx_min <= speed_min and speed_max <= amp_vx_max):
+            raise ValueError(
+                f"amp_vx_range {(amp_vx_min, amp_vx_max)} 必须覆盖脚本速度范围 "
+                f"{(speed_min, speed_max)}，否则零偏移时脚本指令会被裁掉")
         # 正常回合一律由 `time_out` 收尾（用户 2026-10-09 确认）：timeout = settle +
         # （到 STOP 点的**坡面弧长**上界）/ 最小速度 + 停车窗口。弧长上界取最陡档：
         # 10 m 水平在 10° 剖面上是 `profile_arc_length(10, 10)=10.093 m`

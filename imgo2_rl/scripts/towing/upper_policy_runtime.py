@@ -2,38 +2,48 @@
 
 用途：给必要性测试台 `play_towing_test.py` 的 `--upper-checkpoint` 开关提供「策略 vs 基线」
 对照所需的那一半——从训练侧 checkpoint 里恢复 actor + dynamics decoder，按**训练侧同一
-帧定义**逐拍组装 57 维 policy 帧，输出 12 维归一化关节位置残差。
+帧定义**逐拍组装 **58 维** policy 帧，输出 **13 维**归一化动作（前 1 维 vx 偏移 + 后 12 维
+关节位置残差）。
 
 契约（全部由源码核对，逐条在下面注明出处）：
 
-1. **帧（57 维）** = `cat(loco_command(3), processed_actions(12), base_ang_vel_b(3)·0.25,
-   projected_gravity(3), last_loco_action(12), joint_pos_rel(12), joint_vel(12)·0.05)`。
-   出处：`upper_mdp.policy_frame`；顺序/维数与 `upper_logic.UpperObservationSpec.terms` 一致
-   （本模块 `FRAME_TERMS` 只是同一张布局表，离线测试逐项交叉核对）。
-2. **decoder**：`TowingDynamicsDecoder(frame_dim=57, feature_dim=128, hidden_dim=128,
+1. **帧（58 维，契约 v3）** = `cat(loco_command(3), processed_actions(13),
+   base_ang_vel_b(3)·0.25, projected_gravity(3), last_loco_action(12), joint_pos_rel(12),
+   joint_vel(12)·0.05)`。2026-10-10 双头迁移把 `last_action` 由 12 维改成 13 维
+   （1 维 vx 偏移 + 12 维关节残差），帧 57 → 58。出处：`upper_mdp.policy_frame`；
+   顺序/维数与 `upper_logic.UpperObservationSpec.terms` 一致（本模块 `FRAME_TERMS`
+   只是同一张布局表，离线测试逐项交叉核对）。
+2. **decoder**：`TowingDynamicsDecoder(frame_dim=58, feature_dim=128, hidden_dim=128,
    num_layers=1, latent_dim=16, force_scale=10.0)`，用 `forward_with_latent(frame, hidden)`
    且**必须 `.eval()`**（`sample=None` 会取 `self.training=False` ⇒ latent 取均值，与训练
    rollout 一致）⇒ 返回 `(estimate(6), latent(16), hidden)`。
 3. **actor**：`ActorCriticRecurrent`（hidden `[256,128,64]`、GRU 256×1、elu），输入 =
-   `cat(frame, estimate, latent)` = **79** 维（`towing_decoder.augment_actor_observation`）。
+   `cat(frame, estimate, latent)` = **80** 维（`towing_decoder.augment_actor_observation`）。
    确定性推理用 `act_inference()`（取均值，与 `rl_lab/towing/play.py` 同口径）；GRU 隐状态
    由模块内部的 `Memory` 持有，`reset()` 清空。
-4. **残差**：`delta = clamp(action, ±1) · action_scale`，`action_scale` 取冻结策略契约
-   （`policy_cfg.action_scale`：hip 0.125、thigh/shank 0.25）。出处：`upper_mdp.process_actions`
-   （`_processed = actions.clamp(-1,1)`、`delta_joint_pos = _processed · residual_scale`）。
-   `processed` 就是下一拍帧里的 `last_action`（`upper_mdp.upper_last_action`）⇒ 本类显式持有
-   `_last_action`（首拍为零，与训练一致：`reset()` 把 `_processed` 清零）。
+4. **动作（13 维）**：`processed = clamp(action, ±1)`，切分为
+   `u_cmd = processed[:, :1]`（vx 偏移头）与 `u_joint = processed[:, 1:]`（关节残差头）。
+   本运行时把 `delta = u_joint · action_scale`（**12 维**）返回给调用方，并在内部把
+   `processed`（13 维）存进下一拍帧的 `last_action` 位。出处：`upper_mdp.process_actions`
+   （`_processed = actions.clamp(-1,1)`、`delta_joint_pos = _processed[:, 1:] · residual_scale`）。
+   `action_scale` 取冻结策略契约（`policy_cfg.action_scale`：hip 0.125、thigh/shank 0.25）。
+   **偏移头的接线在调用方**：`command_offset_vx()` 给出有界偏移，
+   `compose_loco_vx()` 给出 `clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`（训练包络
+   = −1.0…1.5，出处 `amp_env_cfg` 的 `lin_vel_x`）。**链路顺序**：偏移加在底层策略推理
+   **之前**（它进底层观测），关节残差加在底层输出**之后** ⇒ 上层同时影响底层输入与输出，
+   两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 的 13 维接线由用户
+   随后补，本轮不动那个文件。
 5. **checkpoint**：`torch.load(path, map_location="cpu", weights_only=False)` ⇒ 键
    `model_state_dict`、`decoder_state_dict`、`towing_contract`
-   （`{'version': 2, 'frame_dim': 57, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
-   加载前**硬校验** `towing_contract` 四个字段：旧 56/63 维 checkpoint 必须被拒绝，而不是
-   等到 `load_state_dict(strict=True)` 才报一句难读的 shape mismatch。
+   （`{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
+   加载前**硬校验** `towing_contract` 四个字段：旧 v2（57/79）与更早的 56/63 维 checkpoint
+   必须被拒绝，而不是等到 `load_state_dict(strict=True)` 才报一句难读的 shape mismatch。
 6. 网络超参从注册的 agent cfg 建（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`，
    它镜像训练超参）；`UpperNetworkSpec.from_agent_cfg()` 接受任意带
    `.policy` / `.decoder` 属性的对象（`configclass`、`SimpleNamespace`、dict 都行），
    所以离线测试不需要 import isaaclab。
 
-**注意**：本模块只负责「帧 → 残差」。上层的**控制节拍**由调用方负责：训练侧
+**注意**：本模块只负责「帧 → 动作」。上层的**控制节拍**由调用方负责：训练侧
 `upper_control_dt = 0.05 s`（20 Hz），两次上层更新之间残差保持不变
 （`HierarchicalVelocityAction.apply_actions` 每次冻结策略刷新都重算 `joint_targets + delta`）。
 """
@@ -53,8 +63,8 @@ import torch
 #: policy 帧的布局表：`(项名, 维数, 缩放)`。名字与顺序必须与 `upper_mdp.policy_frame`
 #: 的拼接顺序、`upper_logic.UpperObservationSpec.terms` 逐项一致（离线测试双向核对）。
 FRAME_TERMS: tuple[tuple[str, int, float], ...] = (
-    ("loco_command", 3, 1.0),       # 送冻结策略的脚本速度指令（含 PD 的 vy/wz）
-    ("last_action", 12, 1.0),       # 上一拍上层动作 **clamp 到 ±1**（未缩放）
+    ("loco_command", 3, 1.0),       # 送冻结策略的速度指令 = 任务指令 + 有界 vx 偏移（含 PD 的 vy/wz）
+    ("last_action", 13, 1.0),       # 上一拍上层动作 **clamp 到 ±1**（1 维 vx 偏移 + 12 维关节残差）
     ("base_ang_vel", 3, 0.25),      # 机体系角速度
     ("projected_gravity", 3, 1.0),  # 机体系重力方向（单位向量）
     ("last_loco_action", 12, 1.0),  # 冻结策略**自己**的动作
@@ -66,21 +76,38 @@ FRAME_DIM = sum(dim for _, dim, _ in FRAME_TERMS)
 #: decoder 显式输出（`towing_decoder.OUTPUT_DIM`：速度 2 + 质量 1 + 力 3）与 latent。
 EXPLICIT_DIM = 6
 LATENT_DIM = 16
-ACTION_DIM = 12
+#: 动作 13 = 1 维 vx 偏移（`CMD_ACTION_DIM`）+ 12 维关节残差（`JOINT_ACTION_DIM`）。
+CMD_ACTION_DIM = 1
+JOINT_ACTION_DIM = 12
+ACTION_DIM = CMD_ACTION_DIM + JOINT_ACTION_DIM
 #: 训练侧上层动作裁剪（`upper_mdp.process_actions` 里写死 `actions.clamp(-1.0, 1.0)`）。
 ACTION_CLIP = 1.0
-CHECKPOINT_CONTRACT_VERSION = 2
+#: 偏移头的尺度与限幅（m/s）。与 `upper_mdp.HierarchicalVelocityActionCfg` 的默认值**逐项
+#: 一致**，由离线测试 AST 交叉核对；`offset_min/max` 限的是**偏移量本身**（加性 + 有界），
+#: 不是 `task + offset` 的绝对值（脚本速度 0.4–1.5 m/s，裁和会把牵引指令砍到 0.6）。
+COMMAND_OFFSET_SCALE = 0.5
+COMMAND_OFFSET_MIN = -0.2
+COMMAND_OFFSET_MAX = 0.6
+#: **合成后 vx 的训练包络**（m/s）：冻结 AMP 策略的指令范围 `lin_vel_x = (−1.0, 1.5)`，
+#: 出处 `tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py` 的
+#: `commands.base_velocity.ranges.lin_vel_x`。超出即 OOD、步态退化，因此
+#: `loco_vx = clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`。它覆盖脚本速度 0.4–1.5 ⇒
+#: 偏移为 0 时是恒等裁剪（退化性）。与 `HierarchicalVelocityActionCfg.amp_vx_range` 同值。
+AMP_VX_MIN = -1.0
+AMP_VX_MAX = 1.5
+#: checkpoint 契约版本：v3（frame 58 / explicit 6 / latent 16）。v2（57/79）必须被拒。
+CHECKPOINT_CONTRACT_VERSION = 3
 
 #: critic 观测维数（actor 里附带 critic 网络，`load_state_dict(strict=True)` 需要它）。
 #: 出处：`upper_env_cfg.UpperTowingEnvCfg.observations.critic` =
-#: `policy_frame(57) + robot_velocity(2) + cart_velocity(2) + rope_state(4) +
-#: towing_force(3) + cart_privileged_parameters(4)` = 72。
+#: `policy_frame(58) + robot_velocity(2) + cart_velocity(2) + rope_state(4) +
+#: towing_force(3) + cart_privileged_parameters(4)` = **73**（v2 时为 72）。
 #: 离线测试解析 `upper_env_cfg.py` 的 `CriticCfg` 项逐项核对这个常量。
-DEFAULT_CRITIC_OBS_DIM = 72
+DEFAULT_CRITIC_OBS_DIM = 73
 
 
 class TowingCheckpointContractError(ValueError):
-    """checkpoint 的 `towing_contract` 与运行时契约不符（含旧 56/63 维 checkpoint）。"""
+    """checkpoint 的 `towing_contract` 与运行时契约不符（含旧 v2 57/79 与 56/63 维 checkpoint）。"""
 
 
 @dataclass(frozen=True)
@@ -259,7 +286,7 @@ def expected_towing_contract(spec: UpperNetworkSpec) -> dict:
 
 
 def validate_towing_contract(contract: Any, spec: UpperNetworkSpec) -> dict:
-    """硬校验 checkpoint 的 `towing_contract`（旧 56/63 维 checkpoint 在这里就被拒）。"""
+    """硬校验 checkpoint 的 `towing_contract`（旧 v2 57/79 与 56/63 维 checkpoint 在这里就被拒）。"""
     expected = expected_towing_contract(spec)
     if not isinstance(contract, Mapping):
         raise TowingCheckpointContractError(
@@ -269,8 +296,9 @@ def validate_towing_contract(contract: Any, spec: UpperNetworkSpec) -> dict:
     if found != expected:
         raise TowingCheckpointContractError(
             f"checkpoint 的 towing_contract {found} 与当前契约 {expected} 不一致："
-            f"旧 run 的 56/63 维（frame 51/56、actor 56/63）checkpoint 与残差方案不兼容，"
-            f"必须用新契约重训；不要用改元数据的方式绕过")
+            f"**旧 v2 的 57 维帧 / 79 维 actor / 12 维动作 checkpoint 已随双头迁移（动作 12 → 13、"
+            f"帧 57 → 58、actor 79 → 80）全部失效**，更早的 51/56/63 维 checkpoint 同样不兼容；"
+            f"必须用 v3 契约重训（不要用改元数据的方式绕过）")
     return expected
 
 
@@ -305,16 +333,19 @@ def _validate_action_scale(action_scale: Sequence[float], *, num_actions: int) -
 
 
 class UpperPolicyRuntime:
-    """从 checkpoint 恢复的「帧 → 12 维关节位置残差」运行时。
+    """从 checkpoint 恢复的「58 维帧 → 13 维动作（12 维关节残差 + 1 维 vx 偏移）」运行时。
 
     典型用法（每 `upper_control_dt` 调一次；两次之间保持 `delta` 不变）::
 
         runtime = UpperPolicyRuntime(ckpt, num_envs=N, action_scale=policy_cfg.action_scale,
                                      device="cuda:0", deterministic=True)
         delta, processed = runtime.act(
-            loco_command=cmd, base_ang_vel=ang_vel_b, projected_gravity=gravity_b,
+            loco_command=loco_command, base_ang_vel=ang_vel_b, projected_gravity=gravity_b,
             last_loco_action=loco_action, joint_pos_rel=joint_pos_rel, joint_vel=joint_vel)
         held = frozen_joint_targets + delta      # 下发 held，并用它当 JNT 指标参考
+        # 偏移头的接线（调用方，与训练侧 process_actions 同口径）：
+        #   loco_command[:, 0] = task_vx + runtime.command_offset_vx(processed)[:, 0]
+        #   （仅 elapsed_s >= tow_start_s 后叠加）
     """
 
     def __init__(self, checkpoint, *, num_envs: int, action_scale: Sequence[float],
@@ -363,8 +394,8 @@ class UpperPolicyRuntime:
         self.iteration = int(state.get("iter") or 0)
 
         self.action_scale = _validate_action_scale(
-            action_scale, num_actions=spec.num_actions).to(self.device)
-        # 上一拍上层动作（clamp 到 ±1，**未缩放**）：首拍为零，与训练 `reset()` 一致。
+            action_scale, num_actions=spec.num_actions - CMD_ACTION_DIM).to(self.device)
+        # 上一拍上层动作（clamp 到 ±1，**未缩放**，13 维）：首拍为零，与训练 `reset()` 一致。
         self._last_action = torch.zeros(self.num_envs, spec.num_actions,
                                         dtype=torch.float32, device=self.device)
         self.decoder_hidden = None
@@ -412,7 +443,7 @@ class UpperPolicyRuntime:
     # ------------------------------------------------------------------ 帧组装
     def build_frame(self, *, loco_command, base_ang_vel, projected_gravity,
                     last_loco_action, joint_pos_rel, joint_vel) -> torch.Tensor:
-        """按 `FRAME_TERMS` 组装 57 维 policy 帧（`last_action` 取本类持有的上一拍动作）。"""
+        """按 `FRAME_TERMS` 组装 58 维 policy 帧（`last_action` 取本类持有的上一拍 13 维动作）。"""
         provided = {
             "loco_command": loco_command,
             "base_ang_vel": base_ang_vel,
@@ -436,9 +467,42 @@ class UpperPolicyRuntime:
         return frame
 
     # ------------------------------------------------------------------ 推理
+    def command_offset_vx(self, processed) -> torch.Tensor:
+        """13 维（或仅取前 `CMD_ACTION_DIM` 维）动作 → **有界 vx 偏移**（m/s）。
+
+        与 `upper_mdp.process_actions` 同口径，供调用方把偏移叠到脚本指令上：
+        ``offset = clamp(clamp(processed[:, :1], ±1) × COMMAND_OFFSET_SCALE,
+        OFFSET_MIN, OFFSET_MAX)``。⚠ 限的是**偏移量本身**（头权限）；"和"的训练包络由
+        `compose_loco_vx` 负责。门控（出生段 `elapsed_s < tow_start_s` 不叠加）由调用方负责
+        —— 训练侧在 `HierarchicalVelocityAction.process_actions` 里。
+        """
+        tensor = torch.as_tensor(processed, dtype=torch.float32, device=self.device)
+        tensor = tensor.reshape(tensor.shape[0], -1)[:, :CMD_ACTION_DIM]
+        return (tensor * COMMAND_OFFSET_SCALE).clamp(COMMAND_OFFSET_MIN, COMMAND_OFFSET_MAX)
+
+    def compose_loco_vx(self, task_vx, processed) -> torch.Tensor:
+        """``loco_vx = clamp(task_vx + 有界偏移, AMP_VX_MIN, AMP_VX_MAX)``（m/s）。
+
+        **顺序与训练侧一致**：先限偏移头，再把**和**裁进冻结 AMP 策略的训练包络
+        `lin_vel_x = (−1.0, 1.5)`。包络覆盖脚本速度 0.4–1.5 ⇒ 偏移为 0 时逐位恒等。
+        部署侧注意：偏移必须加在**底层策略推理之前**（它进的是底层观测），
+        与关节残差（加在底层输出之后）方向相反 —— 见 `docs/towing_upper_two_head_impl_2026-10-10.md`。
+        """
+        tensor = torch.as_tensor(task_vx, dtype=torch.float32, device=self.device)
+        tensor = tensor.reshape(tensor.shape[0], -1)[:, :CMD_ACTION_DIM]
+        composed = tensor + self.command_offset_vx(processed)
+        return composed.clamp(AMP_VX_MIN, AMP_VX_MAX)
+
     def act(self, *, loco_command, base_ang_vel, projected_gravity,
             last_loco_action, joint_pos_rel, joint_vel):
-        """一拍：返回 `(delta, processed)`；`processed` 进入下一拍的 `last_action` 位。"""
+        """一拍：返回 `(delta, processed)`。
+
+        - `delta`：**12 维**关节位置残差（`u_joint · action_scale`），直接加到冻结策略的
+          关节目标上（`held = frozen_joint_targets + delta`）；
+        - `processed`：**13 维** clamp 后的动作（前 1 维是 vx 偏移头），进入下一拍帧的
+          `last_action` 位；偏移头的最终接线由调用方用 `command_offset_vx` 完成
+          （`play_towing_test.py` 的 13 维接线由用户随后补，本轮不改那个文件）。
+        """
         frame = self.build_frame(
             loco_command=loco_command, base_ang_vel=base_ang_vel,
             projected_gravity=projected_gravity, last_loco_action=last_loco_action,
@@ -455,6 +519,7 @@ class UpperPolicyRuntime:
             else:
                 action = self.actor.act(observation)
         processed = torch.clamp(action, -ACTION_CLIP, ACTION_CLIP)
-        delta = processed * self.action_scale
+        # 切分 13 = 1（vx 偏移头，接线在调用方）+ 12（关节残差，本运行时的返回量）。
+        delta = processed[:, CMD_ACTION_DIM:] * self.action_scale
         self._last_action.copy_(processed.detach())
         return delta, processed

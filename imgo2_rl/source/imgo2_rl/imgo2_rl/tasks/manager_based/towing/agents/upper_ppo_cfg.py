@@ -3,7 +3,8 @@
 任务已注册为 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）。
 
 `decoder.frame_dim` 必须等于环境的 policy 帧维数（``upper_logic.UpperObservationSpec``
-当前为 57）：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，写错会直接报错。
+当前为 **58**，契约 v3）：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，
+写错会直接报错。
 """
 
 from isaaclab.utils import configclass
@@ -21,9 +22,11 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
     max_iterations = 3000
     save_interval = 100
     experiment_name = "towing_upper"
-    # 上层动作现在是 12 维**关节位置残差**，本值就是残差的归一化上限：
-    #   deltapos = clip_actions × action_scale = 1.0 × (0.125 hip / 0.25 thigh,shank)
-    #   ⇒ 髋 ±0.125 rad、大腿/小腿 ±0.25 rad。
+    # 上层动作现在是 **13 维**（2026-10-10 双头）：1 维 vx 偏移 + 12 维关节位置残差。
+    # 本值只对**动作整体**做归一化裁剪，两头共用同一上限：
+    #   u_cmd   = clip(u_0, ±1) ⇒ offset = u_0 × 0.5 m/s，再限在 [−0.2, +0.6]；
+    #   u_joint = clip(u_1:, ±1) ⇒ deltapos = u_joint × action_scale
+    #            （髋 ±0.125 rad、大腿/小腿 ±0.25 rad）。
     # 冻结策略自身的动作裁剪是 ±3.0（`LowLevelPolicyCfg.clip_actions_upper`），即残差
     # 最多只用到底层权限的 1/3。要放大上层权限就调大本值（同时复核 action_magnitude 权重）。
     clip_actions = 1.0
@@ -36,8 +39,11 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
         rnn_hidden_size=256,
         rnn_num_layers=1,
     )
+    # critic 特权组 = policy_frame(58) + robot_velocity(2) + cart_velocity(2) + rope_state(4)
+    #              + towing_force(3) + cart_privileged_parameters(4) = **73**
+    # （`upper_policy_runtime.DEFAULT_CRITIC_OBS_DIM` 与它有离线交叉校验）。
     decoder = TowingDecoderCfg(
-        frame_dim=57,
+        frame_dim=58,
         feature_dim=128,
         hidden_dim=128,
         num_layers=1,

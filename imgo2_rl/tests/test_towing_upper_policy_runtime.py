@@ -1,19 +1,22 @@
-"""`upper_policy_runtime.py` 的离线测试：帧契约、残差、checkpoint 契约校验。
+"""`upper_policy_runtime.py` 的离线测试：帧契约、动作切分、checkpoint 契约校验。
 
 本机（以及任何没有 GPU 的机器）只能验证**纯 torch** 的那一半：
 
-- 57 维 policy 帧的布局/缩放与训练侧 `upper_mdp.policy_frame` 及
-  `upper_logic.UpperObservationSpec.terms` 逐项一致；actor 输入 79、critic 72；
-- `delta = clamp(action, ±1) ⊙ action_scale`、`|delta| ≤ action_scale`、
-  `_last_action` 的时序（首拍为零，次拍等于上一拍 clamp 后的动作）；
-- checkpoint 的 `towing_contract` 硬校验（旧 56/63 维 checkpoint 必须被拒绝）。
+- **58 维**（契约 v3）policy 帧的布局/缩放与训练侧 `upper_mdp.policy_frame` 及
+  `upper_logic.UpperObservationSpec.terms` 逐项一致；actor 输入 80、critic 73；
+- **13 维**动作 = 1 维 vx 偏移 + 12 维关节残差：`delta = u_joint ⊙ action_scale`、
+  `|delta| ≤ action_scale`、`_last_action` 的时序（首拍为零，次拍等于上一拍 clamp 后的
+  13 维动作）、偏移头有界且与 cfg 默认值逐项一致；
+- checkpoint 的 `towing_contract` 硬校验（**旧 v2 的 57/79 与更早的 51/56/63 维
+  checkpoint 必须被拒绝**）。
 
-**不覆盖**：把残差接到 PhysX 上的仿真行为（上层节拍、held 下发、指标口径）——
+**不覆盖**：把残差接到 PhysX 上的仿真行为（上层节拍、held 下发、偏移头接线、指标口径）——
 只能在训练机实跑，见 README TOW-20，不要把本文件的通过写成「开关已验证」。
 """
 import ast
 import importlib.util
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -79,7 +82,7 @@ def registered_agent_cfg_stub():
             activation="elu", init_noise_std=0.5, fixed_std=False,
             rnn_type="gru", rnn_hidden_size=256, rnn_num_layers=1),
         decoder=SimpleNamespace(
-            frame_dim=57, feature_dim=128, hidden_dim=128, num_layers=1, latent_dim=16,
+            frame_dim=58, feature_dim=128, hidden_dim=128, num_layers=1, latent_dim=16,
             force_scale=10.0, kld_weight=0.005, learning_rate=1.0e-3, max_grad_norm=1.0,
             velocity_coef=5.0, force_coef=10.0, mass_coef=1.0),
     )
@@ -176,13 +179,21 @@ def _call_kwargs(source_tree, class_name, call_name):
 
 
 def _class_scalar_assignments(source_tree, class_name):
+    """类体里的标量字面量赋值（同时认 `x = 1.0` 与 `@configclass` 的 `x: float = 1.0`）。"""
     result = {}
     for node in _class_def(source_tree, class_name).body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)):
+        if isinstance(node, ast.AnnAssign):
+            if not isinstance(node.target, ast.Name):
+                continue
+            try:
+                result[node.target.id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
             try:
                 result[node.targets[0].id] = ast.literal_eval(node.value)
-            except ValueError:
+            except (ValueError, TypeError):
                 continue
     return result
 
@@ -242,14 +253,18 @@ class RegisteredConfigTests(unittest.TestCase):
 
 
 class FrameContractTests(unittest.TestCase):
-    """57 维帧：顺序、维数、缩放都与训练侧源码一致（纯 AST，不需要 torch）。"""
+    """58 维帧（契约 v3）：顺序、维数、缩放都与训练侧源码一致（纯 AST，不需要 torch）。"""
 
     def test_frame_terms_match_upper_observation_spec(self):
         spec = logic.UpperObservationSpec()
         self.assertEqual(tuple((name, dim) for name, dim, _ in runtime.FRAME_TERMS), spec.terms)
         self.assertEqual(runtime.FRAME_DIM, spec.frame_dim)
-        self.assertEqual(runtime.FRAME_DIM, 57)
-        self.assertEqual(spec.actor_dim, 79)
+        self.assertEqual(runtime.FRAME_DIM, 58)
+        self.assertEqual(spec.actor_dim, 80)
+        # 帧 58 = 57 + 1：双头迁移只把 `last_action` 由 12 加到 13
+        self.assertEqual(dict(spec.terms)["last_action"], 13)
+        self.assertEqual(runtime.ACTION_DIM, 13)
+        self.assertEqual(runtime.CMD_ACTION_DIM + runtime.JOINT_ACTION_DIM, runtime.ACTION_DIM)
 
     def test_frame_terms_match_policy_frame_source(self):
         """从 `upper_mdp.policy_frame` 的 cat(...) 里读顺序与缩放，逐项比对。"""
@@ -283,37 +298,90 @@ class RuntimeActTests(unittest.TestCase):
 
     def test_actor_and_decoder_dims_after_loading(self):
         instance, _, _, _ = make_runtime(self._tmp.name)
-        self.assertEqual(instance.actor.memory_a.rnn.input_size, 79)
+        self.assertEqual(instance.actor.memory_a.rnn.input_size, 80)
         self.assertEqual(instance.actor.memory_c.rnn.input_size, runtime.DEFAULT_CRITIC_OBS_DIM)
+        self.assertEqual(runtime.DEFAULT_CRITIC_OBS_DIM, 73)
         self.assertEqual(instance.actor.memory_a.rnn.hidden_size, 256)
-        self.assertEqual(instance.decoder.frame_dim, 57)
+        self.assertEqual(instance.decoder.frame_dim, 58)
         self.assertEqual(instance.decoder.output_dim, 6)
         self.assertEqual(instance.decoder.latent_dim, 16)
         self.assertEqual(instance.iteration, 42)
         self.assertEqual(instance.contract,
-                         {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16})
+                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
 
     def test_zero_initialised_actor_starts_at_zero_residual(self):
         """训练侧 towing runner 把 actor 末层零初始化 ⇒ 首拍残差精确为 0（起点 = 冻结步态）。"""
         instance, _, _, _ = make_runtime(self._tmp.name)
         delta, processed = instance.act(**act_kwargs(3))
         self.assertEqual(tuple(delta.shape), (3, 12))
+        self.assertEqual(tuple(processed.shape), (3, 13))
         self.assertEqual(float(delta.abs().max()), 0.0)
         self.assertEqual(float(processed.abs().max()), 0.0)
         self.assertEqual(float(instance._last_action.abs().max()), 0.0)
 
     def test_delta_is_clamped_action_times_action_scale(self):
+        """13 维动作：前 1 维是 vx 偏移头（不乘 action_scale），后 12 维才是关节残差。"""
         instance, actor, _, _ = make_runtime(self._tmp.name)
         set_actor_output(instance, actor, 5.0)      # 饱和 ⇒ processed 必须被 clamp 到 ±1
         delta, processed = instance.act(**act_kwargs(3))
-        self.assertTrue(torch.allclose(processed, torch.ones(3, 12)))
+        self.assertTrue(torch.allclose(processed, torch.ones(3, 13)))
         scale = instance.action_scale.expand(3, 12)
         self.assertTrue(torch.allclose(delta, scale))
         self.assertTrue(bool((delta.abs() <= scale + 1e-7).all()))
         set_actor_output(instance, actor, -5.0)     # 负向饱和同样被 clamp（−5 → −1）
         delta, processed = instance.act(**act_kwargs(3))
-        self.assertTrue(torch.allclose(processed, -torch.ones(3, 12)))
+        self.assertTrue(torch.allclose(processed, -torch.ones(3, 13)))
         self.assertTrue(torch.allclose(delta, -scale))
+
+    def test_command_offset_head_is_bounded_and_matches_the_cfg(self):
+        """偏移头与合成：`clip(u_cmd, ±1) × SCALE` → 头权限 → **再裁进 AMP 训练包络**。
+
+        运行时常量必须与 `upper_mdp.HierarchicalVelocityActionCfg` 的默认值逐项一致
+        （训练侧是唯一事实来源，这里只是运行时的镜像 + 交叉守卫）。
+        包络 `lin_vel_x = (−1.0, 1.5)` 出处 `amp_env_cfg`：牵引速度 0.4–1.5 本来就顶在
+        上界，把"和"裁到偏移头的 [−0.2, 0.6] 会把牵引指令砍成 0.6。
+        """
+        instance, actor, _, _ = make_runtime(self._tmp.name, num_envs=4)
+        u_cmd = torch.tensor([[-5.0], [-1.0], [0.0], [1.0]], dtype=torch.float32)
+        processed = torch.cat((u_cmd, torch.zeros(4, 12)), dim=1)
+        offset = instance.command_offset_vx(processed)
+        self.assertEqual(tuple(offset.shape), (4, 1))
+        # u_cmd 先被夹到 ±1 再乘尺度，再被头权限 [MIN, MAX] 限住：−5/−1 → −0.2，0 → 0，+1 → +0.5
+        self.assertTrue(torch.allclose(
+            offset[:, 0], torch.tensor([-0.2, -0.2, 0.0, 0.5], dtype=torch.float32)))
+        self.assertTrue(bool((offset[:, 0] >= runtime.COMMAND_OFFSET_MIN - 1e-7).all()))
+        self.assertTrue(bool((offset[:, 0] <= runtime.COMMAND_OFFSET_MAX + 1e-7).all()))
+        # 合成：`clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`；1.5 时正半轴被包络裁回
+        task = torch.full((4,), 1.5)
+        composed = instance.compose_loco_vx(task, processed)
+        self.assertTrue(torch.allclose(
+            composed[:, 0], torch.tensor([1.3, 1.3, 1.5, 1.5], dtype=torch.float32)))
+        self.assertTrue(bool((composed[:, 0] <= runtime.AMP_VX_MAX + 1e-7).all()))
+        self.assertTrue(bool((composed[:, 0] >= runtime.AMP_VX_MIN - 1e-7).all()))
+        # 退化性：偏移为 0（或出生段）时合成值逐位等于脚本值（脚本速度在包络内）
+        zero_cmd = torch.zeros(4, 13)
+        for scripted in (0.0, 0.4, 0.7, 1.5):
+            composed = instance.compose_loco_vx(torch.full((4,), scripted), zero_cmd)
+            self.assertTrue(torch.allclose(composed[:, 0], torch.full((4,), scripted)))
+        # 常量 == cfg 默认值（AST 解析，不 import isaaclab）
+        cfg_tree = ast.parse((PKG / "upper_mdp.py").read_text(encoding="utf-8"))
+        scalars = _class_scalar_assignments(cfg_tree, "HierarchicalVelocityActionCfg")
+        self.assertEqual(scalars["cmd_offset_scale"], runtime.COMMAND_OFFSET_SCALE)
+        self.assertEqual(scalars["offset_min"], runtime.COMMAND_OFFSET_MIN)
+        self.assertEqual(scalars["offset_max"], runtime.COMMAND_OFFSET_MAX)
+        self.assertEqual(tuple(scalars["amp_vx_range"]), (runtime.AMP_VX_MIN, runtime.AMP_VX_MAX))
+        self.assertEqual((runtime.AMP_VX_MIN, runtime.AMP_VX_MAX), (-1.0, 1.5))
+        # 「停机之后」的脚本 ramp 默认关闭（本轮不得改默认值；allowance 在 reward params 里，
+        # 由 test_towing_upper_rl_contract 的退化性用例守着）
+        self.assertEqual(scalars["stop_command_ramp_s"], 0.0)
+
+    def test_checkpoint_contract_version_matches_the_training_runner(self):
+        """运行时的契约版本号必须与训练侧 runner 的 save/load 版本号一致（v3）。"""
+        runner = (RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py").read_text("utf-8")
+        match = re.search(r"TOWING_CONTRACT_VERSION\s*=\s*(\d+)", runner)
+        self.assertIsNotNone(match, "runner 未声明 TOWING_CONTRACT_VERSION")
+        self.assertEqual(int(match.group(1)), runtime.CHECKPOINT_CONTRACT_VERSION)
+        self.assertEqual(runtime.CHECKPOINT_CONTRACT_VERSION, 3)
 
     def test_action_scale_is_the_frozen_policy_contract(self):
         instance, _, _, _ = make_runtime(self._tmp.name)
@@ -324,17 +392,17 @@ class RuntimeActTests(unittest.TestCase):
                          [0.125, 0.25, 0.25, 0.125, 0.25, 0.25])
 
     def test_last_action_is_the_previous_clamped_action(self):
-        """帧里的 `last_action` 位 = 上一拍 clamp 后的动作（不是本拍、也不是未裁剪值）。"""
+        """帧里的 `last_action` 位 = 上一拍 clamp 后的 **13 维**动作（不是本拍、也不是未裁剪值）。"""
         instance, actor, _, _ = make_runtime(self._tmp.name, num_envs=2)
         kwargs = act_kwargs(2)
         frame_before = instance.build_frame(**kwargs)
-        self.assertEqual(float(frame_before[:, 3:15].abs().max()), 0.0)
+        self.assertEqual(float(frame_before[:, 3:16].abs().max()), 0.0)
         set_actor_output(instance, actor, 0.4)       # 0.4 < 1 ⇒ 不触发 clamp，能区分"上一拍"
         _, processed_first = instance.act(**kwargs)
-        self.assertTrue(torch.allclose(processed_first, torch.full((2, 12), 0.4)))
+        self.assertTrue(torch.allclose(processed_first, torch.full((2, 13), 0.4)))
         self.assertTrue(torch.allclose(instance._last_action, processed_first))
         frame_second = instance.build_frame(**kwargs)
-        self.assertTrue(torch.allclose(frame_second[:, 3:15], processed_first))
+        self.assertTrue(torch.allclose(frame_second[:, 3:16], processed_first))
 
     def test_frame_slices_follow_the_declared_layout(self):
         instance, _, _, _ = make_runtime(self._tmp.name, num_envs=2)
@@ -346,14 +414,14 @@ class RuntimeActTests(unittest.TestCase):
             joint_pos_rel=torch.full((2, 12), 0.2),
             joint_vel=torch.full((2, 12), 4.0))
         frame = instance.build_frame(**kwargs)
-        self.assertEqual(tuple(frame.shape), (2, 57))
+        self.assertEqual(tuple(frame.shape), (2, 58))
         self.assertTrue(torch.allclose(frame[:, 0:3], kwargs["loco_command"]))
-        self.assertTrue(torch.allclose(frame[:, 3:15], torch.zeros(2, 12)))
-        self.assertTrue(torch.allclose(frame[:, 15:18], torch.full((2, 3), 0.5)))   # ×0.25
-        self.assertTrue(torch.allclose(frame[:, 18:21], kwargs["projected_gravity"]))
-        self.assertTrue(torch.allclose(frame[:, 21:33], kwargs["last_loco_action"]))
-        self.assertTrue(torch.allclose(frame[:, 33:45], kwargs["joint_pos_rel"]))
-        self.assertTrue(torch.allclose(frame[:, 45:57], torch.full((2, 12), 0.2)))   # ×0.05
+        self.assertTrue(torch.allclose(frame[:, 3:16], torch.zeros(2, 13)))          # last_action 13 维
+        self.assertTrue(torch.allclose(frame[:, 16:19], torch.full((2, 3), 0.5)))    # ×0.25
+        self.assertTrue(torch.allclose(frame[:, 19:22], kwargs["projected_gravity"]))
+        self.assertTrue(torch.allclose(frame[:, 22:34], kwargs["last_loco_action"]))
+        self.assertTrue(torch.allclose(frame[:, 34:46], kwargs["joint_pos_rel"]))
+        self.assertTrue(torch.allclose(frame[:, 46:58], torch.full((2, 12), 0.2)))   # ×0.05
 
     def test_build_frame_rejects_wrong_shapes(self):
         instance, _, _, _ = make_runtime(self._tmp.name, num_envs=3)
@@ -374,11 +442,11 @@ class RuntimeActTests(unittest.TestCase):
         self.assertIsNone(instance.actor.memory_a.hidden_states)
         # 全量 reset 后又能得到同一动作（GRU 从零起步）
         _, processed = instance.act(**act_kwargs(3))
-        self.assertTrue(torch.allclose(processed, torch.full((3, 12), 0.5)))
+        self.assertTrue(torch.allclose(processed, torch.full((3, 13), 0.5)))
         # 只重置部分 env：其余环境的上一拍动作保留
         instance.reset(env_ids=[0])
         self.assertEqual(float(instance._last_action[0].abs().max()), 0.0)
-        self.assertTrue(torch.allclose(instance._last_action[1], torch.full((12,), 0.5)))
+        self.assertTrue(torch.allclose(instance._last_action[1], torch.full((13,), 0.5)))
 
     def test_stochastic_mode_still_respects_the_clamp(self):
         instance, actor, _, _ = make_runtime(self._tmp.name, num_envs=4, deterministic=False)
@@ -415,8 +483,12 @@ class CheckpointContractTests(unittest.TestCase):
                                           spec=self.spec, network_modules=network_modules())
 
     def test_legacy_and_mismatched_contracts_are_rejected(self):
-        """旧 56/63 维（frame 51/56）与任何字段漂移都必须在加载前被拒。"""
+        """旧 v2（57/79）与更早的 51/56/63 维、以及任何字段漂移都必须在加载前被拒。"""
         for contract in (
+            # 2026-10-10 双头迁移前的 v2 契约：frame 57 / actor 79 / 动作 12 —— 现在必须被拒
+            {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
+            # 只改 frame 不改 version 的"半迁移"也不能通过
+            {"version": 3, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
             {"version": 2, "frame_dim": 56, "explicit_dim": 5, "latent_dim": 16},
             {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 8},
             {"version": 1, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
@@ -427,14 +499,23 @@ class CheckpointContractTests(unittest.TestCase):
             with self.assertRaises(runtime.TowingCheckpointContractError):
                 self._runtime_for_contract(contract)
 
+    def test_v3_contract_is_accepted(self):
+        """v3（58/6/16）是当前契约：必须能加载（与上一条的"被拒"成对）。"""
+        instance = self._runtime_for_contract(runtime.expected_towing_contract(self.spec))
+        self.assertEqual(instance.contract,
+                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
+
     def test_error_message_names_the_contract(self):
         with self.assertRaises(runtime.TowingCheckpointContractError) as caught:
-            self._runtime_for_contract({"version": 2, "frame_dim": 56, "explicit_dim": 6,
+            self._runtime_for_contract({"version": 2, "frame_dim": 57, "explicit_dim": 6,
                                         "latent_dim": 16})
         message = str(caught.exception)
         self.assertIn("towing_contract", message)
         self.assertIn("frame_dim", message)
-        self.assertIn("56", message)
+        self.assertIn("57", message)
+        # 报错要直说旧 run 失效、必须重训，而不是只甩一句 shape mismatch
+        self.assertIn("79", message)
+        self.assertIn("v3", message)
 
     def test_missing_keys_are_rejected(self):
         path = Path(self._tmp.name) / "incomplete.pt"
@@ -450,8 +531,8 @@ class CheckpointContractTests(unittest.TestCase):
                                        network_modules=network_modules())
 
     def test_strict_load_catches_a_forged_contract(self):
-        """契约可以骗过校验，但旧 63 维权重躲不过 `load_state_dict(strict=True)`。"""
-        old_actor = build_actor(self.spec, num_actor_obs=63)   # 旧 63 维 actor（56 帧 + 7）
+        """契约可以骗过校验，但**旧 79 维 actor** 权重躲不过 `load_state_dict(strict=True)`。"""
+        old_actor = build_actor(self.spec, num_actor_obs=79)   # 旧 v2 actor（57 帧 + 6 + 16）
         path = write_checkpoint(self._tmp.name, actor=old_actor, decoder=self.decoder,
                                 contract=runtime.expected_towing_contract(self.spec))
         with self.assertRaises(RuntimeError):

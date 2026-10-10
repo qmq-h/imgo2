@@ -29,7 +29,9 @@ class TowingDynamicsDecoder(nn.Module):
     [vx, vy, mass, Fx, Fy, Fz] target through the latent bottleneck.
     """
 
-    def __init__(self, frame_dim=57, feature_dim=128, hidden_dim=128,
+    # 默认帧维 = 当前契约 v3 的 policy 帧（58）。调用方（runner / 运行时）一律显式传
+    # 配置值，这里只是防止"不传参构造"时悄悄退回旧 57 维契约。
+    def __init__(self, frame_dim=58, feature_dim=128, hidden_dim=128,
                  num_layers=1, force_scale=10.0, latent_dim=16):
         super().__init__()
         if latent_dim <= 0:
