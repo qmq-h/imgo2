@@ -1,6 +1,7 @@
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
@@ -18,6 +19,28 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     LocomotionVelocityRoughEnvCfg,
     ObservationsCfg,
 )
+
+
+# ---------------------------------------------------------------------------------------
+# 滞空缺口项（2026-10-10，AMP-06 的 P2）：给「步频过快」一个直接梯度
+# ---------------------------------------------------------------------------------------
+# 依据（全部离线可复现，见 docs/amp_feet_air_time_2026-10-10.md 与
+# docs/amp_speed_coverage_2026-10-10.md）：
+#   * 24500 轮策略的唯一实质缺陷是**周期 0.198 s**（参考 0.600 s / 1.667 Hz，3.0 倍），
+#     步幅只是它的结果（一个 trot 里地面系步长 = v × T / 2）；
+#   * 判别器（风格项）在策略工作点上的局部梯度只有 8e-5、`d_policy` 20000 轮只动 0.07
+#     ⇒ 风格项**没有方向**，加权重/改占比都换不来步频；
+#   * 参考动作的逐足腾空时间实测 0.19–0.28 s（中位 ≈0.21 s，周期 0.600 s、
+#     支撑 0.30–0.41 s）⇒ 阈值取 0.20 s。**不要用库里默认的 0.5 s**：那比参考周期还长。
+# 系数标定（`c` = 每步系数）：该项每步平均贡献 ≈ `c × (4 / T) × step_dt × (air − θ)`。
+#   当前步态：T=0.198 s、air≈0.09 s、θ=0.20 s ⇒ ≈ −0.045 c / 步（每步 0.02 s、四足）
+#   参考步态：T=0.600 s、air=0.21 s ⇒ ≈ +0.001 c / 步
+#   ⇒ 两种步态之间的**差** ≈ 0.046 c / 步；任务项每步 ≈ 1.4（4.0 + 2.0 的量级）
+#   ⇒ 要让这一项有 ~10% 的话语权，取 c ≈ 3。取 1 只有 ~3%（等于没加）。
+# 有界性（为什么敢给到 3）：缺口形式每个足每次落地最多贡献 θ，即使 T 掉到 0.1 s，
+#   每步量级也只有 `3 × 0.08 × 0.2 / 0.1 ≈ 0.48`，是任务项的 ~1/3，不会压倒跟踪。
+FEET_AIR_TIME_THRESHOLD_S = 0.20      # 实测参考腾空中位 ≈0.21 s
+FEET_AIR_TIME_DEFICIT_PER_STEP = -3.0  # 负权重（函数返回非负缺口）
 
 
 @configclass
@@ -170,9 +193,29 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         #   并补三个轻量姿态约束，使姿态不再只由一个超强高度项独自承担。
         #   依据：a1 论文代码的真实每步系数是 1.67（不是 50——它配置里的 50 还会被
         #   legged_robot.py:710 再乘一次 dt），go2 用 4.0/2.0 + 一组辅助项 + 任务主导 lerp。
+        # 2026-10-10 新增：滞空缺口项（AMP-06 的 P2）。
+        # 该项在基类 `RewardsCfg` 里**不存在**（是本任务专用的），所以先在这里建出来，
+        # 再由下面的过滤循环按 `keep_rewards` 保留。理由见 `mdp.feet_air_time_deficit`
+        # 的 docstring 与 docs/amp_feet_air_time_2026-10-10.md：
+        # **风格项在策略工作点上没有梯度**（局部 |∂d/∂x|·σ ≈ 8e-5），而 24500 轮策略的
+        # 唯一实质缺陷是周期 0.198 s（参考 0.600 s，3.0 倍）⇒ 需要一项**有直接梯度**的
+        # 节律约束。滞空是周期里可由奖励直接观测的那一半（另一半是支撑时间）。
+        # 注意 `sensor_cfg.body_names` 必须给具体 body（给 "" 会在环境构造时抛
+        # "Not all regular expressions are matched!"，与 `base_height_l2` 同一个坑）。
+        self.rewards.feet_air_time_deficit = RewTerm(
+            func=mdp.feet_air_time_deficit,
+            weight=0.0,  # 真实权重在下面按「每步系数 / step_dt」写
+            params={
+                "command_name": "base_velocity",
+                "threshold": FEET_AIR_TIME_THRESHOLD_S,
+                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=self.foot_body_names),
+            },
+        )
+
         keep_rewards = {
             "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2",
             "lin_vel_z_l2", "ang_vel_xy_l2", "joint_pos_limits",
+            "feet_air_time_deficit",
         }
         for attr in dir(self.rewards):
             if attr.startswith("__"):
@@ -214,6 +257,10 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # itself only reads root_pos_w, so naming the base body is enough to make it resolvable.
         # The sibling configs (rough_env_cfg.py, himloco_env_cfg.py) set this too.
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
+
+        # 滞空缺口项（2026-10-10）：按「每步系数 / step_dt」写，理由与标定见模块顶部注释。
+        # 注意该项的函数返回**非负缺口**、权重必须为负（同 base_height_l2 的约定）。
+        self.rewards.feet_air_time_deficit.weight = FEET_AIR_TIME_DEFICIT_PER_STEP / step_dt
 
 
 @configclass

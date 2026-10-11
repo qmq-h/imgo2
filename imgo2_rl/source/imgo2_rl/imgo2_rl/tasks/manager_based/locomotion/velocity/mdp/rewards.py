@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2024-2025 Ziqi Fan
+# Copyright (c) 2024-2025 Ziqi Fan
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
@@ -371,6 +371,48 @@ def feet_air_time(
     last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
     reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
     # no reward for zero command
+    reward *= torch.norm(env.command_manager.get_command(command_name), dim=1) > 0.1
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
+def feet_air_time_deficit(
+    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
+) -> torch.Tensor:
+    """滞空不足的**缺口**（非负），用来给「步频过快」一个直接梯度。
+
+    与上面的 `feet_air_time` 的差别只有一处，但很关键：**只罚不奖**。
+
+        feet_air_time          : Σ_落地足 (air − θ)      —— 滞空超过 θ 之后**仍线性给奖**
+        feet_air_time_deficit  : Σ_落地足 relu(θ − air)  —— 超过 θ 精确为 0，永不给奖
+
+    为什么不用原始形式：`(air − θ)` 在 air > θ 时是正的，等于**奖励滞空越长越好**，
+    策略可以用「高抬腿 / 原地蹦 / 长时间单足悬空」换取奖励，而这与我们要的目标
+    （周期回到参考的 0.600 s）不是一回事。缺口形式在 θ 处精确为 0、下界是每个足
+    每次落地 θ，所以既给了「别迈太快」的梯度，又没有「迈得越慢越好」的捷径。
+
+    `threshold` 必须来自**实测的参考动作**，不要沿用库里的 0.5 s：
+    本项目 21 份 imgo2_motion 的逐足腾空时间是 0.19–0.28 s（中位 ≈0.21 s，
+    周期 0.600 s、支撑 0.30–0.41 s），所以取 0.20 s；0.5 s 比参考周期还长。
+
+    返回值是**非负缺口**，按本仓库约定应注册为**负权重**（同 `base_height_l2` /
+    `lin_vel_z_l2`：函数返回正量、权重为负）。同时沿用参考的两道门：
+    指令范数 > 0.1（站定不给信号）与机身直立度门（倒地时该项失效）。
+
+    单位提醒：`c` 为「每步系数」时权重写 `c / env.step_dt`，此时该项每步的平均贡献为
+    `c × (4 / T) × env.step_dt × (air − θ)`（`T` = 步态周期、`4` = 四足）。据此标定：
+    3 倍步频（T=0.198 s、air≈0.09 s、θ=0.20 s）时 ≈ `−0.045 c` / 步，
+    而参考步态（T=0.600 s、air=0.21 s）≈ 0 ⇒ 两者之差 ≈ `0.046 c` / 步
+    （任务项是 ≈1.4/步，故 `c ≈ 3` 时这一项才有 ~10% 的话语权）。
+    """
+    # extract the used quantities (to enable type-hinting)
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # compute the reward
+    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    deficit = torch.clamp(threshold - last_air_time, min=0.0) * first_contact
+    reward = torch.sum(deficit, dim=1)
+    # no signal for zero command
     reward *= torch.norm(env.command_manager.get_command(command_name), dim=1) > 0.1
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward

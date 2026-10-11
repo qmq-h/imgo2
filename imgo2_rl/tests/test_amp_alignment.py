@@ -51,6 +51,7 @@ class RewardContractTests(unittest.TestCase):
 
     CONFIG = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py"
     AMP_EVENTS = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/amp_events.py"
+    REWARDS = ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/rewards.py"
 
     def test_runners_keep_checkpoint_iter_in_sync(self):
         """checkpoint 的 'iter' 必须来自「当前轮」，否则 resume 会从错误位置继续。
@@ -148,10 +149,33 @@ class RewardContractTests(unittest.TestCase):
         go2 用 4.0/2.0 + 辅助项。历史见 README AMP-06 与 docs/amp_experiments_2026-09-17.md。
         """
         path = self.CONFIG
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"))  # 27 个上游文件带 UTF-8 BOM
+        source = path.read_text(encoding="utf-8-sig")
+        tree = ast.parse(source)  # 27 个上游文件带 UTF-8 BOM
         cfg_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Imgo2AmpMoveEnvCfg")
         method = next(n for n in cfg_class.body if isinstance(n, ast.FunctionDef) and n.name == "_keep_only_amp_task_rewards")
-        namespace = {}
+        # 方法里要用到模块级常量与两个 Isaac Lab 配置类。离线环境没有 isaaclab，所以
+        # 常量从源码 AST 里取（保证测的是真实取值，而不是测试自己复制的一份），
+        # `RewTerm` / `SceneEntityCfg` 用轻量桩代替（只关心它们携带的字段）。
+        consts = {}
+        for node in tree.body:
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                continue
+            try:
+                consts[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError, SyntaxError):
+                continue  # 例如 RLAMP_TRACK_LIN_VEL_RAW = 1.5 * 1.0 / (0.005 * 6)
+        self.assertIn("FEET_AIR_TIME_THRESHOLD_S", consts, "阈值常量必须留在模块级（供测试与标定复用）")
+
+        def deficit_marker(*args, **kwargs):
+            return 0.0
+
+        namespace = {
+            **consts,
+            "RewTerm": lambda **kwargs: SimpleNamespace(**kwargs),
+            "SceneEntityCfg": lambda name, **kwargs: SimpleNamespace(name=name, **kwargs),
+            "mdp": SimpleNamespace(feet_air_time_deficit=deficit_marker),
+        }
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), "exec"), namespace)
 
         expected_per_step = {
@@ -161,6 +185,7 @@ class RewardContractTests(unittest.TestCase):
             "lin_vel_z_l2": -1.0,
             "ang_vel_xy_l2": -0.05,
             "joint_pos_limits": -2.0,
+            "feet_air_time_deficit": -3.0,
         }
         for dt in (0.01, 0.02, 0.04):
             with self.subTest(step_dt=dt):
@@ -168,7 +193,8 @@ class RewardContractTests(unittest.TestCase):
                     *expected_per_step, "feet_slide")})
                 terms.base_height_l2.params["asset_cfg"] = SimpleNamespace(body_names="")
                 cfg = SimpleNamespace(rewards=terms, sim=SimpleNamespace(dt=dt / 4), decimation=4,
-                                      base_link_name="base")
+                                      base_link_name="base",
+                                      foot_body_names=["FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"])
                 namespace[method.name](cfg)
 
                 # 其它奖励项仍被过滤掉
@@ -178,6 +204,18 @@ class RewardContractTests(unittest.TestCase):
                 self.assertAlmostEqual(terms.base_height_l2.params["target_height"], 0.30)
                 self.assertIsNone(terms.base_height_l2.params["sensor_cfg"])
                 self.assertEqual(terms.base_height_l2.params["asset_cfg"].body_names, ["base"])
+
+                # 滞空缺口项（2026-10-10）：阈值取实测参考中位、四足 body 必须显式给
+                # （给 "" 会在 Isaac Lab 里抛 "Not all regular expressions are matched!"）。
+                air = terms.feet_air_time_deficit
+                self.assertIsNotNone(air, "该 AMP 专用项必须活过 keep_rewards 过滤")
+                self.assertIs(air.func, deficit_marker, "必须接线到 mdp.feet_air_time_deficit")
+                self.assertAlmostEqual(air.params["threshold"], 0.20, places=6)
+                self.assertEqual(air.params["command_name"], "base_velocity")
+                self.assertEqual(air.params["sensor_cfg"].name, "contact_forces")
+                self.assertEqual(air.params["sensor_cfg"].body_names,
+                                 ["FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"])
+                self.assertLess(air.weight, 0.0, "函数返回非负缺口 ⇒ 权重必须为负")
 
                 # weight × step_dt 必须精确还原每步系数（防止写回手算魔数或漏乘 dt）
                 for name, per_step in expected_per_step.items():
@@ -195,12 +233,43 @@ class RewardContractTests(unittest.TestCase):
         """防止回归成手写魔数：weight 必须由「每步系数 / step_dt」表达。"""
         src = self.CONFIG.read_text(encoding="utf-8-sig")
         for const in ("TRACK_LIN_VEL_PER_STEP", "TRACK_ANG_VEL_PER_STEP", "BASE_HEIGHT_PER_STEP",
-                      "LIN_VEL_Z_PER_STEP", "ANG_VEL_XY_PER_STEP", "JOINT_POS_LIMITS_PER_STEP"):
+                      "LIN_VEL_Z_PER_STEP", "ANG_VEL_XY_PER_STEP", "JOINT_POS_LIMITS_PER_STEP",
+                      "FEET_AIR_TIME_DEFICIT_PER_STEP", "FEET_AIR_TIME_THRESHOLD_S"):
             self.assertIn(const, src)
         # 不应出现直接写死的 weight 数值
         for magic in ("weight = 50.0", "weight = 2500", "weight = -500", "1.0 / step_dt",
-                      "0.3 / step_dt", "-10.0 / step_dt"):
+                      "0.3 / step_dt", "-10.0 / step_dt", "weight = -150.0", "threshold = 0.5"):
             self.assertNotIn(magic, src)
+
+    def test_amp_feet_air_time_deficit_is_penalty_only(self):
+        """2026-10-10（AMP-06 的 P2）：滞空项必须**只罚不奖**，且阈值来自实测参考。
+
+        背景：策略的唯一实质缺陷是周期 0.198 s（参考 0.600 s）。原始 `feet_air_time`
+        在 `air > θ` 之后**仍然线性给奖**，等于奖励「滞空越长越好」，可以走出
+        高抬腿/原地蹦的捷径；缺口形式 `relu(θ − air)` 在 θ 处精确为 0，只对「迈太快」
+        给梯度。阈值必须来自实测：21 份动作逐足腾空 0.19–0.28 s（中位 ≈0.21 s），
+        库里默认的 0.5 s 比参考周期还长。
+        """
+        rewards_src = self.REWARDS.read_text(encoding="utf-8-sig")
+        tree = ast.parse(rewards_src)
+        funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        self.assertIn("feet_air_time_deficit", funcs, "缺口函数必须定义在 mdp/rewards.py")
+        body_src = ast.get_source_segment(rewards_src, funcs["feet_air_time_deficit"])
+        # 只罚不奖：clamp(θ − air, min=0)；绝不能出现无下界的 (air − θ)
+        self.assertIn("torch.clamp(threshold - last_air_time, min=0.0)", body_src)
+        self.assertNotIn("last_air_time - threshold", body_src)
+        # 沿用参考的两道门：站定不给信号 + 机身直立度门
+        self.assertIn("> 0.1", body_src)
+        self.assertIn("projected_gravity_b", body_src)
+        # 原始 feet_air_time 必须保持原样（不改成缺口形式，避免同时动两处）
+        stock = ast.get_source_segment(rewards_src, funcs["feet_air_time"])
+        self.assertIn("(last_air_time - threshold) * first_contact", stock)
+
+        # AMP 配置必须通过 mdp 引用新函数，且阈值/系数是模块级常量
+        cfg_src = self.CONFIG.read_text(encoding="utf-8-sig")
+        self.assertIn("func=mdp.feet_air_time_deficit", cfg_src)
+        self.assertIn("FEET_AIR_TIME_THRESHOLD_S = 0.20", cfg_src)
+        self.assertNotIn('"threshold": 0.5', cfg_src)
 
 
 HAS_TORCH = all(importlib.util.find_spec(name) is not None for name in ("torch", "numpy"))
@@ -268,6 +337,83 @@ class AMPUpdateTests(unittest.TestCase):
         np.testing.assert_allclose(update.call_args_list[1].args[0], 0.3)
         torch.testing.assert_close(penalty.call_args.args[0], expected_expert)
         torch.testing.assert_close(penalty.call_args.args[1], expected_next_expert)
+
+
+@unittest.skipUnless(HAS_TORCH, "CPU regression needs the training environment's torch and numpy")
+class FeetAirTimeDeficitTests(unittest.TestCase):
+    """滞空缺口项的数值行为（只加载那一个函数，不需要 Isaac Lab）。"""
+
+    def _load(self):
+        import torch
+
+        path = RewardContractTests.REWARDS
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        func = next(n for n in tree.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "feet_air_time_deficit")
+        # 源码文件顶部有 `from __future__ import annotations`，单独 exec 一个函数时必须显式带上，
+        # 否则形参上的 Isaac Lab 类型注解会在 def 时求值并 NameError。
+        module = ast.parse("from __future__ import annotations\n")
+        module.body.append(func)
+        scope = {"torch": torch}
+        exec(compile(module, str(path), "exec"), scope)
+        return scope["feet_air_time_deficit"], torch
+
+    @staticmethod
+    def _env(torch, air_time, first_contact, command=0.5, gravity_z=-1.0):
+        class _Sensor:
+            def __init__(self):
+                self.data = SimpleNamespace(last_air_time=torch.tensor([air_time]))
+            def compute_first_contact(self, dt):
+                return torch.tensor([first_contact])
+        class _Scene:
+            def __init__(self):
+                self.sensors = {"contact_forces": _Sensor()}
+            def __getitem__(self, key):
+                assert key == "robot"
+                return SimpleNamespace(data=SimpleNamespace(
+                    projected_gravity_b=torch.tensor([[0.0, 0.0, gravity_z]])))
+        return SimpleNamespace(
+            step_dt=0.02,
+            command_manager=SimpleNamespace(
+                get_command=lambda name: torch.tensor([[command, 0.0, 0.0]])),
+            scene=_Scene())
+
+    def test_deficit_zero_at_or_above_threshold_and_never_a_reward(self):
+        fn, torch = self._load()
+        sensor_cfg = SimpleNamespace(name="contact_forces", body_ids=[0, 1, 2, 3])
+        threshold = 0.20
+
+        # 全部达到阈值 ⇒ 精确为 0；而原始 feet_air_time 形式在同一输入上是**正奖励**（滞空越长奖越多）
+        air = [0.60, 0.60, 0.60, 0.60]
+        env = self._env(torch, air, [1.0] * 4)
+        self.assertEqual(float(fn(env, "base_velocity", sensor_cfg, threshold)), 0.0)
+        self.assertGreater(sum(a - threshold for a in air), 0.0)
+
+        # 低于阈值才给缺口：relu(θ − air) 逐足求和
+        air = [0.05, 0.20, 0.35, 0.10]
+        env = self._env(torch, air, [1.0] * 4)
+        expected = sum(max(threshold - a, 0.0) for a in air)
+        self.assertAlmostEqual(float(fn(env, "base_velocity", sensor_cfg, threshold)), expected, places=6)
+        self.assertAlmostEqual(expected, 0.25, places=6)
+
+        # 只看「刚落地」那一拍：没落地的足不贡献
+        env = self._env(torch, air, [1.0, 0.0, 0.0, 0.0])
+        self.assertAlmostEqual(float(fn(env, "base_velocity", sensor_cfg, threshold)), 0.15, places=6)
+
+    def test_deficit_respects_command_and_upright_gates(self):
+        fn, torch = self._load()
+        sensor_cfg = SimpleNamespace(name="contact_forces", body_ids=[0, 1, 2, 3])
+        air = [0.05, 0.20, 0.35, 0.10]
+        threshold = 0.20
+        raw = 0.25
+
+        # 站定（指令范数 ≤ 0.1）不给信号
+        env = self._env(torch, air, [1.0] * 4, command=0.0)
+        self.assertEqual(float(fn(env, "base_velocity", sensor_cfg, threshold)), 0.0)
+
+        # 机身直立度门：-g_z = 0.35 ⇒ clamp(0.35, 0, 0.7) / 0.7 = 0.5
+        env = self._env(torch, air, [1.0] * 4, gravity_z=-0.35)
+        self.assertAlmostEqual(float(fn(env, "base_velocity", sensor_cfg, threshold)), raw * 0.5, places=6)
 
 
 if __name__ == "__main__":
