@@ -13,6 +13,7 @@
 """
 
 import importlib.util
+import math
 from pathlib import Path
 import sys
 import unittest
@@ -36,6 +37,7 @@ def module_at(name, path):
 
 rope = module_at("towing_rope_models_rope_test", MDP / "rope.py")
 models = module_at("towing_rope_models_test", MDP / "rope_model.py")
+grid = module_at("towing_rope_models_grid_test", MDP / "connection_grid.py")
 
 REST_LENGTH = 0.8
 ROBOT_MASS = 12.6996                  # 整机（base 5.5339 + 四腿各 1.7914）
@@ -281,6 +283,175 @@ class ReleaseTests(unittest.TestCase):
             self.assertLess(rig.distance, REST_LENGTH)        # 松弛：绳被追近但不推
 
 
+def _vector_body_properties(count, mass, inertia, offset_x, zeros):
+    """`(N,)` 张量形态的刚体属性（逐 env 长度测试用）。"""
+    return models.BodyProperties(
+        mass=np.full(count, mass),
+        inverse_inertia_world=models.world_inverse_inertia(
+            tuple(np.full(count, value) for value in inertia),
+            tuple(tuple(np.full(count, entry) for entry in row) for row in IDENTITY)),
+        offset=(offset_x * np.ones(count) if not hasattr(offset_x, "shape") else offset_x,
+                zeros, zeros))
+
+
+class RigidLinkTests(unittest.TestCase):
+    """方案 C：双边球铰连杆。与两套绳的根本差别是「可推」（反驱）。"""
+
+    def _sample(self, distance, robot_velocity=0.0, cart_velocity=0.0,
+                rest_length=REST_LENGTH):
+        model = models.make_rope_model("rigid", rest_length=rest_length)
+        return model.update(robot_point=(distance, 0.0, 0.0), cart_point=(0.0, 0.0, 0.0),
+                            robot_velocity=(robot_velocity, 0.0, 0.0),
+                            cart_velocity=(cart_velocity, 0.0, 0.0), dt=DT,
+                            robot=body_properties(ROBOT_MASS, ROBOT_INERTIA, -0.16),
+                            cart=body_properties(cart_effective_mass(), CART_INERTIA, 0.25))
+
+    def test_link_is_always_engaged_and_has_no_slack(self):
+        """连杆不存在松弛：任何长度下都啮合，伸长量保留符号。"""
+        for distance in (REST_LENGTH, REST_LENGTH + 0.05, REST_LENGTH - 0.05):
+            sample = self._sample(distance)
+            self.assertTrue(bool(sample.is_taut), distance)
+            self.assertEqual(sample.rope_state, models.TAUT, distance)
+            self.assertAlmostEqual(float(sample.rope_extension), distance - REST_LENGTH, places=9)
+
+    def test_rest_length_with_no_relative_motion_carries_no_force(self):
+        sample = self._sample(REST_LENGTH)
+        self.assertEqual(float(sample.rope_tension), 0.0)
+        self.assertEqual(float(sample.rope_impulse), 0.0)
+
+    def test_stretched_link_pulls_and_compressed_link_pushes(self):
+        """双边性：拉长给拉力、压缩给推力；压缩时 `F_R` 指向机器人前方 = 反驱。"""
+        stretched = self._sample(REST_LENGTH + 0.01)
+        self.assertGreater(float(stretched.rope_tension), 0.0)
+        self.assertLess(stretched.force_on_robot[0], 0.0)      # 被拉向 −x（朝小车）
+        compressed = self._sample(REST_LENGTH - 0.01)
+        self.assertLess(float(compressed.rope_tension), 0.0)   # 负张力 = 推力，绳不可能出现
+        self.assertGreater(compressed.force_on_robot[0], 0.0)  # 被推向 +x = 反驱
+        self.assertLess(compressed.force_on_cart[0], 0.0)      # 小车被推离机器人
+        for a, b in zip(stretched.force_on_robot, stretched.force_on_cart):
+            self.assertAlmostEqual(a, -b, places=12)
+        for a, b in zip(compressed.force_on_robot, compressed.force_on_cart):
+            self.assertAlmostEqual(a, -b, places=12)
+
+    def test_relative_motion_along_the_link_is_resisted_both_ways(self):
+        """沿连杆分离（ḋ>0）被拉回、靠拢（ḋ<0）被推开；单边绳只做前者。"""
+        apart = self._sample(REST_LENGTH, robot_velocity=0.5)
+        together = self._sample(REST_LENGTH, robot_velocity=-0.5)
+        self.assertGreater(float(apart.rope_impulse), 0.0)
+        self.assertLess(float(together.rope_impulse), 0.0)
+        self.assertAlmostEqual(float(apart.rope_impulse), -float(together.rope_impulse), places=9)
+
+    def test_rigid_link_requires_body_properties(self):
+        model = models.make_rope_model("rigid", rest_length=REST_LENGTH)
+        with self.assertRaises(ValueError):
+            model.update(robot_point=(1.0, 0, 0), cart_point=(0, 0, 0),
+                         robot_velocity=(0.5, 0, 0), cart_velocity=(0, 0, 0), dt=DT)
+
+    def test_spawn_horizontal_gap_makes_the_3d_attachment_distance_exact(self):
+        """spawn 的勾股解：h = sqrt(target² − Δz²)，再配高差正好得目标三维挂点距。
+
+        这条几何只在上层环境 reset 时执行（需要 Isaac Lab），所以纯函数 + 这里离线覆盖；
+        `upper_mdp.reset_towing_episode` 对**三类连接**统一用它把水平间距解出来
+        （绳 target = 0.5·L0、刚体 target = L），避免初始约束力。
+        """
+        import math
+        for target, delta_z in ((0.4, 0.17), (0.6, 0.17), (0.8, 0.17), (0.5, 0.0),
+                                (0.2, 0.17)):
+            horizontal = models.attachment_horizontal_gap(target, delta_z=delta_z)
+            self.assertAlmostEqual(math.hypot(horizontal, delta_z), target, places=12)
+        # 高差为 0 时就是目标距离本身；越界（target ≤ |Δz|）钳到 0，由调用方显式报错
+        self.assertAlmostEqual(models.attachment_horizontal_gap(0.8, delta_z=0.0), 0.8, places=12)
+        self.assertEqual(float(models.attachment_horizontal_gap(0.1, delta_z=0.2)), 0.0)
+
+    def test_per_environment_rest_length_tensor(self):
+        """逐 env 长度（训练里连杆长度按 env 随机化）：每个 env 用各自的 L。"""
+        if np is None:
+            self.skipTest("numpy 不在本解释器里")
+        count = 3
+        lengths = np.array([0.4, 0.6, 0.8])
+        distance = np.full(count, 0.5)
+        zeros = np.zeros(count)
+        robot = _vector_body_properties(count, ROBOT_MASS, ROBOT_INERTIA, -0.16, zeros)
+        cart = _vector_body_properties(count, cart_effective_mass(), CART_INERTIA, 0.25, zeros)
+        model = models.make_rope_model("rigid", rest_length=lengths)
+        sample = model.update(robot_point=np.stack([distance, zeros, zeros], axis=-1),
+                              cart_point=np.zeros((count, 3)),
+                              robot_velocity=(zeros, zeros, zeros),
+                              cart_velocity=(zeros, zeros, zeros), dt=DT,
+                              robot=robot, cart=cart)
+        # d=0.5：L=0.4/0.6 被拉长（正张力）、L=0.8 被压缩（负张力）
+        np.testing.assert_allclose(np.asarray(sample.rope_extension), 0.5 - lengths, atol=1e-12)
+        self.assertGreater(float(sample.rope_tension[0]), 0.0)
+        self.assertLess(float(sample.rope_tension[2]), 0.0)
+        self.assertTrue(bool(np.all(np.asarray(sample.is_taut))))
+
+
+class MultiRopeModelTests(unittest.TestCase):
+    """三类环境逐 env 分配：按整数 id 选择，长度不同时伸长量也必须混合。"""
+
+    def _inputs(self, count, distance):
+        zeros = np.zeros(count)
+        return dict(
+            robot_point=np.stack([np.full(count, distance), zeros, zeros], axis=-1),
+            cart_point=np.zeros((count, 3)),
+            robot_velocity=(zeros, zeros, zeros), cart_velocity=(zeros, zeros, zeros), dt=DT,
+            robot=_vector_body_properties(count, ROBOT_MASS, ROBOT_INERTIA, -0.16, zeros),
+            cart=_vector_body_properties(count, cart_effective_mass(), CART_INERTIA, 0.25, zeros))
+
+    def test_three_models_are_selected_per_environment(self):
+        if np is None:
+            self.skipTest("numpy 不在本解释器里")
+        count, distance = 3, 0.45
+        lengths = np.array([REST_LENGTH, REST_LENGTH, 0.5])    # 只有 rigid 用不同长度
+        merged = models.MultiRopeModel(
+            models=(make_model("compliant"), make_model("inextensible"),
+                    models.make_rope_model("rigid", rest_length=lengths)),
+            model_ids=np.array([0.0, 1.0, 2.0]))
+        out = merged.update(**self._inputs(count, distance))
+        # 两套绳在 0.45 < 0.8 时松弛 ⇒ 0；连杆 L=0.5 被压缩 ⇒ 负张力
+        self.assertEqual(float(out.rope_tension[0]), 0.0)
+        self.assertEqual(float(out.rope_tension[1]), 0.0)
+        self.assertLess(float(out.rope_tension[2]), 0.0)
+        # 长度不同 ⇒ 伸长量必须逐 env 混合，不能像旧的 SplitRopeModel 那样只取一套。
+        # 两套绳松弛时报 0（`max(0, d−L0)`），连杆保留符号报 −0.05（压缩）——若只取
+        # models[0] 的伸长量，env2 会错报 0。
+        np.testing.assert_allclose(np.asarray(out.rope_extension),
+                                   np.array([0.0, 0.0, distance - 0.5]), atol=1e-12)
+        self.assertEqual(out.rope_state, models.MIXED)
+        np.testing.assert_allclose(np.asarray(out.is_taut), np.array([0.0, 0.0, 1.0]))
+
+    def test_multi_rope_model_needs_at_least_two_models(self):
+        with self.assertRaises(ValueError):
+            models.MultiRopeModel(models=(make_model("compliant"),), model_ids=np.array([0.0]))
+
+
+class GridElasticIntegrationTests(unittest.TestCase):
+    """场景网格新引入的弹性档必须能真的积分，而不只是通过解析上界。
+
+    用户 2026-10-08 选的四档里最硬的是 k=1×10⁵ N/m，比历史默认 4000 大 25 倍；显式弹簧
+    的稳定性由 k/c/μ 与 dt 共同决定，故用 1-D 两体积分器真跑一遍，确认不发散。
+    """
+
+    def test_stiffest_grid_level_integrates_without_diverging(self):
+        stiffness, damping = grid.ELASTIC_KC[-1]
+        self.assertGreaterEqual(stiffness, 100000.0)          # 确认测的是最硬档
+        rig = TwoBodyRig(make_model("compliant", stiffness=stiffness, damping=damping),
+                         REST_LENGTH - 0.40)
+        samples = rig.run(command=0.5, steps=2000)            # 10 s
+        for sample in samples:
+            self.assertTrue(math.isfinite(float(sample.rope_tension)))
+            self.assertTrue(math.isfinite(float(sample.rope_extension)))
+            self.assertLess(abs(float(sample.rope_tension)), 1.0e5)   # 不出现爆量
+        self.assertTrue(math.isfinite(rig.robot_velocity) and math.isfinite(rig.cart_velocity))
+        self.assertLess(abs(rig.robot_velocity), 5.0)
+        self.assertLess(abs(rig.cart_velocity), 5.0)
+        # 稳态仍应把小车拖起来（张力≈滚动阻力），而不是数值噪声
+        steady = samples[-400:]
+        tension = sum(float(s.rope_tension) for s in steady) / len(steady)
+        self.assertAlmostEqual(tension, rolling_resistance(rig.cart_velocity),
+                               delta=0.15 * rolling_resistance(rig.cart_velocity) + 0.1)
+
+
 class InterfaceTests(unittest.TestCase):
     """统一接口：字段一致、工厂行为、以及 compliant 与既有 rope.py 逐位一致。"""
 
@@ -289,7 +460,12 @@ class InterfaceTests(unittest.TestCase):
                          {"rope_length", "rope_extension", "rope_tension", "rope_length_rate",
                           "is_taut", "rope_state", "rope_impulse", "direction",
                           "force_on_robot", "force_on_cart"})
+        # `ROPE_MODELS` 的语义是「绳」——两套绳只有拉力，单边性测试可以整表套用；
+        # 刚体球铰连杆是双边模型，单列在 `CONNECTION_MODELS` 里（见 RigidLinkTests）。
         self.assertEqual(set(models.ROPE_MODELS), {"compliant", "inextensible"})
+        self.assertEqual(set(models.CONNECTION_MODELS),
+                         {"compliant", "inextensible", "rigid"})
+        self.assertEqual(models.CONNECTION_MODELS[:2], models.ROPE_MODELS)
 
     def test_factory_rejects_unknown_model_and_missing_parameters(self):
         with self.assertRaises(ValueError):

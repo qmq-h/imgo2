@@ -1,20 +1,22 @@
-"""两套可切换的绳索模型：compliant（弹簧-阻尼）与 inextensible（单边距离约束）。
+"""三种可切换的拖曳连接模型：compliant（弹性绳）、inextensible（低弹性单边绳）、rigid（双边球铰连杆）。
 
-## 为什么需要两套，而不是把 k 调大
+## 为什么需要三种，而不是把 k 调大
 
-两者最大的区别**不是刚度大小**，而是物理机制：
+三者最大的区别**不是刚度大小**，而是物理机制：
 
 * `CompliantRope`：单边弹簧-阻尼，绳可以**伸长并储存弹性能**，绷直靠 `k·δ + c·ḋ`；
 * `InextensibleRope`：单边距离约束 `d ≤ L0, T ≥ 0, T(L0 − d) = 0`，**不允许明显伸长**，
-  Slack→Taut 的速度突变由**约束冲量**处理。
+  Slack→Taut 的速度突变由**约束冲量**处理；
+* `RigidLink`：**双边**距离约束 `d ≡ L0`，拉与推都传递，压缩时小车反向驱动机器人（反驱）。
 
 把 compliant 的 `k` 调到 1×10⁶ N/m 并不能代替后者：实测（`docs/towing_p4_tow_drag_2026-09-20.md`
 §5.19）在 dt=5 ms 下显式弹簧要么给出 373~1528 N 的猛拽、要么直接失稳（k ≥ 1.6×10⁶ 时
-步长上限 3.8 ms），而且它仍然是「靠伸长储能」的机制。
+步长上限 3.8 ms），而且它仍然是「靠伸长储能」的机制。同理，把绳调硬也只得到「拉」，
+永远得不到连杆的「推」——双边性是 `RigidLink` 独有的新物理。
 
 ## 统一接口
 
-两种模型都实现 `RopeModel.update(...) -> RopeSample`，字段完全一致：
+三种模型都实现 `RopeModel.update(...) -> RopeSample`，字段完全一致：
 
     rope_length / rope_extension / rope_tension / rope_length_rate
     / is_taut / rope_state / rope_impulse
@@ -22,15 +24,18 @@
 于是 locomotion、上层策略、logger 与 reward 都不需要因换模型而改。力一律作用在
 **实际挂点**（不是质心），以保留绳力对机器人 pitch 的影响 —— 与 P4 已有的施力方式一致。
 
-## 逐环境分配（训练时 1:1）
+`rope_extension` 对两套绳是 `max(0, d − L0)`（松弛不报负值），对 `RigidLink` **保留符号**
+（负值 = 压缩量）；`rope_tension` 对两套绳恒 `≥ 0`，对 `RigidLink` 有符号（负值 = 推力）。
 
-为了让同一个训练里一半环境用 compliant、一半用 inextensible，用 `SplitRopeModel`：
-它按一个 0/1 掩码把两套模型的结果**逐 env 拼起来**（纯算术混合，所以本模块仍然
-不需要 torch）。示意：
+## 逐环境分配（训练时按类型分批）
 
-    mask = torch.zeros(num_envs, 1)          # 0 = compliant
-    mask[num_envs // 2:] = 1.0               # 1 = inextensible
-    rope = SplitRopeModel(compliant=..., inextensible=..., inextensible_mask=mask)
+为了让同一个训练里三类环境各占一批，用 `MultiRopeModel`：它按一个**整数 id 张量**把
+各模型的结果**逐 env 拼起来**（纯算术混合，所以本模块仍然不需要 torch）。示意：
+
+    ids = torch.randint(0, 3, (num_envs,))   # 0=compliant 1=inextensible 2=rigid
+    rope = MultiRopeModel(models=(compliant, inextensible, rigid), model_ids=ids)
+
+旧的 `SplitRopeModel` 保留为 `MultiRopeModel` 的两模型特例（两套绳长度必须一致）。
 
 本模块**只用算术**（不导入 torch / Isaac Lab）：标量、numpy 数组、torch 张量都能用。
 约定：所有张量的 env 维在最前面（`(N,)` 或 `(N, 3)`），所以把惯量以「**世界系逆惯量**」
@@ -50,6 +55,7 @@ if __package__:
         _maximum_zero,
         _norm,
         _validate,
+        config_value,
         rope_extension,
         rope_tension,
     )
@@ -60,6 +66,7 @@ else:  # 按文件路径直接加载（离线测试的既有做法）时没有�
         _maximum_zero,
         _norm,
         _validate,
+        config_value,
         rope_extension,
         rope_tension,
     )
@@ -185,12 +192,16 @@ class RopeSample(NamedTuple):
 
 # ------------------------------------------------------------------ 基类
 class RopeModel:
-    """绳索模型基类：只声明统一接口，具体物理在子类。"""
+    """绳索模型基类：只声明统一接口，具体物理在子类。
+
+    `rest_length` 可以是标量，也可以是逐环境数组（确定性网格里每个 env 的长度不同，
+    见 `connection_grid.py`）；数组只做类型门、不逐元素扫，见 `rope.config_value`。
+    """
 
     name = "abstract"
 
-    def __init__(self, *, rest_length: float):
-        self.rest_length = _validate("rest_length", rest_length, minimum=0.0)
+    def __init__(self, *, rest_length):
+        self.rest_length = config_value("rest_length", rest_length, minimum=0.0)
 
     def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
                robot: BodyProperties | None = None,
@@ -232,10 +243,11 @@ class CompliantRope(RopeModel):
 
     name = "compliant"
 
-    def __init__(self, *, rest_length: float, stiffness: float, damping: float):
+    def __init__(self, *, rest_length, stiffness, damping):
         super().__init__(rest_length=rest_length)
-        self.stiffness = _validate("stiffness", stiffness, strictly_positive=True)
-        self.damping = _validate("damping", damping, minimum=0.0)
+        # 逐环境数组也接受（网格里同一列共用一档 k/c，但按 env 张量传入）
+        self.stiffness = config_value("stiffness", stiffness, strictly_positive=True)
+        self.damping = config_value("damping", damping, minimum=0.0)
 
     def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
                robot=None, cart=None) -> RopeSample:
@@ -292,13 +304,13 @@ class InextensibleRope(RopeModel):
 
     name = "inextensible"
 
-    def __init__(self, *, rest_length: float, position_gain: float = 0.2,
+    def __init__(self, *, rest_length, position_gain: float = 0.2,
                  max_correction_rate: float = 0.2):
         super().__init__(rest_length=rest_length)
-        self.position_gain = _validate("position_gain", position_gain, minimum=0.0)
-        if self.position_gain > 1.0:
+        self.position_gain = config_value("position_gain", position_gain, minimum=0.0)
+        if _is_number(self.position_gain) and self.position_gain > 1.0:
             raise ValueError("position_gain 必须 ≤ 1（否则会过冲）")
-        self.max_correction_rate = _validate("max_correction_rate", max_correction_rate,
+        self.max_correction_rate = config_value("max_correction_rate", max_correction_rate,
                                             minimum=0.0)
 
     def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
@@ -335,20 +347,155 @@ class InextensibleRope(RopeModel):
                           force_on_robot=force_on_robot, force_on_cart=force_on_cart)
 
 
+# ------------------------------------------------------------------ 方案 C
+def attachment_horizontal_gap(target_distance, *, delta_z):
+    """由**目标三维挂点距**反解 spawn 的**水平**间距 `h = sqrt(target² − Δz²)`（勾股解）。
+
+    三类连接在 spawn 时都必须让两挂点的**三维**距离等于各自的目标值，否则第一物理步就有
+    初始约束力（绳是预张紧、刚体是初始压缩，L=0.4 m 却按 0.8 m 布局时会把小车往后踹）。
+    两挂点有竖直高差 `Δz`（机器人 base 与小车 base_link 的出生高度不同），所以水平间距不是
+    目标距离本身。抽成纯算术函数，好让这条只有跑仿真才会执行的摆放几何能在离线测试里算到
+    （`upper_mdp.reset_towing_episode` 对三类连接统一调用它）。
+
+    `target_distance` / `delta_z` 可以是标量或张量；越界（target ≤ |Δz|）时钳到 0
+    （调用方另做显式校验）。
+    """
+    return _maximum(target_distance * target_distance - delta_z * delta_z, 0.0) ** 0.5
+
+
+class RigidLink(RopeModel):
+    """方案 C：球铰刚性连杆（固定两挂点距离、允许绕挂点自由转动，**可拉可推**）。
+
+    与两套绳模型最本质的差别是**双边性**：
+
+        绳  ：d ≤ L0, T ≥ 0        只能拉，松弛后不再作用
+        连杆：d ≡ L0, T ∈ ℝ        拉与推都传递；压缩时小车反向驱动机器人（反驱）
+
+    实现沿用 inextensible 的「速度级约束 + 位置反馈，显式写成力」，但**不取正部**：
+
+        C = d − L0
+        target_rate = clamp(−β·C/dt, ±max_correction_rate)
+        J = (ḋ − target_rate) / k_eff
+        T = J / dt
+
+    `C > 0`（被拉长）⇒ `target_rate < 0` ⇒ `J > 0` ⇒ 拉力；`C < 0`（被压缩）⇒ `target_rate > 0`
+    ⇒ `J < 0` ⇒ 推力。力仍按 `e`（机器人 → 小车）给出：`F_R = T·e`，压缩时 `F_R` 指向机器人
+    **前方** ⇒ 小车把机器人往前推，即反驱；`F_cart = −F_R` 把小车往后推。
+
+    `is_taut` 恒为真：连杆不存在 slack，永远处于啮合状态。
+
+    **已知限制**：它和 inextensible 一样靠外力等效约束，稳态下会留
+    `C ≈ T·k_eff·dt²/β` 的柔度（名义参数、T=10 N 时约 7 mm），不是无穷刚度。要真正无穷刚性
+    需要 PhysX 关节级约束，而机器人与小车是两个独立 articulation，当前架构只能用外力。
+    本模型要的是**双边性（反驱）**，不是极限刚度；这一点在文档里必须写清，不能宣称「理想刚体」。
+
+    `rest_length` 可以是标量，也可以是逐环境的 `(N,)` 张量/数组（训练里连杆长度按 env 随机化，
+    见 `upper_mdp.py`）。张量形态不走标量校验，由调用方保证非负。
+    """
+
+    name = "rigid"
+
+    def __init__(self, *, rest_length, position_gain: float = 0.2,
+                 max_correction_rate: float = 0.2):
+        super().__init__(rest_length=rest_length)          # 标量或逐环境数组
+        self.position_gain = config_value("position_gain", position_gain, minimum=0.0)
+        if _is_number(self.position_gain) and self.position_gain > 1.0:
+            raise ValueError("position_gain 必须 ≤ 1（否则会过冲）")
+        self.max_correction_rate = config_value("max_correction_rate", max_correction_rate,
+                                               minimum=0.0)
+
+    def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
+               robot: BodyProperties | None = None,
+               cart: BodyProperties | None = None) -> RopeSample:
+        dt = _validate("dt", dt, strictly_positive=True)
+        if robot is None or cart is None:
+            raise ValueError("rigid 模型需要两侧的 mass / inverse_inertia_world / offset")
+        distance, direction, rate = self._geometry(robot_point, cart_point,
+                                                   robot_velocity, cart_velocity)
+        violation = distance - self.rest_length
+        # 双边：目标速率可以是正（推）也可以是负（拉），只受 max_correction_rate 夹幅
+        target_rate = _clamp(-self.position_gain * violation / dt,
+                             -self.max_correction_rate, self.max_correction_rate)
+        impulse = (rate - target_rate) / effective_inverse_mass(direction, robot, cart)
+        tension = impulse / dt
+        force_on_robot = tuple(tension * component for component in direction)
+        force_on_cart = tuple(-component for component in force_on_robot)
+        return RopeSample(rope_length=distance,
+                          # 与绳不同：连杆的伸长量**保留符号**，负值就是压缩量
+                          rope_extension=violation,
+                          rope_tension=tension, rope_length_rate=rate,
+                          is_taut=abs(impulse) >= 0.0,          # 永远啮合，无 slack
+                          rope_state=_state_name(True, impulse),
+                          rope_impulse=impulse, direction=direction,
+                          force_on_robot=force_on_robot, force_on_cart=force_on_cart)
+
+
 # ------------------------------------------------------------------ 逐环境分配
-class SplitRopeModel(RopeModel):
-    """按 0/1 掩码把两套模型**逐环境**拼起来（训练时 1:1 分配用）。
+def _masked_sum(masks, values):
+    """`Σ_i mask_i · value_i`（纯算术，标量/numpy/torch 通用）。"""
+    total = 0.0
+    for mask, value in zip(masks, values):
+        total = total + mask * value
+    return total
 
-    实现上是「两套都算一遍，再按掩码混合」：
 
-        rope_impulse = mask · J_inextensible + (1 − mask) · J_compliant
+class MultiRopeModel(RopeModel):
+    """按**整数 id** 在 N 个模型间逐环境选择（N ≥ 2）。
 
-    纯算术混合 ⇒ 本模块仍然不需要 torch；`mask` 可以是标量、numpy 数组或 torch 张量，
-    形状按 env 维在最前面广播（`(N,)` 或 `(N, 1)`）。绳长/伸长率/方向这些**几何量两套
-    完全一样**，所以直接用其中一套的值（不是混合）。
+        out = Σ_i [ (model_ids == i) · model_i(...) ]
 
-    `rope_state` 在批量下无法逐 env 给字符串，统一返回 `MIXED`；逐 env 判定请用
-    `is_taut`（张量）。
+    实现是「每个模型都算一遍，再按 id 掩码混合」，纯算术 ⇒ 本模块仍不需要 torch；
+    `model_ids` 可以是标量、numpy 数组或 torch 张量（`(N,)` / `(N, 1)`）。
+
+    与旧的 `SplitRopeModel` 的关键差别：**不要求各模型 `rest_length` 相同**（刚体连杆长度
+    逐 env 随机化，与绳长 0.8 m 不同），因此 `rope_extension` 也必须混合，不能像以前那样
+    「几何量取其中一套」——长度不同时两套的伸长量本就不同。`rope_length` /
+    `rope_length_rate` / `direction` 只由挂点几何决定、与模型无关，取第一套。
+
+    `rope_state` 在批量下无法逐 env 给字符串，统一返回 `MIXED`；逐 env 判定请用 `is_taut`。
+    """
+
+    name = "multi"
+
+    def __init__(self, *, models, model_ids):
+        models = tuple(models)
+        if len(models) < 2:
+            raise ValueError("MultiRopeModel 至少需要两个模型；单模型请直接用 make_rope_model")
+        self.models = models
+        self.model_ids = model_ids
+        # 各模型长度可以不同，基类的标量 rest_length 在这里没有统一含义。
+        self.rest_length = None
+
+    def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
+               robot=None, cart=None) -> RopeSample:
+        samples = [model.update(robot_point=robot_point, cart_point=cart_point,
+                                robot_velocity=robot_velocity, cart_velocity=cart_velocity,
+                                dt=dt, robot=robot, cart=cart)
+                   for model in self.models]
+        masks = [(self.model_ids == index) * 1.0 for index in range(len(samples))]
+        first = samples[0]
+        return RopeSample(
+            rope_length=first.rope_length,                 # 几何量只由挂点决定
+            rope_length_rate=first.rope_length_rate,
+            direction=first.direction,
+            # 长度可能逐模型不同 ⇒ 伸长量必须混合
+            rope_extension=_masked_sum(masks, [s.rope_extension for s in samples]),
+            rope_tension=_masked_sum(masks, [s.rope_tension for s in samples]),
+            rope_impulse=_masked_sum(masks, [s.rope_impulse for s in samples]),
+            is_taut=_masked_sum(masks, [_as_binary(s.is_taut) for s in samples]),
+            rope_state=MIXED,
+            force_on_robot=tuple(_masked_sum(masks, [s.force_on_robot[axis] for s in samples])
+                                 for axis in range(3)),
+            force_on_cart=tuple(_masked_sum(masks, [s.force_on_cart[axis] for s in samples])
+                                for axis in range(3)),
+        )
+
+
+class SplitRopeModel(MultiRopeModel):
+    """两套绳索模型按 0/1 掩码逐环境拼接（历史接口，= `MultiRopeModel` 的两模型特例）。
+
+    保留独立类名与构造签名是为了不改既有调用方与测试；两套绳的 `rest_length` 必须一致
+    （`d ≤ L0` 与 `d > L0` 的边界统一）。长度不同的连接（刚体连杆）请用 `MultiRopeModel`。
     """
 
     name = "split"
@@ -357,41 +504,28 @@ class SplitRopeModel(RopeModel):
                  inextensible_mask):
         if compliant.rest_length != inextensible.rest_length:
             raise ValueError("两套模型的 rest_length 必须一致，否则 d≤L0 与 d>L0 的边界不统一")
-        super().__init__(rest_length=compliant.rest_length)
+        super().__init__(models=(compliant, inextensible), model_ids=inextensible_mask)
         self.compliant = compliant
         self.inextensible = inextensible
         self.inextensible_mask = inextensible_mask
-
-    def update(self, *, robot_point, cart_point, robot_velocity, cart_velocity, dt,
-               robot=None, cart=None) -> RopeSample:
-        soft = self.compliant.update(robot_point=robot_point, cart_point=cart_point,
-                                     robot_velocity=robot_velocity,
-                                     cart_velocity=cart_velocity, dt=dt, robot=robot, cart=cart)
-        hard = self.inextensible.update(robot_point=robot_point, cart_point=cart_point,
-                                        robot_velocity=robot_velocity,
-                                        cart_velocity=cart_velocity, dt=dt, robot=robot, cart=cart)
-        mask = self.inextensible_mask
-        return RopeSample(
-            rope_length=soft.rope_length,                 # 几何量两套一致
-            rope_extension=soft.rope_extension,
-            rope_length_rate=soft.rope_length_rate,
-            direction=soft.direction,
-            rope_tension=_blend(mask, hard.rope_tension, soft.rope_tension),
-            rope_impulse=_blend(mask, hard.rope_impulse, soft.rope_impulse),
-            is_taut=_blend(mask, _as_binary(hard.is_taut), _as_binary(soft.is_taut)),
-            rope_state=MIXED,
-            force_on_robot=_blend_vector(mask, hard.force_on_robot, soft.force_on_robot),
-            force_on_cart=_blend_vector(mask, hard.force_on_cart, soft.force_on_cart),
-        )
+        self.rest_length = compliant.rest_length
 
 
+# 两套绳：都只有「拉」，`ROPE_MODELS` 的语义保持为绳，既有的单边性测试仍全部适用。
 ROPE_MODELS = ("compliant", "inextensible")
+# 刚体球铰连杆：双边（可反驱），不是绳。
+RIGID_MODEL = "rigid"
+# 三类可切换的拖曳连接模型；`make_rope_model` 与 `--rope-model` 都接受这三者。
+CONNECTION_MODELS = ROPE_MODELS + (RIGID_MODEL,)
 
 
-def make_rope_model(name: str, *, rest_length: float, stiffness: float | None = None,
+def make_rope_model(name: str, *, rest_length, stiffness: float | None = None,
                     damping: float | None = None, position_gain: float = 0.2,
                     max_correction_rate: float = 0.2) -> RopeModel:
-    """按 `rope_model = "compliant" | "inextensible"` 建模型（统一入口）。"""
+    """按连接类型建模型：`"compliant" | "inextensible" | "rigid"`（统一入口）。
+
+    `rest_length` 对前两者是标量，对 `rigid` 可以是逐环境张量（见 `RigidLink`）。
+    """
     if name == "compliant":
         if stiffness is None or damping is None:
             raise ValueError("compliant 模型需要 stiffness 与 damping")
@@ -399,4 +533,7 @@ def make_rope_model(name: str, *, rest_length: float, stiffness: float | None = 
     if name == "inextensible":
         return InextensibleRope(rest_length=rest_length, position_gain=position_gain,
                                 max_correction_rate=max_correction_rate)
-    raise ValueError(f"未知的 rope_model {name!r}；可选 {ROPE_MODELS}")
+    if name == RIGID_MODEL:
+        return RigidLink(rest_length=rest_length, position_gain=position_gain,
+                         max_correction_rate=max_correction_rate)
+    raise ValueError(f"未知的连接模型 {name!r}；可选 {CONNECTION_MODELS}")

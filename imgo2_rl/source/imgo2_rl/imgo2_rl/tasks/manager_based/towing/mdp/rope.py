@@ -62,6 +62,24 @@ def _is_number(value):
     return not isinstance(value, bool) and isinstance(value, (int, float))
 
 
+def config_value(name, value, *, minimum=None, strictly_positive=False):
+    """配置量：**标量**走 `_validate` 严格校验；**逐环境数组/张量**只做类型门。
+
+    为什么需要：确定性网格里 `rest_length`/`stiffness`/`damping` 逐 env 不同（见
+    `connection_grid.py`），但参数仍必须是「数值或数值数组」。字符串／`None`／布尔这类明显
+    写错的参数必须在入口报 `TypeError`，不能因为「不是标量」就被静默放行——否则错误会一路传
+    到物理步里变成非物理力（`test_towing_rope.py` 的坏参数测试守的就是这条）。数组**不逐元素
+    扫**：torch 上取值会同步 GPU，代价与收益不成比例，非有限值仍由调用方在写进仿真前检查。
+    """
+    if _is_number(value):
+        return _validate(name, value, minimum=minimum, strictly_positive=strictly_positive)
+    if value is None or isinstance(value, (bool, str)) or not (
+            hasattr(value, "__len__") or hasattr(value, "shape")):
+        raise TypeError(
+            f"{name} must be a real number or a numeric array, got {type(value).__name__}")
+    return value
+
+
 def _components(vector, name):
     """把 3 维向量拆成 (x, y, z) 分量；支持三种形态：
 
@@ -102,7 +120,7 @@ def _norm(components):
 
 def rope_extension(distance, *, rest_length):
     """δ = d - L0。松弛时为负，张紧时为正。"""
-    rest_length = _validate("rest_length", rest_length, minimum=0.0)
+    rest_length = config_value("rest_length", rest_length, minimum=0.0)
     if _is_number(distance):
         distance = _validate("distance", distance, minimum=0.0)
     return distance - rest_length
@@ -114,9 +132,11 @@ def rope_tension(distance, distance_rate, *, rest_length, stiffness, damping):
     松弛（δ ≤ 0）时恒为 0，**包括刚好绷直（δ = 0）而 ḋ > 0 的边界** —— 计划里的定义是
     `T = 0 if δ ≤ 0`，不连续点落在 δ = 0，故此处不引入阻尼项。张紧时取
     `max(0, k·δ + c·ḋ)`：绳不能推，因此负的阻尼贡献也被截到 0。
+
+    `rest_length`/`stiffness`/`damping` 可以是标量或逐环境数组（见 `config_value`）。
     """
-    stiffness = _validate("stiffness", stiffness, strictly_positive=True)
-    damping = _validate("damping", damping, minimum=0.0)
+    stiffness = config_value("stiffness", stiffness, strictly_positive=True)
+    damping = config_value("damping", damping, minimum=0.0)
     extension = rope_extension(distance, rest_length=rest_length)
     if _is_number(distance_rate):
         distance_rate = _validate("distance_rate", distance_rate)

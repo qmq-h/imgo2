@@ -1,0 +1,110 @@
+# /root/Desktop/Imgo2/imgo2_rl/logs/towing/play_test/20261009T112519Z_2ead2ad7
+- 状态：completed；已判读 **800/800** 个 case
+- 判定码：COL 315（39%），JNT 345（43%），SPD 140（18%）
+- 跌倒（base 高 < 0.15 m 或 |pitch| > 0.8 rad 占比超限）：**0** 个
+- 失败原因（可叠加）：startup_joint_error 800，stop_joint_error 800，stop_collision 315，speed_track_error 255，stop_margin_low 32
+- 几何间隙不可用样本非零的 case：98 个（>0 说明末端/坏姿态被采到，见记录 §二跑①）
+
+## 关键指标分位数（全体）
+- 起步关节 RMS (rad)             min 0.161 / p25 0.174 / 中位 0.218 / p75 0.243 / max 0.267
+- 起步单关节峰值 (rad)              min 0.587 / p25 0.607 / 中位 0.876 / p75 0.925 / max 1.048
+- 跟速 MAE (m/s)               min 0.039 / p25 0.071 / 中位 0.180 / p75 0.276 / max 0.609
+- 停车最小几何间隙 (m)               min -0.006 / p25 0.280 / 中位 0.490 / p75 0.667 / max 0.960
+- 小车滑移距离 (m)                 min -1.052 / p25 -0.024 / 中位 0.134 / p75 0.307 / max 0.959
+- 横向 |y|max (m)              min 0.008 / p25 0.013 / 中位 0.029 / p75 0.038 / max 0.070
+- 朝向偏差 max (deg)             min 1.175 / p25 1.794 / 中位 2.261 / p75 2.607 / max 8.778
+- 最低 base 高 (m)              min 0.244 / p25 0.254 / 中位 0.254 / p75 0.255 / max 0.260
+
+## 按坡度量级（lane 剖面档）
+        分组    n 判定码（数/占比）                                         起步RMS    跟速MAE     停车间隙     滑移m  |y|max
+        0°  400 COL 146（36%），JNT 217（54%），SPD 37（9%）              0.216    0.157    0.459   0.241   0.025
+       10°  200 COL 81（40%），JNT 53（26%），SPD 66（33%）               0.219    0.221    0.521  -0.059   0.032
+        5°  200 COL 88（44%），JNT 75（38%），SPD 37（18%）               0.220    0.190    0.497   0.015   0.035
+
+## 按连接类型
+        分组    n 判定码（数/占比）                                         起步RMS    跟速MAE     停车间隙     滑移m  |y|max
+ compliant  320 COL 134（42%），JNT 155（48%），SPD 31（10%）             0.212    0.172    0.363   0.216   0.027
+inextensible  160 COL 55（34%），JNT 81（51%），SPD 24（15%）               0.212    0.167    0.392   0.187   0.025
+     rigid  320 COL 126（39%），JNT 109（34%），SPD 85（27%）             0.225    0.204    0.619   0.013   0.032
+
+## 按质量档 (kg)
+        分组    n 判定码（数/占比）                                         起步RMS    跟速MAE     停车间隙     滑移m  |y|max
+        10  160 COL 67（42%），JNT 87（54%），SPD 6（4%）                 0.213    0.153    0.519   0.143   0.028
+        15  160 COL 65（41%），JNT 80（50%），SPD 15（9%）                0.219    0.172    0.468   0.140   0.031
+        20  160 COL 34（21%），JNT 76（48%），SPD 50（31%）               0.221    0.191    0.458   0.128   0.030
+        25  160 COL 35（22%），JNT 56（35%），SPD 69（43%）               0.231    0.205    0.446   0.141   0.028
+         5  160 COL 114（71%），JNT 46（29%）                          0.210    0.129    0.587   0.114   0.029
+
+## 按速度档 (m/s)
+        分组    n 判定码（数/占比）                                         起步RMS    跟速MAE     停车间隙     滑移m  |y|max
+       0.5  265 COL 25（9%），JNT 240（91%）                           0.169    0.064    0.514   0.098   0.011
+         1  275 COL 133（48%），JNT 88（32%），SPD 54（20%）              0.218    0.181    0.480   0.014   0.035
+       1.5  260 COL 157（60%），JNT 17（7%），SPD 86（33%）               0.249    0.339    0.452   0.251   0.035
+
+## 按行（row，连接长度/出生间隙）
+        分组    n 判定码（数/占比）                                         起步RMS    跟速MAE     停车间隙     滑移m  |y|max
+     row00   40 COL 16（40%），JNT 15（38%），SPD 9（22%）                0.221    0.169    0.198   0.159   0.031
+     row01   40 COL 17（42%），JNT 15（38%），SPD 8（20%）                0.222    0.177    0.220   0.164   0.031
+     row02   40 COL 18（45%），JNT 15（38%），SPD 7（18%）                0.221    0.181    0.247   0.213   0.030
+     row03   40 COL 17（42%），JNT 14（35%），SPD 9（22%）                0.220    0.184    0.340   0.215   0.031
+     row04   40 COL 18（45%），JNT 13（32%），SPD 9（22%）                0.217    0.194    0.397   0.226   0.030
+     row05   40 COL 19（48%），JNT 15（38%），SPD 6（15%）                0.226    0.196    0.429   0.115   0.032
+     row06   40 COL 18（45%），JNT 14（35%），SPD 8（20%）                0.223    0.197    0.468   0.067   0.029
+     row07   40 COL 16（40%），JNT 16（40%），SPD 8（20%）                0.221    0.189    0.487   0.070   0.025
+     row08   40 COL 17（42%），JNT 17（42%），SPD 6（15%）                0.221    0.188    0.516   0.101   0.030
+     row09   40 COL 16（40%），JNT 19（48%），SPD 5（12%）                0.222    0.185    0.544   0.111   0.030
+     row10   40 COL 16（40%），JNT 19（48%），SPD 5（12%）                0.222    0.175    0.560   0.126   0.025
+     row11   40 COL 17（42%），JNT 19（48%），SPD 4（10%）                0.221    0.173    0.626   0.122   0.028
+     row12   40 COL 15（38%），JNT 21（52%），SPD 4（10%）                0.221    0.171    0.668   0.111   0.030
+     row13   40 COL 14（35%），JNT 21（52%），SPD 5（12%）                0.215    0.173    0.689   0.122   0.023
+     row14   40 COL 13（32%），JNT 19（48%），SPD 8（20%）                0.215    0.167    0.684   0.114   0.028
+     row15   40 COL 15（38%），JNT 17（42%），SPD 8（20%）                0.212    0.170    0.669   0.116   0.029
+     row16   40 COL 15（38%），JNT 19（48%），SPD 6（15%）                0.212    0.178    0.682   0.151   0.032
+     row17   40 COL 12（30%），JNT 21（52%），SPD 7（18%）                0.213    0.180    0.738   0.187   0.030
+     row18   40 COL 14（35%），JNT 17（42%），SPD 9（22%）                0.213    0.186    0.794   0.173   0.031
+     row19   40 COL 12（30%），JNT 19（48%），SPD 9（22%）                0.213    0.189    0.892   0.153   0.027
+
+## 连接 × 判定码（格 = case 数）
+                    COL        JNT        SPD
+   compliant        134        155         31
+inextensible         55         81         24
+       rigid        126        109         85
+
+## 坡度量级 × 判定码（格 = case 数）
+                    COL        JNT        SPD
+          0°        146        217         37
+         10°         81         53         66
+          5°         88         75         37
+
+## 质量 × 判定码（格 = case 数）
+                    COL        JNT        SPD
+        10kg         67         87          6
+        15kg         65         80         15
+        20kg         34         76         50
+        25kg         35         56         69
+         5kg        114         46          0
+
+## 速度 × 判定码（格 = case 数）
+                    COL        JNT        SPD
+      0.5m/s         25        240          0
+      1.5m/s        157         17         86
+        1m/s        133         88         54
+
+## COL（停车追尾）集中在哪：连接 × 是否 COL（格 = case 数）
+                    COL         其它
+   compliant        134        186
+inextensible         55        105
+       rigid        126        194
+
+## 失败原因组合
+-  316  startup_joint_error+stop_joint_error
+-  200  stop_collision+startup_joint_error+stop_joint_error
+-  137  speed_track_error+startup_joint_error+stop_joint_error
+-  115  stop_collision+speed_track_error+startup_joint_error+stop_joint_error
+-   29  stop_margin_low+startup_joint_error+stop_joint_error
+-    3  stop_margin_low+speed_track_error+startup_joint_error+stop_joint_error
+
+## report.md 的结论（原文）
+- 平地：0/400 通过；失败模式 startup_joint_error×400, stop_joint_error×400, stop_collision×146, speed_track_error×75, stop_margin_low×23。失败跨起步/全程/停车多相：脚本 shaping 不足以解释，属于上层残差/调度的目标。
+- 5° 坡：0/200 通过；失败模式 startup_joint_error×200, stop_joint_error×200, stop_collision×88, speed_track_error×62, stop_margin_low×5。失败跨起步/全程/停车多相：脚本 shaping 不足以解释，属于上层残差/调度的目标。
+- 10° 坡：0/200 通过；失败模式 startup_joint_error×200, stop_joint_error×200, speed_track_error×118, stop_collision×81, stop_margin_low×4。失败跨起步/全程/停车多相：脚本 shaping 不足以解释，属于上层残差/调度的目标。

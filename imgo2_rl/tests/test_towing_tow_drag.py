@@ -757,8 +757,8 @@ class InterfaceContractTests(unittest.TestCase):
         锁住「4 个 env 真的会各跑一套、并且能被离线判读」这条链。
         """
         for snippet in ("--num-envs", "--env-spacing", "env_rope_models(args.rope_model, args.num_envs)",
-                        "build_rope_model_for_envs(env_names)", "SplitRopeModel(",
-                        "inextensible_mask=mask", "num_envs=args.num_envs",
+                        "build_rope_model_for_envs(env_names)", "MultiRopeModel(",
+                        "model_ids=model_ids", "num_envs=args.num_envs",
                         "for env_index, recorder in enumerate(recorders)",
                         "for env_index, env_dir in enumerate(env_dirs)"):
             self.assertIn(snippet, self.source, snippet)
@@ -815,6 +815,10 @@ class InterfaceContractTests(unittest.TestCase):
         # 除不尽时前面的模型多分一个，但每个模型至少一个 env
         self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible"], 5),
                          ["compliant", "compliant", "compliant", "inextensible", "inextensible"])
+        # 三类连接（含刚体球铰连杆）：6 env ⇒ 每类 2 个，顺序按 `--rope-model` 给定
+        self.assertEqual(tow_drag.env_rope_models(["compliant", "inextensible", "rigid"], 6),
+                         ["compliant", "compliant", "inextensible", "inextensible",
+                          "rigid", "rigid"])
         for bad in ((["compliant", "inextensible"], 1), (["compliant"], 0), ([], 4)):
             with self.assertRaises(ValueError):
                 tow_drag.env_rope_models(*bad)
@@ -863,9 +867,9 @@ class InterfaceContractTests(unittest.TestCase):
             self.assertTrue(attributes, f"源码里没有用到 {name} 的属性，契约失效")
 
     def test_both_rope_models_are_wired_in(self):
-        """规格要求两套模型都实现、可切换；入口必须同时支持并按 case 记录用的是哪一套。"""
+        """规格要求各连接模型都实现、可切换；入口必须支持并按 case/env 记录用的是哪一套。"""
         self.assertIn("make_rope_model(", self.source)
-        self.assertIn('choices=("compliant", "inextensible")', self.source)
+        self.assertIn('choices=("compliant", "inextensible", "rigid")', self.source)
         self.assertIn('"model": rope_name or case.rope_model', self.source)
         self.assertIn("world_inverse_inertia", self.source)
 

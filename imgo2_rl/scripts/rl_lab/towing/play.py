@@ -155,10 +155,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
     timestep = 0
     last_summary_t = time.time()
     # 指令对照统计：只统计「命令侧期望速度 > 0」的牵引阶段，避免把 settle/STOP 的零指令混进来。
+    # 2026-10-08 改残差方案后没有「上层积分指令」了；2026-10-10 双头迁移后送冻结策略的指令
+    # = 任务指令 + 上层有界偏移，动作 13 维 = 1 维 vx 偏移 + 12 维关节残差。
+    # 因此保留实测速度跟踪误差，另加 13 维上层动作幅值（判断上层到底动没动、动多大）。
     track_steps = torch.zeros(env.num_envs, device=env.device)
-    err_user = torch.zeros(env.num_envs, device=env.device)      # |实际速度 − 命令期望|
-    err_ref = torch.zeros(env.num_envs, device=env.device)       # |实际速度 − 上层积分指令|
-    err_cmd = torch.zeros(env.num_envs, device=env.device)       # |上层积分指令 − 命令期望|
+    err_track = torch.zeros(env.num_envs, device=env.device)     # |实际速度 − 指令速度|
+    # ‖13 维上层动作‖₂：**归一化单位**（= processed_actions.clamp(−1,1)），不是 rad；
+    # 换算成关节偏移要乘 action_scale（hip 0.125 / thigh·shank 0.25 rad），见 upper_mdp.apply_actions。
+    # 前 1 维是 vx 偏移头（×0.5 m/s 后再限 [-0.2, +0.6]），后 12 维才是关节残差。
+    res_norm = torch.zeros(env.num_envs, device=env.device)
     # decoder 精度统计（decoder 直接输出物理量，故误差单位即 m/s、N、kg）
     d_vel = torch.zeros(env.num_envs, device=env.device)
     d_force = torch.zeros(env.num_envs, device=env.device)
@@ -172,10 +177,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
         print(f"[dec] {'step':>6} {'vxT':>7} {'vxP':>7} {'vyT':>7} {'vyP':>7} "
               f"{'mT':>6} {'mP':>6} {'|F|T':>7} {'|F|P':>7}")
     if args_cli.cmd_interval > 0:
-        print("[cmd] 列含义：t=时刻s  user=命令期望速度  ref=上层积分速度指令  "
-              "achieved=实际体速  accel=上层输出的加速度(裁剪后)")
-        print(f"[cmd] {'step':>6} {'t(s)':>7} {'user':>8} {'ref':>8} {'achv':>8} "
-              f"{'err_cmd':>8} {'err_track':>9} {'accel':>8}")
+        print("[cmd] 列含义：t=时刻s  cmd=送冻结策略的指令(任务指令+有界偏移)  achieved=实际体速  "
+              "|res|=13 维上层动作范数(归一化单位)  res_x=第 1 维(vx 偏移头)")
+        print(f"[cmd] {'step':>6} {'t(s)':>7} {'cmd':>8} {'achv':>8} "
+              f"{'err_track':>9} {'|res|':>8} {'res_x':>8}")
 
     def _emit_summary(verbose=True):
         """构造/打印/落盘摘要；异常或 Ctrl+C 时由 finally 调用，也能留下部分数据。
@@ -195,9 +200,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
         }
         track = track_steps.clamp_min(1.0)
         summary["track_steps_mean"] = float(track_steps.mean().item())
-        summary["err_cmd_mean"] = float((err_cmd / track).mean().item())
-        summary["err_track_mean"] = float((err_user / track).mean().item())
-        summary["err_low_mean"] = float((err_ref / track).mean().item())
+        summary["err_track_mean"] = float((err_track / track).mean().item())
+        summary["residual_norm_mean"] = float((res_norm / track).mean().item())
 
         print("\n[summary] " + _json.dumps(summary, ensure_ascii=False, indent=2))
         if not args_cli.no_summary_file:
@@ -209,24 +213,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
 
     if args_cli.cmd_summary:
         print("\n[cmd] 各环境速度跟踪汇总（仅统计命令侧期望速度 > 0 的步）")
-        print(f"[cmd] {'env':>4} {'steps':>7} {'err_cmd':>9} {'err_track':>10} "
-              f"{'err_low':>9} {'track/err_cmd':>14}")
+        print(f"[cmd] {'env':>4} {'steps':>7} {'err_track':>10} {'|res|':>9}")
         for env_id in range(env.num_envs):
             n = track_steps[env_id].item()
             if n <= 0:
                 print(f"[cmd] {env_id:>4}        0        （无牵引阶段采样）")
                 continue
-            ec = err_cmd[env_id].item() / n
-            et = err_user[env_id].item() / n
-            el = err_ref[env_id].item() / n
-            ratio = (et / ec) if ec > 1.0e-6 else float("nan")
-            print(f"[cmd] {env_id:>4} {int(n):>7} {ec:>9.4f} {et:>10.4f} {el:>9.4f} "
-                  f"{ratio:>14.2f}")
-        print("[cmd] err_cmd  = |上层积分指令 − 命令期望|  （上层有没有把指令积到位）")
-        print("[cmd] err_track= |实际速度 − 命令期望|      （最终跟速误差）")
-        print("[cmd] err_low  = |实际速度 − 上层积分指令|  （底层执行误差）")
-        print("[cmd] track/err_cmd ≫ 1 说明上层指令基本到位、误差主要来自底层执行；")
-        print("[cmd] 该比值 ≈ 1 说明上层积分指令本身就没跟上命令期望。")
+            et = err_track[env_id].item() / n
+            rn = res_norm[env_id].item() / n
+            print(f"[cmd] {env_id:>4} {int(n):>7} {et:>10.4f} {rn:>9.4f}")
+        print("[cmd] err_track = |实际速度 − 送冻结策略的指令速度|（最终跟速误差，"
+              "与测量台 steady_tracking_ratio 同口径）")
+        print("[cmd] |res|     = 13 维上层动作范数均值（归一化单位，前 1 维是 vx 偏移头）："
+              "=0 表示上层完全没介入，接近冻结策略满幅说明上层在主导，需查是否顶掉了底层动作。")
 
     print(f"[INFO] 开始回放（确定性策略，step_dt={dt} s）。Ctrl+C 退出。", flush=True)
     try:
@@ -240,24 +239,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
               episode_steps += 1
               episode_return += rewards
 
-              # ---- 指令对照：user_command（命令侧期望）/ reference_command（上层积分）/ 实际速度 ----
-              user = action_term.user_command
-              ref = action_term.reference_command
-              accel = action_term.processed_actions
+              # ---- 指令对照：loco_command（任务指令 + 有界偏移）/ 实际速度 / 13 维上层动作 ----
+              cmd = action_term.loco_command
+              residual = action_term.processed_actions
               achieved = action_term._asset.data.root_lin_vel_b[:, :2]
-              active = torch.linalg.vector_norm(user[:, :2], dim=1) > 1.0e-4
+              active = torch.linalg.vector_norm(cmd[:, :2], dim=1) > 1.0e-4
               if active.any():
                   track_steps += active.float()
-                  err_user += torch.where(active, (achieved - user[:, :2]).norm(dim=1), 0.0)
-                  err_ref += torch.where(active, (achieved - ref[:, :2]).norm(dim=1), 0.0)
-                  err_cmd += torch.where(active, (ref[:, :2] - user[:, :2]).norm(dim=1), 0.0)
+                  err_track += torch.where(active, (achieved - cmd[:, :2]).norm(dim=1), 0.0)
+                  res_norm += torch.where(
+                      active, torch.linalg.vector_norm(residual, dim=1), 0.0)
               if args_cli.cmd_interval > 0 and timestep % args_cli.cmd_interval == 0:
                   print(f"[cmd] {timestep:>6} {timestep * dt:>7.2f} "
-                        f"{user[0, 0].item():>8.3f} {ref[0, 0].item():>8.3f} "
+                        f"{cmd[0, 0].item():>8.3f} "
                         f"{achieved[0, 0].item():>8.3f} "
-                        f"{(ref[0, :2] - user[0, :2]).norm().item():>8.3f} "
-                        f"{(achieved[0, :2] - user[0, :2]).norm().item():>9.3f} "
-                        f"{accel[0, 0].item():>8.3f}")
+                        f"{(achieved[0, :2] - cmd[0, :2]).norm().item():>9.3f} "
+                        f"{torch.linalg.vector_norm(residual[0]).item():>8.3f} "
+                        f"{residual[0, 0].item():>8.3f}")
               # ---- decoder 估计 vs 真值 ----
               est = runner.last_estimate
               if est is not None:
@@ -265,8 +263,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
                   gt_f = action_term.towing_force_b
                   gt_m = action_term.cart_mass[:, 0]
                   # decoder 直接回归物理量（m/s、kg、N），误差也在物理量上算
+                  # 布局：[vx, vy, m, Fx, Fy, Fz]（2026-10-08 起力为 3 维）
                   d_vel += (est[:, :2] - gt_vel).abs().mean(dim=1)
-                  d_force += (est[:, 3:5] - gt_f).abs().mean(dim=1)
+                  d_force += (est[:, 3:6] - gt_f).abs().mean(dim=1)
                   mw = mass_supervision_weight(gt_f, minimum_force=1.0, force_scale=10.0)
                   d_mass += (est[:, 2] - gt_m).abs() * mw
                   d_n += 1.0
@@ -277,7 +276,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
                             f"{gt_vel[0,1].item():>7.3f} {est[0,1].item():>7.3f} "
                             f"{gt_m[0].item():>6.2f} {est[0,2].item():>6.2f} "
                             f"{gt_f[0].norm().item():>7.3f} "
-                            f"{est[0,3:5].norm().item():>7.3f}")
+                            f"{est[0,3:6].norm().item():>7.3f}")
 
               finished = (dones > 0).nonzero(as_tuple=False).flatten()
               if len(finished) > 0:
@@ -288,7 +287,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
                                 f"长度 {int(episode_steps[env_id])}  回报 {episode_return[env_id].item():.2f}  "
                                 f"牵引力 {action_term.towing_force_b[env_id].norm().item():.3f} N  "
                                 f"间隙 {action_term.rope_state[env_id, 0].item():.3f} m  "
-                                f"参考速度 {action_term.reference_command[env_id].tolist()}")
+                                f"指令速度 {action_term.loco_command[env_id].tolist()}  "
+                                f"上层动作范数 {torch.linalg.vector_norm(action_term.processed_actions[env_id]).item():.3f}"
+                                f"（归一化单位，前 1 维 = vx 偏移头）")
                   episode_steps[finished] = 0
                   episode_return[finished] = 0
                   # 回合边界必须清掉三套 GRU 里对应环境的 hidden，否则下个回合会带着

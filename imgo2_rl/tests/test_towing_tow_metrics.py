@@ -497,5 +497,61 @@ class BackwardCompatibilityTests(unittest.TestCase):
             summarize_tow([_row(0.005, "station", 0.0, 0.0, 0.0, 0.0)], user_command=0.5)
 
 
+class ClearanceUnavailableTests(unittest.TestCase):
+    """`tow_clearance.clearance()` 返回 `(None, None)` 时整套判读不得崩掉。
+
+    2026-10-09 测试台首跑实测：拖曳段出现「机器人后表面点与车头点在横向/竖向上都配不上
+    `FACING_TOL_M = 0.05 m`」的采样点（姿态离奇/被拽翻/被甩到空中），于是
+    `min(after_tow_clearance)` 抛 `TypeError: '<' not supported between instances of
+    'float' and 'NoneType'`，**9 个 case 的 tow.csv 与摘要一个都没写出来**。
+    修法：逐相位计数不可用样本、只对可用样本取最小值，并在判"几何接触"前守住 None。
+    """
+
+    @staticmethod
+    def _make_unavailable(row):
+        """把一行改成坏姿态：机器人被抬到空中 ⇒ 与车头点在竖向上配不上（|dz| > 5 cm）。
+
+        这个高度是按 `tow_clearance` 的真实 FK 选出来的（合成轨迹的机—车间距约 1 m 时，
+        `robot_z_m ≥ 0.6 m` 就一对「面对面」点都没有）；它同时代表「被拽翻/腾空」这类真实现象。
+        """
+        row["robot_z_m"] = 1.2
+
+    def test_unavailable_samples_are_counted_instead_of_crashing(self):
+        rows = add_witness_columns(_run(tow_s=0.2, coast_s=0.1))
+        for row in rows:
+            self._make_unavailable(row)
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertGreater(summary["clearance_unavailable_samples"], 0)
+        self.assertEqual(sorted(summary["clearance_unavailable_phases"]),
+                         ["coast", "station", "tow"])
+        # 全部不可用 ⇒ 所有间隙字段都是 None（不能比较、也不能给"干净"结论）
+        for key in ("min_clearance_m", "min_clearance_coast_m",
+                    "min_clearance_station_m", "final_clearance_m"):
+            self.assertIsNone(summary[key], key)
+        self.assertIsInstance(summary["valid"], bool)
+
+    def test_station_value_never_masquerades_as_final_clearance(self):
+        """只有拖曳之后的样本不可用时，station 段的间隙不得被当成「末端间隙」。"""
+        rows = add_witness_columns(_run(tow_s=0.2, coast_s=0.1))
+        for row in rows:
+            if row["phase"] != "station":
+                self._make_unavailable(row)
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertIsNotNone(summary["min_clearance_station_m"])
+        self.assertIsNone(summary["min_clearance_m"])
+        self.assertIsNone(summary["min_clearance_coast_m"])
+        self.assertIsNone(summary["final_clearance_m"])
+
+    def test_single_unavailable_sample_does_not_hide_the_rest(self):
+        rows = add_witness_columns(_run(tow_s=0.2, coast_s=0.1))
+        tow_rows = [row for row in rows if row["phase"] == "tow"]
+        # `_clearance_series(stride=5)` 只对 5 的倍数行（与最后一行）做 FK：第 0 个 tow 行
+        # 是整体第 200 行 ⇒ 一定会被采样。
+        self._make_unavailable(tow_rows[0])
+        summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
+        self.assertEqual(summary["clearance_unavailable_samples"], 1)
+        self.assertIsNotNone(summary["min_clearance_m"])
+
+
 if __name__ == "__main__":
     unittest.main()
