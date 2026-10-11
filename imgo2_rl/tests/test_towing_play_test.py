@@ -6,8 +6,12 @@
 那部分只能在训练机实跑，不要在文档里把本文件的通过写成「测试台已验证」。
 """
 import ast
+import contextlib
 import importlib.util
+import io
+import json
 import math
+import random
 import statistics
 import sys
 import tempfile
@@ -2542,6 +2546,224 @@ class UpperV3WiringTests(unittest.TestCase):
             "    command_tensor = lane_command(vx_command)\n"
             "    loco_joint_targets = policy_step(command_tensor)\n"
             "    joint_targets = loco_joint_targets")
+
+
+class CommandDiagnosticsTests(unittest.TestCase):
+    """指令侧诊断（2026-10-11 新增）。
+
+    起因：TOW-26 的验收项「确认偏移门控/两层限幅的实际读数」此前**无法从产物回答**
+    （`velocity_cmd_mps` 记的是任务指令），而「cmd=0 之后偏移头还给不给值」只能间接推断。
+    这三列把这件事变成读数；同时必须保证**基线路径不受影响**（`loco_cmd_vx_mps` 就是任务指令，
+    偏移与动作恒 0），否则基线/策略两轮没法并排比。
+    """
+
+    def test_columns_are_declared_and_numeric(self):
+        for name in ("loco_cmd_vx_mps", "upper_offset_vx_mps", "upper_cmd_action"):
+            self.assertIn(name, play.TEST_FIELDS)
+            self.assertIn(name, play.EXTRA_NUMERIC_FIELDS)
+
+    def test_stop_stats_reports_tow_and_coast_command(self):
+        rows = [base_row(phase=phase, time_s=0.005 * (index + 1),
+                         loco_cmd_vx_mps=loco, upper_offset_vx_mps=offset,
+                         upper_cmd_action=action)
+                for index, (phase, loco, offset, action) in enumerate((
+                    ("tow", 1.2, 0.2, 0.4), ("tow", 1.0, 0.0, 0.0),
+                    ("coast", 0.3, 0.3, 0.6), ("coast", 0.0, 0.0, 0.0)))]
+        stop = play.stop_stats(rows, record_dt=0.005, tow_summary={}, command_mps=1.0,
+                               transition_window_s=1.0, gap_margin_limit_m=0.1)
+        self.assertAlmostEqual(stop["loco_cmd_vx_tow_mean_mps"], 1.1, places=6)
+        self.assertAlmostEqual(stop["upper_offset_vx_tow_mean_mps"], 0.1, places=6)
+        self.assertAlmostEqual(stop["upper_cmd_action_tow_mean"], 0.2, places=6)
+        # coast 段任务指令恒 0 ⇒ 这一列就是偏移头在 STOP 之后的输出
+        self.assertAlmostEqual(stop["loco_cmd_vx_coast_mean_mps"], 0.15, places=6)
+        self.assertAlmostEqual(stop["loco_cmd_vx_coast_max_mps"], 0.3, places=6)
+        self.assertAlmostEqual(stop["upper_offset_vx_coast_mean_mps"], 0.15, places=6)
+        self.assertAlmostEqual(stop["upper_cmd_action_coast_mean"], 0.3, places=6)
+
+    def test_diagnostics_are_only_written_in_the_switch_on_branch(self):
+        source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        blocks = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                  and ast.unparse(node.test) == "upper is None"]
+        self.assertEqual(len(blocks), 1)
+        baseline = "\n".join(ast.unparse(node) for node in blocks[0].body)
+        opened = "\n".join(ast.unparse(node) for node in blocks[0].orelse)
+        for token in ("recorded_offset_vx", "recorded_cmd_action", "loco_cmd_vx_mps"):
+            self.assertNotIn(token, baseline, "基线分支必须一字未改")
+        for token in ("recorded_offset_vx", "recorded_cmd_action"):
+            self.assertIn(token, opened)
+
+    def test_baseline_composed_command_is_the_task_command(self):
+        """记录处必须「基线取任务指令、开关开取合成指令」，两轮才能并排读同一列。"""
+        source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        node = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.Assign) and any(
+                        isinstance(target, ast.Name) and target.id == "loco_cmds_vx"
+                        for target in node.targets))
+        text = ast.unparse(node.value)
+        self.assertIn("upper is None", text)
+        self.assertIn("upper_loco_command", text)
+
+
+class DecoderDumpTests(unittest.TestCase):
+    """`--dump-latent`：decoder 的 latent / 显式估计按阶段汇总（观测，不进判据）。"""
+
+    def test_flag_requires_an_upper_checkpoint(self):
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--dump-latent"])
+        with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
+            args = play.parse_args(["--dump-latent", "--upper-checkpoint", handle.name])
+        self.assertTrue(args.dump_latent)
+        self.assertIsNotNone(args.upper_checkpoint)
+
+    def test_decoder_observation_phases_and_metadata(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("需要 torch 才能构造累加张量")
+        latent_sums = torch.zeros(1, 3, 2)
+        estimate_sums = torch.zeros(1, 3, 2)
+        gt_sums = torch.zeros(1, 3, 4)
+        abs_err = torch.zeros(1, 3, 4)
+        counts = torch.zeros(1, 3)
+        # station：1 拍（latent 1, 3 / 估计 0.5, -0.5）tow：2 拍（latent 2,4 与 4,8）
+        latent_sums[0, 0] = torch.tensor([1.0, 3.0]); counts[0, 0] = 1
+        latent_sums[0, 1] = torch.tensor([6.0, 12.0]); counts[0, 1] = 2
+        estimate_sums[0, 0] = torch.tensor([0.5, -0.5])
+        gt_sums[0, 0] = torch.tensor([1.0, 0.0, 10.0, 50.0])
+        abs_err[0, 0] = torch.tensor([0.1, 0.2, 0.3, 0.4])
+        latent, estimator = play._decoder_observation(
+            0, latent_sums=latent_sums, estimate_sums=estimate_sums, gt_sums=gt_sums,
+            abs_err=abs_err, counts=counts)
+        self.assertEqual(latent["station"], [1.0, 3.0])
+        self.assertEqual(latent["tow"], [3.0, 6.0])          # 均值，不是和
+        self.assertIsNone(latent["coast"])                    # 没有记录的阶段
+        self.assertEqual(estimator["phase_mean"]["station"], [0.5, -0.5])
+        self.assertEqual(estimator["phase_mean"]["coast"], None)
+        self.assertEqual(estimator["samples"], {"station": 1, "tow": 2, "coast": 0})
+        self.assertAlmostEqual(estimator["abs_err"]["station"]["vx_mps"], 0.1, places=6)
+        self.assertAlmostEqual(estimator["abs_err"]["station"]["force_norm_n"], 0.4, places=6)
+        self.assertEqual(estimator["items"], list(play.DECODER_ESTIMATOR_ITEMS))
+        self.assertEqual(estimator["latent_dim"], 2)
+        self.assertEqual(estimator["explicit_dim"], 2)
+
+
+class AnalyzeLatentTests(unittest.TestCase):
+    """离线分析工具：能从 latent 里看出「哪个分组被编码了」。"""
+
+    def test_eta_squared_and_nearest_centroid(self):
+        import analyze_latent
+        values = [-1.0, -1.1, 0.9, 1.05, -0.95, 1.0]
+        labels = ["a", "a", "b", "b", "a", "b"]
+        self.assertGreater(analyze_latent.eta_squared(values, labels), 0.9)
+        self.assertLess(analyze_latent.eta_squared([1.0, 2.0, 3.0], ["a", "a", "a"]), 1e-9)
+        points = [[-1.0], [-1.2], [0.9], [1.1]]
+        accuracy, majority, n = analyze_latent.nearest_centroid_loo(points, ["a", "a", "b", "b"])
+        self.assertEqual((accuracy, majority, n), (1.0, 0.5, 4))
+
+    def test_main_reports_missing_latent_and_detects_a_signal(self):
+        import analyze_latent
+        # 没有 latent 的产物 ⇒ 返回 1 并提示要重跑（latent 无法事后重建）
+        plain = {"cases": [{"case": {"connection": "rigid", "cart_mass_kg": 5.0},
+                            "metrics": {"stop": {}}}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plain.json"
+            path.write_text(json.dumps(plain), encoding="utf-8")
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                self.assertEqual(analyze_latent.main(["--report", str(path)]), 1)
+            self.assertIn("没有 latent 数据", captured.getvalue())
+
+            # 质量档写进 z0 的产物 ⇒ 质量档的 LOO 必须明显高于多数类基线
+            cases = []
+            random.seed(3)
+            for index in range(120):
+                mass = [5.0, 10.0, 15.0, 20.0][index % 4]
+                latent = [{5.0: -1.0, 10.0: -0.3, 15.0: 0.3, 20.0: 1.0}[mass]
+                          + random.gauss(0.0, 0.1)] + [random.gauss(0.0, 1.0) for _ in range(3)]
+                case = {"connection": "compliant", "cart_mass_kg": mass, "grade_deg": 0.0,
+                        "velocity_mps": 1.0}
+                cases.append({"case": case, "metrics": {"case": case, "latent": {"tow": latent},
+                                                        "estimator": {}}})
+            path2 = Path(tmp) / "latent.json"
+            path2.write_text(json.dumps({"cases": cases}), encoding="utf-8")
+            captured = io.StringIO()
+            with contextlib.redirect_stdout(captured):
+                self.assertEqual(analyze_latent.main(["--report", str(path2)]), 0)
+            text = captured.getvalue()
+            self.assertIn("质量档", text)
+            row = next(line for line in text.splitlines() if line.strip().startswith("质量档"))
+            self.assertIn("0.9", row)      # LOO(最优单维) 接近 1
+
+
+class ComparePlayRunsTests(unittest.TestCase):
+    """`compare_play_runs.py`：评价上层策略的正确口径是「同条件下与基线的配对差」。
+
+    用户 2026-10-11 明确：只看 v3 与基线的 delta，基线差是好对照。所以这个工具必须
+    ① 逐 cell（`cell_index`）配对；② 硬证据口径（不看会被代理通道带偏的判定码）；
+    ③ 两轮物理参数不一致时必须警告（否则会把跨环境的数当成配对差）。
+    """
+
+    @staticmethod
+    def _case(cell, *, hard=False, clearance=None, velocity=1.0, mass=10.0, row=None,
+              code="OK"):
+        """按 `report.json` 的结构造一个 case；`hard=True` 用甲板力通道，否则用间隙。"""
+        return {
+            "case": {"cell_index": cell, "env_index": cell, "column": cell % 40,
+                     "row": cell // 40 if row is None else row, "connection": "compliant",
+                     "connection_length_m": 0.5, "grade_deg": 0.0, "velocity_mps": velocity,
+                     "cart_mass_kg": mass},
+            "verdict": {"code": code, "reasons": []},
+            "metrics": {"stop": {"deck_contact_peak_n": 30.0 if hard else 0.0,
+                                 "min_clearance_coast_m": clearance}},
+        }
+
+    def test_is_hard_reads_both_channels(self):
+        import compare_play_runs as compare
+        self.assertTrue(compare.is_hard(self._case(0, hard=True)))
+        self.assertTrue(compare.is_hard(self._case(0, clearance=-0.001)))
+        self.assertFalse(compare.is_hard(self._case(0, clearance=0.2)))
+        self.assertFalse(compare.is_hard(self._case(0, clearance=None)))
+
+    def test_flip_table_counts_saved_and_broken(self):
+        import compare_play_runs as compare
+        # 4 格：都撞 / 仅基线撞（救回）/ 仅策略撞（弄坏）/ 都不撞
+        base = {i: self._case(i, hard=(i in (0, 1))) for i in range(4)}
+        pol = {i: self._case(i, hard=(i in (0, 2))) for i in range(4)}
+        shared = [0, 1, 2, 3]
+        self.assertEqual(compare.flip_table(base, pol, shared), (1, 1, 1, 1))
+        # 宏观/微观率：基线 2/4、策略 2/4
+        self.assertEqual(compare._rate([base[i] for i in shared]), 50.0)
+        self.assertEqual(compare._rate([pol[i] for i in shared]), 50.0)
+
+    def test_paired_arguments_flags_physics_mismatch(self):
+        import compare_play_runs as compare
+        left = {"arguments": {"wheel_damping": 0.008, "velocities": [0.5, 1.0], "num_envs": 800}}
+        right = {"arguments": {"wheel_damping": 0.032, "velocities": [0.5, 1.0], "num_envs": 800}}
+        self.assertEqual(compare.paired_arguments(left, right),
+                         [("wheel_damping", 0.008, 0.032)])
+        self.assertEqual(compare.paired_arguments(left, left), [])
+
+    def test_report_prints_flip_table_and_numeric_row_order(self):
+        import compare_play_runs as compare
+        # 两格：row 0 与 row 10（数值序要 0 在 10 前），基线都撞、策略都不撞
+        base = {"arguments": {"wheel_damping": 0.008}, "cases": [
+            self._case(0, hard=True, row=0), self._case(400, hard=True, row=10)]}
+        pol = {"arguments": {"wheel_damping": 0.008}, "cases": [
+            self._case(0, row=0), self._case(400, row=10)]}
+        out = io.StringIO()
+        self.assertEqual(compare.report(base, pol, stream=out), 0)
+        text = out.getvalue()
+        self.assertIn("物理参数一致", text)
+        self.assertIn("**只有基线撞（救回）**    2", text)
+        self.assertIn("**只有策略撞（弄坏）**    0", text)
+        self.assertLess(text.index("    0 "), text.index("   10 "))
+        # 物理参数不一致时要出警告，而不是当成配对差
+        pol2 = {"arguments": {"wheel_damping": 0.032}, "cases": pol["cases"]}
+        out2 = io.StringIO()
+        compare.report(base, pol2, stream=out2)
+        self.assertIn("物理参数不一致", out2.getvalue())
 
 
 class MassScalingTests(unittest.TestCase):

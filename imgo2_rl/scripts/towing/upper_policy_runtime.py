@@ -400,6 +400,11 @@ class UpperPolicyRuntime:
         self._last_action = torch.zeros(self.num_envs, spec.num_actions,
                                         dtype=torch.float32, device=self.device)
         self.decoder_hidden = None
+        # 最近一拍 decoder 的 6 维显式估计与 16 维 latent（2026-10-11 新增；**只作观测**：
+        # `play_towing_test.py --dump-latent` 用它把 latent 汇总进 report.json 以做聚类检查）。
+        # 只在这里置 None，`act()` 里每次覆盖；不改变任何控制路径。
+        self.last_estimate = None
+        self.last_latent = None
         self.reset()
         self._verify_forward()
 
@@ -428,6 +433,8 @@ class UpperPolicyRuntime:
         本测试台每个 env 只跑一个 episode（不 reset），正常路径就是 `reset()`；`env_ids`
         保留给「部分环境重开」的复用场景（与 `Memory.reset(dones)` 同语义）。
         """
+        self.last_estimate = None
+        self.last_latent = None
         if env_ids is None:
             self._last_action.zero_()
             self.decoder_hidden = None
@@ -520,6 +527,9 @@ class UpperPolicyRuntime:
                 action = self.actor.act_inference(observation)
             else:
                 action = self.actor.act(observation)
+        # 观测用：把这一拍的显式估计与 latent 存下来（`.clone()` 防止调用方拿到会被原地改写的视图）
+        self.last_estimate = estimate.detach().clone()
+        self.last_latent = latent.detach().clone()
         processed = torch.clamp(action, -ACTION_CLIP, ACTION_CLIP)
         # 切分 13 = 1（vx 偏移头，接线在调用方）+ 12（关节残差，本运行时的返回量）。
         delta = processed[:, CMD_ACTION_DIM:] * self.action_scale

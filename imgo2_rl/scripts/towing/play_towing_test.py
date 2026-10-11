@@ -553,6 +553,15 @@ EXTRA_FIELDS = (
     "velocity_cmd_vy_mps", "velocity_cmd_wz_radps",
     "lane_offset_m", "lane_heading_rad", "robot_vy_b_mps", "robot_wz_b_radps",
     "load_offset_m",
+    # 上层 v3 的指令侧诊断（2026-10-11 新增；**观测列，不进判据**）：
+    #   `loco_cmd_vx_mps`     = **合成后**送冻结策略的 vx（= 任务指令 + 偏移，两层限幅之后；
+    #                           基线路径下 ≡ 任务指令 ⇒ 两类产物同一列都有意义）
+    #   `upper_offset_vx_mps` = 实际生效的偏移量（门控 + 两层限幅之后；基线恒 0）
+    #   `upper_cmd_action`    = 偏移头那一维动作（clamp 后 ∈[−1,1]；基线恒 0）
+    # 为什么必须记：TOW-26 的验收项「确认偏移门控/两层限幅的实际读数」此前**无法从产物回答**
+    # （`velocity_cmd_mps` 记的是任务指令）；而 cmd=0 之后（coast 段）`loco_cmd_vx_mps` 就是
+    # 偏移量本身，是判断「有没有用指令侧逃生」的唯一直接读数。
+    "loco_cmd_vx_mps", "upper_offset_vx_mps", "upper_cmd_action",
     # 本 env 的 lane 坡度量级（0 / 5 / 10 deg，来自训练网格）+ 连接长度（训练网格逐行）
     "grade_deg", "connection_length_m",
     "gravity_x_mps2", "gravity_z_mps2",
@@ -1504,6 +1513,18 @@ def stop_stats(rows, *, record_dt: float, tow_summary: dict, command_mps: float,
         "torque_saturated_frac": stop_joint.get("torque_saturated_frac"),
         "per_joint_rms_rad": stop_joint.get("per_joint_rms_rad"),
         "body_vx_rms_mps": _rms(_col(coast[:window_steps], "robot_vx_b_mps")),
+        # ---- 指令侧诊断（2026-10-11 新增；**观测，不进判据**）----
+        # coast 段任务指令恒 0 ⇒ `loco_cmd_vx_*` 就是「偏移头在 STOP 之后还给不给值」的读数；
+        # tow 段则回答「牵引时它有没有帮忙」。
+        "loco_cmd_vx_coast_mean_mps": _mean(_col(coast, "loco_cmd_vx_mps")),
+        "loco_cmd_vx_coast_max_mps": (max(_col(coast, "loco_cmd_vx_mps"))
+                                      if _col(coast, "loco_cmd_vx_mps") else None),
+        "upper_offset_vx_coast_mean_mps": _mean(_col(coast, "upper_offset_vx_mps")),
+        "upper_cmd_action_coast_mean": _mean(_col(coast, "upper_cmd_action")),
+        "loco_cmd_vx_tow_mean_mps": _mean(_col(phase_rows(rows, "tow"), "loco_cmd_vx_mps")),
+        "upper_offset_vx_tow_mean_mps": _mean(_col(phase_rows(rows, "tow"),
+                                                   "upper_offset_vx_mps")),
+        "upper_cmd_action_tow_mean": _mean(_col(phase_rows(rows, "tow"), "upper_cmd_action")),
     }
 
 
@@ -1552,6 +1573,44 @@ def stability_stats(rows, *, transition_window_s: float, record_dt: float,
         "fell": bool(fell),
         "fell_phase": fallen_phase,
     }
+
+
+#: `--dump-latent` 汇总进 `metrics` 的阶段顺序（与记录行的 `phase` 一一对应）。
+DECODER_PHASES = ("station", "tow", "coast")
+#: `metrics["estimator"]["abs_err"]` 的四个量（与 decoder 的 6 维输出对齐）。
+DECODER_ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "mass_kg", "force_norm_n")
+
+
+def _decoder_observation(env_index, *, latent_sums, estimate_sums, gt_sums, abs_err,
+                         counts) -> tuple[dict, dict]:
+    """把某 env 的 latent / 显式估计**按阶段均值**整理成 `metrics` 里的两个块。
+
+    **纯观测**：返回值不参与 `classify_case`、`DEFAULT_THRESHOLDS` 与任何判定码，
+    只是让「latent 是否按连接/质量/坡度聚类」与「decoder 的估计误差」能在离线脚本里复查
+    （latent 无法从 `tow.csv` 事后重建 —— 帧里的 `last_action`/`last_loco_action`/`joint_vel`
+    都没有记录）。没有任何记录的阶段返回 `None`。
+    """
+    latent, estimator = {}, {"phase_mean": {}, "gt_mean": {}, "abs_err": {}, "samples": {}}
+    for index, phase in enumerate(DECODER_PHASES):
+        n = float(counts[env_index, index])
+        if n <= 0.0:
+            latent[phase] = None
+            estimator["phase_mean"][phase] = None
+            estimator["gt_mean"][phase] = None
+            estimator["abs_err"][phase] = None
+            estimator["samples"][phase] = 0
+            continue
+        latent[phase] = [float(value) for value in latent_sums[env_index, index] / n]
+        estimator["phase_mean"][phase] = [float(value)
+                                          for value in estimate_sums[env_index, index] / n]
+        estimator["gt_mean"][phase] = [float(value) for value in gt_sums[env_index, index] / n]
+        estimator["abs_err"][phase] = {name: float(abs_err[env_index, index, item] / n)
+                                       for item, name in enumerate(DECODER_ESTIMATOR_ITEMS)}
+        estimator["samples"][phase] = int(n)
+    estimator["items"] = list(DECODER_ESTIMATOR_ITEMS)
+    estimator["latent_dim"] = int(latent_sums.shape[-1])
+    estimator["explicit_dim"] = int(estimate_sums.shape[-1])
+    return latent, estimator
 
 
 def compute_case_metrics(rows, *, case: dict, command_mps: float | None = None,
@@ -1881,6 +1940,19 @@ def case_metric_summary(case_summaries) -> dict:
         impact_medians[key], impact_samples[key] = median_of(
             lambda metrics, group=group: (
                 metrics.get("impact", {}).get(group, {}) or {}).get("rms_delta_rad"))
+    # 指令侧诊断（2026-10-11）：同样按逐 case 中位数汇总。**只作观测**，不进判据/阈值；
+    # 基线路径下 `stop.loco_cmd_vx_coast_mean_mps` ≡ 任务指令（coast 段恒 0），
+    # 开关打开后它才等于偏移头的输出 ⇒ 两列并排读就是「STOP 之后还给不给值」。
+    for group, field in (("stop", "loco_cmd_vx_coast_mean_mps"),
+                         ("stop", "loco_cmd_vx_coast_max_mps"),
+                         ("stop", "upper_offset_vx_coast_mean_mps"),
+                         ("stop", "upper_cmd_action_coast_mean"),
+                         ("stop", "loco_cmd_vx_tow_mean_mps"),
+                         ("stop", "upper_offset_vx_tow_mean_mps"),
+                         ("stop", "upper_cmd_action_tow_mean")):
+        key = f"{group}.{field}"
+        medians[key], samples[key] = median_of(
+            lambda metrics, group=group, field=field: metrics.get(group, {}).get(field))
     groups = group_statistics(case_summaries)
     by_grade = {name: {"grade_deg": entry["grade_deg"], "cases": entry["cases"],
                        "ok": entry["cases_ok"]}
@@ -1929,6 +2001,17 @@ def _fmt_comparison_summary(summary) -> list:
                       for name, entry in sorted(summary["by_grade"].items()))
     if grade:
         lines.append(f"- 逐坡度量级通过数：{grade}")
+    # 指令侧诊断（2026-10-11，观测行）：coast 段任务指令恒 0 ⇒ 这一行的 `loco_cmd` 就是
+    # 「STOP 之后偏移头还给不给值」的直接读数；tow 段则说明牵引时它有没有在帮忙。
+    for group, field, label in (
+            ("stop", "loco_cmd_vx_coast_mean_mps", "STOP 后合成指令 vx"),
+            ("stop", "loco_cmd_vx_coast_max_mps", "STOP 后合成指令 vx 最大"),
+            ("stop", "upper_cmd_action_coast_mean", "STOP 后偏移头动作"),
+            ("stop", "loco_cmd_vx_tow_mean_mps", "牵引段合成指令 vx"),
+            ("stop", "upper_cmd_action_tow_mean", "牵引段偏移头动作")):
+        key = f"{group}.{field}"
+        lines.append(f"- 指令侧诊断：{label} 中位 {_fmt(summary['medians'].get(key))}"
+                     f"（n={summary['samples'].get(key, 0)}）")
     return lines
 
 
@@ -2429,6 +2512,11 @@ def parse_args(argv=None):
                              "默认 None = 基线（12 维关节位置残差恒 0，行为与加开关前逐位一致）；"
                              "给了路径就打开上层网络：delta = clamp(action,±1)⊙action_scale，"
                              "held = 冻结策略关节目标 + delta 既下发又作为 JNT 指标参考")
+    parser.add_argument("--dump-latent", action="store_true",
+                        help="把上层 decoder 的 16 维 latent 与 6 维显式估计**按 case/阶段汇总**写进 "
+                             "report.json 的 metrics['latent'] / metrics['estimator']（观测，不进判据）；"
+                             "需要同时给 --upper-checkpoint。latent 无法从 tow.csv 事后重建"
+                             "（帧里的 last_action/last_loco_action/joint_vel 没记录），所以只能跑的时候存")
     parser.add_argument("--upper-stochastic", action="store_true",
                         help="上层动作按 actor 分布采样（默认取均值，与 rl_lab/towing/play.py 的"
                              "确定性口径一致）")
@@ -2508,6 +2596,9 @@ def parse_args(argv=None):
     elif args.upper_stochastic:
         parser.error("--upper-stochastic 只在同时给了 --upper-checkpoint 时有意义"
                      "（默认是基线：残差恒 0，没有可采样的动作）")
+    if args.dump_latent and args.upper_checkpoint is None:
+        parser.error("--dump-latent 需要同时给 --upper-checkpoint：基线没有 decoder，"
+                     "latent 与显式估计都不存在")
     # 同版本对照：只在这里校验「存在 + 是本测试台的 report.json」；解析后的数据**不放进
     # args**（`experiment.json` 会把 vars(args) 整个 dump 出去，塞进去会变成几十 MB）。
     if args.compare_report is not None:
@@ -3329,6 +3420,7 @@ def main(args):
             scene.update(dt)
 
         def make_row(env_index: int, *, phase: str, step: int, command: float,
+                     loco_cmd_vx: float, upper_offset_vx: float, upper_cmd_action: float,
                      joint_targets, joint_err_rms: float, joint_err_max: float,
                      progress_robot, progress_load, robot_height, load_height,
                      pitch_offsets, command_vy: float, command_wz: float, lane_offset: float,
@@ -3371,6 +3463,10 @@ def main(args):
                 "load_quat_z": float(cart.data.root_quat_w[env_index, 3]),
                 "load_quat_w": float(cart.data.root_quat_w[env_index, 0]),
                 "velocity_cmd_mps": command,
+                # 指令侧诊断（观测；基线路径下 loco_cmd ≡ command、偏移与动作恒 0）
+                "loco_cmd_vx_mps": loco_cmd_vx,
+                "upper_offset_vx_mps": upper_offset_vx,
+                "upper_cmd_action": upper_cmd_action,
                 "robot_vx_b_mps": float(robot.data.root_lin_vel_b[env_index, 0]),
                 "joint_err_rms_rad": joint_err_rms,
                 "joint_err_max_rad": joint_err_max,
@@ -3424,6 +3520,25 @@ def main(args):
         upper_loco_command = (torch.zeros(num_envs, 3, dtype=torch.float32,
                                           device=args.device) if upper is not None else None)
         command_tensor = torch.zeros(num_envs, 3, dtype=torch.float32, device=args.device)
+        # 指令侧诊断（2026-10-11）：记录**最近一次刷新**的生效偏移与偏移头动作。
+        # 二者只在开关打开的分支里被写；基线路径下保持 0（= 偏移恒 0），**基线分支一字未改**。
+        recorded_offset_vx = torch.zeros(num_envs, dtype=torch.float32, device=args.device)
+        recorded_cmd_action = torch.zeros(num_envs, dtype=torch.float32, device=args.device)
+        # 上层 decoder 的 latent / 显式估计（`--dump-latent`；**只作观测，不进判据**）。
+        # 阶段维固定为 station/tow/coast（与 `make_row` 的 `phase` 同一套）。latent 无法从
+        # `tow.csv` 事后重建（帧里的 last_action/last_loco_action/joint_vel 都没记录），
+        # 所以只能在跑的时候按阶段求和，最后写进 report.json。
+        latent_sums = estimate_sums = decoder_gt_sums = decoder_abs_err = decoder_counts = None
+        if args.dump_latent:
+            latent_sums = torch.zeros(num_envs, 3, upper.spec.latent_dim,
+                                      dtype=torch.float64, device=args.device)
+            estimate_sums = torch.zeros(num_envs, 3, upper.spec.explicit_dim,
+                                        dtype=torch.float64, device=args.device)
+            # 真值 4 项：vx / vy（机体系，与 decoder 输出同口径）、小车质量、绳张力标量
+            decoder_gt_sums = torch.zeros(num_envs, 3, 4, dtype=torch.float64, device=args.device)
+            # 同 4 项的 |估计 − 真值|（vx/vy/质量直接比；第 4 项比 ‖F_est‖ 对张力）
+            decoder_abs_err = torch.zeros(num_envs, 3, 4, dtype=torch.float64, device=args.device)
+            decoder_counts = torch.zeros(num_envs, 3, dtype=torch.float64, device=args.device)
         tangent_t = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=args.device)
         normal_t = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=args.device)
         reset_episode()
@@ -3491,6 +3606,11 @@ def main(args):
                     # vy/wz 是 PD 外环给出的，原样透传（第 0 维才是 vx，同 `upper_mdp.CMD_ACTION_DIM`）
                     upper_loco_command = command_tensor.clone()
                     upper_loco_command[:, :1] = loco_vx
+                    # 指令侧诊断（观测）：**实际生效**的偏移与偏移头那一维动作
+                    # （`upper_processed` 是 clamp 后的 13 维动作 ⇒ 该维 ∈[−1,1]，饱和可见）。
+                    # 合成后的 vx 直接读 `upper_loco_command`（记录处取，避免两处真相）。
+                    recorded_offset_vx = offset_vx.reshape(-1)
+                    recorded_cmd_action = upper_processed[:, 0]
                     # 3) 合成后的 loco_command 喂**冻结策略** ⇒ 冻结关节目标；
                     # 4) 再加 12 维残差 ⇒ held。`held` 既下发、又作为 JNT 指标的参考量
                     #    （与训练侧 `low_position_error(reference="commanded")` 同口径）。
@@ -3532,6 +3652,32 @@ def main(args):
             err_rms = joint_err.pow(2).mean(dim=1).sqrt().tolist()
             err_max = joint_err.abs().amax(dim=1).tolist()
             commands = command_tensor.tolist()
+            # 合成后的 vx：基线路径 ≡ 任务指令；开关打开时是最近一次刷新合成出的那条
+            loco_cmds_vx = (command_tensor if upper is None
+                            else upper_loco_command)[:, 0].tolist()
+            if latent_sums is not None:
+                # 阶段索引与 `make_row(phase=...)` 用的是同一个字符串；这里的量全部来自
+                # `upper.act()` 的最近一拍（`last_latent` / `last_estimate`），不参与任何控制。
+                phase_index = {"station": 0, "tow": 1, "coast": 2}[phase]
+                latent_sums[:, phase_index, :] += upper.last_latent.to(torch.float64)
+                estimate_sums[:, phase_index, :] += upper.last_estimate.to(torch.float64)
+                vx_gt = robot.data.root_lin_vel_b[:, 0].to(torch.float64)
+                vy_gt = robot.data.root_lin_vel_b[:, 1].to(torch.float64)
+                mass_gt = torch.tensor(actual_masses, dtype=torch.float64, device=args.device)
+                tension_gt = state.rope_tension.to(torch.float64)
+                estimate = upper.last_estimate.to(torch.float64)
+                force_est = torch.linalg.vector_norm(estimate[:, 2:5], dim=1)
+                decoder_gt_sums[:, phase_index, 0] += vx_gt
+                decoder_gt_sums[:, phase_index, 1] += vy_gt
+                decoder_gt_sums[:, phase_index, 2] += mass_gt
+                decoder_gt_sums[:, phase_index, 3] += tension_gt
+                decoder_abs_err[:, phase_index, 0] += (estimate[:, 0] - vx_gt).abs()
+                decoder_abs_err[:, phase_index, 1] += (estimate[:, 1] - vy_gt).abs()
+                decoder_abs_err[:, phase_index, 2] += (estimate[:, 2] - mass_gt).abs()
+                decoder_abs_err[:, phase_index, 3] += (force_est - tension_gt).abs()
+                decoder_counts[:, phase_index] += 1.0
+            offsets_vx = recorded_offset_vx.tolist()
+            cmd_actions = recorded_cmd_action.tolist()
             lane = (robot.data.root_pos_w - origins)[:, 1].tolist()
             quat = robot.data.root_quat_w
             qw, qx, qy, qz = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
@@ -3562,6 +3708,9 @@ def main(args):
                 case_rows[env_index].append(make_row(
                     env_index, phase=phase, step=step,
                     command=commands[env_index][0],
+                    loco_cmd_vx=loco_cmds_vx[env_index],
+                    upper_offset_vx=offsets_vx[env_index],
+                    upper_cmd_action=cmd_actions[env_index],
                     joint_targets=joint_targets,
                     joint_err_rms=err_rms[env_index], joint_err_max=err_max[env_index],
                     progress_robot=progress_robot, progress_load=progress_load,
@@ -3644,6 +3793,11 @@ def main(args):
                 impact_window_s=args.impact_window, steady_margin_s=args.steady_margin_s,
                 takeup_force_threshold_n=args.takeup_force_threshold,
                 count_jnt=args.count_jnt)
+            if latent_sums is not None:
+                # 纯观测：把 decoder 的 latent / 显式估计按阶段均值挂进 metrics（不影响判定码）
+                metrics["latent"], metrics["estimator"] = _decoder_observation(
+                    env_index, latent_sums=latent_sums, estimate_sums=estimate_sums,
+                    gt_sums=decoder_gt_sums, abs_err=decoder_abs_err, counts=decoder_counts)
             if not case.cart_present:
                 # `summarize_tow` 的间隙/接触都是「机器人 ↔ 小车」的量；小车停在 2 m 外时它们
                 # 只是"很远"而不是"很好"，所以显式标注并清空，避免报告里出现误导性的读数。

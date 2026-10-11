@@ -129,3 +129,6 @@ Thumbs.db
 
 # 本地研究草稿：保留在工作区，不随仓库同步
 /paper_plan_imgo2.md
+
+# Isaac Sim / 训练进程的 nohup 日志（2026-10-11 实测在 imgo2_rl/ 下留了一个 11 MB 的）
+/imgo2_rl/nohup.out

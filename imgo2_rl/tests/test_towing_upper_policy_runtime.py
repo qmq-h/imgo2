@@ -319,6 +319,24 @@ class RuntimeActTests(unittest.TestCase):
         self.assertEqual(float(processed.abs().max()), 0.0)
         self.assertEqual(float(instance._last_action.abs().max()), 0.0)
 
+    def test_last_latent_and_estimate_are_exposed_for_diagnostics(self):
+        """`play_towing_test.py --dump-latent` 依赖这两个属性（2026-10-11 新增）。
+
+        `act()` 后必须能读到本拍的 16 维 latent 与 6 维显式估计；`reset()` 后清空
+        （避免拿上一轮的残留做诊断）。它们不参与任何控制路径。
+        """
+        instance, _, _, _ = make_runtime(self._tmp.name)
+        self.assertIsNone(instance.last_latent)
+        self.assertIsNone(instance.last_estimate)
+        instance.act(**act_kwargs(3))
+        self.assertEqual(tuple(instance.last_latent.shape), (3, runtime.LATENT_DIM))
+        self.assertEqual(tuple(instance.last_estimate.shape), (3, runtime.EXPLICIT_DIM))
+        self.assertTrue(bool(torch.isfinite(instance.last_latent).all()))
+        self.assertTrue(bool(torch.isfinite(instance.last_estimate).all()))
+        instance.reset()
+        self.assertIsNone(instance.last_latent)
+        self.assertIsNone(instance.last_estimate)
+
     def test_delta_is_clamped_action_times_action_scale(self):
         """13 维动作：前 1 维是 vx 偏移头（不乘 action_scale），后 12 维才是关节残差。"""
         instance, actor, _, _ = make_runtime(self._tmp.name)
