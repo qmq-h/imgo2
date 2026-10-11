@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-10-07。ROS 2 控制器路径配置与本机编译已验证，编辑器红线刷新待确认，见 [路径修复记录](docs/cpp_include_paths_2026-10-07.md)。
+> 最后核对：2026-10-08。MuJoCo sim2sim 启动入口、AMP 权重与终端按键已复核，模型／资源路径／拖曳 MJCF 离线检查通过；后续已发现部署二进制与运行库，`ldd` 无缺失，但 agent 启动在 GLFW 初始化失败，用户反馈按键无响应仍待定位（INPUT-01），见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md)。ROS 2 编辑器红线刷新仍待确认，见 [路径修复记录](docs/cpp_include_paths_2026-10-07.md)。
 >
 > 2026-09-25 状态：`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing_gru_design_2026-09-22.md)。
 >
@@ -390,6 +390,15 @@ python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 20   # �
 
 ### 6.1 MuJoCo：训练仿真到另一仿真器
 
+首次跑通建议选择现有 AMP（键 `3`），不需要重新训练或启动 ROS／Isaac Lab。Ubuntu 系统编译依赖可先安装：
+
+```bash
+sudo apt update
+sudo apt install build-essential cmake curl wget unzip python3-dev libtbb-dev libyaml-cpp-dev libglfw3-dev libgl1-mesa-dev
+```
+
+`build.sh -mj` 会自行检查并下载推理运行库与 MuJoCo，下面两条下载命令也可单独用于准备依赖。需在有可用 OpenGL 显示的桌面终端启动；当前工作区的离线核对与限制见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md)。
+
 ```bash
 cd imgo2_deploy
 
@@ -421,10 +430,14 @@ ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/inference_runtime/onnxruntime library/
 ln -sfn ~/RL/sim2sim/Imgo2_deploy/library/mujoco                      library/mujoco
 ```
 
-窗口内的按键：`0` 起身、**`1` PPO**、**`2` himloco**、**`3` AMP**、`9` 下蹲、`P` 回 Passive、
+在**启动程序的终端**内输入控制按键（`KeyboardInterface()` 从标准输入读取，不是 MuJoCo 窗口）：先按 `0` 起身，等待约 3 秒完成起身，再按 `3` 进入 AMP，按两次 `W` 给出约 0.2 m/s 前进指令，按 `Space` 清零。完整按键：`0` 起身、**`1` PPO**、**`2` himloco**、**`3` AMP**、`9` 下蹲、`P` 回 Passive、
 `W/S/A/D/Q/E` 步进速度指令、`Space` 清零指令、`R` 重置仿真、`Enter` 暂停/继续。
 （手柄：`RB+DPadUp`=PPO、`RB+DPadRight`=himloco、`RB+DPadDown`=AMP。）三个策略各自是一个
 `RLFSMState*Locomotion` 类 + 一条按键指令，新增策略照这个模式加即可。
+
+相机默认是自由视角，不自动跟随。在 **MuJoCo 窗口**按住 `Ctrl`，在机器人躯干上双击鼠标右键，切换为跟踪相机；单纯右键双击只把视角中心移到点击位置。滚轮缩放，左键拖动旋转，`Esc` 返回自由视角。控制指令仍在启动终端输入。依据为仓库内 MuJoCo UI 源码，当前 agent 未实际验证 GUI 操作，见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md)。
+
+倒地后策略不会自动退出：MuJoCo 入口的姿态保护调用仍被注释（FALL-01）。在启动终端先按 `P` 进入阻尼 Passive，再按 `Space` 清零指令、`R` 重置物理状态；随后 `0` 起身，完成后 `3` 重新进入 AMP。`R` 本身只重置 MuJoCo 数据，不重置 FSM／策略缓存，不能单独视为完整控制器重启。依据见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md)。
 
 构建依赖网络与本地编译工具链。2026-09-17 已在本机通过 `build.sh -mj`；GUI 入口需要可用的
 OpenGL/显示，本机无可用 NVIDIA 驱动（`nvidia-smi` 失败）故未运行，见
@@ -510,6 +523,8 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| FALL-01 | P1 | **待修复：倒地不自动退出策略；重置仅作用于物理状态** | 用户反馈倒地乱踢；源码确认 MuJoCo 的 `AttitudeProtect` 调用被注释，AMP 状态无倒地转换，`R` 不重置 FSM／策略缓存。已补人工恢复顺序；自行起身的训练思路已讨论，尚未决定实现或训练，详见 [记录](docs/sim2sim_startup_2026-10-08.md)。未改代码或复现动态现象 | 接入并验证倒地检测后退出 locomotion、停止策略输出；验证重置及重新入状态不会继续使用旧输出，正常行走不误触发。自主起身另需用户确定范围、恢复策略训练与部署切换验证 |
+| INPUT-01 | P1 | **待确认：用户反馈 MuJoCo 控制按键无响应** | 源码确认控制输入来自启动终端，GUI 按键仅走 MuJoCo UI；尚不清楚用户输入焦点、启动方式及 FSM 日志。当前二进制存在且 `ldd` 无缺失，agent 的 PTY 启动停在 GLFW 初始化失败，未到键盘循环，不能作为用户环境的复现。详见 [记录](docs/sim2sim_startup_2026-10-08.md) | 在用户可用显示环境中确认前台终端输入 `0` 的起身日志，再验证 `3`／`W`／清零；若终端也无日志，核对标准输入与是否已打印 `RL_Sim start` |
 | CPP-01 | P1 | **路径与编译已验证；编辑器显示待确认** | 控制器缺少工作区 C++ 配置与生成消息头文件；ROS 2 还声明了未使用的 `control_toolbox` 依赖。已修复，Humble 下两个包编译安装通过，详见 [记录](docs/cpp_include_paths_2026-10-07.md) | 在 VS Code 刷新 IntelliSense，确认截图中的 include 红线消失；尚未通过 UI 观察，不影响已验证的编译结论 |
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
@@ -614,6 +629,11 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-08 | 讨论倒地自主起身训练思路 | 已澄清：仅加奖励不能覆盖倒地状态初始化、机身接触终止、动作范围与行走 AMP 数据的限制。建议独立恢复 PPO＋FSM 切换，属待决定方案；未新增任务、未训练、未验证恢复能力。设计依据与待补条件见 [记录](docs/sim2sim_startup_2026-10-08.md) |
+| 2026-10-08 | 排查倒地乱踢及重置语义（FALL-01） | 已修复：文档补充先 Passive 再清零／重置的恢复顺序，纠正仅按 `R` 等于完整重启的理解。源码确认姿态保护未启用、AMP 不按姿态退出、物理重置不重置 FSM。待修复：自动倒地保护与完整控制状态重置；未改代码、未动态验证。详见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md) |
+| 2026-10-08 | 补充 MuJoCo 视角跟随操作 | 已修复：启动说明补齐 `Ctrl`＋右键双击机器人躯干的跟踪相机操作。源码确认默认自由相机、跟踪手势及 `Esc` 退出；待确认：用户 GUI 实际跟踪效果，agent 显示初始化限制仍在，未改相机代码。依据见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md) |
+| 2026-10-08 | 排查 sim2sim 按键无响应（INPUT-01） | 已修复：更新此前“缺部署依赖”的本机状态，补充控制终端与 GUI 输入区别。已确认二进制存在、`ldd` 无缺失；尝试 PTY 启动，报 `could not initialize GLFW` 后退出，未进入控制循环。待确认：用户焦点、起身日志、实际输入链路；未改控制代码，未宣称按键问题解决。详见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md) |
+| 2026-10-08 | 复核 MuJoCo sim2sim 启动步骤 | 已修复：§6.1 的控制输入位置由“窗口内”纠正为启动终端，补充系统依赖与 AMP 起身／前进顺序。已验证：`/usr/bin/python3` 执行模型同步、资源路径、拖曳 MJCF 静态检查均通过；当前 AMP 权重哈希与 §5.4 的导出件一致。待确认：本工作区缺部署运行库与二进制，未重新编译、加载 libtorch 或运行 GUI；动态验证继续保留问题表中的 MuJoCo／TOW-05／DEPLOY-01 条目。详见 [启动核对记录](docs/sim2sim_startup_2026-10-08.md) |
 | 2026-10-07 | 修复 ROS 2 控制器库／头文件路径（CPP-01） | 已修复：共享 GCC／ROS 2 路径配置、构建导出编译数据库、生成消息头文件、移除 ROS 2 未使用依赖；`robot_msgs` 与 `robot_joint_controller` 编译安装通过，库依赖无缺失，JSON／脚本语法／tracked-ignore 检查通过。待确认：VS Code 红线刷新；未运行 Gazebo、真机或训练。配置及验证哈希见 [记录](docs/cpp_include_paths_2026-10-07.md) |
 | 2026-09-25 | 拖曳 `model_2000` 权重入库占位，并提交本机此前未提交的改动 | 按用户决定（"直接先放 pt，暂时不导出也没事"）把 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` **原样拷**到 `imgo2_deploy/policy/imgo2/towing/policy.pt`：两处 `sha256 = a4d800a26c1d1a50eee220da44a32b51111c3ce475f28c8e25b421b32a1f6ab2`、9761119 B，`cp` 后逐字节一致；`.gitignore` 的例外 `!imgo2_deploy/policy/imgo2/**/policy.pt` 使其可入库（`git check-ignore -q` 退出 1，即未被忽略）。同一次提交带上 5 个此前的未提交文件：`upper_env_cfg.py`（奖励定义，含 `reference_tracking`／`action_magnitude`）、`upper_mdp.py`（`velocity_tracking_exp` 改用 `reference_command` 等）、`towing_on_policy_runner.py` 与 `train.py`（`--compact-log`）及其契约测试 —— 这 5 个文件就是 `2026-09-23_22-19-00` 那次 run 实际用的那份（已与 run 的 `params/env.yaml` 逐项对照）。**重要限制**：该 `policy.pt` 是**训练态 checkpoint**（三套 GRU + 两个优化器 + normalizer + `iter`），**不是** `play.py` 的 TorchScript 导出件，部署侧 libtorch 加载器读不了，目录内也没有 `config.yaml`、FSM 无对应按键 ⇒ 这是"权重留档"而非"可部署策略"，已在 §4.3、§5.4、TOW-05 与 [回放记录](docs/towing_play_2026-09-25.md) §9 写清。**验证**：提交前 `imgo2_rl/tests` 297 通过、`check_towing_mjcf.py`／`check_model_sync.py`／`check_asset_paths.py` 通过、`git diff --check` 与 tracked-ignore 干净、拷贝 sha256 一致。**未验证**：libtorch 实际加载（预期失败）、MuJoCo／Gazebo 回放与 51 维双 GRU 接线，仍待 TOW-05 |
 
