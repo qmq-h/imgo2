@@ -280,9 +280,9 @@ class AMPOnPolicyRunner:
             locs['amp_low_height_fraction_sum'] / count, locs['it'])
         # 「滞空」物理量：训练日志里原本只有 Episode_Reward/feet_air_time（奖励值），
         # 看不到物理量，于是每次想确认步频有没有动都得占用 GPU 跑一次回放。
-        # 这里直接写两条标量（与 eval_gait.py 的 air_time_mean_s / air_fraction 同口径）：
-        #   mean_last_air_time_s     —— 四足「最近一次滞空时长」的均值（参考 0.20–0.24 s；实测 0.067–0.085 s）
-        #   mean_air_time_fraction   —— 当前腾空足比例（≈ 1 − 占空比；实测 0.40–0.50）
+        # 两条标量是日志时刻所有环境/足端的快照，不是按落地事件统计的窗口均值：
+        #   mean_last_air_time_s     —— 四足「最近一次滞空时长」的均值
+        #   mean_air_time_fraction   —— 当前腾空足比例
         mean_air_time, air_fraction = self._feet_air_metrics()
         if mean_air_time is not None:
             self.writer.add_scalar('AMP/mean_last_air_time_s', mean_air_time, locs['it'])
@@ -304,9 +304,9 @@ class AMPOnPolicyRunner:
         if mean_air_time is None:
             air_line = f"""{'Mean last air time (s):':>{pad}} n/a\n"""
         else:
-            # 参考 0.20–0.24 s；我们 24500 轮时实测 0.067–0.085 s（步频 3.1 倍的直接体现）
+            # Diagnostic only; a reward target cannot be inferred from these snapshots.
             air_line = (f"""{'Mean last air time (s):':>{pad}} {mean_air_time:.4f}"""
-                        f"""  [target ~0.20, was 0.067-0.085]\n"""
+                        f"""\n"""
                         f"""{'Mean air-borne feet frac:':>{pad}} {air_fraction:.3f}\n""")
         if len(locs['rewbuffer']) > 0:
             log_string = (f"""{'#' * width}\n"""
@@ -353,8 +353,7 @@ class AMPOnPolicyRunner:
     def _feet_air_metrics(self):
         """四足滞空物理量 → (最近一次滞空时长均值 s, 当前腾空足比例)；拿不到传感器时返回 (None, None)。
 
-        口径与 `scripts/tools/eval_gait.py` 的 `air_time_mean_s` / `air_fraction` 一致，
-        这样训练时在 TensorBoard 上就能盯步频，不必每次回放。
+        是日志时刻的快照；不能由它单独反推出精确步频，仍需接触时序或回放验证。
         """
         try:
             sensor = self.env.unwrapped.scene.sensors.get("contact_forces")

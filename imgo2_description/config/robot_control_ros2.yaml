@@ -3,7 +3,8 @@
 # 参照 ~/RL/sim2sim/Imgo2_deploy/imgo2_description/config/robot_control_ros2.yaml。
 #
 # 分工：
-#   joint_state_broadcaster  —— 把 12 个关节的位置/速度/力矩发到 /joint_states，rl_sim 订阅它。
+#   joint_state_broadcaster  —— 发布 /joint_states，供 robot_state_publisher 与查看使用。
+#                               rl_sim 的关节反馈来自 robot_joint_controller/state。
 #   robot_joint_controller   —— 仓库内 src/robot_joint_controller（RobotJointControllerGroup）：
 #                               订阅 "<namespace>/robot_joint_controller/command"（robot_msgs/RobotCommand），
 #                               update() 里算 tau = kp*(q_des-q) + kd*(dq_des-dq) + tau_ff，

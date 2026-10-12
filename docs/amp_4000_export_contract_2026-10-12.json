@@ -1,0 +1,15 @@
+{
+  "checkpoint": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-12_20-02-26_motion_new/model_4000.pt",
+  "checkpoint_sha256": "9628af9afd2faf37ced063dad06a1b8cadc7a268b686e41b138f9a134e86774e",
+  "exported_policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-12_20-02-26_motion_new/exported/policy.pt",
+  "policy_sha256": "6ee931a73b0186de6941123ad50ab650a52819f6131ad663374ff08f24573c10",
+  "iteration": 4000,
+  "actor_max_diff_128_inputs": 0.0,
+  "input_dim": 45,
+  "output_dim": 12,
+  "deployment_libtorch": "2.3.0+cpu load and finite [1,12] forward passed",
+  "pd_action_default_pose_observation_contract": "passed",
+  "installed_policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/policy/imgo2/amp/policy.pt",
+  "backup": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-12_20-02-26_motion_new/deployment_backup/policy_before_4000_bf792f98faf1.pt",
+  "previous_policy_sha256": "bf792f98faf17cdd6fbdf92f34ec86680a871d39b6dbea1e32a38badf84e0131"
+}
