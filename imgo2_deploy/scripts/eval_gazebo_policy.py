@@ -5,6 +5,7 @@
     ros2 launch imgo2_deploy gazebo.launch.py gui:=false     # 另一个终端
     python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 22            # 键1 PPO
     python3 imgo2_deploy/scripts/eval_gazebo_policy.py --key 3 --vx 0.5 --duration 22    # 键3 AMP
+    # 需要可靠步频时加 --sim-time：仿真时间戳、100 Hz 均匀重采样
 
 脚本会自己发布 /joy（A=起身 → RB+方向键选策略，axes[1]=vx；1=DPadUp / 2=DPadRight / 3=DPadDown），
 随后从 /odom（p3d 真值）与 /joint_states 统计四项指标；只依赖 rclpy + 标准库 math。
@@ -15,7 +16,7 @@
 
 指标定义：
   位姿      z_mean/z_min/z_max（站立或行走高度）、roll/pitch 范围、yaw 漂移率、dx/dt
-  速度跟随  mean(dx/dt) 对命令 vx 的误差
+  速度跟随  身体坐标前进速度对命令 vx 的误差（另保留世界 x 方向速度）
   抖动      相邻控制周期的 |Δdq|/dt 均值（角加速度量级）与 dq 换向次数/秒；分 hip/thigh/shank
   周期性    大腿角自相关首个峰 → 步态周期与周期强度（0~1）、步频；FL↔FR 相位差（trot≈180°）
 """
@@ -39,7 +40,7 @@ def pitch_of(q):
     return math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
 
 class Eval(Node):
-    def __init__(self, vx, key=1, getup=True):
+    def __init__(self, vx, key=1, getup=True, sim_time=False):
         super().__init__("eval_gazebo_policy")
         q = QoSProfile(depth=2000, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.vx = vx
@@ -47,6 +48,9 @@ class Eval(Node):
         # 见 imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp
         self.key = key
         self.getup = getup
+        self.sim_time = sim_time
+        self.odom_wall = []
+        self.js_wall = []
         self.odom = []      # (t, x, z, yaw, roll, pitch)
         self.js = []        # (t, {name: (q, dq)})
         self.create_subscription(Odometry, "/odom", self.on_odom, q)
@@ -57,10 +61,16 @@ class Eval(Node):
 
     def on_odom(self, m):
         p, o = m.pose.pose.position, m.pose.pose.orientation
-        self.odom.append((time.time(), p.x, p.z, yaw_of(o), roll_of(o), pitch_of(o)))
+        wall = time.time()
+        stamp = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
+        self.odom_wall.append(wall)
+        self.odom.append((stamp if self.sim_time else wall, p.x, p.z, yaw_of(o), roll_of(o), pitch_of(o), p.y))
 
     def on_js(self, m):
-        self.js.append((time.time(), dict(zip(m.name, zip(m.position, m.velocity)))))
+        wall = time.time()
+        stamp = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
+        self.js_wall.append(wall)
+        self.js.append((stamp if self.sim_time else wall, dict(zip(m.name, zip(m.position, m.velocity)))))
 
     def send_joy(self, buttons, axes):
         j = Joy()
@@ -95,7 +105,7 @@ def autocorr_peak(sig, dt):
     if denom <= 1e-12:
         return (float("nan"), float("nan"), float("nan"))
     best_lag, best_val = None, -2.0
-    min_lag = max(2, int(0.12 / dt))      # 最快 ~8 Hz
+    min_lag = max(2, math.ceil(0.12 / dt - 1e-9))  # 最快 ~8 Hz；避免浮点截断到 0.11 s
     max_lag = min(n // 2, int(1.5 / dt))  # 最慢 ~0.67 Hz
     vals = []
     for lag in range(min_lag, max_lag + 1):
@@ -107,7 +117,8 @@ def autocorr_peak(sig, dt):
             best_lag, best_val = vals[i]
             break
     if best_lag is None:
-        best_lag, best_val = max(vals, key=lambda x: x[1])
+        # A monotone boundary maximum is not evidence of a gait cycle.
+        return (float("nan"), float("nan"), float("nan"))
     period = best_lag * dt
     return (period, max(-1.0, min(1.0, best_val)), 1.0 / period if period > 0 else float("nan"))
 
@@ -142,10 +153,12 @@ def main():
     ap.add_argument("--duration", type=float, default=22.0, help="含 6s 起身的总时长")
     ap.add_argument("--skip", type=float, default=3.0, help="进入策略后跳过的稳定时间")
     ap.add_argument("--json", type=str, default=None)
+    ap.add_argument("--sim-time", action="store_true", help="Use ROS message simulation timestamps and resample joints at 100 Hz.")
+    ap.add_argument("--raw-json", type=str, default=None, help="Save stable-window pose and joint samples for offline review.")
     a = ap.parse_args()
 
     rclpy.init()
-    n = Eval(a.vx, a.key, a.getup)
+    n = Eval(a.vx, a.key, a.getup, a.sim_time)
     t_end = time.time() + a.duration
     while time.time() < t_end:
         n.tick()
@@ -153,12 +166,42 @@ def main():
 
     # 取稳定窗口
     t_start = getattr(n, "entry_time", n.t0) + a.skip
-    od = [e for e in n.odom if e[0] >= t_start]
-    js = [e for e in n.js if e[0] >= t_start]
+    od = [e for wall, e in zip(n.odom_wall, n.odom) if wall >= t_start]
+    js = [e for wall, e in zip(n.js_wall, n.js) if wall >= t_start]
     out = {"vx_cmd": a.vx, "samples": {"odom": len(od), "joint_states": len(js)}}
     if len(od) < 20 or len(js) < 50:
         print("样本不足：确认 Gazebo 在跑、策略已进入（--key 指定）且 /odom、/joint_states 有数据")
         print(json.dumps(out, ensure_ascii=False)); rclpy.shutdown(); sys.exit(1)
+
+    if a.sim_time:
+        # Callback arrival intervals vary with machine load; use a uniform
+        # simulation-time grid instead of their median for autocorrelation.
+        unique = []
+        for entry in js:
+            if all(name in entry[1] for name in NAMES) and (not unique or entry[0] > unique[-1][0]):
+                unique.append(entry)
+        if len(unique) < 2:
+            raise RuntimeError("Insufficient increasing simulation timestamps")
+        sampled = []
+        index = 0
+        t = unique[0][0]
+        while t <= unique[-1][0]:
+            while index + 1 < len(unique) - 1 and unique[index + 1][0] < t:
+                index += 1
+            left, right = unique[index], unique[index + 1]
+            alpha = (t - left[0]) / (right[0] - left[0])
+            values = {name: tuple(left[1][name][k] + alpha * (right[1][name][k] - left[1][name][k])
+                                 for k in (0, 1)) for name in NAMES}
+            sampled.append((t, values))
+            t += 0.01
+        js = sampled
+        out["time_base"] = "simulation"
+        out["samples"]["resampled_joint_states"] = len(js)
+    else:
+        out["time_base"] = "wall"
+    if a.raw_json:
+        with open(a.raw_json, "w") as f:
+            json.dump({"time_base": out["time_base"], "odom": od, "joint_states": js}, f)
 
     # ---- 位姿 ----
     zs = [e[2] for e in od]
@@ -176,10 +219,24 @@ def main():
         "dx_m": dx, "dx_per_s": dx / dt_pose,
     }
     # ---- 速度跟随 ----
+    forward_distance = 0.0
+    lateral_distance = 0.0
+    for left, right in zip(od, od[1:]):
+        # Commands are in body coordinates; world-x displacement undercounts
+        # forward motion when the robot turns. Rotate planar displacement.
+        dyaw = math.atan2(math.sin(right[3] - left[3]), math.cos(right[3] - left[3]))
+        heading = left[3] + dyaw / 2
+        dx_step, dy_step = right[1] - left[1], right[6] - left[6]
+        forward_distance += math.cos(heading) * dx_step + math.sin(heading) * dy_step
+        lateral_distance += -math.sin(heading) * dx_step + math.cos(heading) * dy_step
+    forward_speed = forward_distance / dt_pose
     out["tracking"] = {
-        "speed_mean": dx / dt_pose,
-        "error_abs": abs(dx / dt_pose - a.vx),
-        "error_pct": (abs(dx / dt_pose - a.vx) / a.vx * 100.0) if a.vx > 1e-6 else 0.0,
+        "speed_mean": forward_speed,
+        "lateral_speed_mean": lateral_distance / dt_pose,
+        "world_x_speed_mean": dx / dt_pose,
+        "coordinate_frame": "body",
+        "error_abs": abs(forward_speed - a.vx),
+        "error_pct": (abs(forward_speed - a.vx) / a.vx * 100.0) if a.vx > 1e-6 else 0.0,
     }
     # ---- 抖动：dq 相邻变化（角加速度量级）与换向率 ----
     dt_js = []
@@ -222,6 +279,8 @@ def main():
     out["periodicity"] = {
         "period_s": nanmean(periods), "freq_hz": nanmean(freqs),
         "score": nanmean(scores), "FL_FR_phase_deg": ph,
+        "per_leg": {leg: {"period_s": p, "freq_hz": f, "score": sc}
+                    for leg, p, f, sc in zip(LEGS, periods, freqs, scores)},
     }
     print(json.dumps(out, ensure_ascii=False, indent=2))
     if a.json:

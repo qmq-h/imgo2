@@ -170,15 +170,24 @@ class AMPLoader:
 
     def traj_time_sample(self, traj_idx):
         """Sample random time for traj."""
-        subst = self.time_between_frames + self.trajectory_frame_durations[traj_idx]
-        return max(
-            0, (self.trajectory_lens[traj_idx] * np.random.uniform() - subst))
+        max_time = max(0.0, self.trajectory_lens[traj_idx] - self.time_between_frames)
+        return max_time * np.random.uniform()
 
     def traj_time_sample_batch(self, traj_idxs):
         """Sample random time for multiple trajectories."""
-        subst = self.time_between_frames + self.trajectory_frame_durations[traj_idxs]
-        time_samples = self.trajectory_lens[traj_idxs] * np.random.uniform(size=len(traj_idxs)) - subst
-        return np.maximum(np.zeros_like(time_samples), time_samples)
+        max_times = np.maximum(0.0, self.trajectory_lens[traj_idxs] - self.time_between_frames)
+        return max_times * np.random.uniform(size=len(traj_idxs))
+
+    def _frame_indices(self, traj_idxs, times):
+        """Map seconds to frame indices; N frames have N-1 time intervals."""
+        last = self.trajectory_num_frames[traj_idxs].astype(int) - 1
+        positions = np.clip(
+            np.asarray(times, dtype=float) / self.trajectory_frame_durations[traj_idxs],
+            0.0, last,
+        )
+        low = np.floor(positions).astype(int)
+        high = np.minimum(low + 1, last)
+        return low, high, positions - low
 
     def slerp(self, val0, val1, blend):
         return (1.0 - blend) * val0 + blend * val1
@@ -189,19 +198,14 @@ class AMPLoader:
 
     def get_frame_at_time(self, traj_idx, time):
         """Returns frame for the given trajectory at the specified time."""
-        p = float(time) / self.trajectory_lens[traj_idx]
-        n = self.trajectories[traj_idx].shape[0]
-        idx_low, idx_high = int(np.floor(p * n)), int(np.ceil(p * n))
+        idx_low, idx_high, blend = self._frame_indices(traj_idx, time)
         frame_start = self.trajectories[traj_idx][idx_low]
         frame_end = self.trajectories[traj_idx][idx_high]
-        blend = p * n - idx_low
         return self.slerp(frame_start, frame_end, blend)
 
     def get_frame_at_time_batch(self, traj_idxs, times):
         """Returns frame for the given trajectory at the specified time."""
-        p = times / self.trajectory_lens[traj_idxs]
-        n = self.trajectory_num_frames[traj_idxs]
-        idx_low, idx_high = np.floor(p * n).astype(int), np.ceil(p * n).astype(int)
+        idx_low, idx_high, blends = self._frame_indices(traj_idxs, times)
         frame_dim = self.trajectories[0].shape[1]
         all_frame_starts = torch.zeros(len(traj_idxs), frame_dim, device=self.device)
         all_frame_ends = torch.zeros(len(traj_idxs), frame_dim, device=self.device)
@@ -210,23 +214,18 @@ class AMPLoader:
             traj_mask = traj_idxs == traj_idx
             all_frame_starts[traj_mask] = trajectory[idx_low[traj_mask]]
             all_frame_ends[traj_mask] = trajectory[idx_high[traj_mask]]
-        blend = torch.tensor(p * n - idx_low, device=self.device, dtype=torch.float32).unsqueeze(-1)
+        blend = torch.tensor(blends, device=self.device, dtype=torch.float32).unsqueeze(-1)
         return self.slerp(all_frame_starts, all_frame_ends, blend)
 
     def get_full_frame_at_time(self, traj_idx, time):
         """Returns full frame for the given trajectory at the specified time."""
-        p = float(time) / self.trajectory_lens[traj_idx]
-        n = self.trajectories_full[traj_idx].shape[0]
-        idx_low, idx_high = int(np.floor(p * n)), int(np.ceil(p * n))
+        idx_low, idx_high, blend = self._frame_indices(traj_idx, time)
         frame_start = self.trajectories_full[traj_idx][idx_low]
         frame_end = self.trajectories_full[traj_idx][idx_high]
-        blend = p * n - idx_low
         return self.blend_frame_pose(frame_start, frame_end, blend)
 
     def get_full_frame_at_time_batch(self, traj_idxs, times):
-        p = times / self.trajectory_lens[traj_idxs]
-        n = self.trajectory_num_frames[traj_idxs]
-        idx_low, idx_high = np.floor(p * n).astype(int), np.ceil(p * n).astype(int)
+        idx_low, idx_high, blends = self._frame_indices(traj_idxs, times)
         all_frame_pos_starts = torch.zeros(len(traj_idxs), AMPLoader.POS_SIZE, device=self.device)
         all_frame_pos_ends = torch.zeros(len(traj_idxs), AMPLoader.POS_SIZE, device=self.device)
         all_frame_rot_starts = torch.zeros(len(traj_idxs), AMPLoader.ROT_SIZE, device=self.device)
@@ -242,7 +241,7 @@ class AMPLoader:
             all_frame_rot_ends[traj_mask] = AMPLoader.get_root_rot_batch(trajectory[idx_high[traj_mask]])
             all_frame_amp_starts[traj_mask] = trajectory[idx_low[traj_mask]][:, AMPLoader.JOINT_POSE_START_IDX:AMPLoader.JOINT_VEL_END_IDX]
             all_frame_amp_ends[traj_mask] = trajectory[idx_high[traj_mask]][:, AMPLoader.JOINT_POSE_START_IDX:AMPLoader.JOINT_VEL_END_IDX]
-        blend = torch.tensor(p * n - idx_low, device=self.device, dtype=torch.float32).unsqueeze(-1)
+        blend = torch.tensor(blends, device=self.device, dtype=torch.float32).unsqueeze(-1)
 
         pos_blend = self.slerp(all_frame_pos_starts, all_frame_pos_ends, blend)
         rot_blend = utils.quaternion_slerp(all_frame_rot_starts, all_frame_rot_ends, blend)

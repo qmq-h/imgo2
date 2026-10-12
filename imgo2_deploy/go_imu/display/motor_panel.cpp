@@ -1,0 +1,96 @@
+#include "display/motor_panel.h"
+#include <cstdarg>
+#include <cstdio>
+namespace go_display {
+using PortState=go::DiagnosticBus;
+using MotorState=go::DiagnosticMotor;
+double toLogical(const MotorState& motor,double raw) { return motor.direction*(raw-motor.offset); }
+void append(std::string& output, const char* format, ...) {
+    va_list args, copy;
+    va_start(args, format);
+    va_copy(copy, args);
+    const int size = std::vsnprintf(nullptr, 0, format, copy);
+    va_end(copy);
+    if (size > 0) {
+        std::vector<char> buffer(static_cast<size_t>(size) + 1);
+        std::vsnprintf(buffer.data(), buffer.size(), format, args);
+        output.append(buffer.data(), static_cast<size_t>(size));
+    }
+    va_end(args);
+}
+
+void printBusLine(std::string& screen, const PortState &state)
+{
+    if (!state.opened)
+    {
+        append(screen, "%-22s | 打开失败: %s\n", state.device.c_str(), state.error.c_str());
+        return;
+    }
+    append(screen, "%-22s", state.device.c_str());
+    for (const MotorState &motor : state.motors)
+    {
+        if (!motor.feedback.valid)
+        {
+            append(screen, " | ID%d 无应答", motor.id);
+            continue;
+        }
+        // q  = 原始输出侧角度（与 go_probe 一致，不受 offset/direction 影响）
+        // qL = 逻辑角度 = direction × (q − offset) —— 姿态、轨迹、日志用的就是这个
+        append(screen, " | ID%d qOut=%+5.2f qL=%+5.2f", motor.id, double(motor.feedback.q),
+                    toLogical(motor, double(motor.feedback.q)));
+        append(screen, " err=%u", unsigned(motor.feedback.error));
+        if (motor.feedback.error)
+            append(screen, "(%s)", go::motorErrorText(motor.feedback.error));
+    }
+    append(screen, "  [轮 %.1fms]\n", state.sweepMs);
+}
+
+void RenderMonitor(const std::vector<PortState> &states, long long refresh,
+            const imu_sensor::TerminalDisplay& display,
+            const imu_sensor::MonitorSnapshot& imu, const real_config::ImuConfig& config)
+{
+    std::string screen;
+    if (display.Columns() < 200 || display.Rows() < 24) {
+        append(screen, "go_monitor | zero commands | refresh %lld | Ctrl+C exits\n", refresh);
+        append(screen, "Compact: ID qOut/qL (rad), err; widen for line statistics.\n");
+        for (const auto& state : states) {
+            append(screen, "%s", state.device.c_str());
+            if (!state.opened) append(screen, " OPEN FAILED");
+            append(screen, "\n");
+            for (const auto& motor : state.motors) {
+                if (motor.feedback.valid)
+                    append(screen, " ID%d %+.2f/%+.2f e%u", motor.id,
+                           double(motor.feedback.q), toLogical(motor, motor.feedback.q),
+                           unsigned(motor.feedback.error));
+                else append(screen, " ID%d --", motor.id);
+            }
+            append(screen, "\n");
+        }
+        display.Show(screen + imu_sensor::MonitorPanel(imu, config));
+        return;
+    }
+    append(screen, "go_monitor —— 持续发送 FOC 全零命令（卸力），实时查看电机反馈与线路质量"
+                "      第 %lld 次刷新\n",
+                refresh);
+    append(screen, "  核对正方向：机械架空后用手慢慢搬动关节，看该台的 qL 往哪边变；\n");
+    append(screen, "  方向据此填 config/real_config.cpp 的 motor_directions（+1 原样 / -1 取反）。\n");
+    append(screen, "  qOut = 输出端角度（协议层已经除以减速比 6.33；未减 offset，与 go_probe 的 q 一致）\n");
+    append(screen, "  qL   = 逻辑角度 = direction × (qOut − offset) —— 姿态/轨迹/日志用的都是它\n");
+    append(screen, "  两者都是**输出端**角度；转子角度只出现在线上帧、offset 和 go_probe 的 off= 里。\n");
+    append(screen, "  范围在退出时按 qL 汇总，可直接填 config.limits 的 q_min/q_max。Ctrl+C 退出。\n\n");
+
+    for (const PortState &state : states)
+        printBusLine(screen, state);
+
+    size_t bytes = 0, bad = 0, stray = 0;
+    for (const PortState &state : states)
+    {
+        bytes += state.bytesIn;
+        bad += state.badFrames;
+        stray += state.strayFrames;
+    }
+    append(screen, "\n  合计: 收到 %zu 字节，坏帧 %zu，非请求 ID 帧 %zu\n", bytes, bad, stray);
+    display.Show(screen + imu_sensor::MonitorPanel(imu, config));
+}
+
+}

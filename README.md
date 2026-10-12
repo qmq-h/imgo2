@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-10-14，当前rebase文件复审：AMP缺口接线与两套recipe共19项离线测试通过，冲突标记/旧测试/旧说明已修；内容修改仍需暂存，整个rebase尚未结束。当前默认motion目录是imgo2_motion，最终模型/新数据身份与短训待核对，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件)。
+> 最后核对：2026-10-14，当前rebase文件复审：AMP缺口接线与两套recipe共19项离线测试通过，冲突标记/旧测试/旧说明已修；内容修改仍需暂存，整个rebase尚未结束。当前默认motion目录已合入imgo2_motion_new，缺口项保留；新数据与短训仍待完整rebase后复核，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件)。
 
 > 2026-09-25 状态摘要：`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing/towing_gru_design_2026-09-22.md)。
 >
@@ -40,13 +40,14 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 |---|---|
 | ~~imgo2_model/~~ | **2026-09-17 已删除**（git 可追溯）。原先只有腿部件片段 URDF（无 `base`、无 `<robot>`，XML 不能独立解析）+ 两套模型网格，无任何消费者；其网格与 `imgo2_description/meshes` 内容相同。删除理由见维护记录与 MODEL-02 |
 | [imgo2_description/](imgo2_description) | **模型唯一源（2026-09-17 起）**。`xacro/core.xacro` 是物理内核（17 link/16 joint，命名 FL/FR/RL/RR），`xacro/robot.xacro` 是组装入口，按开关拼上 `transmission.xacro`（仅 ros_control）、`gazebo.xacro`（插件 + per-link 接触参数）、`imu.xacro`（imu_link）。生成物入库、勿手改：`urdf/imgo2.urdf`（纯）、`urdf/imgo2.gazebo.urdf`（+三者）；`mjcf/{imgo2.xml,scene.xml}` 是 `rl_sim_mujoco` 读的 MuJoCo 模型（训练物理 + 参考项目求解器/接触块 + `framelinvel`）。`meshes/` 是全仓唯一一套网格（指纹 `8dc5b5995a11`） |
-| [imgo2_rl/](imgo2_rl) | Isaac Lab 扩展、任务配置、训练脚本、自定义算法包。**模型与网格副本已于 2026-09-17 删除**，训练直接读 `imgo2_description/urdf/imgo2.urdf`（见 `assets/imgo2.py`） |
+| [imgo2_rl/](imgo2_rl) | Isaac Lab 扩展、任务配置、训练脚本、自定义算法包。**模型与网格副本已于 2026-09-17 删除**，训练直接读 `imgo2_description/urdf/imgo2_real.urdf`（见 `assets/imgo2.py`） |
 | [imgo2_dataset/](imgo2_dataset) | 参考动作数据；当前数据位于 `datasets/imgo2_motion/` |
 | [imgo2_deploy/](imgo2_deploy) | C++ 推理、观察缓存、状态机、MuJoCo/Gazebo/真机入口及策略配置。**模型副本 `robot_description/` 已于 2026-09-17 删除**，MuJoCo 读 `imgo2_description/mjcf/`、Gazebo 读 `imgo2_description/urdf/imgo2.gazebo.urdf` |
 | [docs/](docs) | 排查记录与离线结果：`amp_alignment_review.md`、`code_review_2026-09-15.md`、`amp_data_audit.json` |
 | [docs/towing/data/](docs/towing/data) | **归档的测试数据集**（跑完的 run 里可入库的部分：报告 + 逐 case 指标 + 统计；原始逐物理步轨迹仍在 `imgo2_rl/logs/`，不入库）。当前一份：[800 环境必要性网格](docs/towing/data/2026-10-09_necessity_800/overview.md) |
 | `paper_plan_imgo2.md`（本地，Git 忽略） | 用户研究草稿，不随仓库同步；已实现的拖曳物理与验证结论见 [拖曳仿真验证](docs/towing/towing_simulation_validation.md) |
 | 研究探索计划（原research_exploration_plan.md缺失，待确认） | 本体感知、执行器随机化、动作跟踪与真机准备的研究规划；不要将缺失文档当成已完成方案 |
+| `imgo2_deploy/go_imu/` | 独立 C++ 电机／IMU 工具：`Motor` 电机库、`serialport` 唯一串口底层、`Imu` 采集、`hardware` 整机接口、`apps` 应用流程、`display` 面板、`config/real_config.cpp` 统一配置，外层入口各 5 行。原 `go/`、`imu_sensor/` 保留不变；不含第三方驱动或 ROS／策略接入 |
 | [imgo2_rl/rlfromgym2lab.md](imgo2_rl/rlfromgym2lab.md) | IsaacGym AMP 迁移到 IsaacLab 时 env/wrapper 对接层的说明（背景资料，非当前结论） |
 
 研究规划中的日期、目标和预期结果属于历史计划，不能直接视为当前进展或实验结论。
@@ -85,6 +86,9 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 ## 3. 代码阅读导航
 
+理解 `imgo2_rl` 的目录、配置继承、采样更新循环和启动步骤：先读 [RL 工程阅读与运行指南](docs/rl_structure_guide_2026-10-10.md)。
+常用 AMP 导出、Gazebo、从头训练、续训和 Isaac Sim 回放命令见用户维护的 [command.md](command.md)；使用前替换跨机器路径，命令核对范围见 [填写记录](docs/command_guide_2026-10-11.md)。
+
 底层运动任务位于 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/`；拖曳任务包 [towing/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing) 与 `locomotion/` 同级。小车直接维护 [cart.urdf](imgo2_description/cart/cart.urdf)，离线与仿真端的完成状态见 [拖曳仿真验证](docs/towing/towing_simulation_validation.md)。
 
 拖曳的**三类连接模型**统一在 [mdp/rope_model.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rope_model.py)：`ROPE_MODELS = ("compliant", "inextensible")` 是两套**绳**（单边、只拉，故 `rope_extension` 只报正部、`rope_tension ≥ 0`），`RIGID_MODEL = "rigid"` 是**双边球铰连杆**（`d ≡ L0`，张力有符号，负值即推力／反驱），`CONNECTION_MODELS` 才是三类全集。训练场景的**列 × 行确定性网格**在 [mdp/connection_grid.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/connection_grid.py)（列 = 类型/弹性档、行 = 长度；纯算术可离线测）：[upper_mdp.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py) 按 env index 一次算出逐 env 的类型/长度/k/c 张量，三套模型都按这些张量构造（`MultiRopeModel` 按整数 id 选择），reset 只做域随机化并按**本 env 的连接长度**用 `attachment_horizontal_gap()` 摆放小车初始位置。测量台 [tow_drag.py](imgo2_rl/scripts/towing/tow_drag.py) 的 `--rope-model` 同样接受三者。
@@ -98,8 +102,9 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 | 基础运动任务注册 | [base_move/__init__.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/__init__.py) |
 | 平地、粗糙地形、HIM-Loco、AMP 配置 | [base_move/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move) 下对应 `*_env_cfg.py` |
 | 算法超参数与实验名称 | 同一任务目录下的 `agents/` |
-| 自定义奖励、观测、重置、速度指令 | [mdp/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp) |
-| 自定义算法、网络、runner、包装器、数据加载器 | [scripts/rl_lab/rl_lab/](imgo2_rl/scripts/rl_lab/rl_lab) |
+| 自定义奖励、观测、重置、速度指令 | [mdp/](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/) |
+| 自定义算法、网络、runner、包装器、数据加载器 | [scripts/rl_lab/rl_lab/](imgo2_rl/scripts/rl_lab/rl_lab/) |
+| MPC AMP 采集（ROS1）与重采前检查 | [record_legged_control_amp.py](imgo2_rl/scripts/record_legged_control_amp.py)、[采集复核](docs/amp_collection_review_2026-10-11.md)；脚本默认话题/frame/输出需按实际MPC工程确认 |
 | AMP 动作数据离线核对（高度、FK、腿顺序） | [audit_amp_dataset.py](imgo2_rl/scripts/tools/audit_amp_dataset.py)、[check_amp_joint_order.py](imgo2_rl/scripts/tools/check_amp_joint_order.py) |
 | 资源路径自检（新机器/训练服务器前置） | [check_asset_paths.py](imgo2_rl/scripts/tools/check_asset_paths.py) |
 | 模型副本一致性（关节/惯量/碰撞/网格/FK） | [check_model_sync.py](imgo2_rl/scripts/tools/check_model_sync.py) |
@@ -127,9 +132,14 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 ### 4.1 环境与路径前提
 
+> 2026-10-10 当前源码复核：`assets/imgo2.py` 默认读的是 `imgo2_description/urdf/imgo2_real.urdf`，本节后续 `imgo2.urdf` 表述为原基线历史；当前 real 模型一致性仍见 MODEL-05。启动器默认解释器在本机不存在，需通过 `IMGO2_ISAACLAB_PYTHON` 指向实际 Isaac Lab 环境。已修复说明缺口，待确认运行环境与短训练，见 [阅读指南](docs/rl_structure_guide_2026-10-10.md)。
+
 以下 Python 命令均从 `imgo2_rl/` 执行，并使用已配置好 Isaac Lab/Isaac Sim 的 Python 环境。
 
 - 2026-10-10 本机 `IsaacLab-rsl5` 安装核对：它是 Isaac Lab 本体，实际提交 `c22775241e28f465fe345fa1a482ad6d29d712b0` 声明 RSL-RL 5.0.1；版本文件 2.3.2 不等于确认处于同名标签。本机 Sim 5.1.0，服务器复现命令及待验证项见 [安装记录](docs/isaaclab_rsl5_install_2026-10-10.md)。
+- 全新 Ubuntu 22.04/24.04 的 AMP Height 安装、前置检查与 10 轮试跑命令见 [完整安装流程](docs/ubuntu_amp_install_2026-10-10.md)。使用环境内 pip 安装的 Sim 5.1；新机器安装与运行结果待确认。
+- AMP Height 时间链路核对：物理 200 Hz、策略与专家状态对 50 Hz、24 步 rollout=0.48 s、部署策略 50 Hz；专家插值帧索引偏差已修并 CPU 验证，修正后短训练待运行，见 [采样检查](docs/amp_timing_audit_2026-10-10.md)。
+- AMP 风格与滞空奖励复核：判别器仅观察相隔 20 ms 的运动状态，未显式观察接触／滞空时长；0.3 s 为线性落地奖励门槛，过度增权的副作用待接触测量确认，见 [复核记录](docs/amp_air_time_style_2026-10-10.md)。
 
 - 当前训练机版本基线由用户确认：**Isaac Lab 2.2.1、RSL-RL 2.3.3**；Python、Isaac Sim、PyTorch、CUDA 和驱动版本仍需在训练机实际命令输出中补齐。
 - `imgo2_rl` 和 `rl_lab` 安装脚本声明 Python `>=3.10`，不代表完整兼容矩阵。上层拖曳已像 AMP 一样使用仓库自有 `rl_lab` runner／PPO／recurrent model，不依赖外部 RSL-RL runner/config API；普通 PPO 入口仍按 2.2.1 接口维护。详见 [训练栈兼容性记录](docs/training/training_stack_compatibility_2026-09-22.md)。
@@ -160,7 +170,7 @@ python scripts/tools/list_envs.py
 | `Imgo2-heightmove-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-handstand-rough-ppo` | `scripts/rsl_rl/train.py` |
 | `Imgo2-basemove-rough-himloco` | `scripts/rl_lab/himloco/train.py` |
-| `Imgo2-basemove-flat-amp-height` | `scripts/rl_lab/amp/train.py`（平坦地形，高度与轻量姿态奖励 + 滞空奖励；`AMPHeightRunnerCfg`；滞空项待训练验证，见 [记录](docs/amp_air_time_reward_2026-10-10.md)） |
+| `Imgo2-basemove-flat-amp-height` | `scripts/rl_lab/amp/train.py`（平坦地形，高度与轻量姿态奖励；当前新数据实验关闭滞空项；`AMPHeightRunnerCfg`，见 [复审](docs/amp_settings_review_2026-10-12.md)） |
 | `Imgo2-basemove-flat-amp-fanziqi` | `scripts/rl_lab/amp/train.py`（Fanziqi A1 AMP 配方：`dt=0.005 s`、`decimation=6`，只留线／角速度任务奖励，42 维 actor，无持续外力；`FanziqiAMPRunnerCfg`） |
 
 此外注册了 `Imgo2-basemove-rough-himloco-play`，两套 AMP 分别使用同名 `-play` 任务。
@@ -366,7 +376,7 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 |---|---|---|---|---|
 | `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/policy_flat.pt`，sha256 `53a57f909b61d2a7…`；2026-09-17 按四项指标评过 5 个候选后选它） |
 | `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
-| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45 维（无 `base_lin_vel`，与参考 `amp_go2` 的 actor 组成一致） | `policy.pt`（`model_24500.pt` 的导出，sha256 `cba59d44e387834e…`；与 checkpoint actor 数值完全一致。**24500 轮已确认：0.2/0.3/0.5 m/s 跟速 93.4%/97.9%/95.9%，站立漂移 0.001 m/s，周期强度 0.71–0.83、相位 ±180°**，见 [Gazebo 记录](docs/deployment/gazebo_ros2_bringup_2026-09-17.md) 9.7 节） |
+| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45 维（无 `base_lin_vel`，与参考 `amp_go2` 的 actor 组成一致） | `policy.pt`（当前为用户指定的25000滞空微调正式导出，sha256 `bf792f98faf17cdd…`，actor max diff=0；real Gazebo两次周期0.27 s / 3.70 Hz、body vx约0.586 m/s、z约0.263 m，超调/低站高待优化，见 [实测与切换](docs/gazebo_amp_25000_2026-10-11.md)。此前29000文件已备份，历史结果见 [29000记录](docs/gazebo_amp_29000_2026-10-10.md)） |
 
 **2026-09-25 新入库的拖曳占位（未接线、不可加载）**：`policy/imgo2/towing/policy.pt` 是
 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` 的**原样拷贝**
@@ -376,7 +386,6 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 **没有**对应 FSM 状态类。它只表示"权重已留档入库"（用户 2026-09-25 决定），
 不代表部署链路可用——真正的导出件（57 维帧 + 6 维 estimate + 12 维关节残差的 TorchScript）
 仍需给 `towing/play.py` 加导出路径后在训练机 headless 跑一次，见 TOW-05。
-| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45 维（无 `base_lin_vel`，与参考 `amp_go2` 的 actor 组成一致） | `policy.pt`（`model_24500.pt` 的导出，sha256 `cba59d44e387834e…`；与 checkpoint actor 数值完全一致。**24500 轮已确认：0.2/0.3/0.5 m/s 跟速 93.4%/97.9%/95.9%，站立漂移 0.001 m/s，周期强度 0.71–0.83、相位 ±180°**，见 [Gazebo 记录](docs/deployment/gazebo_ros2_bringup_2026-09-17.md) 9.7 节） |
 
 **2026-09-25 新入库的拖曳占位（未接线、不可加载）**：`policy/imgo2/towing/policy.pt` 是
 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` 的**原样拷贝**
@@ -557,6 +566,7 @@ ros2 run imgo2_deploy rl_sim
   `Couldn't parse parameter override rule`，controller_manager 起不来。
 - Gazebo 版 URDF 的网格用 `package://imgo2_description/meshes/...`（`xacro/robot.xacro` 的
   `mesh_prefix` 属性按 `gazebo` 开关切换）；纯 URDF 仍是 `../meshes/`，不受影响。
+- 默认模型仍为 `imgo2.gazebo.urdf`；评估当前 real 训练策略时，用 `IMGO2_GAZEBO_URDF` 指向仓库的 `imgo2_description/urdf/imgo2_real.gazebo.urdf`。测量脚本加 `--sim-time` 使用仿真时间并均匀采样关节，速度误差按身体坐标统计，详见 [29000 轮实测](docs/gazebo_amp_29000_2026-10-10.md)。
 - 不要用 `gazebo_ros` 自带 launch：本机实测它起的 gzserver 未加载 factory 插件（`/spawn_entity`
   不出现），我们的 launch 直接起 `gzserver -s libgazebo_ros_init.so -s libgazebo_ros_factory.so`。
 - `imgo2_description` 现在是工作区里的标准包（软链进 `src/`，`package.ros1.xml`/`package.ros2.xml`
@@ -587,6 +597,25 @@ bash build.sh --cmake
 
 后续需验证 Imgo2 实际电机通信接口与 SDK 的对应关系、关节方向和零位、状态机切换、数据记录，再形成真机实验记录。当前没有证据可将此阶段标记为完成。
 
+### 6.4 独立电机与 IMU 工具（go_imu）
+
+**明天测试入口：[完整使用与故障手册](docs/go_imu_usage_2026-10-11.md)**，包含全部源文件职责、运行链路、默认配置、操作顺序、错误条件与退出行为。当前 go_imu 文件夹冻结，用户尚未完成重构后实机测试；可按手册在 `/tmp` 构建。
+
+从仓库根目录构建：
+
+```bash
+cmake -S imgo2_deploy/go_imu -B imgo2_deploy/go_imu/build -DCMAKE_BUILD_TYPE=Release
+cmake --build imgo2_deploy/go_imu/build -j
+ctest --test-dir imgo2_deploy/go_imu/build --output-on-failure
+./imgo2_deploy/go_imu/build/go_monitor
+```
+
+`go_monitor` 默认同时监测电机与 `/dev/ttyACM0`（460800），无需 IMU 参数；设备和初始化参数统一修改 `config/real_config.cpp` 后重新编译。电机区下方显示 RPY／角速度／加速度、数据年龄及接收帧率，并在终端原地刷新。宽终端显示完整电机信息，普通终端使用紧凑的 qOut/qL；空间不足时提示扩大窗口。IMU 故障不停止电机监测。
+
+同一 build 目录保留 `go_probe`、`go_pd_demo`、`go_stand`，并提供无需参数的 `imu_reader`。monitor/probe 会发送零指令请求卸力，demo/stand 会主动控制；同一串口不要同时运行多个程序。全部离线测试通过不代表真实电机或 IMU 验证完成；运行条件和历史合并依据见 [合并记录](docs/go_imu_integration_2026-10-10.md)。
+
+整机接口 `RealHardware` 提供 `start/readState/sendCommand/stop`；其他 C++ 工程可通过 `add_subdirectory()` 链接 `go_imu::hardware`，不引入终端显示。电机控制与诊断均每条总线一个线程，总线内部按 ID 请求应答；诊断缺电机时继续扫描，控制保持严格启动与故障锁定。整机接口加入 IMU 就绪检查和反馈过期卸力，数据恢复不会自动恢复运动。初始化按原启动姿态归零，不能站起后重启再次归零。硬件顺序与传感器坐标尚未转换成策略输入；用法、17 项测试及限制见 [重构记录](docs/go_imu_refactor_2026-10-11.md)。
+
 ## 7. 待办与已知问题
 
 | 本次新增问题 | 优先级 | 状态与完成条件 |
@@ -601,8 +630,18 @@ bash build.sh --cmake
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
 | AMP-10 | P1 | 24000 轮运行已离线复核，确定性步态与微调收益待确认 | `2026-09-24_00-57-38_xiaoji_real1` 总奖励与滞空接近平台，末窗口跟速仍改善约 1.8%；最终 checkpoint 可恢复，旧 run 无滞空奖励。见 [复核及命令](docs/amp_training_plateau_2026-10-10.md) | 固定速度回放测周期／误差，验证新增滞空项微调能否达到 0.5–0.6 s 周期；确认原训练模型与本机模型一致 |
-| AMP-11 | P1 | 缺口接线与离线回归通过，待运行 | 当前Height保留feet_air_time_deficit，阈值0.20s、每步系数−3，旧feet_air_time关闭；19项离线测试通过，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件)。旧事件版见[历史](docs/amp_air_time_reward_2026-10-10.md) | 新数据阈值、足端接触与短训/步态验证；不能将滞空阈值当完整周期 |
+| AMP-17 | P1 | 缺口接线与离线回归通过，待运行 | 当前Height保留feet_air_time_deficit，阈值0.20s、每步系数−3，旧feet_air_time关闭；19项离线测试通过，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件)。旧事件版见[历史](docs/amp_air_time_reward_2026-10-10.md) | 新数据阈值、足端接触与短训/步态验证；不能将滞空阈值当完整周期 |
 | REBASE-01 | P1 | 文件内容冲突已修，暂存/继续待完成 | README标记、旧recipe测试与失效文档链接已处理，语法/diff检查及19测试通过，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件) | 暂存本轮修改并继续rebase；后续提交可能还有冲突，最终模型/数据身份与训练短测、缺失研究文档待确认 |
+| DEPLOY-10 | P2 | 待修复，代码冻结 | monitor 帮助对非零启动姿态的 qL 解释不符当前归零公式；CLI 数字解析宽松，monitor -t 边界和 probe 未知参数处理待完善。见 [手册](docs/go_imu_usage_2026-10-11.md) | 用户完成当前版本实机测试后再修；当前采用手册中有效参数和角度公式 |
+| DEPLOY-09 | P1 | 重构及离线验证已完成；实机待确认 | go_imu 五个短入口、共用通信、并行诊断、独立 RealHardware 库与全机故障锁定；17/17 测试通过，原两目录及 RL 入口未改。见 [记录](docs/go_imu_refactor_2026-10-11.md)；实机操作见 [手册](docs/go_imu_usage_2026-10-11.md) | 实机确认通信频率、机身坐标、关节映射、安全限幅与初始化姿态；尚未接入真机策略 |
+| IMU-01 | P1 | 显示改进已验证；实机待确认 | 固定刷新 RPY（度）、角速度、加速度；等待／超时可见。用户确认 IMU 串口为 ACM0 并提供有效数据，见 [记录](docs/imu_terminal_2026-10-10.md) | 在 IMU 所在电脑重新编译确认面板；安装坐标、静止零偏、更新频率仍待实测 |
+| AMP-11 | P1 | 29000 轮 real Gazebo 行走已验证；高步频／偏航待优化 | 正式导出及两次无界面步频测量通过，周期 0.2875–0.29 s、步频 3.45–3.48 Hz，身体速度误差 1.79%，偏航 −5.78°/s。见 [实测与奖励建议](docs/gazebo_amp_29000_2026-10-10.md) | 提供新训练 env.yaml/agent.yaml 和日志确认奖励版本；滞空增权／偏航核宽度单变量微调，复测 0.3/0.5/0.6 m/s 与接触周期 |
+| AMP-16 | P1 | 新数据路径/旧滞空关闭已核对，缺口保留待短训练 | 默认21段新数据路径已正确；Height范围vx±1、vy±.4、yaw±1，feet_air_time=None；本轮保留deficit共7项，原6项数据实验见历史复审，见 [复审](docs/amp_settings_review_2026-10-12.md) | 目标机器4环境10轮验证保存yaml与实际加载；确认CLI混合比例/旧环境变量，新策略收益及接触同步待测 |
+| AMP-15 | P1 | 原始24000基准补测与MPC采集复核完成；同步/元数据待修 | 原始24000同条件vx=.5：周期.2825 s、跟速误差1.11%、yaw−.15°/s、z .291 m，整体优于25000；录制器时间同步风险待修。见 [采集与基准复核](docs/amp_collection_review_2026-10-11.md) | 确认实际MPC工作区/模型与采集参数；修同步、接触元数据/退出保存，小批重采对照 |
+| AMP-14 | P1 | 25000微调sim2sim两次对比通过；周期目标、低站高与超调待优化 | 0.5 m/s命令下周期0.27 s、body vx约0.586 m/s、z约0.263 m、yaw约−2.2°/s；周期测量边界误判已修复并CPU/复测验证。见 [记录](docs/gazebo_amp_25000_2026-10-11.md) | 真实接触计步与0.3/0.6速度复测；单变量处理高度/跟速/节律，未永久切换默认策略 |
+| AMP-13 | P1 | 服务器配置与sim2sim收益已确认；接触对齐待确认 | 实际任务比例0.7、滞空weight100/threshold0.3；25000相对本次24000周期/偏航改善，负日志不能直接判无效。见 [实测](docs/gazebo_amp_25000_2026-10-11.md) | 补参考与策略真实接触时间、其他速度回放及奖励目标验证 |
+| AMP-12 | P1 | 专家帧时间索引与采样分布已修，待短训练验证 | 物理／策略／数据时间链一致；旧 N/(N−1) 插值使动作微加速且末帧越界，已统一为 time/FrameDuration；4 项 CPU 回归与旧版负向检查通过，见 [采样检查](docs/amp_timing_audit_2026-10-10.md) | 服务器同步 loader 并重启，确认 expert 预加载、4 环境×10轮训练和后续周期；不把约0.4%插值误差认定为高步频主因 |
+| AMP-09 | P1 | 已修步长尺度，待运行与训练验证 | AMP Height 启用 `feet_air_time`，事件系数 1.0 换算为 raw weight=`1.0 / step_dt`（当前 50）、阈值 0.3 s；6 项离线配置检查含三种步长尺度回归通过。阈值不等于完整周期，详见 [记录](docs/amp_air_time_reward_2026-10-10.md) | 同步服务器并重启训练，确认奖励项正常结算；微调回放检查能否接近用户期望的 0.5–0.6 s 周期，同时核对速度误差、步幅与站高 |
 | DOC-02 | P1 | 待整理 | 原 real 提交包含 imgo2_description/README.md，本轮为保留改动未删除；见 [记录](docs/rebase_main_2026-10-07.md) | 核对引用，将有效说明合入根 README 或 docs 后移除子目录 README |
 | CHECK-01 | P1 | **主体离线检查通过；依赖项待补跑** | 2026-09-22 使用 Python 3.14.6：资源路径、模型同步、AMP 数据／关节顺序、`compileall`、tracked-ignore 检查均通过；拖曳测试 194 项通过、12 项按可选环境跳过。全量测试收集 281 项，得到 256 通过、24 跳过、1 个导入错误；错误仅为 `test_gait_metrics.py` 找不到 `numpy`，尚无代码断言失败证据。详见 [记录](docs/maintenance/offline_check_2026-09-22.md) | 在带 NumPy 的解释器重跑 `test_gait_metrics.py`；在带 PyTorch／Isaac Lab 的训练环境补跑当前跳过项。未执行前不得把这些项记为通过 |
 | TOW-01 | P1 | **仿真与记录链路已完成** | 小车、弹性绳和不可伸长绳已接入同一拖曳场景；支持单／多环境、质量与阻力等参数扫描。记录包含两刚体状态、绳状态、张力／冲量、轮速、接触、阶段、真实间隙与追尾事件。可视化已确认机器人拖车和停车后小车前滑。详见 [拖曳仿真验证](docs/towing/towing_simulation_validation.md) | 保持入口、记录格式和离线汇总工具可复现；本项不再以“继续看画面”作为验收方式 |
@@ -732,9 +771,46 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-14 | 已确认无冲突按钮是内容已修但索引未标记解决 | README已暂存，配置/recipe测试仍UU；磁盘无标记、两份AST/diff及19测试通过，无需再改代码。需git add清除索引stage1/2/3并暂存本轮记录后继续rebase，未执行Git写操作，见 [核对](docs/rebase_amp_air_time_resolution_2026-10-14.md#编辑器不再显示冲突按钮的核对) |
+| 2026-10-14 | 已合并95fab8d的重复滞空冲突，保留七项缺口配方 | 配置/recipe测试/README内容已解，保留新数据路径和速度更新；19测试/路径/语法与无标记检查通过，新目录21×600帧。索引仍需git add，整次rebase与最终版本/训练gate待完成，见 [记录](docs/rebase_amp_air_time_resolution_2026-10-14.md#后续95fab8d再次冲突) |
 | 2026-10-14 | 已核对rebase继续前的暂存缺口 | 索引无未解决冲突，但README/AMP配置/两份测试最新修复未暂存，复审文档未跟踪；五份需git add，仍有3条提交待应用。未操作索引或继续，最终数据与训练gate待完成，见 [状态](docs/rebase_amp_air_time_resolution_2026-10-14.md#暂存状态复核) |
 | 2026-10-14 | 已复审rebase当前文件，修旧recipe测试/README残留 | 两套AMP相关19测试、修改Python语法、工作树/暂存diff格式检查通过；清理标记、10条移动文档链接、旧奖励与重复AMP编号说明。未git add/继续rebase或运行训练；当前imgo2_motion数据不同于前轮600帧新采集，最终版本与短测待确认，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件) |
+| 2026-10-12 | 新写服务器训练.md，已澄清Sim/Lab版本与工程AMP外部依赖 | 两条路线统一/root/Desktop/imgo2；标准Lab2.3.2配套RSL3.1.2，不要求RSL5专用分支。官方文档/源码、18段Bash与CLI/路径核对通过；未实际空白安装或标准栈冒烟，服务器运行待验证（AMP-16），见 [新入口](docs/服务器训练.md) |
+| 2026-10-12 | 根据最新服务器堆栈修正安装位置并排查imgo2_rl导入 | 当前代码位于gpufree-data而非此前Desktop示例，提供当前Conda解释器editable安装与导入来源核对；未跨机执行，导入/短训练待服务器验证（AMP-16），见 [补充](docs/server_amp_train_2026-10-12.md#后续反馈服务器当前实际位置为gpufree-data) |
+| 2026-10-12 | 按用户反馈简化服务器安装，定位模型不存在报错 | 堆栈中脚本与模型路径不一致，可能是目录分散/模型缺失/旧覆盖；流程改为完整上传、清除覆盖、同环境安装与自动解释器。未访问服务器，路径恢复与短训练待验证（AMP-16），见 [简化流程](docs/server_amp_train_2026-10-12.md) |
+| 2026-10-12 | 补齐服务器从安装imgo2到新数据从头训练步骤 | 当前用户已将新数据放回imgo2_rl/datasets/imgo2_motion_new，与默认相符；代码/21文件、6项配置及12段Bash语法核对通过，未跨机安装或启动训练。使用代码任务比例0.3、滞空None，服务器短训练待验证（AMP-16），见 [流程](docs/server_amp_train_2026-10-12.md) |
+| 2026-10-12 | 已修复新数据默认路径、关闭滞空残留项及训练命令冲突 | 6项实际配置测试、路径/21段12600帧/时间/FK与语法检查通过；用户范围保持，Fanziqi未统一，CLI0.7与默认0.3区别已注明。未启动训练，短训练与收益待验证（AMP-16），见 [复审](docs/amp_settings_review_2026-10-12.md) |
+| 2026-10-12 | 补齐AMP任务注册名与日志实验名区别的定位说明 | 已核对gym.register id→env/runner→CLI --task链路，未改配置或启动训练；新数据运行验证仍待确认（AMP-16），见 [入口记录](docs/amp_velocity_range_2026-10-12.md#任务名与实验名入口) |
+| 2026-10-12 | 核对用户速度范围修改及RLAMP常量覆盖范围 | Height当前vx±1、vy±.4、yaw±1 rad/s；RLAMP_COMMAND_RANGES仅由Fanziqi后续覆盖，不影响Height。调用链已核对，未改代码/运行训练；新数据加载仍待验证（AMP-16），见 [记录](docs/amp_velocity_range_2026-10-12.md#用户范围修改与rlamp常量用途确认) |
+| 2026-10-12 | 定位AMP Height训练速度范围与play覆盖，确认新数据默认目录缺失 | 源码行号/当前范围已核对，未改配置或启动训练；实际新数据已找到，默认路径错位；加载/速度覆盖待确认（AMP-16），见 [记录](docs/amp_velocity_range_2026-10-12.md) |
+| 2026-10-11 | 用户确认AMP采集工程不在本系统，已澄清本地MPC候选的证据范围 | 本机gait配置不能代表实际采集；需采集机原脚本、gait.info及启动命令才能继续核对来源（AMP-15），未跨机操作。见 [复核](docs/amp_collection_review_2026-10-11.md#用户确认采集工程在另一系统2026-10-11) |
+| 2026-10-11 | 原始xiaoji_real1 24000同条件Gazebo补测通过，已修正基准混淆 | 原始导出actor128输入diff=0；vx=.5单测周期.2825 s、误差1.11%、偏航−.15°/s，整体优于25000；当前25000默认策略已恢复，进程已停。采集同步/重采待确认，见 [复核](docs/amp_collection_review_2026-10-11.md) |
+| 2026-10-11 | 已澄清原24000与微调目录24000不同，定位MPC AMP采集脚本与风险 | actor最大参数差0.009881，不能把此前对比直接当原模型排名；标准库21段数据/FK检查通过，源码同步/时间与接触记录仍待修，未录制或改采集器。见 [复核](docs/amp_collection_review_2026-10-11.md) |
+| 2026-10-11 | 填写用户command.md五节，已修正日志迁移后的命令路径 | 11个Bash块语法、Hydra覆盖、实际resume路径解析与资源存在检查通过；未启动训练，GUI/新运行待目标机器验证，沿用CHECK-01/AMP-14。见 [核对记录](docs/command_guide_2026-10-11.md) |
+| 2026-10-11 | 按用户要求将默认部署AMP切换为25000正式导出 | 拷贝后哈希/逐字节和JIT维度复核通过，同文件此前Gazebo两次闭环通过；29000文件保留备份。GUI查看待用户执行，未启动硬件，见 [切换记录](docs/gazebo_amp_25000_2026-10-11.md#用户查看用策略切换2026-10-11) |
+| 2026-10-11 | AMP24000/25000正式导出与Gazebo两次对比，已修复周期估计边界误判 | 两actor128输入max diff=0，libtorch闭环与4次评测通过；25000周期0.27 s、偏航改善，低站高/超调待优化。3项CPU周期检查通过，进程停止与原策略恢复已核对；真实接触待确认，见 [实测](docs/gazebo_amp_25000_2026-10-11.md) |
+| 2026-10-11 | 冻结 go_imu，补齐使用与故障手册 | 只更新文档，逐文件职责、配置、运行流程、错误与实机步骤按源码核对；go_imu 全目录指纹未改。本轮未重新构建／测试，用户实机验证待执行；帮助与 CLI 缺口保留为 DEPLOY-10。见 [手册](docs/go_imu_usage_2026-10-11.md) |
+| 2026-10-11 | 精简 go_imu，提取共用通信、并行监测及统一硬件接口 | 临时 Release 构建成功，原 14 项与新增硬件／导入／probe 测试共 17/17 通过；原目录和 RL 文件 889 项指纹一致。实机频率、坐标、映射和限幅待确认；未启动真实设备。详见 [记录](docs/go_imu_refactor_2026-10-11.md) |
+| 2026-10-11 | AMP 25038 轮达到微调评估点，建议结束当前增权试验 | 三次用户日志中air仍约0.076 s、噪声0.37→0.61、姿态惩罚增大；没有可见节律收益，也未判定全面崩溃。保留checkpoint并同条件回放待执行（AMP-13），未操作服务器，见 [复核 §10](docs/amp_air_time_style_2026-10-10.md#10-25038-轮评估点2026-10-11) |
+| 2026-10-11 | 对比 AMP 24169／24577 轮，已修正“奖励转正”判据 | 滞空快照仍约0.076 s，跟速略改善，噪声与姿态惩罚增大；不认定整体平台或发散。建议25000固定条件回放评估，目标区间奖励待设计（AMP-13）；未操作服务器任务，见 [复核 §9](docs/amp_air_time_style_2026-10-10.md#9-24577-轮补充与停止条件2026-10-11) |
+| 2026-10-11 | 用户保存配置确认 AMP 滞空 weight=100、threshold=0.3 | 在20 ms步长下事件系数为2，结合任务比例0.7解释负值尺度；已消除此前未知系数的疑点，未发现需立即修复的配置错误，未改代码。步态收益仍待趋势与接触验证（AMP-13），见 [复核 §8](docs/amp_air_time_style_2026-10-10.md#8-服务器保存配置确认-weight1002026-10-11) |
+| 2026-10-11 | 复核用户 24169 轮 AMP 日志与任务比例 0.7 | 已澄清 Mean AMP reward/step 为混合奖励，任务贡献估算约3.04/步、滞空约−0.149/步；last_air快照0.0761 s未显示延长。未改配置，服务器事件系数、趋势与接触数据仍待确认（AMP-13），见 [复核 §7](docs/amp_air_time_style_2026-10-10.md#7-24169-轮日志与任务比例-072026-10-11-用户补充) |
+| 2026-10-11 | 已澄清 AMP 滞空分项 −11.3953 的归一化与混合口径 | 源码确认回合累计/最大回合时长、分项统计在混合之前；条件计算已核对，未改奖励。服务器权重、回合长度与接触数据待确认，沿用 AMP-13，见 [复核 §6](docs/amp_air_time_style_2026-10-10.md#6-用户报告-113953-的口径核对2026-10-11) |
+| 2026-10-10 | 核对 AMP Height 模仿混合、任务系数与训练速度调参位置 | 已核对当前源码配置与混合公式，补入 [风格复核 §5](docs/amp_air_time_style_2026-10-10.md#5-amp-height-调参入口复核)；未改配置，服务器实际 run 参数与 AMP-13 接触验证仍待确认 |
+| 2026-10-10 | AMP 风格与滞空奖励冲突复核，已修正门槛／目标与参考占空比的说明 | 源码核对及标准库 21 段足端高度区间统计完成，输出包含源哈希；未改奖励或启动训练，真实接触时长与微调副作用待确认。见 [记录](docs/amp_air_time_style_2026-10-10.md) |
+| 2026-10-10 | 新增 go_imu，完成串口／配置合并及电机 IMU 联合监测 | GCC 11.4 Release 全入口构建、CTest 14/14、原目录逐文件指纹比较和 tracked-ignore 检查通过；未启动真实电机，实机待确认；pull 因 .git 只读失败。见 [记录](docs/go_imu_integration_2026-10-10.md) |
+| 2026-10-10 | 已修复 IMU 滚屏与静默等待显示 | Linux GCC 11.4 编译、CTest 2/2、伪终端固定刷新与退出光标恢复通过；真实设备显示待确认，见 [记录](docs/imu_terminal_2026-10-10.md) |
+| 2026-10-10 | 服务器 Conda 创建失败定位无效 pro 频道 | 日志确认 pkgs/pro 404 导致 repodata 获取失败；提供 override-channels 指定完整 main 镜像 URL 的临时方案。环境创建和后续安装待服务器验证，见 [安装记录](docs/isaaclab_rsl5_install_2026-10-10.md) |
+| 2026-10-10 | 确认服务器 base Python 3.13.9；改用镜像 Sim 自带 3.11 | 用户直接解释器输出确认了安装目标冲突根因；不能新建环境时提供退出 Conda、连接现有 Sim、使用 python.sh 的安装／运行路线。旧源码无需删除；服务器修复与 AMP 冒烟待验证，见 [安装记录](docs/isaaclab_rsl5_install_2026-10-10.md) |
+| 2026-10-10 | 服务器 Isaac Lab 安装依赖冲突排查 | 用户日志 cp313 与 ml-dtypes/numpy 约束提示实际目标为 Python 3.13；已核对脚本解释器选择机制并提供独立 3.11 环境方案。服务器解释器与重装结果待确认，见 [安装记录](docs/isaaclab_rsl5_install_2026-10-10.md) |
+| 2026-10-10 | 补齐 RL 工程结构、配置继承和运行阅读指南；已修复当前模型默认路径说明缺口 | `/usr/bin/python3` 资源路径检查通过：real URDF、17 mesh 引用、21 动作；待确认实际 Isaac Lab 解释器及仿真／短训练／回放，模型问题仍见 MODEL-05。pull 因 `.git` 只读未成功，基于本地 fc8b341，详见 [指南](docs/rl_structure_guide_2026-10-10.md) |
 | 2026-10-10 | IsaacLab-rsl5 实际版本与服务器安装命令核对 | 已确认官方提交 c22775241e 对应 RSL-RL 5.0.1，目录本身就是 Isaac Lab；提供固定提交安装方式。已读本机安装脚本与官方依赖，服务器安装／CUDA／AMP 冒烟待验证，见 [记录](docs/isaaclab_rsl5_install_2026-10-10.md) |
+| 2026-10-10 | 补充服务器 Conda 激活时自动加载已有 Isaac Sim 的方案 | 用户日志表明 Sim 已启动，当前阻断为 `imgo2_rl` 导入；已补齐自动加载与安装路径检查说明。服务器激活脚本、新终端导入和短训练待确认，见 [安装记录](docs/isaaclab_rsl5_install_2026-10-10.md) |
+| 2026-10-10 | 补齐全新 Ubuntu AMP Height 安装流程 | 已修复安装步骤缺少系统工具、持久解释器与项目 CUDA 启动器的说明；源码／官方安装要求已核对，资源路径及命令语法离线检查通过，新机器依赖安装与 10 轮训练待确认，见 [流程](docs/ubuntu_amp_install_2026-10-10.md) |
+| 2026-10-10 | 核对新奖励加载 xiaoji_real1 checkpoint 的服务器续训命令 | 已确认当前源码奖励与新时间戳日志目录、追加轮数语义；服务器 checkpoint 路径、新模型与旧训练物理一致性、短训练及微调效果待确认，未启动训练，见 [训练分析](docs/amp_training_plateau_2026-10-10.md) |
+| 2026-10-10 | 修正 AMP Height 滞空项相对 tracking 的步长尺度遗漏 | 滞空改为事件系数 `1.0 / step_dt`，当前 raw weight 1→50；三种步长的离线奖励尺度回归及 6 项配置测试通过。训练／周期改善待验证，需同步服务器并重启新运行，见 [记录](docs/amp_air_time_reward_2026-10-10.md) |
+| 2026-10-10 | 用户 29000 轮 AMP checkpoint 正式导出与 real Gazebo 无头实测 | 原 checkpoint 保留于 logs，部署策略由正式 play.py 导出，128 输入差异 0、部署 libtorch 运行加载成功；real 模型两次周期约 0.29 s。已修复模型选择、仿真时间测频和身体坐标速度统计，跟速 0.491/0.5 m/s；高步频／偏航及奖励微调收益待确认，未启动训练，见 [记录](docs/gazebo_amp_29000_2026-10-10.md) |
+| 2026-10-10 | AMP 采样频率与时间步长检查，修正专家插值索引 | 已确认物理200 Hz、策略/专家50 Hz、rollout0.48 s；修正 N/(N−1) 时间偏差、末帧越界和随机零点堆积。4 项真实 CPU loader 回归、6 项配置检查及旧版负向验证通过；修正后短训练与步态收益待验证，未启动训练，见 [记录](docs/amp_timing_audit_2026-10-10.md) |
 | 2026-10-10 | AMP Height real1 24000 轮平台期与续训条件复核 | 已完成日志分窗分析、checkpoint CPU 加载：iter=24000、45/48 维、权重有限；末 6000 轮收益递减，旧 run 无滞空奖励。回放／续训命令已核对，仿真与微调未执行；当前模型默认路径不同，命令显式覆盖。详见 [复核记录](docs/amp_training_plateau_2026-10-10.md) |
 | 2026-10-10 | AMP Height 全部奖励与速度范围复核 | 确认 7 项任务奖励、0.7 风格／0.3 任务混合；训练 vx -1～1.5、vy ±1 m/s、wz ±1.57 rad/s，play 默认 vx=1 m/s。6 项离线配置检查通过；待确认运行中的配置与滞空奖励实际效果，详见 [记录](docs/amp_air_time_reward_2026-10-10.md) |
 | 2026-10-10 | AMP Height 启用滞空奖励，并核对宇树 Go2 参数 | 已修复奖励被过滤的问题：权重 1.0、阈值 0.3 s，四足匹配与 Fanziqi 后续筛选检查通过；6 项配置测试及语法检查通过。待确认：Isaac Lab 运行与重训步频效果；宇树官方 Go2 为 0.1/0.5，单位与选择依据见 [记录](docs/amp_air_time_reward_2026-10-10.md) |

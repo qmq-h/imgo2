@@ -13,7 +13,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 # 非可编辑安装会把包拷进 site-packages，届时数据与模型目录都不在上溯路径上。
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]  # <repo>/imgo2_rl/
 _REPO_ROOT = Path(__file__).resolve().parents[5]  # <repo>/
-_DEFAULT_MOTION_DIR = _PROJECT_ROOT / "datasets" / "imgo2_motion"
+_DEFAULT_MOTION_DIR = _PROJECT_ROOT / "datasets" / "imgo2_motion_new"
 # 模型唯一源（2026-09-17 统一到 imgo2_description，见 README MODEL-02）：
 # urdf/imgo2.urdf 是纯 URDF 生成物（core.xacro 的内核，无 Gazebo/transmission/IMU），
 # 物理参数与训练侧的旧副本逐项相同，FK 复现录制数据。

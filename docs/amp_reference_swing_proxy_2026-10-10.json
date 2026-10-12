@@ -1,0 +1,362 @@
+{
+  "warning": "Kinematic raised-foot proxy, not measured contact air time; baseline=per-foot 5th percentile world z; boundary intervals excluded.",
+  "motions": {
+    "imgo2_backward_0.3": {
+      "sha256": "e3f27929aed043cd68db5703ae1dd62dbb79d95661b4e18ba495e1341a57c650",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 0,
+          "median_s": null
+        },
+        "0.02": {
+          "complete_intervals": 0,
+          "median_s": null
+        },
+        "0.03": {
+          "complete_intervals": 0,
+          "median_s": null
+        }
+      }
+    },
+    "imgo2_backward_0.5_turn_left_0.5": {
+      "sha256": "9cd8159b24a12738e01ed0d1e20002116b8319c2950cef134fab7ac4f137035b",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 30,
+          "median_s": 0.28
+        },
+        "0.02": {
+          "complete_intervals": 31,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_backward_0.5_turn_right_0.5": {
+      "sha256": "fe7246e2f95d2f57e3735fed31b22f24b52b4c5491b2bcd71d7f8703b50e37a9",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.28
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        }
+      }
+    },
+    "imgo2_backward_0.6": {
+      "sha256": "cc210e98c72c36bdb7ddf9f08e32ae5edd250b8031b26cd9f681400726fbad0f",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.28
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        }
+      }
+    },
+    "imgo2_backward_0.9": {
+      "sha256": "da2dd4e5403d236aae7e4a4934d3cf32f0818e518c6d0ebf6795bae18404ba77",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.32
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.26
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        }
+      }
+    },
+    "imgo2_backward_1.2": {
+      "sha256": "4a0aa49ccc0d1ac7741e01f2ac528bc286e4335af9eaa0f3e1c36e125f8ac419",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 30,
+          "median_s": 0.34
+        },
+        "0.02": {
+          "complete_intervals": 30,
+          "median_s": 0.28
+        },
+        "0.03": {
+          "complete_intervals": 30,
+          "median_s": 0.26
+        }
+      }
+    },
+    "imgo2_forward_0.3": {
+      "sha256": "b909fc9a4cf3fad0602994e43d12d81a3657c1f9f541f92d7b469fcd99f34824",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 31,
+          "median_s": 0.22
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_forward_0.5_turn_left_0.5": {
+      "sha256": "b9747c9bbcb62a95ff5c1e89d6c9065b9f41dfe372dd65fa7b2336e68e95f987",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_forward_0.5_turn_right_0.5": {
+      "sha256": "2078d3a84810ea1562ef6adb194d4b2578bf653c363e0ac4e0c4f968e71fec19",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.16
+        }
+      }
+    },
+    "imgo2_forward_0.6": {
+      "sha256": "10ee4c7cccda53c8bf6bcc2ff04bb1e58039769e370debe232cb3c3a833adde5",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.16
+        }
+      }
+    },
+    "imgo2_forward_0.9": {
+      "sha256": "1ecb0b73da9fe72753900e39cd8ff05202fe12cd5ce88ec619a630b5c022073b",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_forward_1.2": {
+      "sha256": "bb93b466332ceb3dde164eea1fd656b2f51591f6021d7a57fbb08be10c145eda",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 30,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 31,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        }
+      }
+    },
+    "imgo2_left_0.3": {
+      "sha256": "9182ac168943382e2103dc160ffb019420d0e6b55fa3499129229806ea7c823f",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_left_0.6": {
+      "sha256": "233998aa18fb58e5f5d756e029b93e624ba57f3bc1d25264c0abc191d2ab652c",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 30,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_right_0.3": {
+      "sha256": "64f706e498766cbbf060914fb3b874c839b0e9140cc86325b6b5b5fffb763f4d",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_right_0.6": {
+      "sha256": "45fb01919570c438145861c43526af059e0970c3dd939c85f12babd1b2e0d34b",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.26
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_stance": {
+      "sha256": "bef9a3959f721841c455fe86db0f15ad097eb1c6cd261f7018ef2331775c2bf6",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 0,
+          "median_s": null
+        },
+        "0.02": {
+          "complete_intervals": 0,
+          "median_s": null
+        },
+        "0.03": {
+          "complete_intervals": 0,
+          "median_s": null
+        }
+      }
+    },
+    "imgo2_turn_left_0.5": {
+      "sha256": "22820133093a53e71583cce53fa363f8185b0a50a92a350bedb6564af488b7d3",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 30,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 30,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_turn_left_1.0": {
+      "sha256": "75563ec67c4807ef0534c06b97ca0adcc7290211e10f04340c9eaa2739ea4336",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_turn_right_0.5": {
+      "sha256": "1dd000c698eacbc3704aa8424f79f87793ef6a4e2253d816e6da742a270000a2",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.2
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    },
+    "imgo2_turn_right_1.0": {
+      "sha256": "84212461d886b8249d7d060a290c499a0e1567eae615753bff8b2478df3ba322",
+      "raised_height_threshold_m": {
+        "0.01": {
+          "complete_intervals": 32,
+          "median_s": 0.24
+        },
+        "0.02": {
+          "complete_intervals": 32,
+          "median_s": 0.22
+        },
+        "0.03": {
+          "complete_intervals": 32,
+          "median_s": 0.18
+        }
+      }
+    }
+  }
+}

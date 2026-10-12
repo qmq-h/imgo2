@@ -58,9 +58,13 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/amp/train.py \
 
 ## 是否继续训练
 
+2026-10-10 后续服务器命令核对：用户要求以新奖励微调旧 `xiaoji_real1`。服务器项目位置来自用户 traceback，为 `/root/gpufree-data/imgo2/imgo2_rl`。激活 `isaaclab311`（复用独立 Sim 时仍需加载 `/isaac-sim/setup_conda_env.sh`，已有激活钩子则自动执行），设置 `IMGO2_ISAACLAB_PYTHON="$CONDA_PREFIX/bin/python"` 后使用上述 `--resume --load_run=2026-09-24_00-57-38_xiaoji_real1 --checkpoint=model_24000.pt` 参数。需先确认服务器同名日志目录存在 checkpoint；本机存在不等于服务器存在。
+
+该命令读取当前源码奖励，不自动恢复旧 env.yaml；当前默认模型已为 `imgo2_real.urdf`，旧保存配置路径为 `imgo2.urdf`，若要只比较奖励需要使用旧训练时的同一模型文件内容（不能仅凭文件名确保相同）。上述较早本机示例显式指定旧模型路径；服务器默认命令使用当前模型。已完成参数与轮数语义核对；待确认服务器包路径、新配置的 feet_air_time 日志、短训练与长期微调结果。本轮未启动训练。
+
 本机解释器原先找不到 `imgo2_rl`，且 `rl_lab` 指向 `/home/tommy0929/Downloads/Imgo2_rl/scripts/rl_lab/rl_lab`；上面的 PYTHONPATH 显式优先当前仓库的两个源码根，避免回放或续训误用另一份代码。使用 importlib 模块定位核对，覆盖后两个模块都解析到当前工作区。
 
-技术上可以续训，checkpoint 的轮号、网络契约、权重与恢复状态具备条件。原配方继续加几千轮可能改善跟速，但现有曲线不能支持会显著延长步周期。若目标是周期 0.5–0.6 s，建议先测旧模型，再用新增滞空项微调 3000–5000 轮作独立实验，保持模型、速度范围与其他奖励固定。新奖励初始尺度较小，需检查 `Episode_Reward/feet_air_time` 是否生效；总回报因奖励定义变化不能直接横向比较。用固定指令的周期、速度误差、站高、触地率决定是否延长训练。此前给的滞空配置与限制见 [启用记录](amp_air_time_reward_2026-10-10.md)。
+技术上可以续训，checkpoint 的轮号、网络契约、权重与恢复状态具备条件。原配方继续加几千轮可能改善跟速，但现有曲线不能支持会显著延长步周期。若目标是周期 0.5–0.6 s，建议先测旧模型，再用新增滞空项微调 3000–5000 轮作独立实验，保持模型、速度范围与其他奖励固定。初版滞空项的步长尺度遗漏已在后续复核修正，当前配置见 [启用记录](amp_air_time_reward_2026-10-10.md)，仍需检查 `Episode_Reward/feet_air_time` 是否生效；总回报因奖励定义变化不能直接横向比较。用固定指令的周期、速度误差、站高、触地率决定是否延长训练。
 
 ## 已验证与待确认
 

@@ -37,7 +37,11 @@ def generate_launch_description():
     gazebo_model_name = ParameterValue(Command(["echo -n ", rname, "_gazebo"]), value_type=str)
 
     description_share = get_package_share_directory("imgo2_description")
-    urdf_path = os.path.join(description_share, "urdf", "imgo2.gazebo.urdf")
+    # Keep the deployment model consistent with the evaluated training task.
+    urdf_path = os.path.abspath(os.path.expanduser(os.environ.get(
+        "IMGO2_GAZEBO_URDF",
+        os.path.join(description_share, "urdf", "imgo2.gazebo.urdf"),
+    )))
     with open(urdf_path, "r", encoding="utf-8") as f:
         text = f.read().replace("package://imgo2_description", description_share)
     # gazebo_ros2_control 0.4.x 把 URDF 以 `--param robot_description:=<xml>` 交给 controller_manager；

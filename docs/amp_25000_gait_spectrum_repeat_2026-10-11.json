@@ -1,0 +1,94 @@
+{
+  "imgo2_rl/logs/amp_rsl_rl/2026-10-11_00-00-01_xiaoji_real1_air_time_finetune/gazebo_eval_repeat/24000_vx05_raw.json": {
+    "raw_sha256": "1791b981fe8c0565718b4f12260b44524549cdb3c77a66b13fd7ac454d7bb063",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.43149864625380613,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.201172,
+          0.78125,
+          2.246094
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.5604401826912127,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.201172,
+          0.78125,
+          2.294922
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.2605574130514663,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.201172,
+          2.001953,
+          2.294922
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.3651850754119726,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.201172,
+          2.929687,
+          0.78125
+        ]
+      }
+    }
+  },
+  "imgo2_rl/logs/amp_rsl_rl/2026-10-11_00-00-01_xiaoji_real1_air_time_finetune/gazebo_eval_repeat/25000_vx05_raw.json": {
+    "raw_sha256": "adcba787ab3e8bca643ece2f4a4db986cdfbb859b0d6b8215e67e86db8ca3d2e",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.8621029307737494,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.662109,
+          7.324219,
+          3.466797
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.8791360692238872,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.662109,
+          7.324219,
+          3.417969
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.8575051613458247,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.662109,
+          7.324219,
+          3.857422
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.7589137031233345,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.662109,
+          7.324219,
+          3.417969
+        ]
+      }
+    }
+  }
+}

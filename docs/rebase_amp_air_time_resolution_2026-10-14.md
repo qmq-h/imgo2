@@ -42,3 +42,17 @@
 ### 暂存状态复核
 
 用户反馈rebase --continue提示仍需git add。现场git ls-files -u和diff --diff-filter=U均为空，git status明确all conflicts fixed；但最新README、amp_env_cfg.py、test_amp_alignment.py、test_amp_recipe_contract.py四份修复未暂存，本文未跟踪。需要将这五个路径加入索引后再continue。当前已完成6条rebase命令，还有3条待应用，包括新增专家数据提交；不能把当前中间数据版本视为最终。此轮只核对并补记录，未修改Git索引或执行continue。
+
+## 后续95fab8d再次冲突
+
+同日用户继续rebase后，应用95fab8d（新专家数据）再次发生冲突，涉及README、amp_env_cfg.py、test_amp_recipe_contract.py三个文件。该提交的六项新数据实验关闭全部滞空项，与上一轮选择保留缺口的七项配方冲突；沿用用户此前选择保留deficit，保留本提交其余数据路径/速度范围更新。
+
+配置四处冲突保留缺口及对应每步换算说明、数值不变；不能选择六项名单却继续动态创建并给deficit.weight赋值，否则它被筛成None后会报错。测试保留缺口检查，同时合入本提交不同dt的检查并更新活跃集合为七项；补回因六项测试不再用到而被提交删除的re/ET导入。README七处冲突按内容合并，保留双方导航、拖曳说明、新实验和维护记录；当前policy SHA确为bf792f98...，保留对应25000历史行，未替换策略。避免问题表AMP-11重名，本轮缺口项编号改为AMP-17。
+
+验证：env_isaaclab Python完整19项AMP alignment/recipe测试通过；资产路径检查通过，新默认imgo2_rl/datasets/imgo2_motion_new存在21段600帧，外层副本也有21段600帧（此轮只查目录/帧数，未重新证明两份内容相同）。Python AST、三文件无冲突标记、README实际本地链接和相关diff格式检查通过。
+
+已修复并离线验证：三文件内容冲突、七项测试与缺失导入、README新旧状态说明。待完成：三个冲突文件及本文git add后继续rebase；Git索引在本轮结束前仍UU，不能只看内容无标记就认定Git已解决。后续提交/最终模型数据版本、阈值与训练冒烟及实际步态仍待验证；本轮未操作索引、执行continue、训练或硬件。
+
+### 编辑器不再显示冲突按钮的核对
+
+用户保存后再次检查：README已暂存，配置与recipe测试文件仍在Git索引中有stage1/2/3条目（UU），但磁盘内容没有任何冲突标记。两份源码AST与相关diff格式检查通过，19项AMP alignment/recipe再次全部通过，不需要再改源码。无按钮是文件内容已经消除标记，与索引的未解决状态不同；git add这两个文件才会清除未合并的索引条目。本文当时还有未暂存更新，本轮补核对记录也需一起暂存；未执行Git写操作或continue。

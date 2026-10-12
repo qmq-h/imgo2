@@ -1,15 +1,18 @@
-# AMP policy for model_5000.pt, reached with key 3 (gamepad RB+DPadDown; the FSM
+# AMP policy exported from the air-time finetune model_25000.pt (2026-10-11), reached with key 3 (gamepad RB+DPadDown; the FSM
 # comment in fsm_imgo2.hpp is authoritative: 1 = PPO, 2 = himloco, 3 = amp).
 # Actor: 45 -> 512 -> 256 -> 128 -> 12, ELU.
 # Training actor observation order (velocity_env_cfg.py PolicyCfg with base_lin_vel
 # removed, i.e. the 45-dim actor of AMP-05 - same composition as the reference amp_go2):
 #   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
 #   joint_pos_rel 12, joint_vel_rel 12, last_action 12  = 45
-# The 5000-iteration checkpoint's critic still consumes 48 dims (it keeps base_lin_vel);
+# The checkpoint's critic consumes 48 dims (it keeps base_lin_vel);
 # that is training-side only and never appears in this deployment interface.
 # Predecessor: model_9000.pt had a 48-dim actor (base_lin_vel first); its export
 # policy.pt sha256 e5a8bfec742038e0... is recoverable from git history.
-# Checkpoints: model_5000.pt sha256 bb399eb2519fc3f1... ; current policy.pt 0e5bd661b1591a87...
+# Current checkpoint sha256 2a01c9c30aab713d...; exported policy.pt bf792f98faf17cdd...
+# Export: scripts/rl_lab/amp/play.py, 128-input actor comparison max diff = 0.
+# Gazebo real model: 0.5 m/s body-speed command -> 0.586 m/s, period 0.27 s.
+# Evidence and remaining height/tracking/gait issues: docs/gazebo_amp_25000_2026-10-11.md.
 # kp/kd and clip_actions follow the working reference deployment
 # (~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/config.yaml, which the
 # reference routes to its AMP policy); physical values follow the training side.

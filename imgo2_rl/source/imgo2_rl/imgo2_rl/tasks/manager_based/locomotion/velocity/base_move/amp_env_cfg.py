@@ -8,6 +8,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from imgo2_rl.assets.imgo2 import IMGO2_CFG, AMP_MOTION_FILES
 import imgo2_rl.tasks.manager_based.locomotion.velocity.mdp as mdp
+
 # `mdp/__init__.py` deliberately does not star-import amp_events: that module pulls in
 # rl_lab -> torch -> pybullet_utils, which would otherwise be dragged into every task
 # registration. Import the module directly here instead, so the AMP reference-reset term
@@ -63,17 +64,29 @@ class AMPObservationCfg(ObservationsCfg):
     class AMPGroupCfg(ObsGroup):
         joint_pos = ObsTerm(
             func=mdp.amp_joint_pos,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=".*", preserve_order=True
+                )
+            },
         )
         foot_pos_base = ObsTerm(
             func=mdp.amp_foot_pos_base,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_FOOT", preserve_order=True)},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", body_names=".*_FOOT", preserve_order=True
+                )
+            },
         )
         root_lin_vel_b = ObsTerm(func=mdp.base_lin_vel)
         root_ang_vel_b = ObsTerm(func=mdp.base_ang_vel)
         joint_vel = ObsTerm(
             func=mdp.amp_joint_vel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=".*", preserve_order=True
+                )
+            },
         )
         root_z = ObsTerm(func=mdp.amp_root_z)
 
@@ -143,42 +156,73 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # ------------------------------Commands------------------------------
         self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.57, 1.57)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.4, 0.4)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1, 1)
 
         # ------------------------------Actions------------------------------
-        self.actions.joint_pos.scale = {".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25}
+        self.actions.joint_pos.scale = {
+            ".*_hip_joint": 0.125,
+            "^(?!.*_hip_joint).*": 0.25,
+        }
         self.actions.joint_pos.clip = {".*": (-3.0, 3.0)}
         self.actions.joint_pos.joint_names = self.joint_names
 
         # ------------------------------Observation Entities------------------------------
-        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
-        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
-        self.observations.critic.joint_pos.params["asset_cfg"].joint_names = self.joint_names
-        self.observations.critic.joint_vel.params["asset_cfg"].joint_names = self.joint_names
-        self.observations.amp.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
+        self.observations.critic.joint_pos.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
+        self.observations.critic.joint_vel.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
+        self.observations.amp.joint_pos.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
         self.observations.amp.joint_pos.params["mapping"] = self.joint_mapping
-        self.observations.amp.joint_vel.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.amp.joint_vel.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
         self.observations.amp.joint_vel.params["mapping"] = self.joint_mapping
-        self.observations.amp.foot_pos_base.params["asset_cfg"].body_names = self.foot_body_names
+        self.observations.amp.foot_pos_base.params["asset_cfg"].body_names = (
+            self.foot_body_names
+        )
         self.observations.amp.foot_pos_base.params["mapping"] = self.joint_mapping
 
         # ------------------------------Events------------------------------
-        self.events.randomize_rigid_body_mass_base.params["asset_cfg"].body_names = [self.base_link_name]
+        self.events.randomize_rigid_body_mass_base.params["asset_cfg"].body_names = [
+            self.base_link_name
+        ]
         self.events.randomize_rigid_body_mass_others.params["asset_cfg"].body_names = [
             f"^(?!.*{self.base_link_name}).*"
         ]
-        self.events.randomize_com_positions.params["asset_cfg"].body_names = [self.base_link_name]
-        self.events.randomize_actuator_gains.params["asset_cfg"].joint_names = self.joint_names
+        self.events.randomize_com_positions.params["asset_cfg"].body_names = [
+            self.base_link_name
+        ]
+        self.events.randomize_actuator_gains.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
         self.events.randomize_reset_base = None
         self.events.randomize_reset_joints = None
-        self.events.randomize_apply_external_force_torque.params["asset_cfg"].body_names = [self.base_link_name]
-        self.events.reference_state_initialization.params["asset_cfg"].joint_names = self.joint_names
-        self.events.reference_state_initialization.params["joint_mapping"] = self.joint_mapping
+        self.events.randomize_apply_external_force_torque.params[
+            "asset_cfg"
+        ].body_names = [self.base_link_name]
+        self.events.reference_state_initialization.params["asset_cfg"].joint_names = (
+            self.joint_names
+        )
+        self.events.reference_state_initialization.params["joint_mapping"] = (
+            self.joint_mapping
+        )
 
         # ------------------------------Terminations------------------------------
-        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [self.base_link_name]
+        self.terminations.illegal_contact.params["sensor_cfg"].body_names = [
+            self.base_link_name
+        ]
 
         # ------------------------------Rewards------------------------------
         self._keep_only_amp_task_rewards()
@@ -259,7 +303,9 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # matches no body, then raises "Not all regular expressions are matched!". The reward
         # itself only reads root_pos_w, so naming the base body is enough to make it resolvable.
         # The sibling configs (rough_env_cfg.py, himloco_env_cfg.py) set this too.
-        self.rewards.base_height_l2.params["asset_cfg"].body_names = [self.base_link_name]
+        self.rewards.base_height_l2.params["asset_cfg"].body_names = [
+            self.base_link_name
+        ]
 
         # 滞空缺口项（2026-10-10）：按「每步系数 / step_dt」写，理由与标定见模块顶部注释。
         # 注意该项的函数返回**非负缺口**、权重必须为负（同 base_height_l2 的约定）。
@@ -338,7 +384,7 @@ def apply_rlamp_task_rewards(cfg) -> None:
 RLAMP_OBS_SCALES = {"lin_vel": 2.0, "ang_vel": 0.25, "dof_pos": 1.0, "dof_vel": 0.05}
 RLAMP_COMMANDS_SCALE = (2.0, 2.0, 0.25)
 RLAMP_CLIP_ACTIONS = (-100.0, 100.0)
-RLAMP_ACTION_SCALE = 0.25   # a1_amp_config.py:72（基类默认是 0.5，参考覆盖成 0.25）
+RLAMP_ACTION_SCALE = 0.25  # a1_amp_config.py:72（基类默认是 0.5，参考覆盖成 0.25）
 
 
 def apply_rlamp_obs_and_action_scales(cfg) -> None:
@@ -359,7 +405,7 @@ def apply_rlamp_obs_and_action_scales(cfg) -> None:
     （`action_scale` 全 0.25、`clip_actions_*` ±100、`commands_scale [2,2,0.25]`）。
     **现在不要改那份 yaml**——它服务的是已部署的 24500 策略（髋 0.125 / ±3）。
     """
-    step_dt = cfg.sim.dt * cfg.decimation   # 未使用，保留以便将来按需换算
+    step_dt = cfg.sim.dt * cfg.decimation  # 未使用，保留以便将来按需换算
     assert step_dt > 0
     for group in ("policy", "critic"):
         obs = getattr(cfg.observations, group)
@@ -436,8 +482,9 @@ RLAMP_EXTERNAL_FORCE_RANGE = (-10.0, 10.0)
 RLAMP_EXTERNAL_TORQUE_RANGE = (-10.0, 10.0)
 
 
-def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
-                             external_force: bool = False) -> None:
+def apply_rlamp_env_settings(
+    cfg, *, custom_origins: bool = False, external_force: bool = False
+) -> None:
     """指令范围、域随机化、reset 分布、观测噪声统一到 rl_amp（fan-ziqi）的 `a1_amp_config.py`。
 
     与 `apply_rlamp_task_rewards()`（奖励）/`apply_rlamp_obs_and_action_scales()`（观测缩放、
@@ -485,7 +532,9 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
     mat.params["restitution_range"] = (0.0, 0.0)
 
     # ---------------------------------- 质量 ----------------------------------
-    cfg.events.randomize_rigid_body_mass_base.params["mass_distribution_params"] = RLAMP_BASE_MASS_RANGE
+    cfg.events.randomize_rigid_body_mass_base.params["mass_distribution_params"] = (
+        RLAMP_BASE_MASS_RANGE
+    )
     # 参考只随机化 base ⇒ 关掉"其它 body"的两项（质量缩放、CoM 偏移）
     cfg.events.randomize_rigid_body_mass_others = None
     cfg.events.randomize_com_positions = None
@@ -509,7 +558,7 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
 
     # ---------------------------------- PD 增益 ----------------------------------
     gains = cfg.events.randomize_actuator_gains
-    gains.mode = "startup"   # 参考在环境创建时随机一次（不是每回合重采）
+    gains.mode = "startup"  # 参考在环境创建时随机一次（不是每回合重采）
     gains.params["stiffness_distribution_params"] = RLAMP_GAIN_MULTIPLIER_RANGE
     gains.params["damping_distribution_params"] = RLAMP_GAIN_MULTIPLIER_RANGE
 
@@ -517,8 +566,10 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
     push = cfg.events.randomize_push_robot
     push.mode = "interval"
     push.interval_range_s = RLAMP_PUSH_INTERVAL_S
-    push.params["velocity_range"] = {"x": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY),
-                                     "y": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY)}
+    push.params["velocity_range"] = {
+        "x": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY),
+        "y": (-RLAMP_PUSH_VEL_XY, RLAMP_PUSH_VEL_XY),
+    }
 
     # ---------------------------------- reset 分布 ----------------------------------
     # 2026-09-18 冒烟训练发现：这两项在 AMP 基类里是 `None`，必须**新建** EventTerm。
@@ -531,14 +582,19 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
         mode="reset",
         params={
             "pose_range": {"x": xy, "y": xy, "yaw": (0.0, 0.0)},
-            "velocity_range": {key: RLAMP_RESET_VEL_RANGE
-                               for key in ("x", "y", "z", "roll", "pitch", "yaw")},
+            "velocity_range": {
+                key: RLAMP_RESET_VEL_RANGE
+                for key in ("x", "y", "z", "roll", "pitch", "yaw")
+            },
         },
     )
     cfg.events.randomize_reset_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
-        params={"position_range": RLAMP_RESET_JOINT_SCALE_RANGE, "velocity_range": (0.0, 0.0)},
+        params={
+            "position_range": RLAMP_RESET_JOINT_SCALE_RANGE,
+            "velocity_range": (0.0, 0.0),
+        },
     )
     # 参考的 85% 参考状态 / 15% 自然 reset（粗糙版没有参考初始化，100% 走上面这套）
     init = cfg.events.reference_state_initialization
@@ -549,9 +605,11 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
     # 参考只对 actor 观测加噪声（privileged 不加），我们的 `policy.enable_corruption = True` /
     # `critic.enable_corruption = False` 本来就是这个语义。
     cfg.observations.policy.base_ang_vel.noise = Unoise(
-        n_min=-RLAMP_NOISE_SCALES["ang_vel"], n_max=RLAMP_NOISE_SCALES["ang_vel"])
+        n_min=-RLAMP_NOISE_SCALES["ang_vel"], n_max=RLAMP_NOISE_SCALES["ang_vel"]
+    )
     cfg.observations.policy.joint_pos.noise = Unoise(
-        n_min=-RLAMP_NOISE_SCALES["dof_pos"], n_max=RLAMP_NOISE_SCALES["dof_pos"])
+        n_min=-RLAMP_NOISE_SCALES["dof_pos"], n_max=RLAMP_NOISE_SCALES["dof_pos"]
+    )
 
 
 @configclass

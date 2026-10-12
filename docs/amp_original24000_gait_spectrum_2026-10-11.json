@@ -1,0 +1,48 @@
+{
+  "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-11_00-00-01_xiaoji_real1_air_time_finetune/gazebo_eval_original24000/24000_vx05_raw.json": {
+    "raw_sha256": "d6350f9d104bb26aece1aaabdb237f122ec4256d4e0177f0a50be0503fbe3560",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.28000000000004377,
+        "autocorr_score": 0.8875097328162295,
+        "autocorr_frequency_hz": 3.571428571428013,
+        "fft_top_peaks_hz": [
+          3.564453,
+          7.080078,
+          3.417969
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.28000000000004377,
+        "autocorr_score": 0.7947106212786181,
+        "autocorr_frequency_hz": 3.571428571428013,
+        "fft_top_peaks_hz": [
+          3.564453,
+          7.080078,
+          3.076172
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.29000000000004533,
+        "autocorr_score": 0.7664833710706412,
+        "autocorr_frequency_hz": 3.4482758620684266,
+        "fft_top_peaks_hz": [
+          3.564453,
+          7.080078,
+          3.076172
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.28000000000004377,
+        "autocorr_score": 0.8628332145282953,
+        "autocorr_frequency_hz": 3.571428571428013,
+        "fft_top_peaks_hz": [
+          3.564453,
+          7.080078,
+          3.759766
+        ]
+      }
+    }
+  }
+}

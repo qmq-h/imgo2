@@ -74,6 +74,17 @@ class AMPRunnerContractTests(unittest.TestCase):
                    if any(re.fullmatch(pattern, link.attrib["name"])
                           for pattern in air.params["sensor_cfg"].body_names)]
         self.assertEqual(set(matched), {"FL_FOOT", "FR_FOOT", "RL_FOOT", "RR_FOOT"})
+        # Keep the incoming different-rate coverage, adapted to the deficit recipe.
+        expected = {"track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2",
+                    "lin_vel_z_l2", "ang_vel_xy_l2", "joint_pos_limits", "feet_air_time_deficit"}
+        for step_dt in (0.01, 0.02, 0.04):
+            cfg.sim.dt = step_dt / cfg.decimation
+            namespace[method.name](cfg)
+            self.assertIsNone(cfg.rewards.feet_air_time)
+            self.assertEqual({name for name, term in vars(cfg.rewards).items() if term is not None}, expected)
+            self.assertAlmostEqual(cfg.rewards.track_lin_vel_xy_exp.weight * step_dt, 4.0)
+            self.assertAlmostEqual(cfg.rewards.feet_air_time_deficit.weight * step_dt,
+                                   namespace["FEET_AIR_TIME_DEFICIT_PER_STEP"])
         namespace[helper.name](cfg)
         active = {name for name, term in vars(cfg.rewards).items() if term is not None}
         self.assertEqual(active, {"track_lin_vel_xy_exp", "track_ang_vel_z_exp"})

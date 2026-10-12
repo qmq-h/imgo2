@@ -1,0 +1,68 @@
+{
+  "vx_cmd": 0.5,
+  "samples": {
+    "odom": 1998,
+    "joint_states": 19981,
+    "resampled_joint_states": 1998
+  },
+  "time_base": "simulation",
+  "pose": {
+    "z_mean": 0.28990284513342174,
+    "z_min": 0.2722789973777553,
+    "z_max": 0.30095132706723293,
+    "roll_range_deg": 6.274450841056306,
+    "pitch_range_deg": 6.957241563828813,
+    "yaw_drift_deg_per_s": -5.331831887865316,
+    "dx_m": 3.0998931944359667,
+    "dx_per_s": 0.1552275009732583
+  },
+  "tracking": {
+    "speed_mean": 0.1552275009732583,
+    "error_abs": 0.3447724990267417,
+    "error_pct": 68.95449980534833,
+    "coordinate_frame": "world_x",
+    "note": "Initial run predates body-frame correction; this is not a body velocity tracking metric under sustained yaw drift."
+  },
+  "jitter": {
+    "hip": {
+      "mean_abs_ddq": 28.1476448828013,
+      "reversals_per_s": 19.4917376064068
+    },
+    "thigh": {
+      "mean_abs_ddq": 54.51484788069855,
+      "reversals_per_s": 10.252879318976987
+    },
+    "shank": {
+      "mean_abs_ddq": 74.55831866332218,
+      "reversals_per_s": 12.293440160238585
+    }
+  },
+  "periodicity": {
+    "period_s": 0.2874999999999428,
+    "freq_hz": 3.4790640394095593,
+    "score": 0.5837289176239676,
+    "FL_FR_phase_deg": 198.6206896551724,
+    "per_leg": {
+      "FL": {
+        "period_s": 0.2899999999999423,
+        "freq_hz": 3.4482758620696514,
+        "score": 0.4886305772399678
+      },
+      "FR": {
+        "period_s": 0.2799999999999443,
+        "freq_hz": 3.571428571429282,
+        "score": 0.72280643272437
+      },
+      "RL": {
+        "period_s": 0.2899999999999423,
+        "freq_hz": 3.4482758620696514,
+        "score": 0.5538690099387086
+      },
+      "RR": {
+        "period_s": 0.2899999999999423,
+        "freq_hz": 3.4482758620696514,
+        "score": 0.5696096505928243
+      }
+    }
+  }
+}

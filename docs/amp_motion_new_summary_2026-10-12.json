@@ -1,0 +1,233 @@
+[
+  {
+    "file": "imgo2_backward_0.3.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.29354104352918464,
+    "yaw_mean": 7.695899965508219e-05,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "375f338e0cadc6dd5c316cd013fcc8a592ba80421586833e04c9dd0ef20c1e57"
+  },
+  {
+    "file": "imgo2_backward_0.6.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.5910048307834893,
+    "yaw_mean": -0.00012573097535672516,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "71ddda8e7ce312496127fc26f7d07d3f7f5c02cda74117165d12a99ef29ca0ac"
+  },
+  {
+    "file": "imgo2_backward_0.9.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.8985533456980731,
+    "yaw_mean": -7.718079486286893e-05,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "64f693afcc8011f6a8227ec1f5392598689b0c2301748c4af910df49b9ffc566"
+  },
+  {
+    "file": "imgo2_backward_1.0.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.9843326670677549,
+    "yaw_mean": 5.157155841216769e-05,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "3e4cceb95121998728e3eca32a036d22f10422ce5c75868c5bfebfb7ea3ef3a9"
+  },
+  {
+    "file": "imgo2_backward_turn_left_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.4950742192826387,
+    "yaw_mean": 0.5000876098952938,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "42e42fe72b0d6761908ede6f7e9672807efd590093de8c2b4465a93e7788655b"
+  },
+  {
+    "file": "imgo2_backward_turn_right_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.495812012768596,
+    "yaw_mean": -0.49969189573288697,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "4b7ec0d303682d93e7ca0a32be7c90a13abb2aae161da8b6e0276187301dfd3c"
+  },
+  {
+    "file": "imgo2_forward_0.3.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.30884885204330775,
+    "yaw_mean": -0.00022262558814963544,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "eb70f77a8164d509ad8b204ff07d97071b73e5ddfbd8388ca6af9635e71ab847"
+  },
+  {
+    "file": "imgo2_forward_0.6.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.6189665394511024,
+    "yaw_mean": -0.0049604495187620294,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "8ed29a4536b0c18df310f850f9badf7b84f80f1ba9de1ba03971e284b56549b2"
+  },
+  {
+    "file": "imgo2_forward_0.9.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.8954822220801335,
+    "yaw_mean": 0.00024342385462324957,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "221fdc7ea2e344259995c2df97278eb6ba98b96ef97f0c1268bd67e62b49f817"
+  },
+  {
+    "file": "imgo2_forward_1.0.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.9843967846932155,
+    "yaw_mean": -0.0006252936427595266,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "8cf221f7ef6ac82c9f650ec3d76adfc3eff355dcd86509038e7eed956541f462"
+  },
+  {
+    "file": "imgo2_forward_turn_left_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.5143979671572732,
+    "yaw_mean": 0.5001318996070373,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "e0056c8df424e6e2d472809d89977b9a6f861c54d31777554b23b599a28d07d0"
+  },
+  {
+    "file": "imgo2_forward_turn_right_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.5139544787611279,
+    "yaw_mean": -0.4994959202231572,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "48f28cad8d2325e5d57afede6b4bc1cef94179095b66da347f5a172a23ddd6d4"
+  },
+  {
+    "file": "imgo2_left_0.3.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.29952487598505095,
+    "yaw_mean": -0.001291628316195789,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "48914775aa55a8bf81344a8c8ac5497a4628f56ca5e54413a81dcb948e0e1877"
+  },
+  {
+    "file": "imgo2_left_0.4.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.4016229722688371,
+    "yaw_mean": -0.0004982727050453158,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "b5a914ea8d06e2cbf5254c7fc4b92990de42de9534dc4bcc786e4ae966dd8e54"
+  },
+  {
+    "file": "imgo2_right_0.3.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.30033601228074286,
+    "yaw_mean": 0.0009500839224711634,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "dab7b41e1fd6673b121669b73bd4a67349fda466b4870d18614d8d25ac28c4f1"
+  },
+  {
+    "file": "imgo2_right_0.4.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.4022169021753153,
+    "yaw_mean": 0.00014182376765340136,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "5484118c4e47f30455513504569a1ee716dada752a76e6ce0ed3b360849656c7"
+  },
+  {
+    "file": "imgo2_stance.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.0005058232791854121,
+    "yaw_mean": 2.8337066272004726e-05,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "8c32cfcf7ed4273ccd41b29aeac80ee74552057edc52e25e3b3608ee132dc54b"
+  },
+  {
+    "file": "imgo2_turn_left_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.016043331391440426,
+    "yaw_mean": 0.49979307219365615,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "22372dcf2e03642236e0bc7831f431019caeb02f1e9d4fe365d5d6d69e35e8e5"
+  },
+  {
+    "file": "imgo2_turn_left_1.0.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.02049906860563466,
+    "yaw_mean": 0.999625922900947,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "64122c674d2c15ca771b8c9232a047ddf269b08f285bab10e492ce1aba30b451"
+  },
+  {
+    "file": "imgo2_turn_right_0.5.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.015857031405930675,
+    "yaw_mean": -0.499721284486871,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "4b3afd405dbc08150495f28b2ec66baeb3c51437b81d900d8d97d09f2c52626a"
+  },
+  {
+    "file": "imgo2_turn_right_1.0.txt",
+    "frames": 600,
+    "frame_dt": 0.02,
+    "motion_weight": 1.0,
+    "root_speed_mean": 0.019766711595664455,
+    "yaw_mean": -1.0004155466480893,
+    "adjacent_equal_joint_positions": 0,
+    "adjacent_equal_foot_positions": 0,
+    "sha256": "76e5bd8afb78b8e3cc4092904ed0b266aee4515f941b38a59463a351043779e9"
+  }
+]

@@ -1,0 +1,279 @@
+{
+  "24000_gazebo_eval": {
+    "vx_cmd": 0.5,
+    "samples": {
+      "odom": 1999,
+      "joint_states": 19984,
+      "resampled_joint_states": 1999
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.291633411481749,
+      "z_min": 0.27162670037642533,
+      "z_max": 0.3048768644071141,
+      "roll_range_deg": 8.680689139485269,
+      "pitch_range_deg": 9.527629065457338,
+      "yaw_drift_deg_per_s": 10.30742894381877,
+      "dx_m": -2.9824616170120164,
+      "dx_per_s": -0.1492723532038046
+    },
+    "tracking": {
+      "speed_mean": 0.4323085912292584,
+      "lateral_speed_mean": -0.06342387026996961,
+      "world_x_speed_mean": -0.1492723532038046,
+      "coordinate_frame": "body",
+      "error_abs": 0.06769140877074159,
+      "error_pct": 13.538281754148318
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 58.09355080289688,
+        "reversals_per_s": 16.90440440440406
+      },
+      "thigh": {
+        "mean_abs_ddq": 74.46503239199843,
+        "reversals_per_s": 16.328828828828495
+      },
+      "shank": {
+        "mean_abs_ddq": 125.57045693546816,
+        "reversals_per_s": 16.616616616616277
+      }
+    },
+    "periodicity": {
+      "period_s": 0.14750000000002306,
+      "freq_hz": 6.960227272726185,
+      "score": 0.4720267326931047,
+      "FL_FR_phase_deg": 157.5,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.5112251196424499
+        },
+        "FR": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.4990715318452742
+        },
+        "RL": {
+          "period_s": 0.1100000000000172,
+          "freq_hz": 9.09090909090767,
+          "score": 0.4136812255448123
+        },
+        "RR": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.46412905373988245
+        }
+      }
+    }
+  },
+  "25000_gazebo_eval": {
+    "vx_cmd": 0.5,
+    "samples": {
+      "odom": 1997,
+      "joint_states": 19969,
+      "resampled_joint_states": 1998
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.26300637810570343,
+      "z_min": 0.25341669347311124,
+      "z_max": 0.2777643770750429,
+      "roll_range_deg": 5.127959745661221,
+      "pitch_range_deg": 4.21691892102525,
+      "yaw_drift_deg_per_s": -2.0777930886365557,
+      "dx_m": 9.601416568933246,
+      "dx_per_s": 0.48103289423513246
+    },
+    "tracking": {
+      "speed_mean": 0.5869755689999953,
+      "lateral_speed_mean": -0.001653406917793277,
+      "world_x_speed_mean": 0.48103289423513246,
+      "coordinate_frame": "body",
+      "error_abs": 0.08697556899999526,
+      "error_pct": 17.395113799999052
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 33.2088784084115,
+        "reversals_per_s": 20.893840761141036
+      },
+      "thigh": {
+        "mean_abs_ddq": 64.19056702029023,
+        "reversals_per_s": 8.350025037556065
+      },
+      "shank": {
+        "mean_abs_ddq": 102.11237778051407,
+        "reversals_per_s": 11.467200801201432
+      }
+    },
+    "periodicity": {
+      "period_s": 0.2700000000000422,
+      "freq_hz": 3.7037037037031246,
+      "score": 0.8285644317761701,
+      "FL_FR_phase_deg": -186.66666666666666,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8592600488738511
+        },
+        "FR": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8471019799051949
+        },
+        "RL": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8292083098425744
+        },
+        "RR": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.77868738848306
+        }
+      }
+    }
+  },
+  "24000_gazebo_eval_repeat": {
+    "vx_cmd": 0.5,
+    "samples": {
+      "odom": 1998,
+      "joint_states": 19982,
+      "resampled_joint_states": 1999
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.2915676585654638,
+      "z_min": 0.28346083869378463,
+      "z_max": 0.3017403529464554,
+      "roll_range_deg": 6.98731681074886,
+      "pitch_range_deg": 4.884741193823144,
+      "yaw_drift_deg_per_s": 10.466205740165982,
+      "dx_m": -2.1079113660986892,
+      "dx_per_s": -0.10555389915366495
+    },
+    "tracking": {
+      "speed_mean": 0.4233058196009889,
+      "lateral_speed_mean": -0.07336604199403528,
+      "world_x_speed_mean": -0.10555389915366495,
+      "coordinate_frame": "body",
+      "error_abs": 0.0766941803990111,
+      "error_pct": 15.33883607980222
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 57.8453881382945,
+        "reversals_per_s": 17.60510510510445
+      },
+      "thigh": {
+        "mean_abs_ddq": 74.92829505652936,
+        "reversals_per_s": 17.454954954954307
+      },
+      "shank": {
+        "mean_abs_ddq": 125.97086094070629,
+        "reversals_per_s": 16.666666666666046
+      }
+    },
+    "periodicity": {
+      "period_s": 0.160000000000025,
+      "freq_hz": 6.249999999999023,
+      "score": 0.40442032935211514,
+      "FL_FR_phase_deg": 157.5,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.4314986462538064
+        },
+        "FR": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.5604401826912145
+        },
+        "RL": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.2605574130514668
+        },
+        "RR": {
+          "period_s": 0.160000000000025,
+          "freq_hz": 6.249999999999023,
+          "score": 0.3651850754119728
+        }
+      }
+    }
+  },
+  "25000_gazebo_eval_repeat": {
+    "vx_cmd": 0.5,
+    "samples": {
+      "odom": 1998,
+      "joint_states": 19983,
+      "resampled_joint_states": 1999
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.2629669774658497,
+      "z_min": 0.2528460463643246,
+      "z_max": 0.27327136624453896,
+      "roll_range_deg": 5.838412133399978,
+      "pitch_range_deg": 4.228766737565764,
+      "yaw_drift_deg_per_s": -2.218701527146612,
+      "dx_m": 9.624311481265215,
+      "dx_per_s": 0.4819384817859397
+    },
+    "tracking": {
+      "speed_mean": 0.5859666583011967,
+      "lateral_speed_mean": -0.003207680712027529,
+      "world_x_speed_mean": 0.4819384817859397,
+      "coordinate_frame": "body",
+      "error_abs": 0.08596665830119665,
+      "error_pct": 17.19333166023933
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 33.935050813211035,
+        "reversals_per_s": 21.483983983983443
+      },
+      "thigh": {
+        "mean_abs_ddq": 64.46447927184921,
+        "reversals_per_s": 8.345845845845634
+      },
+      "shank": {
+        "mean_abs_ddq": 103.22850933488247,
+        "reversals_per_s": 11.524024024023733
+      }
+    },
+    "periodicity": {
+      "period_s": 0.2700000000000422,
+      "freq_hz": 3.7037037037031246,
+      "score": 0.8394144661166989,
+      "FL_FR_phase_deg": -186.66666666666666,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8621029307737498
+        },
+        "FR": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8791360692238877
+        },
+        "RL": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.8575051613458233
+        },
+        "RR": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.758913703123335
+        }
+      }
+    }
+  },
+  "warning": "Initial 24000 RL boundary fallback was invalid; use repeated 24000 or corrected spectrum report (0.16s); no contact air-time measured."
+}

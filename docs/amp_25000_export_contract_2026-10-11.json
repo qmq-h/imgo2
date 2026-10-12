@@ -1,0 +1,16 @@
+{
+  "24000": {
+    "checkpoint_sha256": "052324abc99beb65fce8cc9b56d6ae10cc1bdb78449d15140ccfbb631dc416f0",
+    "jit_sha256": "3b3377a5e7f59295fd97c72f118c8e01015d6a90c4f6c7006d3980e9a8c142c5",
+    "actor_max_diff": 0.0,
+    "input_dim": 45,
+    "output_dim": 12
+  },
+  "25000": {
+    "checkpoint_sha256": "2a01c9c30aab713dae85de598c0ab7d73e1c3a84ee17884c2e85c4500abc07b2",
+    "jit_sha256": "bf792f98faf17cdd6fbdf92f34ec86680a871d39b6dbea1e32a38badf84e0131",
+    "actor_max_diff": 0.0,
+    "input_dim": 45,
+    "output_dim": 12
+  }
+}

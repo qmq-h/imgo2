@@ -12,13 +12,13 @@
 | lin_vel_z_l2 | -50 | -1 | 垂直速度平方 |
 | ang_vel_xy_l2 | -2.5 | -0.05 | 横滚／俯仰角速度平方，直立门控 |
 | joint_pos_limits | -100 | -2 | 超出软关节限位的量；模型 soft_joint_pos_limit_factor=0.9 |
-| feet_air_time | 1 | 0.02 | 落地事件 ×（滞空时间−0.3 s），详见下文 |
+| feet_air_time | 50 | 1 | 落地事件 ×（滞空时间−0.3 s），详见下文 |
 
 AMP 风格奖励是 `2 × max(1−(d−1)^2/4, 0)`，每步范围 0–2；混合为 `0.7 × 风格 + 0.3 × 任务`。0.7/0.3 是系数，不代表实际回报占比。动作变化、关节力矩／加速度、足端高度／滑动／滞空方差／相位、平躺姿态和终止惩罚等任务奖励均被保留名单过滤；base 触地依然是终止条件。
 
 训练指令为身体坐标系 `vx∈[-1.0,1.5] m/s`、`vy∈[-1.0,1.0] m/s`、`wz∈[-1.57,1.57] rad/s`。每 10 s 重新采样，站立采样比例 0.02；自定义指令生成器把平面指令范数 ≤0.2 m/s 的 vx/vy 清零（可保留转向），速度课程关闭。平地不受坑地形的额外限制。play 配置固定为 vx=1.0 m/s、vy=0、wz=0，专用评估脚本可再次覆盖。
 
-已确认：7 项保留名单与参数、继承的时间步长和命令生成逻辑、play 的最终覆盖、风格混合公式；6 项配置检查通过。待确认：当前在跑的训练是否使用这一版代码／旧 params/env.yaml，以及新滞空项是否足够强以降低周期。例：两足同时落地且各自滞空 0.1 s 时，该项混合后的每步贡献为 `0.3×0.02×2×(0.1−0.3)=−0.0024`，而两项完美速度跟踪合计可给 1.8；这提示初始滞空项可能较弱，但两者是事件项与连续项，不能只用峰值证明效果。本轮复核未继续调整参数或训练。
+已确认：7 项保留名单与参数、继承的时间步长和命令生成逻辑、play 的最终覆盖、风格混合公式；6 项配置检查通过。用户指出滞空与 tracking 差距后，发现初始实现中 tracking 抵消了 RewardManager 的 dt，而滞空未抵消；已将滞空也换算为每步／事件系数。在当前步长下扩大 50 倍。例：两足同时落地且各自滞空 0.1 s 时，混合后的事件贡献由 `−0.0024` 变为 `0.3×2×(0.1−0.3)=−0.12`，两项完美速度跟踪合计为 1.8。事件只在落地时发生，连续跟踪每步发生，平均贡献仍不可按事件峰值等同；训练效果待确认。
 
 ## 现象与目标
 
@@ -29,12 +29,13 @@ AMP 风格奖励是 `2 × max(1−(d−1)^2/4, 0)`，每步范围 0–2；混合
 `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py` 的 `Imgo2AmpMoveEnvCfg._keep_only_amp_task_rewards()` 原先过滤掉了共用的 `feet_air_time`。本轮将该项加入保留名单，并设置：
 
 ```python
-self.rewards.feet_air_time.weight = 1.0
+FEET_AIR_TIME_PER_STEP = 1.0
+self.rewards.feet_air_time.weight = FEET_AIR_TIME_PER_STEP / step_dt
 self.rewards.feet_air_time.params["threshold"] = 0.3
 self.rewards.feet_air_time.params["sensor_cfg"].body_names = [self.foot_link_name]
 ```
 
-阈值沿用 [历史方案](amp_gait_adjust_plan_2026-09-18.md) §9 记录的用户选择；权重沿用本仓库 PPO 的原始权重，作为待训练验证的初值。该项使用 RewardManager 原始权重，不除以 `step_dt`；在当前 `step_dt=0.02 s` 时，落地那一步的项为 `0.02 × Σ(t_air−0.3)`，混合奖励中还乘任务比例 0.3。它相对于现有每步速度系数 4.0/2.0 较小，若效果不足需单独增权消融，不能宣称已经降低步频。
+阈值沿用 [历史方案](amp_gait_adjust_plan_2026-09-18.md) §9 记录的用户选择。历史初版直接沿用 PPO 原始权重 1.0，未与本 AMP 的每步 tracking 系数统一，导致额外乘 0.02；本轮修正这一尺度遗漏。当前 raw weight=50，RewardManager 乘 dt 后有效系数=1，AMP 混合再乘任务比例 0.3。这里的 1.0 是新的事件系数初值，不是已经验证的最优权重；改变 dt 时该换算保持单次事件系数，但不意味着每秒奖励或步态天然与 dt 无关。
 
 沿用 `mdp/rewards.py::feet_air_time`：仅在首次落地时结算，短于阈值给负值，长于阈值给正值；低速命令时关闭，并带直立姿态门控。这是鼓励较长滞空的软奖励，没有周期误差项，因此不会精确锁定目标周期。站立占空比约 0.5 时，0.3 s 滞空对应约 0.6 s 周期；占空比改变时这一关系也改变。
 
@@ -54,6 +55,6 @@ self.rewards.feet_air_time.params["sensor_cfg"].body_names = [self.foot_link_nam
 python3 -m unittest discover -s imgo2_rl/tests -p test_amp_recipe_contract.py -v
 ```
 
-6 项通过；修改后的 AMP 配置通过 Python `compile()` 语法检查；`git diff --check` 通过。修改前 `git pull --ff-only` 确认当前分支已同步（HEAD `1c6f6c9`）。
+6 项通过；修改后的 AMP 配置通过 Python `compile()` 语法检查；`git diff --check` 通过。初版启用前曾 `git pull --ff-only` 确认当时 HEAD `1c6f6c9`，本次尺度修正基于当前本地 `fc8b341`，未 fetch/pull。尺度回归检查直接执行实际配置，在控制步长 0.01、0.02、0.04 s 验证同一双足落地事件贡献为 −0.4、完美平面 tracking 为 4.0，比例 −0.1；旧版在此检查中失败。
 
 待修复／待确认：尚未启动 Isaac Lab 环境、短训练或完整重训，未证明滞空统计在运行中正常，也未证明周期达到 0.5–0.6 s。需要在训练机重启训练进程，确认保存的 `params/env.yaml` 和 TensorBoard 的 `Episode_Reward/feet_air_time` 包含新项；再在固定速度（建议先 vx=0.5 m/s）下回放统计周期、滞空时间、步幅、速度误差及机身高度。已运行的训练进程和现有导出策略不会因源码改变而自动更新。建议新建训练运行与旧奖励作对照，正式导出继续使用对应 `play.py`。
