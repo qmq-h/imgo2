@@ -2024,7 +2024,7 @@ class DryRunTests(unittest.TestCase):
         script = RL / "scripts/towing/play_towing_test.py"
         code = (
             "import runpy, sys\n"
-            f"sys.argv = ['{script}', '--dry-run']\n"
+            f"sys.argv = [{str(script)!r}, '--dry-run']\n"
             "try:\n"
             f"    runpy.run_path(r'{script}', run_name='__main__')\n"
             "except SystemExit as exc:\n"
@@ -2033,7 +2033,7 @@ class DryRunTests(unittest.TestCase):
             "assert not loaded, loaded\n"
             "print('DRY_RUN_OK')\n"
         )
-        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+        result = subprocess.run([sys.executable, "-X", "utf8", "-c", code], capture_output=True, text=True, encoding="utf-8",
                                 timeout=300, cwd=str(RL.parent))
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_OK", result.stdout)
@@ -2066,7 +2066,7 @@ class DryRunTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
             code = (
                 "import runpy, sys\n"
-                f"sys.argv = ['{script}', '--dry-run', '--upper-checkpoint', '{handle.name}']\n"
+                f"sys.argv = [{str(script)!r}, '--dry-run', '--upper-checkpoint', {handle.name!r}]\n"
                 "try:\n"
                 f"    runpy.run_path(r'{script}', run_name='__main__')\n"
                 "except SystemExit as exc:\n"
@@ -2075,7 +2075,7 @@ class DryRunTests(unittest.TestCase):
                 "assert not loaded, loaded\n"
                 "print('DRY_RUN_CKPT_OK')\n"
             )
-            result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+            result = subprocess.run([sys.executable, "-X", "utf8", "-c", code], capture_output=True, text=True, encoding="utf-8",
                                     timeout=300, cwd=str(RL.parent))
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)

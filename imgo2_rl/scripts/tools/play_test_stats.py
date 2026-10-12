@@ -88,8 +88,24 @@ SEGMENT_BOUNDS = ((0.0, 2.25, "平地(出生)"), (2.25, 5.25, "上坡"), (5.25, 
 SEGMENT_ORDER = ("平地(出生)", "上坡", "坡顶", "下坡", "平地(出口)")
 
 
-def segment_of(progress_m: float) -> str:
+def segment_of(progress_m: float, terrain_profile="hill") -> str:
     """`robot_progress_m`（相对 lane 原点的水平行程）→ 剖面分段名。"""
+    if terrain_profile == "rolling":
+        mdp = RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
+        if str(mdp) not in sys.path:
+            sys.path.insert(0, str(mdp))
+        from rolling_geometry import START_M, END_M, HILL_WIDTHS_M
+        if progress_m < START_M:
+            return "平地(出生)"
+        if progress_m >= END_M:
+            return "平地(出口)"
+        start = START_M
+        for width in HILL_WIDTHS_M:
+            if progress_m < start + width:
+                return "上坡" if progress_m < start + width / 2 else "下坡"
+            start += width
+    elif terrain_profile != "hill":
+        raise ValueError("unknown terrain profile")
     if progress_m < 0.0:
         return "平地(出生)"
     for low, high, name in SEGMENT_BOUNDS:
@@ -98,7 +114,7 @@ def segment_of(progress_m: float) -> str:
     return "平地(出口)"
 
 
-def segment_stats(case_dirs, summaries, *, limit=None, stride=1):
+def segment_stats(case_dirs, summaries, *, limit=None, stride=1, terrain_profile="hill"):
     """按剖面分段统计 `q − q*`、力矩与跟速（读 `env*/tow.csv` 的拖曳段）。
 
     为什么需要它：`startup_joint_error` 只看拖曳开始后的第一个 1 s —— 那 1 s 里机器人几乎
@@ -139,7 +155,7 @@ def segment_stats(case_dirs, summaries, *, limit=None, stride=1):
             for row in csv.DictReader(stream):
                 if row["phase"] != "tow":
                     continue
-                segment = segment_of(float(row["robot_progress_m"]))
+                segment = segment_of(float(row["robot_progress_m"]), terrain_profile)
                 speed = f"{float(row['user_cmd_mps']):g}"
                 speed_matrix.setdefault(cart_present, {}).setdefault(segment, {}).setdefault(
                     speed, {"sumsq": 0.0, "n": 0})
@@ -488,7 +504,8 @@ def main(argv=None) -> int:
         else:
             groups, picked, speed_matrix = segment_stats(
                 case_dirs, sorted((run / "summaries").glob("*.json")),
-                limit=(args.segments_limit or None))
+                limit=(args.segments_limit or None),
+                terrain_profile=(experiment.get("arguments") or {}).get("terrain_profile", "hill"))
             print_segments(groups, picked)
             print_segment_speed_matrix(speed_matrix)
 

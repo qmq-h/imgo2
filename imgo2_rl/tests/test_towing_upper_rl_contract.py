@@ -1304,7 +1304,6 @@ class UpperLogicTests(unittest.TestCase):
         import math
 
         def yaw_of(y):
-            import torch as _t
             # 仅 yaw 的纯四元数：w=cos(y/2), z=sin(y/2)
             w, z = math.cos(y / 2), math.sin(y / 2)
             return math.atan2(2 * w * z, 1 - 2 * z * z)

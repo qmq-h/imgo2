@@ -156,6 +156,7 @@ class HierarchicalVelocityAction(ActionTerm):
         # articulation still exists in the replicated scene but is parked laterally and masked
         # out of towing physics, safety costs, termination, and decoder supervision.
         self.cart_present = torch.ones(env.num_envs, 1, dtype=torch.bool, device=env.device)
+        self.terrain_profile = getattr(env.cfg, "towing_terrain_profile", "hill")
         # 场景是「列 × 行」确定性网格（见 `mdp/connection_grid.py`）：列 = 连接类型/弹性档、
         # 行 = 连接长度。类型与长度不再逐 env 随机，整段训练按 env index 固定映射；因此这三
         # 个张量在 `__init__` 里一次算好，之后**不再改写**（模型直接持有它们的视图）。
@@ -1137,7 +1138,12 @@ def robot_fall(env, minimum_height):
     """离**局部坡面**的高度低于阈值 ⇒ 判定为跌倒（坡上不能用绝对 z）。"""
     term = _term(env)
     local = term._asset.data.root_pos_w - env.scene.env_origins
-    height = local[:, 2] - profile_height_tensor(term.hill_grade_deg, local[:, 0])
+    if term.terrain_profile == "rolling":
+        from .mdp.rolling_torch import profile_height_tensor as rolling_height
+        surface_height = rolling_height(term.hill_grade_deg, local[:, 0], local[:, 1])
+    else:
+        surface_height = profile_height_tensor(term.hill_grade_deg, local[:, 0])
+    height = local[:, 2] - surface_height
     return height < minimum_height
 def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()
 

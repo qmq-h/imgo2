@@ -29,3 +29,13 @@ gym.register(
         "rl_lab_cfg_entry_point": f"{agents.__name__}.upper_ppo_cfg:UpperTowingPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Imgo2-towing-upper-rolling-rl-lab",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.upper_env_cfg:UpperRollingTowingEnvCfg",
+        "rl_lab_cfg_entry_point": f"{agents.__name__}.upper_ppo_cfg:UpperTowingPPORunnerCfg",
+    },
+)

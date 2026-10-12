@@ -44,7 +44,7 @@ from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
     BOUNDARY_MARGIN_M, FLAT_OUT_START_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
 from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
 from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
-    TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter,
+    TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter, TowingRollingTerrainGenerator,
 )
 
 
@@ -555,6 +555,7 @@ class UpperRobotDomainRandCfg:
 
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
+    towing_terrain_profile: str = "hill"
     # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. 每条 lane 的剖面都是
     # 「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」（`mdp/slope_geometry.py`，
     # 跑道总长 15 m）；
@@ -572,6 +573,11 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     curriculum = None
 
     def __post_init__(self):
+        if self.towing_terrain_profile not in ("hill", "rolling"):
+            raise ValueError("unknown towing terrain profile")
+        self.scene.terrain.terrain_generator.class_type = (
+            TowingRollingTerrainGenerator if self.towing_terrain_profile == "rolling"
+            else TowingSlopeTerrainGenerator)
         self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
         action = self.actions.high_level_velocity
         if action.stop_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
@@ -607,6 +613,9 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         # 前者由 frozen AMP 策略的 50 Hz 与上层 20 Hz 契约决定、后者是采样长度（与回合上限无关，
         # 只影响每轮 rollout 的步数）。
         surface_distance = profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)
+        if self.towing_terrain_profile == "rolling":
+            from .mdp.rolling_geometry import arc_length_upper_bound
+            surface_distance = arc_length_upper_bound(MAX_GRADE_DEG, action.stop_distance_m)
         self.episode_length_s = episode_timeout_s(
             surface_distance, minimum_speed, action.tow_start_s,
             margin=POST_STOP_WINDOW_S)
@@ -616,3 +625,9 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.lookat = (0.0, 0.0, 0.2)
         self.viewer.origin_type = "env"
         self.viewer.env_index = 0
+
+
+@configclass
+class UpperRollingTowingEnvCfg(UpperTowingEnvCfg):
+    """Optional smooth rolling terrain; existing hill task remains available."""
+    towing_terrain_profile: str = "rolling"

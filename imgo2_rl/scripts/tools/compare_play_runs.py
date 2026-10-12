@@ -32,6 +32,7 @@ from pathlib import Path
 
 #: 影响物理的 CLI 参数：两轮只有 `--upper-checkpoint` 不同才算"同一套条件"
 PAIRED_ARGUMENTS = (
+    "terrain_profile",
     "num_envs", "velocities", "cart_masses", "ground_friction", "wheel_damping",
     "command_shaping", "ramp_time_s", "settle_time", "tow_duration", "coast_duration",
     "dt", "record_every", "no_cart_fraction", "lane_keeping", "device",
@@ -116,6 +117,11 @@ def paired_arguments(baseline_payload, policy_payload):
     right = policy_payload.get("arguments") or {}
     mismatches = []
     for name in PAIRED_ARGUMENTS:
+        if name == "terrain_profile":
+            # Historical reports predate the switch and always used the hill surface.
+            if left.get(name, "hill") != right.get(name, "hill"):
+                mismatches.append((name, left.get(name, "hill"), right.get(name, "hill")))
+            continue
         if name not in left and name not in right:
             continue
         if left.get(name) != right.get(name):

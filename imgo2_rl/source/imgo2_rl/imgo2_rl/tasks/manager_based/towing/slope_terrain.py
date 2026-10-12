@@ -16,11 +16,24 @@ class TowingSlopeTerrainGenerator:
     def __init__(self, cfg, device="cpu"):
         if (cfg.num_rows, cfg.num_cols) != (ROWS, COLUMNS):
             raise ValueError(f"towing terrain requires {ROWS} rows and {COLUMNS} columns")
-        vertices, faces, origins = grid_mesh()
+        vertices, faces, origins = self.generate_mesh()
         self.terrain_mesh = trimesh.Trimesh(vertices=np.asarray(vertices),
                                           faces=np.asarray(faces), process=False)
         self.terrain_origins = np.asarray(origins, dtype=np.float32)
         self.flat_patches = {}
+
+    @staticmethod
+    def generate_mesh():
+        return grid_mesh()
+
+
+class TowingRollingTerrainGenerator(TowingSlopeTerrainGenerator):
+    """Smooth rough-style surface using the same deterministic cell origins."""
+
+    @staticmethod
+    def generate_mesh():
+        from .mdp.rolling_geometry import grid_mesh as rolling_grid_mesh
+        return rolling_grid_mesh()
 
 
 class TowingSlopeTerrainImporter(TerrainImporter):

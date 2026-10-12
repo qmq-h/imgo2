@@ -515,6 +515,7 @@ recording = _load_module(
 # 不自己写第二套网格表，保证「同一 env 编号 ⇒ 同一 cell」与训练逐位一致。
 connection_grid = _load_module("connection_grid", MDP_DIR / "connection_grid.py")
 slope_geometry = _load_module("slope_geometry", MDP_DIR / "slope_geometry.py")
+rolling_geometry = _load_module("rolling_geometry", MDP_DIR / "rolling_geometry.py")
 # 回合相位几何（纯标准库）：只需它的 `SETTLE_TIME_S` —— 训练侧
 # `HierarchicalVelocityActionCfg.tow_start_s` 的默认值就是它，用来给偏移门控一个
 # **离线可打印**的期望阈值（实跑时仍以 `action_cfg.tow_start_s` 为准）。
@@ -2438,6 +2439,8 @@ def parse_args(argv=None):
         description="拖曳上层任务必要性：冻结 AMP 策略 + 脚本指令，直接跑训练场景的网格基线测试",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--policy", default="amp", help="冻结底层策略名（见 policy_cfg.POLICIES）")
+    parser.add_argument("--terrain-profile", choices=("hill", "rolling"), default="hill",
+                        help="hill=现有单坡包；rolling=平滑、不等宽的连续起伏")
     parser.add_argument("--num-envs", type=int, default=DEFAULT_NUM_ENVS,
                         help=f"并行环境数（默认训练网格全集 {DEFAULT_NUM_ENVS} = 40 列 × 20 行；"
                              f"不是 {DEFAULT_NUM_ENVS} 的整数倍时只覆盖网格前缀，脚本会警告）")
@@ -2611,6 +2614,9 @@ def parse_args(argv=None):
             parser.error(f"--compare-report 不是可读的 JSON：{type(exc).__name__}: {exc}")
         if not isinstance(payload, dict) or not isinstance(payload.get("cases"), list):
             parser.error("--compare-report 必须是本测试台的 report.json（顶层要含 cases 列表）")
+        reference_profile = (payload.get("arguments") or {}).get("terrain_profile", "hill")
+        if reference_profile != args.terrain_profile:
+            parser.error("--compare-report 地形剖面不同，不能标为同条件策略对照")
     args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses,
                                  no_cart_fraction=args.no_cart_fraction)
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
@@ -2683,6 +2689,7 @@ def planned_grid_lines(args) -> list:
     summary = env_case_summary(cases)
     recorded = schedule.total_steps // args.record_every
     lines = [
+        f"[plan] 地形剖面 = {getattr(args, 'terrain_profile', 'hill')}（rolling 为平滑起伏高度场）",
         f"[plan] 场景 = **训练场景** `UpperTowingSceneCfg`：{NUM_COLUMNS} 列 × {NUM_ROWS} 行 = "
         f"{connection_grid.GRID_SIZE} 条 lane（env i 的连接/长度/坡度量级取 "
         f"`connection_grid.env_spec(i)`，与训练逐位一致）",
@@ -2803,7 +2810,6 @@ def planned_grid_lines(args) -> list:
                      f"v={case.velocity_mps:g} m/s m={case.cart_mass_kg:g} kg")
     return lines
 
-
 def git_info():
     def run(*command):
         try:
@@ -2835,6 +2841,7 @@ def main(args):
         "question": "冻结 AMP 策略 + 脚本速度指令的基线，在**训练场景的 40×20 网格**上是否已满足"
                     "起步关节响应 / 全程跟速 / 停车滑移 / 停车间距 / 停车关节响应五项指标",
         "scene": {
+            "terrain_profile": args.terrain_profile,
             "source": "imgo2_rl.tasks.manager_based.towing.upper_env_cfg.UpperTowingSceneCfg",
             "note": "直接构造训练场景（同一地形 mesh、机器人/小车资产、五个车体-机器人接触"
                     "传感器、世界竖直重力）；本脚本只覆盖地面摩擦与轮轴阻尼这两个标量",
@@ -2952,7 +2959,7 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
             profile_slope_degrees as profile_slope_fn)
         from imgo2_rl.tasks.manager_based.towing.upper_env_cfg import (
-            UpperTowingEnvCfg, UpperTowingSceneCfg)
+            UpperTowingEnvCfg, UpperTowingSceneCfg, UpperRollingTowingEnvCfg)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
         from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
@@ -2964,6 +2971,14 @@ def main(args):
 
         # ------------------------------------------------------------ 训练场景
         training_cfg = UpperTowingEnvCfg()
+        scalar_profile = slope_geometry
+        if args.terrain_profile == "rolling":
+            training_cfg = UpperRollingTowingEnvCfg()
+            from imgo2_rl.tasks.manager_based.towing.mdp.rolling_torch import (
+                profile_height_tensor as rolling_height_tensor)
+            profile_height_tensor = rolling_height_tensor
+            scalar_profile = rolling_geometry
+            profile_slope_fn = rolling_geometry.profile_slope_degrees
         action_cfg = training_cfg.actions.high_level_velocity
         # 偏移门控以**训练 cfg 的实际值**为准（`--dry-run`／加载前记的是离线镜像
         # `UPPER_GATE_AFTER_S = episode_geometry.SETTLE_TIME_S`，两者应当相等）。
@@ -2979,6 +2994,8 @@ def main(args):
         render_interval = max(1, int(getattr(sim_cfg, "render_interval", 1)))
         scene_cfg = UpperTowingSceneCfg(num_envs=num_envs,
                                         env_spacing=training_cfg.scene.env_spacing)
+        scene_cfg.terrain.terrain_generator.class_type = (
+            training_cfg.scene.terrain.terrain_generator.class_type)
         material = scene_cfg.terrain.physics_material
         material.static_friction = args.ground_friction
         material.dynamic_friction = args.ground_friction
@@ -3349,7 +3366,7 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out.joint_targets
 
-        def pitch_offsets_for(progress):
+        def pitch_offsets_for(progress, lateral):
             """逐 env 的局部坡度（rad）：相对剖面参考姿态的俯仰偏移。
 
             只有 0/5/10 三个档位，所以按档位分组做（每组一次 torch 赋值），避免逐 env 标量
@@ -3362,6 +3379,9 @@ def main(args):
                 mask = grade_deg == grade
                 values = [math.radians(profile_slope_fn(grade, x))
                           for x in progress[mask].tolist()]
+                if args.terrain_profile == "rolling":
+                    values = [math.radians(profile_slope_fn(grade, x, y))
+                              for x, y in zip(progress[mask].tolist(), lateral[mask].tolist())]
                 offsets[mask] = torch.tensor(values, dtype=torch.float32, device=args.device)
             return offsets
 
@@ -3369,7 +3389,7 @@ def main(args):
         for grade in (0.0, 5.0, 10.0):
             xs = torch.linspace(0.0, 14.0, 29, device=args.device)
             got = profile_height_tensor(torch.full_like(xs, grade), xs).tolist()
-            want = [slope_geometry.profile_height(grade, float(x)) for x in xs.tolist()]
+            want = [scalar_profile.profile_height(grade, float(x)) for x in xs.tolist()]
             if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
                 raise RuntimeError(f"profile_height_tensor 与标量版不一致（档位 {grade:g}°）")
 
@@ -3697,11 +3717,17 @@ def main(args):
             height_robot = (relative_robot * normal_t).sum(dim=1)
             height_load = (relative_load * normal_t).sum(dim=1)
             if float(grade_deg.max()) > 0.0:
-                height_robot = height_robot - profile_height_tensor(grade_deg, progress_robot)
-                height_load = height_load - profile_height_tensor(grade_deg, progress_load)
+                if args.terrain_profile == "rolling":
+                    height_robot = height_robot - profile_height_tensor(
+                        grade_deg, progress_robot, relative_robot[:, 1])
+                    height_load = height_load - profile_height_tensor(
+                        grade_deg, progress_load, relative_load[:, 1])
+                else:
+                    height_robot = height_robot - profile_height_tensor(grade_deg, progress_robot)
+                    height_load = height_load - profile_height_tensor(grade_deg, progress_load)
             height_robot = height_robot.tolist()
             height_load = height_load.tolist()
-            pitch_offsets = pitch_offsets_for(progress_robot).tolist()
+            pitch_offsets = pitch_offsets_for(progress_robot, relative_robot[:, 1]).tolist()
             progress_robot = progress_robot.tolist()
             progress_load = progress_load.tolist()
             for env_index in range(num_envs):
