@@ -1,0 +1,599 @@
+{
+  "source": "/root/Desktop/Imgo2/imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json",
+  "phase": "coast",
+  "selected": 700,
+  "skipped": {
+    "missing_latent": 0,
+    "invalid_latent": 0,
+    "nocart": 100,
+    "filtered": 0
+  },
+  "filters": {},
+  "rows": null,
+  "include_nocart": false,
+  "seed": 0,
+  "permutations": 500,
+  "standardization_mean": [
+    0.33065337793582267,
+    -0.7482317057824829,
+    -0.6736849864636688,
+    -0.5523475312662441,
+    0.4111462696003061,
+    -1.4978951313594637,
+    0.770803061795554,
+    1.3165559798471094,
+    1.0031951638514844,
+    1.1196943490032178,
+    -0.09652100310442706,
+    2.070676876627866,
+    -0.4131138851676938,
+    -0.03138715505578689,
+    0.27345222029976035,
+    -0.1739639456273191
+  ],
+  "standardization_scale": [
+    0.6576524387224104,
+    0.7797743367188733,
+    1.1120945530175295,
+    0.6388765462889929,
+    0.5598070028134887,
+    0.3519323231954865,
+    0.4744620544204179,
+    0.4852749603621839,
+    0.39126352670352293,
+    0.6189575711537187,
+    0.5189200443446192,
+    1.000450998926828,
+    0.376382129615374,
+    1.0294251750518248,
+    0.5385026526974753,
+    0.33480199836697166
+  ],
+  "pca_variance_share_percent": [
+    43.26673355865607,
+    36.25449623399469,
+    15.007358599731305
+  ],
+  "labels": {
+    "connection": {
+      "groups": 3,
+      "counts": {
+        "compliant": 280,
+        "inextensible": 140,
+        "rigid": 280
+      },
+      "eta2_multivariate": 0.16087766666711636,
+      "eta2_permutation_mean": 0.0027186703488896314,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6657142857142857,
+      "centroid_loo_permutation_mean": 0.3312485714285718,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.6842857142857143,
+      "majority_baseline": 0.4,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          "compliant",
+          "inextensible",
+          "rigid"
+        ],
+        "matrix": [
+          [
+            218,
+            42,
+            20
+          ],
+          [
+            101,
+            32,
+            7
+          ],
+          [
+            38,
+            26,
+            216
+          ]
+        ]
+      },
+      "silhouette": 0.0676473402886437,
+      "eta2_best_dim": {
+        "dim": 1,
+        "value": 0.4659386865423793
+      }
+    },
+    "cart_mass_kg": {
+      "groups": 4,
+      "counts": {
+        "10.0": 175,
+        "15.0": 175,
+        "20.0": 175,
+        "5.0": 175
+      },
+      "eta2_multivariate": 0.271155648669604,
+      "eta2_permutation_mean": 0.004393837048669291,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6457142857142857,
+      "centroid_loo_permutation_mean": 0.2508028571428572,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.8771428571428571,
+      "majority_baseline": 0.25,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            59,
+            37,
+            3,
+            76
+          ],
+          [
+            27,
+            102,
+            32,
+            14
+          ],
+          [
+            3,
+            23,
+            149,
+            0
+          ],
+          [
+            33,
+            0,
+            0,
+            142
+          ]
+        ]
+      },
+      "silhouette": 0.037671515344080364,
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.7915031782093048
+      }
+    },
+    "grade_deg": {
+      "groups": 3,
+      "counts": {
+        "0.0": 340,
+        "10.0": 180,
+        "5.0": 180
+      },
+      "eta2_multivariate": 0.05863940316142643,
+      "eta2_permutation_mean": 0.0028805775749815975,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.4,
+      "centroid_loo_permutation_mean": 0.33032571428571456,
+      "centroid_loo_permutation_p": 0.03592814371257485,
+      "knn5_loo": 0.9,
+      "majority_baseline": 0.4857142857142857,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          0.0,
+          10.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            149,
+            62,
+            129
+          ],
+          [
+            73,
+            78,
+            29
+          ],
+          [
+            82,
+            45,
+            53
+          ]
+        ]
+      },
+      "silhouette": -0.0131220661140739,
+      "eta2_best_dim": {
+        "dim": 3,
+        "value": 0.1561704880349701
+      }
+    },
+    "velocity_mps": {
+      "groups": 3,
+      "counts": {
+        "0.5": 230,
+        "1.0": 240,
+        "1.5": 230
+      },
+      "eta2_multivariate": 0.13956980422546703,
+      "eta2_permutation_mean": 0.002886980946402908,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.8085714285714286,
+      "centroid_loo_permutation_mean": 0.33210571428571495,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9728571428571429,
+      "majority_baseline": 0.34285714285714286,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          0.5,
+          1.0,
+          1.5
+        ],
+        "matrix": [
+          [
+            221,
+            4,
+            5
+          ],
+          [
+            80,
+            121,
+            39
+          ],
+          [
+            2,
+            4,
+            224
+          ]
+        ]
+      },
+      "silhouette": 0.03889053860991924,
+      "eta2_best_dim": {
+        "dim": 14,
+        "value": 0.30568857539753047
+      }
+    },
+    "connection_binary": {
+      "groups": 2,
+      "counts": {
+        "rigid": 280,
+        "rope": 420
+      },
+      "eta2_multivariate": 0.15802223661522605,
+      "eta2_permutation_mean": 0.0013277869591107724,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.8685714285714285,
+      "centroid_loo_permutation_mean": 0.4993085714285711,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.94,
+      "majority_baseline": 0.6,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          "rigid",
+          "rope"
+        ],
+        "matrix": [
+          [
+            220,
+            60
+          ],
+          [
+            32,
+            388
+          ]
+        ]
+      },
+      "silhouette": 0.21760120421950874,
+      "eta2_best_dim": {
+        "dim": 1,
+        "value": 0.4596744045120838
+      }
+    }
+  },
+  "clustering": [
+    {
+      "target": "connection",
+      "k": 3,
+      "ari": 0.2281797167718201,
+      "nmi": 0.23735342680771399,
+      "purity": 0.64,
+      "majority_purity": 0.4,
+      "inertia": 4891.427939548728,
+      "contingency": {
+        "0": {
+          "compliant": 248,
+          "rigid": 80,
+          "inextensible": 117
+        },
+        "1": {
+          "compliant": 15,
+          "rigid": 179,
+          "inextensible": 7
+        },
+        "2": {
+          "compliant": 17,
+          "inextensible": 16,
+          "rigid": 21
+        }
+      }
+    },
+    {
+      "target": "cart_mass_kg",
+      "k": 4,
+      "ari": 0.27854694653515927,
+      "nmi": 0.34362553743435437,
+      "purity": 0.5071428571428571,
+      "majority_purity": 0.25,
+      "inertia": 3598.8001173855228,
+      "contingency": {
+        "0": {
+          "10.0": 105,
+          "5.0": 174,
+          "15.0": 23,
+          "20.0": 1
+        },
+        "3": {
+          "15.0": 65,
+          "20.0": 86,
+          "10.0": 1
+        },
+        "1": {
+          "15.0": 71,
+          "10.0": 55,
+          "20.0": 64,
+          "5.0": 1
+        },
+        "2": {
+          "15.0": 16,
+          "20.0": 24,
+          "10.0": 14
+        }
+      }
+    },
+    {
+      "target": "connection_binary",
+      "k": 2,
+      "ari": 0.138900381800911,
+      "nmi": 0.10822279687715944,
+      "purity": 0.6871428571428572,
+      "majority_purity": 0.6,
+      "inertia": 7938.6259549938495,
+      "contingency": {
+        "0": {
+          "rope": 278,
+          "rigid": 77
+        },
+        "1": {
+          "rope": 142,
+          "rigid": 203
+        }
+      }
+    },
+    {
+      "target": null,
+      "k": 3,
+      "inertia": 4891.427939548728,
+      "silhouette": 0.41523632359157586
+    },
+    {
+      "target": null,
+      "k": 4,
+      "inertia": 3598.8001173855228,
+      "silhouette": 0.3962712281014157
+    },
+    {
+      "target": null,
+      "k": 12,
+      "inertia": 1330.300248212514,
+      "silhouette": 0.38214574226836223
+    },
+    {
+      "target": "connection|mass",
+      "k": 12,
+      "ari": 0.22638165363780854,
+      "nmi": 0.41580494760700326,
+      "purity": 0.39,
+      "inertia": 1330.300248212514
+    }
+  ],
+  "per_connection_mass": {
+    "compliant": {
+      "groups": 4,
+      "counts": {
+        "10.0": 70,
+        "15.0": 70,
+        "20.0": 70,
+        "5.0": 70
+      },
+      "eta2_multivariate": 0.3184655302603908,
+      "eta2_permutation_mean": 0.010392125314242289,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6535714285714286,
+      "centroid_loo_permutation_mean": 0.25407142857142845,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.8178571428571428,
+      "majority_baseline": 0.25,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            36,
+            5,
+            2,
+            27
+          ],
+          [
+            11,
+            47,
+            12,
+            0
+          ],
+          [
+            0,
+            12,
+            58,
+            0
+          ],
+          [
+            27,
+            1,
+            0,
+            42
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.8134993109487046
+      },
+      "n": 280,
+      "mass_ari_k4": 0.28271736507560175,
+      "latent_rms_spread": 3.434803405601122,
+      "mass_error_median": 3.178901264667511,
+      "error_samples": 280
+    },
+    "inextensible": {
+      "groups": 4,
+      "counts": {
+        "10.0": 35,
+        "15.0": 35,
+        "20.0": 35,
+        "5.0": 35
+      },
+      "eta2_multivariate": 0.2610820421845153,
+      "eta2_permutation_mean": 0.021594136865692882,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6714285714285714,
+      "centroid_loo_permutation_mean": 0.2516285714285715,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.8857142857142857,
+      "majority_baseline": 0.25,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            8,
+            1,
+            3,
+            23
+          ],
+          [
+            2,
+            28,
+            4,
+            1
+          ],
+          [
+            0,
+            7,
+            28,
+            0
+          ],
+          [
+            4,
+            1,
+            0,
+            30
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.8431671602196469
+      },
+      "n": 140,
+      "mass_ari_k4": 0.3228461075636124,
+      "latent_rms_spread": 3.7855752339584074,
+      "mass_error_median": 3.3407423782348635,
+      "error_samples": 140
+    },
+    "rigid": {
+      "groups": 4,
+      "counts": {
+        "10.0": 70,
+        "15.0": 70,
+        "20.0": 70,
+        "5.0": 70
+      },
+      "eta2_multivariate": 0.45648061451658106,
+      "eta2_permutation_mean": 0.010692552683246575,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.8107142857142857,
+      "centroid_loo_permutation_mean": 0.24944999999999995,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9464285714285714,
+      "majority_baseline": 0.25,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            61,
+            9,
+            0,
+            0
+          ],
+          [
+            19,
+            40,
+            11,
+            0
+          ],
+          [
+            0,
+            9,
+            61,
+            0
+          ],
+          [
+            5,
+            0,
+            0,
+            65
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 2,
+        "value": 0.8722155826108856
+      },
+      "n": 280,
+      "mass_ari_k4": 0.43303571740288616,
+      "latent_rms_spread": 3.8212208745643923,
+      "mass_error_median": 2.4833661031723024,
+      "error_samples": 280
+    }
+  },
+  "caution": "k-means/ARI 只看标签在 latent 里是否有结构；latent 坐标没有物理含义，不等于物理参数辨识。置换检验用同一批标准化坐标，p 小只说明结构不像是随机标签造成的。"
+}

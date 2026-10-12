@@ -140,7 +140,7 @@ def main(argv=None):
             fig.savefig(args.output / f"{tag}.pdf")
             plt.close(fig)
             with (args.output / f"{tag}.csv").open("w", newline="", encoding="utf-8") as handle:
-                writer = csv.writer(handle)
+                writer = csv.writer(handle, lineterminator="\n")  # 显式 LF，见 .gitattributes
                 writer.writerow(["source_index", "tsne_1", "tsne_2", *GROUPS])
                 for r, point in zip(records, xy):
                     writer.writerow([r["source_index"], *point, *(r["labels"][k] for k in GROUPS)])

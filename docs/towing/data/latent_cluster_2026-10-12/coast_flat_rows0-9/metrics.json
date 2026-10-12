@@ -1,0 +1,553 @@
+{
+  "source": "/root/Desktop/Imgo2/imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json",
+  "phase": "coast",
+  "selected": 170,
+  "skipped": {
+    "missing_latent": 0,
+    "invalid_latent": 0,
+    "nocart": 100,
+    "filtered": 530
+  },
+  "filters": {
+    "grade_deg": 0
+  },
+  "rows": [
+    0,
+    9
+  ],
+  "include_nocart": false,
+  "seed": 0,
+  "permutations": 500,
+  "standardization_mean": [
+    0.4173456211212804,
+    -0.8713641911758221,
+    -0.7877593126882088,
+    -0.7870945003946476,
+    0.30366849037128346,
+    -1.540083237355685,
+    0.8192728917596536,
+    1.2544165436191586,
+    0.904511268636705,
+    1.2005097233514195,
+    -0.003003192671958131,
+    2.2745181543467696,
+    -0.41275701982801877,
+    -0.08718971734187188,
+    0.13738099184763775,
+    -0.24705070834541157
+  ],
+  "standardization_scale": [
+    0.6355919459112654,
+    0.7671683962284964,
+    1.1717929051547897,
+    0.1791208206879063,
+    0.428119852839216,
+    0.35871265120577395,
+    0.5083669591722867,
+    0.38434237633518564,
+    0.11195349153649312,
+    0.6582423434405971,
+    0.3687312137744699,
+    0.9582618362352949,
+    0.34966735524296494,
+    1.097249455327657,
+    0.09825946076696573,
+    0.1630985860900049
+  ],
+  "pca_variance_share_percent": [
+    62.02695078195658,
+    24.558511077406646,
+    7.627924057923936
+  ],
+  "labels": {
+    "connection": {
+      "groups": 3,
+      "counts": {
+        "compliant": 70,
+        "inextensible": 30,
+        "rigid": 70
+      },
+      "eta2_multivariate": 0.3547374759320346,
+      "eta2_permutation_mean": 0.011922088372022853,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6,
+      "centroid_loo_permutation_mean": 0.3268352941176462,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.6705882352941176,
+      "majority_baseline": 0.4117647058823529,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          "compliant",
+          "inextensible",
+          "rigid"
+        ],
+        "matrix": [
+          [
+            29,
+            40,
+            1
+          ],
+          [
+            11,
+            18,
+            1
+          ],
+          [
+            0,
+            15,
+            55
+          ]
+        ]
+      },
+      "silhouette": 0.05611870939531863,
+      "eta2_best_dim": {
+        "dim": 11,
+        "value": 0.7442769524583736
+      }
+    },
+    "cart_mass_kg": {
+      "groups": 4,
+      "counts": {
+        "10.0": 41,
+        "15.0": 44,
+        "20.0": 44,
+        "5.0": 41
+      },
+      "eta2_multivariate": 0.37916264985490983,
+      "eta2_permutation_mean": 0.017907814782339403,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.6411764705882353,
+      "centroid_loo_permutation_mean": 0.25198823529411757,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9,
+      "majority_baseline": 0.25882352941176473,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            6,
+            11,
+            0,
+            24
+          ],
+          [
+            5,
+            24,
+            7,
+            8
+          ],
+          [
+            0,
+            0,
+            44,
+            0
+          ],
+          [
+            6,
+            0,
+            0,
+            35
+          ]
+        ]
+      },
+      "silhouette": 0.06290000165623855,
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.9111673005337657
+      }
+    },
+    "velocity_mps": {
+      "groups": 3,
+      "counts": {
+        "0.5": 54,
+        "1.0": 57,
+        "1.5": 59
+      },
+      "eta2_multivariate": 0.05468388947746813,
+      "eta2_permutation_mean": 0.012002105698958297,
+      "eta2_permutation_p": 0.003992015968063872,
+      "centroid_loo": 0.5294117647058824,
+      "centroid_loo_permutation_mean": 0.3308235294117643,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9294117647058824,
+      "majority_baseline": 0.34705882352941175,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          0.5,
+          1.0,
+          1.5
+        ],
+        "matrix": [
+          [
+            22,
+            17,
+            15
+          ],
+          [
+            13,
+            25,
+            19
+          ],
+          [
+            1,
+            15,
+            43
+          ]
+        ]
+      },
+      "silhouette": 0.02761168252807397,
+      "eta2_best_dim": {
+        "dim": 14,
+        "value": 0.2638323515275961
+      }
+    },
+    "connection_binary": {
+      "groups": 2,
+      "counts": {
+        "rigid": 70,
+        "rope": 100
+      },
+      "eta2_multivariate": 0.35373402347232064,
+      "eta2_permutation_mean": 0.005926588985843994,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.9117647058823529,
+      "centroid_loo_permutation_mean": 0.4996235294117648,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9352941176470588,
+      "majority_baseline": 0.5882352941176471,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          "rigid",
+          "rope"
+        ],
+        "matrix": [
+          [
+            57,
+            13
+          ],
+          [
+            2,
+            98
+          ]
+        ]
+      },
+      "silhouette": 0.35314345969805827,
+      "eta2_best_dim": {
+        "dim": 11,
+        "value": 0.7427497400684594
+      }
+    }
+  },
+  "clustering": [
+    {
+      "target": "connection",
+      "k": 3,
+      "ari": 0.31233280399935204,
+      "nmi": 0.37164501976469544,
+      "purity": 0.7176470588235294,
+      "majority_purity": 0.4117647058823529,
+      "inertia": 802.5714530117292,
+      "contingency": {
+        "2": {
+          "compliant": 43,
+          "rigid": 17,
+          "inextensible": 21
+        },
+        "1": {
+          "compliant": 26,
+          "inextensible": 8
+        },
+        "0": {
+          "compliant": 1,
+          "rigid": 53,
+          "inextensible": 1
+        }
+      }
+    },
+    {
+      "target": "cart_mass_kg",
+      "k": 4,
+      "ari": 0.24382603202779934,
+      "nmi": 0.3302324581087313,
+      "purity": 0.5352941176470588,
+      "majority_purity": 0.25882352941176473,
+      "inertia": 618.9202253773204,
+      "contingency": {
+        "0": {
+          "10.0": 24,
+          "5.0": 40,
+          "15.0": 13
+        },
+        "2": {
+          "15.0": 11,
+          "20.0": 26
+        },
+        "1": {
+          "15.0": 10,
+          "10.0": 14,
+          "20.0": 7,
+          "5.0": 1
+        },
+        "3": {
+          "10.0": 3,
+          "15.0": 10,
+          "20.0": 11
+        }
+      }
+    },
+    {
+      "target": "connection_binary",
+      "k": 2,
+      "ari": 0.6179950539028175,
+      "nmi": 0.5410834758666457,
+      "purity": 0.8941176470588236,
+      "majority_purity": 0.5882352941176471,
+      "inertia": 1325.2789178600717,
+      "contingency": {
+        "0": {
+          "rope": 98,
+          "rigid": 16
+        },
+        "1": {
+          "rope": 2,
+          "rigid": 54
+        }
+      }
+    },
+    {
+      "target": null,
+      "k": 3,
+      "inertia": 802.5714530117292,
+      "silhouette": 0.4878751301643775
+    },
+    {
+      "target": null,
+      "k": 4,
+      "inertia": 618.9202253773204,
+      "silhouette": 0.45567488436020454
+    },
+    {
+      "target": null,
+      "k": 12,
+      "inertia": 191.795527382263,
+      "silhouette": 0.42010058767800246
+    },
+    {
+      "target": "connection|mass",
+      "k": 12,
+      "ari": 0.2582715989113587,
+      "nmi": 0.5765631746011509,
+      "purity": 0.5117647058823529,
+      "inertia": 191.795527382263
+    }
+  ],
+  "per_connection_mass": {
+    "compliant": {
+      "groups": 4,
+      "counts": {
+        "10.0": 17,
+        "15.0": 18,
+        "20.0": 18,
+        "5.0": 17
+      },
+      "eta2_multivariate": 0.720677886314229,
+      "eta2_permutation_mean": 0.044097699346921586,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.8,
+      "centroid_loo_permutation_mean": 0.2502000000000001,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.8428571428571429,
+      "majority_baseline": 0.2571428571428571,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            13,
+            0,
+            0,
+            4
+          ],
+          [
+            1,
+            14,
+            3,
+            0
+          ],
+          [
+            0,
+            0,
+            18,
+            0
+          ],
+          [
+            6,
+            0,
+            0,
+            11
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.9290662221988046
+      },
+      "n": 70,
+      "mass_ari_k4": 0.2699377755391807,
+      "latent_rms_spread": 2.8094393773392476,
+      "mass_error_median": 3.4604595565795897,
+      "error_samples": 70
+    },
+    "inextensible": {
+      "groups": 4,
+      "counts": {
+        "10.0": 7,
+        "15.0": 8,
+        "20.0": 8,
+        "5.0": 7
+      },
+      "eta2_multivariate": 0.7381916211089944,
+      "eta2_permutation_mean": 0.11050549976951049,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.7666666666666667,
+      "centroid_loo_permutation_mean": 0.2563999999999998,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.7333333333333333,
+      "majority_baseline": 0.26666666666666666,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            4,
+            0,
+            0,
+            3
+          ],
+          [
+            1,
+            7,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            8,
+            0
+          ],
+          [
+            3,
+            0,
+            0,
+            4
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.9505918941466193
+      },
+      "n": 30,
+      "mass_ari_k4": 0.42898092584654945,
+      "latent_rms_spread": 2.576253059436078,
+      "mass_error_median": 4.400884127616882,
+      "error_samples": 30
+    },
+    "rigid": {
+      "groups": 4,
+      "counts": {
+        "10.0": 17,
+        "15.0": 18,
+        "20.0": 18,
+        "5.0": 17
+      },
+      "eta2_multivariate": 0.6910368778427989,
+      "eta2_permutation_mean": 0.04223829510857074,
+      "eta2_permutation_p": 0.001996007984031936,
+      "centroid_loo": 0.9428571428571428,
+      "centroid_loo_permutation_mean": 0.25297142857142857,
+      "centroid_loo_permutation_p": 0.001996007984031936,
+      "knn5_loo": 0.9571428571428572,
+      "majority_baseline": 0.2571428571428571,
+      "permutations": 500,
+      "centroid_loo_confusion": {
+        "rows": "truth",
+        "cols": "predicted",
+        "labels": [
+          10.0,
+          15.0,
+          20.0,
+          5.0
+        ],
+        "matrix": [
+          [
+            17,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            17,
+            1,
+            0
+          ],
+          [
+            0,
+            2,
+            16,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            16
+          ]
+        ]
+      },
+      "eta2_best_dim": {
+        "dim": 9,
+        "value": 0.9448810539089874
+      },
+      "n": 70,
+      "mass_ari_k4": 0.5459410858023634,
+      "latent_rms_spread": 3.78624427110098,
+      "mass_error_median": 2.0065015506744386,
+      "error_samples": 70
+    }
+  },
+  "caution": "k-means/ARI 只看标签在 latent 里是否有结构；latent 坐标没有物理含义，不等于物理参数辨识。置换检验用同一批标准化坐标，p 小只说明结构不像是随机标签造成的。"
+}

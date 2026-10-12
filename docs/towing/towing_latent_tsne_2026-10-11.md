@@ -41,4 +41,6 @@ t-SNE是非线性可视化，不产生簇标签。多参数图全部保存，避
 
 待完成：归档最新v3包含latent的report.json，运行真实工况图；补局部坡段窗口记录再分析地形。当前本机可读的必要性/AMP envelope报告均不含latent，旧轨迹不能恢复这些向量。这轮不启动新仿真或训练，不提供虚构的实验散点。
 
+**2026-10-12 更新**：真实工况图**已跑出**——本机唯一带 latent 的产物 `v3_800_policy_c008/report.json`（700 有车样本）已用本工具跑 station/tow 两个阶段（perplexity 10/30/50、seed 0），PNG/CSV/metadata 归档在 [docs/towing/data/latent_cluster_2026-10-12/](docs/towing/data/latent_cluster_2026-10-12/)（PDF 为控制体积未保留，可用同命令重生成）。读图结论与同期的聚类检验一致：station 上 rigid 单独成带且带内按质量排序、compliant 与 inextensible 完全互混；tow 上连接/质量/速度都有方向但互相叠压。**仍未完成**：把 `v3_800_policy_c008/report.json` 本体归档进 `docs/`（19 MB，尚未决定是否入仓），以及局部坡段短窗口记录。详见 [聚类检验记录](docs/towing/towing_latent_cluster_2026-10-12.md)。
+
 验证：数据契约3项单元检查通过（报告布局/阶段、无车过滤、非法数值和16维校验、局部坡段标签）；60条显式标记合成样本的4组perplexity/seed输出PNG/PDF/CSV完整，固定seed重复CSV逐字一致；短窗口输入与固定质量筛选实跑通过。图片版式已检查。真实AMP报告因0条latent明确退出，未生成实验图。依赖只安装在本机工作区tmp/tsne_deps中，不改系统Python；绘图测试不代表towing辨识结论。

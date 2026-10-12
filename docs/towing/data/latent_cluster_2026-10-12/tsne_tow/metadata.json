@@ -1,0 +1,81 @@
+{
+  "source": "/root/Desktop/Imgo2/imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json",
+  "sha256": "0cd69ba0d3f3292ec73a46b8d7b2a01290a3181e59c6812a13e70876ec7a3f2b",
+  "sample_type": "phase_mean",
+  "phase": "tow",
+  "samples": 700,
+  "skipped": {
+    "missing_latent": 0,
+    "invalid_latent": 0,
+    "nocart": 100
+  },
+  "filters": {},
+  "include_nocart": false,
+  "iterations": 1000,
+  "standardization_mean": [
+    -0.5772825070164573,
+    -0.23404247795628108,
+    0.13328932707778052,
+    0.9356394087229977,
+    1.5191478646465704,
+    -0.362672983454966,
+    0.04894611062982257,
+    1.1622552436303888,
+    1.0599601569857842,
+    0.9631978636686792,
+    -0.15608863156927477,
+    1.3856779346514492,
+    -1.2583728310597533,
+    0.035803789846652265,
+    1.0294200596785432,
+    0.9972773144364354
+  ],
+  "standardization_scale": [
+    0.593737123006119,
+    0.6982309738321696,
+    0.9614044276996865,
+    0.5613067997561341,
+    0.5432133424235941,
+    0.49670378427088885,
+    0.5430810904741075,
+    0.39403885910189906,
+    0.2798475851866964,
+    0.5339717627191171,
+    0.2298044869657313,
+    0.7740024610509584,
+    0.5409717602615265,
+    0.8851318764010956,
+    0.44300814834696295,
+    0.521213210202015
+  ],
+  "versions": {
+    "numpy": "1.26.0",
+    "sklearn": "1.7.1",
+    "matplotlib": "3.10.0"
+  },
+  "runs": [
+    {
+      "tag": "tsne_tow_p10_s0",
+      "perplexity": 10.0,
+      "seed": 0,
+      "kl_divergence": 0.26781076192855835,
+      "trustworthiness": 0.9990107349298101
+    },
+    {
+      "tag": "tsne_tow_p30_s0",
+      "perplexity": 30.0,
+      "seed": 0,
+      "kl_divergence": 0.24085359275341034,
+      "trustworthiness": 0.998851362510322
+    },
+    {
+      "tag": "tsne_tow_p50_s0",
+      "perplexity": 50.0,
+      "seed": 0,
+      "kl_divergence": 0.22301363945007324,
+      "trustworthiness": 0.9985346820809249
+    }
+  ],
+  "skipped_perplexities": [],
+  "caution": "Labels only color the same embedding. t-SNE is visualization, not clustering. Phase means cannot resolve local up/down slope; grade_deg is lane maximum. Trustworthiness measures neighborhood preservation, not label separability."
+}
