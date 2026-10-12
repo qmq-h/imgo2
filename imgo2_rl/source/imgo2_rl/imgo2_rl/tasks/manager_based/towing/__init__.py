@@ -12,7 +12,7 @@ training configurations in ``agents``.
 注册状态：2026-09-22 由用户决定加入注册块，以便在训练机执行拖曳上层 RL 训练。
 解锁前被移除的守门断言 ``test_environment_is_not_registered_before_physics_adapter_is_complete``
 要求「运行验收前不注册」，该验收项**尚未完成**，因此本注册属"已接线，待验证"：
-运行级验收清单见 ``docs/towing_training_prep_2026-09-22.md``。
+运行级验收清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 """
 
 import gymnasium as gym

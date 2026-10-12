@@ -11,7 +11,7 @@
    `Filter pattern` 的来源）；
 3. 每个传感器的 body 数与 `filter_count`，用来判断「每个 filter 项是否每环境只解析出 1 个 prim」。
 
-`expected/found` 的语义见 `docs/towing_observability_2026-09-22.md`。
+`expected/found` 的语义见 `docs/towing/towing_observability_2026-09-22.md`。
 """
 
 import argparse

@@ -11,7 +11,7 @@
 → **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
 让 `stop_towing_force` 有真实相位可用。任务已注册为
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
-清单见 ``docs/towing_training_prep_2026-09-22.md``。
+清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 
 契约 v3（2026-10-10）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、actor **80**、
 critic **73**、decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
@@ -241,7 +241,7 @@ class UpperRewardsCfg:
 
     # 【撞车】车斗／四轮与机器人任一刚体的过滤接触力 > 1 N 时置 1，同时是终止条件。
     # 权重虽大（−50 ⇒ 每步 −2.5），但只在真撞上时才给，属稀疏信号。
-    # 背景：修复 filter 通配前该判据恒假（碰撞完全不生效），详见 docs/towing_observability_2026-09-22.md。
+    # 背景：修复 filter 通配前该判据恒假（碰撞完全不生效），详见 docs/towing/towing_observability_2026-09-22.md。
     # 【碰撞】小车（车斗/四轮）与机器人 17 个 link 的接触力 > 1 N 即触发（判据见 `update_safety_state`）。
     # 2026-10-09 用户要求：**不再作为终止条件**，只保留惩罚，且幅度调小。
     # 标定逻辑：以前 −50 是"一次性"的（触发即终止、回合重置），每步 −2.5 只作用一步；
@@ -346,7 +346,7 @@ class UpperRewardsCfg:
     # `mag_{t−1}` 缓存在动作项（`process_actions` 每控制步一次更新；`reset()` 清零
     # ⇒ 第一拍 rate 精确为 0）。完整推导/标定/20 Hz vs 200 Hz 采样限制见
     # `mdp.towing_force_rate_penalty` 的 docstring 与
-    # docs/towing_force_rate_2026-10-10.md。
+    # docs/towing/towing_force_rate_2026-10-10.md。
     #
     # **权重 −0.5 的标定依据**：`RewardManager` 每步 = `weight × func × step_dt`；
     # `up` 在 `rate = 2 × rate_limit_n_per_s` 时 = 1.0 ⇒ 每步 **−0.5 × 1.0 × 0.05 = −0.025**，

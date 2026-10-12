@@ -16,6 +16,7 @@
 ## 文档结构
 
 - 仓库是**单一项目**，文档只放三处：根 `README.md`（总览、流程、问题表、维护记录）、`AGENTS.md`（维护约定）、`docs/`（单项排查记录与离线结果）。**不保留子项目 `README.md`**；「哪个目录属于哪条链路」由根 README 的目录职责表说明，不要再为子目录另建入口文档。
+- `docs/` 按主题归档：`amp/`、`cmoe/`、`towing/`、`deployment/`、`training/`、`research/`、`maintenance/`；机器可读结果放对应 `data/`。新增记录放对应主题，根 README 是统一入口；移动文档时同步修正相对引用和脚本路径。
 - 顶层目录命名统一为小写下划线：`imgo2_description/`、`imgo2_dataset/`、`imgo2_rl/`、`imgo2_deploy/`（`imgo2_model/` 已于 2026-09-17 并入 `imgo2_description/` 后删除）。新增顶层目录沿用该风格。
 - 同一结论只在一处展开，避免两处各自漂移。
 - 忽略规则只放在根 `.gitignore`。只对某个子树成立的规则必须带路径前缀（例如 `/imgo2_deploy/**/mujoco/`），否则会在整仓范围内过度匹配；改动后跑一遍 `git ls-files -i -c --exclude-standard`，它必须为空（没有「已跟踪却被忽略」的文件）。
@@ -28,14 +29,14 @@
 - **模型唯一源是 `imgo2_description/`**（2026-09-17 用户决定并已完成，README MODEL-02）。原先并存的 `imgo2_model/`、`imgo2_rl/source/.../data/`、`imgo2_deploy/robot_description/` 三份副本**已删除**（git 可追溯）；不要重新引入副本，需要改模型就改源再重新生成。
   - **分层**：`xacro/core.xacro` = 物理内核（17 link/16 joint，命名 `FL/FR/RL/RR`，关节 `FL_hip_joint`/`*_thigh_joint`/`*_shank_joint`，足端固定关节 `*_Ankle`，link `base`/`FL_HIP`/`FL_THIGH`/`FL_SHANK`/`FL_FOOT`）。Gazebo 专用内容全部独立成模块：`transmission.xacro`（仅 ros_control）、`gazebo.xacro`（插件 + per-link 接触参数）、`imu.xacro`（`base_imu`）。`xacro/robot.xacro` 是组装入口，开关 `transmission`/`gazebo`/`imu` 默认全 false，所以不带参数时只输出内核。
   - **生成物入库、勿手改**：`urdf/imgo2.urdf`（纯 URDF，RL 与非 Gazebo 消费者用）与 `urdf/imgo2.gazebo.urdf`（+transmission+gazebo+imu，Gazebo/ROS 用）。重新生成：`cd imgo2_description/xacro && xacro robot.xacro [transmission:=true gazebo:=true imu:=true] > ../urdf/<名字>`（ROS 2 Humble 的 `xacro` 即可，include 用相对路径）。**网格前缀由 `robot.xacro` 的 `mesh_prefix` 属性决定**：纯 URDF 用 `../meshes/`，`gazebo:=true` 时用 `package://imgo2_description/meshes/`（Gazebo 经 ament 解析，且 0.4.x 的 `gazebo_ros2_control` 不吃 `package://` 作为 `<parameters>`，那处由 launch 换成真实路径）。改完 `gazebo.xacro` 记得重生成这份 URDF；`check_model_sync.py` 的网格检查两种写法都认。
-  - **本包同时是 ROS 2 包**：`package.ros1.xml`／`package.ros2.xml` 两份包描述，`build.sh` 按 `ROS_DISTRO` 生成 `package.xml` 软链（与 `src/` 下其它包同一套机制，包扫描用 `find -L`）；`imgo2_deploy/src/imgo2_description` 是指向仓库根的**软链**（模型唯一源仍在仓库根，不要改成复制）。Gazebo/ROS 2 链路要点见 [Gazebo 链路打通记录](docs/gazebo_ros2_bringup_2026-09-17.md)：`<parameters>` 必须真实路径、`robot_description` 传给 controller_manager 前必须压成单行。
+  - **本包同时是 ROS 2 包**：`package.ros1.xml`／`package.ros2.xml` 两份包描述，`build.sh` 按 `ROS_DISTRO` 生成 `package.xml` 软链（与 `src/` 下其它包同一套机制，包扫描用 `find -L`）；`imgo2_deploy/src/imgo2_description` 是指向仓库根的**软链**（模型唯一源仍在仓库根，不要改成复制）。Gazebo/ROS 2 链路要点见 [Gazebo 链路打通记录](docs/deployment/gazebo_ros2_bringup_2026-09-17.md)：`<parameters>` 必须真实路径、`robot_description` 传给 controller_manager 前必须压成单行。
   - **MuJoCo 模型**：`mjcf/imgo2.xml`（机器人本体）+ `mjcf/scene.xml`（世界，`<include file="imgo2.xml"/>`），由 `rl_sim_mujoco` 通过编译期 `IMGO2_MODEL_DIR` 读取。物理来自训练 URDF，求解器/接触按可用的参考部署对齐（`cone=elliptic impratio=100`、关节 `damping=1 armature=0.1`、碰撞 `condim=3 solref="0.005 1"` + 分几何 friction），并带一个 C++ 尚未读取的 `framelinvel`（adr 43）。
   - **物理参数的唯一准绳仍是训练侧那套值**（用户 2026-09-15 决定，现在是 `core.xacro`）：关节轴/限位、每个 link 的质量/质心/惯量、碰撞几何、base 规范值（质量 `5.53394020` 配惯量 `0.03866860/0.10411461/0.12554111`）。只改质量不改惯量会造成不自洽。
   - **不要改关节轴符号/限位**：AMP 恒等映射的依据是模型与录制的真机数据 FK 吻合到 0.002 m，改轴线会让吻合崩到 0.22 量级、整套对齐结论作废，而真机数据不会跟着变。
   - **改完必须跑** `python imgo2_rl/scripts/tools/check_model_sync.py`：按逻辑关节名与逻辑 link 名比对两份已登记 URDF（Gazebo 份允许多 `base_imu`）的关节轴/限位、逐 link 质量/质心/惯量/碰撞、base 规范值；校验网格目录指纹（`8dc5b5995a11`，10 文件）与每个 mesh 引用都存在；对每份做 FK 复现录制数据；并枚举全仓 URDF，未登记即报错。
   - 网格全仓唯一一套：`imgo2_description/meshes`（改名曾用 LF 命名，2026-09-17 统一为 FL 命名，内容未变）。
 - 代码里的资源路径一律由 `Path(__file__)` 推导或走环境变量，不写机器绝对路径。RL 的模型路径经 `_REPO_ROOT`（`parents[5]`）指向 `imgo2_description/urdf/imgo2.urdf`；改动后跑 `python imgo2_rl/scripts/tools/check_asset_paths.py` 自检（它会从源码读出实际声明的路径，而不是复制一份预期值）。
-- **部署用的 `policy.pt` 一律由对应算法的 `play.py` 导出（headless 模式），不要手写导出脚本、也不要手工拼 TorchScript**（用户 2026-09-18 决定）。入口：`imgo2_rl/scripts/rl_lab/{ppo,amp,himloco}/play.py`；它内部调用 `export_policy_as_jit(actor_critic, normalizer=None, …)`，产物在 checkpoint 同级的 `exported/`（`policy.pt` + `policy.onnx`），再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`。前提是**配置的观测维数与 checkpoint 一致**（AMP 的 45 维 actor 已随 `f028802` 落地，见 [Gazebo 记录](docs/gazebo_ros2_bringup_2026-09-17.md) 9.5 节），否则 `runner.load()` 会在 `load_state_dict` 处尺寸不匹配而失败。导出后按三条契约复核：与 checkpoint 的 actor 在同一批确定性输入上 max diff = 0、能被部署自己的 libtorch 加载、部署 interface 的观测维数与顺序和训练侧一致。
+- **部署用的 `policy.pt` 一律由对应算法的 `play.py` 导出（headless 模式），不要手写导出脚本、也不要手工拼 TorchScript**（用户 2026-09-18 决定）。入口：`imgo2_rl/scripts/rl_lab/{ppo,amp,himloco}/play.py`；它内部调用 `export_policy_as_jit(actor_critic, normalizer=None, …)`，产物在 checkpoint 同级的 `exported/`（`policy.pt` + `policy.onnx`），再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`。前提是**配置的观测维数与 checkpoint 一致**（AMP 的 45 维 actor 已随 `f028802` 落地，见 [Gazebo 记录](docs/deployment/gazebo_ros2_bringup_2026-09-17.md) 9.5 节），否则 `runner.load()` 会在 `load_state_dict` 处尺寸不匹配而失败。导出后按三条契约复核：与 checkpoint 的 actor 在同一批确定性输入上 max diff = 0、能被部署自己的 libtorch 加载、部署 interface 的观测维数与顺序和训练侧一致。
 
 ## 删除与可复现性
 

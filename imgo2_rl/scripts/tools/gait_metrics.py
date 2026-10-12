@@ -11,7 +11,7 @@
     会被单次抖动带偏（那次回放给出 FL-FR 相位 0.80 周期 ≈ 288°，而 Gazebo 侧同一份
     checkpoint 在 1.0 m/s 测到的是 176.9°）。
 
-指标口径（与 `docs/gait_reference_baseline.json` 对照使用）：
+指标口径（与 `docs/amp/data/gait_reference_baseline.json` 对照使用）：
   * duty factor — 支撑相时间占比；air fraction = 1 − duty factor
   * stride freq — 每秒落地次数（由 0→1 上升沿计数）；step period = 相邻落地间隔均值
   * phase       — 相对参考足（默认 FL）落地栅格的相位，0~1 周期；R 为圆周集中度
@@ -185,7 +185,7 @@ def summarize_contact(contact, dt, foot_names, ref_index=0):
 def body_attitude_summary(quat_wxyz, lean_threshold_deg=2.0, dt=None):
     """[T,E,4] wxyz → 机身姿态统计（单位度）。
 
-    参考基线（`docs/gait_reference_baseline.json`，21 份录制动作）：pitch 均值都在 ±1.6° 内、
+    参考基线（`docs/amp/data/gait_reference_baseline.json`，21 份录制动作）：pitch 均值都在 ±1.6° 内、
     前进时略低头 ~0.5°、后退时略抬头 ~1°，roll 均值 ≈0、RMS 0.33°。明显偏离即姿态问题。
 
     给了 `dt` 就额外给出 yaw 的**累积漂移率**（首末差/时长，度/秒）——只报峰峰值分不清
@@ -323,7 +323,7 @@ def build_report(contact, base_z, vel_err_xy, vel_err_yaw, quat, foot_pos_b, joi
     metrics.update(gait)
 
     # ---- 逐足行程/抬脚（base 系峰峰）----
-    # 参考基线（docs/gait_reference_baseline.json）：1.0 m/s 附近 x 行程 ≈0.29 m、
+    # 参考基线（docs/amp/data/gait_reference_baseline.json）：1.0 m/s 附近 x 行程 ≈0.29 m、
     # 抬脚 z ≈0.115 m（forward_0.9 是 0.268/0.112，forward_1.2 是 0.366/0.121）。
     for f, name in enumerate(foot_names):
         fp = fp_all[:, :, f, :]                         # [T, E, 3]

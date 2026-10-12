@@ -4,7 +4,7 @@
 1. `--check` 能跑通，并报告 `libtorch_cuda_linalg.so` 存在且 `dlopen` 成功；
 2. 启动器确实把 `<site-packages>/torch/lib` 追加进了子进程的 `LD_LIBRARY_PATH`
    —— 这是 `libtorch_cuda_linalg.so: cannot open shared object file` 这个报错的直接解药
-   （机制见 `docs/isaaclab_launcher_libtorch_dlopen_2026-09-20.md`：TP 里的
+   （机制见 `docs/training/isaaclab_launcher_libtorch_dlopen_2026-09-20.md`：TP 里的
    `libtorch_cuda.so` 只有 `DT_RPATH`，而 glibc **不会**用 RPATH 解析显式 `dlopen(裸名)`，
    所以必须靠 `LD_LIBRARY_PATH`）。
 

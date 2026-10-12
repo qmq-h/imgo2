@@ -30,7 +30,7 @@ imgo2:
                     0.00, 0.87, -1.82,
                     0.00, 0.87, -1.82,
                     0.00, 0.87, -1.82]
-  # 关节顺序（2026-09-17 定，起因见 docs/gazebo_ros2_bringup_2026-09-17.md 第 8 节）：
+  # 关节顺序（2026-09-17 定，起因见 docs/deployment/gazebo_ros2_bringup_2026-09-17.md 第 8 节）：
   #   * 模型/策略顺序 = URDF 与 MJCF 的声明顺序 = 训练顺序 = FL,FR,RL,RR；
   #   * 这两个名单按模型顺序写：ROS2 路径的控制器槽位顺序就是 joint_names 顺序，于是恒等的
   #     joint_mapping 与 MuJoCo 路径（sensordata/ctrl 也是模型顺序）一致。写成 SDK 顺序

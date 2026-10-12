@@ -1060,13 +1060,13 @@ class UpperLogicTests(unittest.TestCase):
                     0.9679, places=4)
 
     def test_min_clearance_doc_table_matches_the_source_constants(self):
-        """**文档表格与源码逐项一致**：`docs/towing_reward_retune_2026-10-10.md` §2.2 的
+        """**文档表格与源码逐项一致**：`docs/towing/towing_reward_retune_2026-10-10.md` §2.2 的
         两张逐行阈值表（绳/杆各 20 行）必须能用仓库常量复算到 4 位小数。
 
         文档漂移是这一仓库的既有风险（DOC-01），奖励口径又刚改过两次，所以把表格钉进测试：
         日后改 `SLACK_RATIO` / 长度区间 / 挂点常量 / `deadband_m`，要么同步改表，要么这条测试先红。
         """
-        doc = (RL.parent / "docs/towing_reward_retune_2026-10-10.md").read_text("utf-8")
+        doc = (RL.parent / "docs/towing/towing_reward_retune_2026-10-10.md").read_text("utf-8")
         deadband_m, _softness, delta_z, base_offset = _spawn_gap_constants()
         row_pattern = re.compile(
             r"^\|\s*(\d+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)\s*\|$")

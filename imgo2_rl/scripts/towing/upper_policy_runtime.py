@@ -33,7 +33,7 @@
    **之前**（它进底层观测），关节残差加在底层输出**之后** ⇒ 上层同时影响底层输入与输出，
    两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 已按本条接线
    （帧 58 / 动作 13 / 偏移在冻结策略推理前合成 + `elapsed_s >= tow_start_s` 门控），
-   见 `docs/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
+   见 `docs/towing/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
 5. **checkpoint**：`torch.load(path, map_location="cpu", weights_only=False)` ⇒ 键
    `model_state_dict`、`decoder_state_dict`、`towing_contract`
    （`{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
@@ -494,7 +494,7 @@ class UpperPolicyRuntime:
         **顺序与训练侧一致**：先限偏移头，再把**和**裁进冻结 AMP 策略的训练包络
         `lin_vel_x = (−1.0, 1.5)`。包络覆盖脚本速度 0.5–1.5 ⇒ 偏移为 0 时逐位恒等。
         部署侧注意：偏移必须加在**底层策略推理之前**（它进的是底层观测），
-        与关节残差（加在底层输出之后）方向相反 —— 见 `docs/towing_upper_two_head_impl_2026-10-10.md`。
+        与关节残差（加在底层输出之后）方向相反 —— 见 `docs/towing/towing_upper_two_head_impl_2026-10-10.md`。
         """
         tensor = torch.as_tensor(task_vx, dtype=torch.float32, device=self.device)
         tensor = tensor.reshape(tensor.shape[0], -1)[:, :CMD_ACTION_DIM]

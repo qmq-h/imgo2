@@ -8,7 +8,7 @@
 #   （sha256 53a57f909b61d2a7…，文件时间 06-30 12:45），配置数值取自同目录 config.yaml。
 #   2026-09-17 用 Gazebo 侧四项指标（位姿/速度跟随/抖动/周期性）评过 5 个候选后换成它
 #   （评测脚本 imgo2_deploy/scripts/eval_gazebo_policy.py，数字见
-#   docs/gazebo_ros2_bringup_2026-09-17.md 第 9 节）：vx=0.5 时 z 0.288 m、roll 2.5°、
+#   docs/deployment/gazebo_ros2_bringup_2026-09-17.md 第 9 节）：vx=0.5 时 z 0.288 m、roll 2.5°、
 #   yaw 漂 -0.5°/s、抖动(大腿|Δdq|均值) 45 rad/s²、周期强度 0.95、FL-FR 相位 175°（trot），
 #   实测 0.428 m/s（比命令低 14%）；同项目 policy.pt 跟速更准（0.522 m/s）但抖动与姿态更差
 #   （79 rad/s²、roll 5.0°、周期强度 0.74），可作备选。

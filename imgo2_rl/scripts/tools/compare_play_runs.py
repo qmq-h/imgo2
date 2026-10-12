@@ -17,7 +17,7 @@
         --baseline imgo2_rl/logs/towing/play_test/v3_800_base_c008/report.json \\
         --policy   imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json
 
-硬证据定义（与 `docs/towing_play_test_2700_2026-10-11.md` 一致，**不看判定码**）：
+硬证据定义（与 `docs/towing/towing_play_test_2700_2026-10-11.md` 一致，**不看判定码**）：
 `stop.deck_contact_peak_n > 0` 或 `stop.min_clearance_coast_m <= 0`。
 判定码（`COL`/`LOW`/`SPD`）另列，因为 `load_velocity_jump` 代理通道会把改善读反。
 """

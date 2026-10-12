@@ -218,7 +218,7 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 与 `DEFAULT_THRESHOLDS` 的**数值**不动，新增字段只进 `metrics["impact"]`；`impact_stats()` 里
 没有阈值字典、也不做任何判定分支。（**例外**：`classify_case` 于 2026-10-10 增加了
 `count_jnt` 开关，默认把 `JNT` 移出判定，见下节「判读与限制」；JNT 字段与阈值本身仍在。）
-所以 `docs/towingdata/2026-10-09_necessity_800*/` 的归档对照**在 JNT 这一点上不可比**
+所以 `docs/towing/data/2026-10-09_necessity_800*/` 的归档对照**在 JNT 这一点上不可比**
 （归档按旧口径算），报告里那列没有 `impact.*` 只能显示 `n/a`。
 读法见表头（`report.md` 的「## 冲击窗口 vs 稳态（关节响应）」）。
 
@@ -226,7 +226,7 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 + 稳态一行 + `RMS/稳态`、`RMS−稳态` 两列），`report.json` 增顶层 `impact_statistics`（本轮 /
 同版本基线的逐 case 中位数、样本数、最差关节众数），`report.csv` 增 `impact_<窗口>_*` 扁平列。
 详见 README 问题表 **TOW-22** 与
-[双头方案记录](../docs/towing_upper_two_head_2026-10-10.md)（本机无 Isaac Lab，只做了离线验证）。
+[双头方案记录](../docs/towing/towing_upper_two_head_2026-10-10.md)（本机无 Isaac Lab，只做了离线验证）。
 
 ## 判读与限制
 
@@ -264,7 +264,7 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 所以 `startup.joint_rms_rad` 的差**不是**纯粹的"跟踪改善"；阈值也仍是未标定的占位值。
 **验收结论只读 `COL`/`SPD`/`LOW`（以及 `LAT`/`FALL`）**：`JNT` 已按用户决定移出统计量
 （800/800 零区分度，量的是 PD 静差 τ/kp）；重判读数（同一批 800 cell，仅剔除 JNT）见
-README TOW-23 与 `docs/towing_verdict_jnt_excluded_2026-10-10.md`。
+README TOW-23 与 `docs/towing/towing_verdict_jnt_excluded_2026-10-10.md`。
 
 `report.md` / `report.json` 里的「策略 vs 基线」一节把本轮、同版本基线（`--compare-report`）、
 归档基线 2026-10-09 三项放在一起（同一个 `case_metric_summary`：通过数、判定码分布、
@@ -390,7 +390,7 @@ IMPACT_METRIC_FIELDS = (
     ("impact.steady.torque_saturated_frac", "稳态力矩饱和占比"),
 )
 
-#: 归档基线（`docs/towingdata/2026-10-09_necessity_800_noload/`）的读数，作为
+#: 归档基线（`docs/towing/data/2026-10-09_necessity_800_noload/`）的读数，作为
 #: report.md「策略 vs 基线」一节里的**参照列**（不是对照列）。
 #:
 #: ⚠ **不能逐格硬比**：该 run 的 `git.commit = 1bbb405` 且**工作树是脏的**（上层侧 6 个
@@ -401,7 +401,7 @@ IMPACT_METRIC_FIELDS = (
 #: 数值由 `case_metric_summary()` 从归档 report.json 复算（离线测试逐项核对）。
 ARCHIVED_BASELINE_2026_10_09 = {
     "label": "归档基线 2026-10-09（旧几何，仅参照）",
-    "report": "docs/towingdata/2026-10-09_necessity_800_noload/report.json",
+    "report": "docs/towing/data/2026-10-09_necessity_800_noload/report.json",
     "git_commit": "1bbb4054e52c63be3bfaf5462f08a891a6ddae85",
     "reproduce_commit": "6fac89a",
     "working_tree_dirty": True,
@@ -632,7 +632,7 @@ DEFAULT_THRESHOLDS = {
 #: 最好的 case 都超 1.6 倍：实测基线 startup RMS P1=0.161 / P50=0.221、stop RMS P1=0.126 /
 #: P50=0.154），不是上层任务的职责。字段与阈值**保留**（观测），`--count-jnt` 打开后逐位
 #: 复现旧口径（供与归档对齐/追溯）。详见 README TOW-23 与
-#: `docs/towing_verdict_jnt_excluded_2026-10-10.md`。
+#: `docs/towing/towing_verdict_jnt_excluded_2026-10-10.md`。
 DEFAULT_COUNT_JNT = False
 
 
@@ -2414,7 +2414,7 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
               "只是不再进判据。",
               "- `JNT` 的参考量在两种开关下不是同一个东西（基线 = 冻结策略当拍输出、策略 = 下发的"
               "`held = 冻结目标 + 残差`），所以即使开 `--count-jnt`，两轮的 `JNT` 差也不能直接当"
-              "改善读。归档对照（`docs/towingdata/2026-10-09_necessity_800*`）的通过数与判定码"
+              "改善读。归档对照（`docs/towing/data/2026-10-09_necessity_800*`）的通过数与判定码"
               "（0/800、`JNT` 395 等）是按**旧口径**算的，与本节口径**不可比**。",
               f"- {SUMMARIZE_TOW_NOTE}",
               "- 冲击窗口统计（`metrics.impact.*`）是**观测字段，不进判定码**："
@@ -2523,7 +2523,7 @@ def parse_args(argv=None):
     parser.add_argument("--compare-report", type=Path, default=None,
                         help="上一轮（**同一版本、同一套参数**）的 report.json：在 report.md 的"
                              "「策略 vs 基线」一节里给出同版本对照列。默认 None = 只给归档基线"
-                             "（docs/towingdata/2026-10-09_necessity_800_noload，旧几何）参照")
+                             "（docs/towing/data/2026-10-09_necessity_800_noload，旧几何）参照")
     # 阈值
     for name, value in DEFAULT_THRESHOLDS.items():
         parser.add_argument(f"--{name.replace('_', '-')}", type=float, default=value,

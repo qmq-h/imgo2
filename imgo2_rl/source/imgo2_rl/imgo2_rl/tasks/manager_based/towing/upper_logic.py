@@ -21,7 +21,7 @@ class UpperActionSpec:
         loco_vx  = clamp(task_vx + offset, amp_vx_min, amp_vx_max)
         delta    = clip(u_joint, ±1) ⊙ residual_scale
 
-    两头的语义与分工（`docs/towing_upper_two_head_2026-10-10.md`）：
+    两头的语义与分工（`docs/towing/towing_upper_two_head_2026-10-10.md`）：
 
     - ``u_joint``：叠加在冻结策略关节目标上的位置增量（力矩级、单步级），负责抗击冲击；
     - ``u_cmd``：叠加在**脚本调度**的 vx 上的偏移（行为级、秒级），负责「STOP 之后还走不走」。

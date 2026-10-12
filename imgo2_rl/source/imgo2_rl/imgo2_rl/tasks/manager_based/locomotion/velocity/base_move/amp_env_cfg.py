@@ -24,8 +24,8 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 # ---------------------------------------------------------------------------------------
 # 滞空缺口项（2026-10-10，AMP-06 的 P2）：给「步频过快」一个直接梯度
 # ---------------------------------------------------------------------------------------
-# 依据（全部离线可复现，见 docs/amp_feet_air_time_2026-10-10.md 与
-# docs/amp_speed_coverage_2026-10-10.md）：
+# 依据（全部离线可复现，见 docs/amp/amp_feet_air_time_2026-10-10.md 与
+# docs/amp/amp_speed_coverage_2026-10-10.md）：
 #   * 24500 轮策略的唯一实质缺陷是**周期 0.198 s**（参考 0.600 s / 1.667 Hz，3.0 倍），
 #     步幅只是它的结果（一个 trot 里地面系步长 = v × T / 2）；
 #   * 判别器（风格项）在策略工作点上的局部梯度只有 8e-5、`d_policy` 20000 轮只动 0.07
@@ -196,7 +196,7 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 2026-10-10 新增：滞空缺口项（AMP-06 的 P2）。
         # 该项在基类 `RewardsCfg` 里**不存在**（是本任务专用的），所以先在这里建出来，
         # 再由下面的过滤循环按 `keep_rewards` 保留。理由见 `mdp.feet_air_time_deficit`
-        # 的 docstring 与 docs/amp_feet_air_time_2026-10-10.md：
+        # 的 docstring 与 docs/amp/amp_feet_air_time_2026-10-10.md：
         # **风格项在策略工作点上没有梯度**（局部 |∂d/∂x|·σ ≈ 8e-5），而 24500 轮策略的
         # 唯一实质缺陷是周期 0.198 s（参考 0.600 s，3.0 倍）⇒ 需要一项**有直接梯度**的
         # 节律约束。滞空是周期里可由奖励直接观测的那一半（另一半是支撑时间）。
@@ -457,7 +457,7 @@ def apply_rlamp_env_settings(cfg, *, custom_origins: bool = False,
     子类字段 ⇒ **排在最后**、会覆盖它前面那 85% 的 env ⇒ 净效果正是参考的"85% 参考状态 /
     15% 自然 reset"（粗糙版关掉了参考初始化，于是 100% 走这套 reset 分布，见类 docstring）。
 
-    ⚠️ 对齐的代价（写进 `docs/amp_gait_adjust_plan_2026-09-18.md` §15.2）：
+    ⚠️ 对齐的代价（写进 `docs/amp/amp_gait_adjust_plan_2026-09-18.md` §15.2）：
       * `lin_vel_x` 上限 2.0 m/s 超出我们录制动作数据覆盖的 0.842 m/s ⇒ 高速指令段没有
         专家参考可比，AMP 风格项在那一段只能靠插值外推；
       * 关掉 CoM/其它 body 质量/外力力矩随机化、把摩擦与 PD 增益范围收窄、去掉初始姿态

@@ -9,7 +9,7 @@
     python scripts/tools/eval_gait.py \
         --task=Imgo2-basemove-flat-amp-height-play \
         --checkpoint=logs/amp_rsl_rl/base_move_amp/<run>/model_24500.pt \
-        --num_envs=8 --steps=1000 --warmup=50 --out ../docs/gait_eval_amp_24500.json
+        --num_envs=8 --steps=1000 --warmup=50 --out ../docs/amp/data/gait_eval_amp_24500.json
 
 输出：终端摘要 + JSON（逐足指标 + 原始接触/关节时序可选）。
 **统计口径全部在 `gait_metrics.py`**（纯 numpy，可离线回归，见 `tests/test_gait_metrics.py`），
@@ -270,7 +270,7 @@ def main() -> dict:
         yaw_line += f"（累积漂移率 {metrics['body_yaw_drift_rate_deg_s']:+.3f} °/s）"
     print(yaw_line + f" | 判定为恒定倾斜: {metrics['body_pitch_is_constant_lean']}")
     print(f"  步态周期 {metrics['gait_period_s']:.4f} s（参考 0.600 s / 1.67 Hz）"
-          f" | 参考值取自 docs/gait_reference_baseline.json")
+          f" | 参考值取自 docs/amp/data/gait_reference_baseline.json")
     print(f"  {'足':10}{'占空比':>8}{'步频Hz':>8}{'步幅x_m':>9}{'抬脚z_m':>9}{'相位°':>8}{'集中度':>8}")
     for name, m in per_foot.items():
         ph = m.get("phase_deg_vs_FL")

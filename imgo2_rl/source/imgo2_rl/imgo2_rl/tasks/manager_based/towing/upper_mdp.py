@@ -25,7 +25,7 @@
 放开偏移。当前 v3 默认两条脚本开关全关，偏移在 `elapsed >= tow_start_s` 后全程可用。
 
 观测／奖励函数对特权数据的取舍是刻意显式的。本文件是**目标函数与动作适配器**的唯一定义处；
-任务注册见同目录 ``__init__.py``，运行验收清单见 ``docs/towing_training_prep_2026-09-22.md``。
+任务注册见同目录 ``__init__.py``，运行验收清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 """
 
 import math
@@ -288,7 +288,7 @@ class HierarchicalVelocityAction(ActionTerm):
         # 质量与惯量只在 reset 时被随机化，但同一回合内的每个物理步都要用。原来的实现每个
         # 物理步都 `root_physx_view.get_masses()/get_inertias()` 回读一次——那是一次 GPU→CPU→
         # GPU 的往返，会打断流水。4096 环境下每轮 `480 步 × 4096 env`，这些回读各约 196 万次，
-        # 实测把每轮固定开销推到约 4.6 s（与显卡算力无关，见 docs/towing_observability_2026-09-22.md）。
+        # 实测把每轮固定开销推到约 4.6 s（与显卡算力无关，见 docs/towing/towing_observability_2026-09-22.md）。
         # 这里缓存常量部分；`reset_towing_episode` 写完新质量后调用 `_invalidate_mass_cache()`。
         self._robot_inertia_diag = None
         self._robot_mass_total = None
@@ -638,7 +638,7 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     原先的 `acceleration_min/max` 与 `reference_min/max` 已删除：动作不再是加速度积分，
     残差尺度直接取冻结策略契约的 `action_scale`（见 `UpperActionSpec`）。
 
-    双头分工（`docs/towing_upper_two_head_2026-10-10.md`）：
+    双头分工（`docs/towing/towing_upper_two_head_2026-10-10.md`）：
 
     - ``u_joint``（12 维）：关节位置残差，叠加在冻结策略的关节目标上；
     - ``u_cmd``（1 维）：vx 偏移，**加性 + 有界**地叠在脚本调度的 vx 上，只在
@@ -1043,10 +1043,10 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
       而变小（`sqrt(L²−Δz²)`）——解 `sqrt(L²−Δz²) + base_offset = 出生间隙 − 0.02` 得
       Δz* = **0.218 m（L=0.5）** … **0.261 m（L=1.0）**，即最短杆只要 Δz 比出生值 0.17 m
       再大 **4.75 cm** 就会触发（旧口径是 13.1 cm）。这是本次口径变更**换来的代价**，
-      逐行数值见 `docs/towing_reward_retune_2026-10-10.md` §2.5。
+      逐行数值见 `docs/towing/towing_reward_retune_2026-10-10.md` §2.5。
 
     **停车段天然生效 ⇒ 不需要再单独做"停车参考间隙"**：停车瞬间的实测间隙 ≈ **0.64 · L**
-    （用户给的标定值；离线用归档 `docs/towingdata/2026-10-09_necessity_800{,_noload}/report.json`
+    （用户给的标定值；离线用归档 `docs/towing/data/2026-10-09_necessity_800{,_noload}/report.json`
     复算 `stop.clearance_at_stop_m / L` 的中位数是 **0.700**（compliant 0.702）——两者同量级），
     而新阈值 ≈ **0.945 × 出生间隙 ≈ 0.69 · L**（最短绳行）⇒ 停车段间隙**天然落在阈值之下约
     `0.05 · L`**：L=1.0 时缺口约 0.05 m ⇒ 每步 `−5 × 0.05 × 0.05 ≈ −0.0125`（线性铰链值；
