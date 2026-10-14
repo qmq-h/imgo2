@@ -1,30 +1,31 @@
-# AMP policy exported from the motion_new model_4000.pt (2026-10-12), reached with key 3 (gamepad RB+DPadDown; the FSM
-# comment in fsm_imgo2.hpp is authoritative: 1 = PPO, 2 = himloco, 3 = amp).
-# Actor: 45 -> 512 -> 256 -> 128 -> 12, ELU.
-# Training actor observation order (velocity_env_cfg.py PolicyCfg with base_lin_vel
-# removed, i.e. the 45-dim actor of AMP-05 - same composition as the reference amp_go2):
-#   base_ang_vel 3, projected_gravity 3, velocity_commands 3,
-#   joint_pos_rel 12, joint_vel_rel 12, last_action 12  = 45
-# The checkpoint's critic consumes 48 dims (it keeps base_lin_vel);
-# that is training-side only and never appears in this deployment interface.
-# Predecessor: model_9000.pt had a 48-dim actor (base_lin_vel first); its export
-# policy.pt sha256 e5a8bfec742038e0... is recoverable from git history.
-# Current checkpoint sha256 9628af9afd2faf37...; exported policy.pt 6ee931a73b0186de...
-# Export: scripts/rl_lab/amp/play.py, 128-input actor comparison max diff = 0.
-# Gazebo: use the real model; this 4000 policy has not been measured in Gazebo yet.
-# Export/backup evidence: docs/amp_4000_deploy_2026-10-12.md.
-# kp/kd and clip_actions follow the working reference deployment
-# (~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/config.yaml, which the
-# reference routes to its AMP policy); physical values follow the training side.
+# Current AMP policy: 2026-10-14_00-20-45_motion_new_model_new/model_25000.pt.
+# Verified 2026-10-14: deployed bytes match that run's official exported/policy.pt;
+# SHA256 9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66.
+# CPU actor vs JIT: max diff 0 on 128 deterministic inputs; actor45/actions12.
+# Policy uses key3. Training PD25/0.5; deployment below is user-selected24/0.6.
+# Current training recipe additionally enables feet_air_time_deficit; this
+# checkpoint was trained with six base task terms, so its behavior is unchanged.
+# Gazebo target clipping follows Isaac; transition remains disabled by default.
+# Historical policy identities are in docs/rebase_amp_air_time_resolution_2026-10-14.md.
 imgo2/amp:
   model_name: "policy.pt"
+  # Gazebo adapter: optional stand-to-policy target handover (control-loop seconds).
+  # 0.5 reduced the first target jump, but did not consistently reduce measured
+  # joint velocity peaks. Keep it disabled pending further transition tuning.
+  # 0 disables the handover; no effect on hardware/MuJoCo.
+  policy_transition_duration: 0.0
+  # Keep the trained policy PD gains during handover; optional gain blending was
+  # tested separately and did not consistently reduce velocity peaks.
+  policy_transition_blend_gains: false
   num_observations: 45
   observations: ["ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: []
   observations_history_priority: "time"
   clip_obs: 100.0
-  # rl_sim_mujoco clamps the raw network output to these bounds. The reference
-  # uses +/-3.0, matching this task's training-time action clip value.
+  # Gazebo AMP retains raw last_action and clips scaled+offset targets, as Isaac.
+  # This flag is read only by rl_sim and guarded by active config_name == amp.
+  # MuJoCo/hardware retain their existing convention (pending separate audit).
+  gazebo_clip_joint_targets: true
   clip_actions_lower: [-3.0, -3.0, -3.0,
                        -3.0, -3.0, -3.0,
                        -3.0, -3.0, -3.0,
@@ -34,14 +35,18 @@ imgo2/amp:
                        3.0, 3.0, 3.0,
                        3.0, 3.0, 3.0]
   # Training model's actuator gains (assets/imgo2.py DCMotorCfg 25.0 / 0.5).
-  rl_kp: [25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0,
-          25.0, 25.0, 25.0]
-  rl_kd: [0.5, 0.5, 0.5,
-          0.5, 0.5, 0.5,
-          0.5, 0.5, 0.5,
-          0.5, 0.5, 0.5]
+#   rl_kp: [25.0, 25.0, 25.0,
+#           25.0, 25.0, 25.0,
+#           25.0, 25.0, 25.0,
+#           25.0, 25.0, 25.0]
+  rl_kp: [24.0, 24.0, 24.0,
+          24.0, 24.0, 24.0,
+          24.0, 24.0, 24.0,
+          24.0, 24.0, 24.0]
+  rl_kd: [0.6, 0.6, 0.6,
+          0.6, 0.6, 0.6,
+          0.6, 0.6, 0.6,
+          0.6, 0.6, 0.6]
   # Fixed-gain phase (get up / stand) uses the reference deployment's values.
   fixed_kp: [60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,

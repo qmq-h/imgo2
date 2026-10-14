@@ -1,0 +1,106 @@
+[
+  {
+    "trace": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/forward_04/policy_trace.csv",
+    "frames": 1043,
+    "all_joint_target_clip": true,
+    "actor_max_diff": 1.6689300537109375e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 0.0015979546587914228,
+    "raw_over_3_frame_fraction": 0.0191754549741745,
+    "max_abs_raw": 3.416797161102295,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 0,
+      "affected_frames": 0,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    },
+    "stable_clock": {
+      "wall_span_s": 15.99362587928772,
+      "simulation_span_s": 15.979999999999999,
+      "real_time_factor": 0.9991480431397757,
+      "actor_hz_wall": 48.20670470968505,
+      "actor_hz_simulation": 48.247809762202756,
+      "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+    }
+  },
+  {
+    "trace": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/backward_04/policy_trace.csv",
+    "frames": 1047,
+    "all_joint_target_clip": true,
+    "actor_max_diff": 1.430511474609375e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 7.959248614497483e-05,
+    "raw_over_3_frame_fraction": 0.0009551098337396979,
+    "max_abs_raw": 3.154945135116577,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 0,
+      "affected_frames": 0,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    },
+    "stable_clock": {
+      "wall_span_s": 15.98392105102539,
+      "simulation_span_s": 15.97,
+      "real_time_factor": 0.9991290590724923,
+      "actor_hz_wall": 48.235973985278115,
+      "actor_hz_simulation": 48.2780212899186,
+      "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+    }
+  },
+  {
+    "trace": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/turn_left/policy_trace.csv",
+    "frames": 1043,
+    "all_joint_target_clip": true,
+    "actor_max_diff": 1.9073486328125e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 0.008229466155171394,
+    "raw_over_3_frame_fraction": 0.09875359386205673,
+    "max_abs_raw": 4.417314052581787,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 1,
+      "affected_frames": 1,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    },
+    "stable_clock": {
+      "wall_span_s": 15.986086130142212,
+      "simulation_span_s": 15.969999999999999,
+      "real_time_factor": 0.9989937418070154,
+      "actor_hz_wall": 48.2919955338144,
+      "actor_hz_simulation": 48.34063869755793,
+      "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+    }
+  },
+  {
+    "trace": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/turn_right/policy_trace.csv",
+    "frames": 1049,
+    "all_joint_target_clip": true,
+    "actor_max_diff": 2.1457672119140625e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 0.0014299332397058606,
+    "raw_over_3_frame_fraction": 0.016205910593271255,
+    "max_abs_raw": 4.596618175506592,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 2,
+      "affected_frames": 2,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    },
+    "stable_clock": {
+      "wall_span_s": 15.99108624458313,
+      "simulation_span_s": 15.979999999999999,
+      "real_time_factor": 0.9993067234824722,
+      "actor_hz_wall": 48.339430366204695,
+      "actor_hz_simulation": 48.3729662077597,
+      "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+    }
+  }
+]

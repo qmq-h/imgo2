@@ -1,0 +1,78 @@
+[
+  {
+    "case": "stand",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_default_disabled/stand",
+    "vx_cmd": 0.0,
+    "vy_cmd": 0.0,
+    "wz_cmd": 0.0,
+    "samples": {
+      "odom": 1599,
+      "joint_states": 15987,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.2853295969760421,
+      "z_min": 0.28288532734177707,
+      "z_max": 0.28833894324262993,
+      "roll_range_deg": 1.9088626689324235,
+      "pitch_range_deg": 1.6268858733008325,
+      "yaw_drift_deg_per_s": -0.6773123510172039,
+      "dx_m": 0.03154686209515539,
+      "dx_per_s": 0.0019741465641524023
+    },
+    "tracking": {
+      "speed_mean": 0.0017060460477546454,
+      "lateral_speed_mean": 0.0012589697609271117,
+      "world_x_speed_mean": 0.0019741465641524023,
+      "coordinate_frame": "body",
+      "error_abs": 0.0017060460477546454,
+      "error_pct": 0.0,
+      "lateral_error_abs": 0.0012589697609271117,
+      "yaw_rate_mean": -0.011821330589673773,
+      "yaw_error_abs": 0.011821330589673773
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 9.68849571564449,
+        "reversals_per_s": 13.626408010010415
+      },
+      "thigh": {
+        "mean_abs_ddq": 11.252734316180497,
+        "reversals_per_s": 11.79599499374036
+      },
+      "shank": {
+        "mean_abs_ddq": 14.858842303405297,
+        "reversals_per_s": 11.905506883602671
+      }
+    },
+    "periodicity": {
+      "period_s": 0.34250000000005354,
+      "freq_hz": 5.5223677032179035,
+      "score": 0.7035271961479111,
+      "FL_FR_phase_deg": 11.48936170212766,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.9400000000001469,
+          "freq_hz": 1.0638297872338762,
+          "score": 0.6011771083641007
+        },
+        "FR": {
+          "period_s": 0.15000000000002345,
+          "freq_hz": 6.666666666665624,
+          "score": 0.821518375681828
+        },
+        "RL": {
+          "period_s": 0.13000000000002032,
+          "freq_hz": 7.69230769230649,
+          "score": 0.6397681715275909
+        },
+        "RR": {
+          "period_s": 0.15000000000002345,
+          "freq_hz": 6.666666666665624,
+          "score": 0.7516451290181249
+        }
+      }
+    }
+  }
+]

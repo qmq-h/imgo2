@@ -1,0 +1,164 @@
+{
+  "motion_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new",
+  "physics_dt_s": 0.005,
+  "physics_hz": 200.0,
+  "decimation": 4,
+  "control_dt_s": 0.02,
+  "policy_hz": 50.0,
+  "rollout_steps": 24,
+  "rollout_duration_s": 0.48,
+  "deploy_policy_dt_s": 0.02,
+  "motion_frame_dt_counts": {
+    "0.02": 21
+  },
+  "motions": [
+    {
+      "file": "imgo2_backward_0.3.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_backward_0.6.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_backward_0.9.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_backward_1.2.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_backward_turn_left_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_backward_turn_right_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_0.3.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_0.6.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_0.9.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_1.2.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_turn_left_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_forward_turn_right_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_left_0.3.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_left_0.4.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_right_0.3.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_right_0.4.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_stance.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_turn_left_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_turn_left_1.0.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_turn_right_0.5.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    },
+    {
+      "file": "imgo2_turn_right_1.0.txt",
+      "frame_count": 600,
+      "frame_dt_s": 0.02,
+      "duration_s": 11.98,
+      "old_index_speedup_pct": 0.1669449081803005
+    }
+  ],
+  "scope": "Local source and bundled metadata; no server runtime verification"
+}

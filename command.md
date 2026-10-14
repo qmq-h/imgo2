@@ -18,7 +18,7 @@ cd "$IMGO2_REPO/imgo2_rl"
 
 # 本机：从 checkpoint 导出到 ROS 2 仿真
 
-完整顺序命令见 [策略导出与ROS2仿真](docs/策略导出与ROS2仿真.md)，采用当前存在的原始xiaoji_real1/model_24000.pt作为路径示例（新motion_new目录现不在原位置）：导出 → 备份/替换AMP policy → Gazebo real模型 → rl_sim → 按0/3。这是sim2sim；下面旧25000段落保留为其它checkpoint的模板。
+完整顺序命令见 [策略导出与ROS2仿真](docs/策略导出与ROS2仿真.md)，采用当前存在的2026-10-14_00-20-45_motion_new_model_new/model_25000.pt作为路径示例：导出 → 备份/替换AMP policy → Gazebo real模型 → rl_sim → 按0/3。这是sim2sim；下面旧25000段落保留为其它checkpoint的模板。
 
 # 导出 pt 文件为 policy
 
@@ -45,7 +45,7 @@ cp "$IMGO2_RUN_DIR/exported/policy.onnx" "$IMGO2_RUN_DIR/exported_25000/policy.o
 cp "$IMGO2_RUN_DIR/exported_25000/policy.pt"   "$IMGO2_REPO/imgo2_deploy/policy/imgo2/amp/policy.pt"
 ```
 
-`model_25000.pt` 是训练 checkpoint，不能直接用它替换部署 `policy.pt`。当前默认部署已经是本次 25000 的正式导出；原 29000 部署文件保存在 `$IMGO2_RUN_DIR/gazebo_eval/pretest_policy.pt`。更换策略后重启 `rl_sim`，无需重新编译。
+`model_25000.pt` 是训练 checkpoint，不能直接用它替换部署 `policy.pt`。当前默认部署已核对为2026-10-14_00-20-45_motion_new_model_new/model_25000.pt对应的正式导出；其它历史策略的备份路径以各自记录为准。更换策略后重启 `rl_sim`，无需重新编译。
 
 # Gazebo sim2sim 命令
 
@@ -108,7 +108,7 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/amp/train.py   --task=Imgo2-basemove
 
 # 续训练命令
 
-下面示例从当前已有的 **25000 轮 checkpoint** 继续 **1000 轮**，新建日志运行，显式使用普通奖励比例0.7、关闭滞空奖励。新数据更换后，不建议直接恢复旧判别器与归一化统计；此段仅展示兼容配置的续训操作。它是操作模板，不表示当前配方已达到期望步态。
+下面示例从当前已有的 **25000 轮 checkpoint** 继续 **1000 轮**，新建日志运行，显式使用普通奖励比例0.7；当前缺口奖励开启，旧feet_air_time关闭。新数据更换后，不建议直接恢复旧判别器与归一化统计；此段仅展示兼容配置的续训操作。它是操作模板，不表示当前配方已达到期望步态。
 
 ```bash
 bash scripts/run_isaaclab.sh scripts/rl_lab/amp/train.py   --task=Imgo2-basemove-flat-amp-height   --experiment_name=base_move_amp_height   --resume --load_run="$IMGO2_RUN_NAME"   --checkpoint=model_25000.pt   --num_envs=1024 --max_iterations=1000 --seed=1   --run_name=air_time_continue_from_25000   --device=cuda:0 --headless   agent.amp_task_reward_lerp=0.7

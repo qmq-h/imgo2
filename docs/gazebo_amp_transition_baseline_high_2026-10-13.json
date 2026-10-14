@@ -1,0 +1,38 @@
+[
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline_high/backward_fast/transient.json",
+    "first_policy_target_jump_rad": 0.19124841690063477,
+    "first_policy_kp_change": -35.0,
+    "max_target_step_first_half_second_rad": 0.9413348436355591,
+    "peak_joint_velocity_first_second": 13.24216365814209,
+    "peak_feedback_effort_first_second": 23.700000762939453,
+    "first_second_z_min": 0.28313680751667203,
+    "stable_raw_action_boundary_fraction": 0.001388888888888889,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "backward_fast"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline_high/backward_turn/transient.json",
+    "first_policy_target_jump_rad": 0.32276487350463867,
+    "first_policy_kp_change": -35.0,
+    "max_target_step_first_half_second_rad": 0.7014178037643433,
+    "peak_joint_velocity_first_second": 7.505000114440918,
+    "peak_feedback_effort_first_second": 22.676387786865234,
+    "first_second_z_min": 0.28193349925601985,
+    "stable_raw_action_boundary_fraction": 0.0013547687861271676,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "backward_turn"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline_high/turn_fast/transient.json",
+    "first_policy_target_jump_rad": 0.6193630695343018,
+    "first_policy_kp_change": -35.0,
+    "max_target_step_first_half_second_rad": 0.7459042072296143,
+    "peak_joint_velocity_first_second": 8.611844062805176,
+    "peak_feedback_effort_first_second": 20.555828094482422,
+    "first_second_z_min": 0.2729973446524036,
+    "stable_raw_action_boundary_fraction": 0.003711078928312817,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "turn_fast"
+  }
+]

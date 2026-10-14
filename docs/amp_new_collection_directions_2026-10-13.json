@@ -1,0 +1,509 @@
+{
+  "clips": [
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.3.txt",
+      "sha256": "ae5de31d19e617a1b1b46710ba58ceb85aebe1ed69c41c4917e1dac2b8258332",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.2880461974040601,
+        -0.00020050854294880748,
+        -0.006409611954112165
+      ],
+      "mean_stored_linear_velocity": [
+        -0.28809856587425126,
+        -0.00031400606078825955,
+        -0.005994588679766373
+      ],
+      "mean_stored_angular_velocity": [
+        0.0007592478410702506,
+        0.0017757186483126279,
+        -0.00014417469893699978
+      ],
+      "linear_velocity_body_rmse": 0.003573731819058786,
+      "linear_velocity_world_rmse": 0.02388216293794663
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.6.txt",
+      "sha256": "a5e63919ac5bfbb53d3eddd0422343efdaf9b71edb0a5338f20f4da3fc6e3a16",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.5863718746276291,
+        0.001553984010735664,
+        -0.018597257378864536
+      ],
+      "mean_stored_linear_velocity": [
+        -0.5862338175740528,
+        0.0013160129369482782,
+        -0.019933520072574217
+      ],
+      "mean_stored_angular_velocity": [
+        -0.0008199225005236404,
+        -0.001442430568563191,
+        0.00028630160199324863
+      ],
+      "linear_velocity_body_rmse": 0.004780108690973779,
+      "linear_velocity_world_rmse": 0.05856701809418492
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.9.txt",
+      "sha256": "5e851755c6df9c31027b471c49c6723e75ebd77e749d2ea851b102bccf937c75",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.9017376019957056,
+        -0.002113116797176357,
+        -0.02602487951389702
+      ],
+      "mean_stored_linear_velocity": [
+        -0.9017802173674897,
+        -0.002357509530395474,
+        -0.025496555381662393
+      ],
+      "mean_stored_angular_velocity": [
+        0.0017588627843552645,
+        -0.00037404438384918326,
+        0.0007917968712596313
+      ],
+      "linear_velocity_body_rmse": 0.009450339842047352,
+      "linear_velocity_world_rmse": 0.10379883985660698
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_1.2.txt",
+      "sha256": "8f7208ffefabeb72c4c4d3917db13492e6ae9ef3197d5af2f37ec9f5a095b807",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -1.1993808403880881,
+        -0.0020217707600062693,
+        -0.022264169589515347
+      ],
+      "mean_stored_linear_velocity": [
+        -1.1993354472429136,
+        -0.0018395076565226188,
+        -0.022716867638417324
+      ],
+      "mean_stored_angular_velocity": [
+        -0.0005666675626700239,
+        -0.004506049890140814,
+        0.0004080292732877445
+      ],
+      "linear_velocity_body_rmse": 0.012084657661257579,
+      "linear_velocity_world_rmse": 0.04506523891924642
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_left_0.5.txt",
+      "sha256": "fd1289cfdc3d14ff5c67d2e1de758c47db771a508eae459889d0ad50a46a36e1",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.48876196344007006,
+        0.016344083753920633,
+        -0.013378669796097241
+      ],
+      "mean_stored_linear_velocity": [
+        -0.487775806758407,
+        0.01888230515981882,
+        -0.013873114239205845
+      ],
+      "mean_stored_angular_velocity": [
+        -0.018580042042384892,
+        0.0018987949174444627,
+        0.5003685374137365
+      ],
+      "linear_velocity_body_rmse": 0.006232952460447906,
+      "linear_velocity_world_rmse": 0.7173241380260599
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_right_0.5.txt",
+      "sha256": "af6a35543761b908b0c8ad137958116be3f8349df88062e3d8fbcbb34496dca6",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.4884297148196818,
+        -0.014308092454956414,
+        -0.013481383677545741
+      ],
+      "mean_stored_linear_velocity": [
+        -0.48883591072751925,
+        -0.017065850006786752,
+        -0.01331622603173533
+      ],
+      "mean_stored_angular_velocity": [
+        0.013485244914944444,
+        -0.0013214912698962303,
+        -0.499231412349794
+      ],
+      "linear_velocity_body_rmse": 0.004394980770440382,
+      "linear_velocity_world_rmse": 0.7174798266502922
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.3.txt",
+      "sha256": "00fee77b9568c011f0f80805b0a6f6c657e89ea99e48e9f7117dc271bf93920c",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.3087717964253057,
+        0.00039924528962564286,
+        -0.00019211349328089608
+      ],
+      "mean_stored_linear_velocity": [
+        0.3086494040023497,
+        0.00044492033558517403,
+        0.0006125214884593021
+      ],
+      "mean_stored_angular_velocity": [
+        0.00018084768237873217,
+        0.0017297328748278671,
+        6.364817270317682e-05
+      ],
+      "linear_velocity_body_rmse": 0.002996970970184585,
+      "linear_velocity_world_rmse": 0.010556330721157652
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.6.txt",
+      "sha256": "b9a0fcc2923b06815606a2f2a7159b91308f8c16d1ede7340f4cdae840497d5b",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.6214902091274973,
+        -0.0006094406434610329,
+        -0.006658627869817487
+      ],
+      "mean_stored_linear_velocity": [
+        0.6216229172614408,
+        -0.0007102039406300997,
+        -0.006513333159615328
+      ],
+      "mean_stored_angular_velocity": [
+        0.00019126602387516692,
+        -0.0020419856214864657,
+        -0.0003902983021232351
+      ],
+      "linear_velocity_body_rmse": 0.004327933747857998,
+      "linear_velocity_world_rmse": 0.03155419856946551
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.9.txt",
+      "sha256": "58d94db234b62d6ec674bcc7a5d1ffb8008e88ac8506e01c48347b16cd0a28e7",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.9024851615749286,
+        -0.0030323360834088628,
+        -0.02433974145914255
+      ],
+      "mean_stored_linear_velocity": [
+        0.9021039289295767,
+        -0.0032591542693965075,
+        -0.024143688457160143
+      ],
+      "mean_stored_angular_velocity": [
+        0.0004969575805048803,
+        0.0032904818930964566,
+        0.0002533800029543548
+      ],
+      "linear_velocity_body_rmse": 0.004590011356841978,
+      "linear_velocity_world_rmse": 0.06782764796518005
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_1.2.txt",
+      "sha256": "1f5833adc318bada80cbf57939327356b4d341f4833aba0b5dc090c2604991bf",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        1.1855059908298353,
+        0.0019614807430021436,
+        -0.0551059495612954
+      ],
+      "mean_stored_linear_velocity": [
+        1.185179951661509,
+        0.0017323162515454993,
+        -0.055419257470394584
+      ],
+      "mean_stored_angular_velocity": [
+        0.0007476463999752692,
+        2.908168764785321e-05,
+        -0.00029428798470386284
+      ],
+      "linear_velocity_body_rmse": 0.0077088606627485875,
+      "linear_velocity_world_rmse": 0.05795244573685456
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_left_0.5.txt",
+      "sha256": "cbcf9ab13f7b0066c469f0de9366bc3fc1dc40e103aa589c6ea1035c515e5820",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.5067087941199538,
+        -0.020376343855274655,
+        -0.0037772292406161464
+      ],
+      "mean_stored_linear_velocity": [
+        0.5070744554809679,
+        -0.023004581385923133,
+        -0.0033655611819583256
+      ],
+      "mean_stored_angular_velocity": [
+        0.007741903843417871,
+        0.004209046108893964,
+        0.500467809003888
+      ],
+      "linear_velocity_body_rmse": 0.004240805117974697,
+      "linear_velocity_world_rmse": 0.7380613812031269
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_right_0.5.txt",
+      "sha256": "171555a76ae9b7336b602afdff3202f71b343dbad6d79bef492f2e8fc9b6bc07",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.50942175218744,
+        0.01589412488112862,
+        -0.0037435997574256077
+      ],
+      "mean_stored_linear_velocity": [
+        0.508835154613775,
+        0.01859314956285857,
+        -0.004166571215126321
+      ],
+      "mean_stored_angular_velocity": [
+        -0.005021406911871487,
+        0.0008530716395994345,
+        -0.5004777057142785
+      ],
+      "linear_velocity_body_rmse": 0.004533248437199318,
+      "linear_velocity_world_rmse": 0.7408898863832908
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.3.txt",
+      "sha256": "f1d686c6e8304fdba35219d4e6cec990339e5114eaaa92fbf81dc50a7312613a",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.011841001009128639,
+        0.29876028750935174,
+        -0.002828259075402646
+      ],
+      "mean_stored_linear_velocity": [
+        0.012026030124941372,
+        0.298731862815844,
+        -0.0035270434734179334
+      ],
+      "mean_stored_angular_velocity": [
+        -0.002242675935878909,
+        -0.0011062334775127972,
+        -7.745518254124786e-05
+      ],
+      "linear_velocity_body_rmse": 0.002355137808908754,
+      "linear_velocity_world_rmse": 0.0358956964433761
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.4.txt",
+      "sha256": "299aefac0be8617d5ce62d1935fa840dd346d0b1707f8c8da914baf0280c10f7",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.010520203987577774,
+        0.3977950633162184,
+        -0.004824240524908795
+      ],
+      "mean_stored_linear_velocity": [
+        0.010654936406143975,
+        0.397888233538837,
+        -0.004780588615384757
+      ],
+      "mean_stored_angular_velocity": [
+        0.007336556944077446,
+        -0.0001663929461012985,
+        -0.0009949032248665322
+      ],
+      "linear_velocity_body_rmse": 0.0028100905073024374,
+      "linear_velocity_world_rmse": 0.053773692344946736
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.3.txt",
+      "sha256": "7b4c464cc0ab98bffd81365d2630157cf58a85cae405d0725a9d6f44708c5004",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.00794708496822976,
+        -0.2972483558228735,
+        -0.00248630890614846
+      ],
+      "mean_stored_linear_velocity": [
+        0.008030043206831336,
+        -0.29730790462000023,
+        -0.0031350363092243053
+      ],
+      "mean_stored_angular_velocity": [
+        0.003597406265074017,
+        -0.0014633408650399616,
+        3.1801623705339914e-05
+      ],
+      "linear_velocity_body_rmse": 0.0023646146558061513,
+      "linear_velocity_world_rmse": 0.05027184661310436
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.4.txt",
+      "sha256": "c6a1bc107db714169dec983166c39cf32af6d906368e21a8ff0aeb6e10244bdd",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.010825966885335553,
+        -0.39949483485416293,
+        -0.004239721960876919
+      ],
+      "mean_stored_linear_velocity": [
+        0.010923582387470878,
+        -0.3994441477282158,
+        -0.00458303244237662
+      ],
+      "mean_stored_angular_velocity": [
+        0.0015225139998383487,
+        8.276410034123918e-05,
+        0.0010409999705653296
+      ],
+      "linear_velocity_body_rmse": 0.004178946785596241,
+      "linear_velocity_world_rmse": 0.07334208661844042
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_stance.txt",
+      "sha256": "cbc0a74e1408aa4968165b94bfa901d50a18de19336c2114d9e29dd07294a497",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.00041027643896111946,
+        9.753148043965705e-06,
+        1.9380498446612404e-06
+      ],
+      "mean_stored_linear_velocity": [
+        0.0005036090257149667,
+        3.222644500292828e-06,
+        -0.00012479895330957735
+      ],
+      "mean_stored_angular_velocity": [
+        0.0003757116654421749,
+        -9.992526454321403e-07,
+        -1.5855669857041753e-05
+      ],
+      "linear_velocity_body_rmse": 0.00020693121910918104,
+      "linear_velocity_world_rmse": 0.00020522822028190004
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_0.5.txt",
+      "sha256": "2eb80186b01d26ecd1794ab0d63ccb3b9e3e312d7df6571a91c45d1c13666fdd",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.007754164565834555,
+        0.0008922572578843268,
+        0.00016216939453643042
+      ],
+      "mean_stored_linear_velocity": [
+        0.008538800562142308,
+        0.0008347537912987937,
+        -0.0003442062657367072
+      ],
+      "mean_stored_angular_velocity": [
+        -0.004687434461594666,
+        -0.00019086082501018937,
+        0.4995542199285924
+      ],
+      "linear_velocity_body_rmse": 0.0017929764052053055,
+      "linear_velocity_world_rmse": 0.02432944378734686
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_1.0.txt",
+      "sha256": "60ef24ae4a7909e7cf5e2c10d267364dacbcbdf99848411578d91a95778d08ba",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.009971894094013122,
+        0.001862005675869663,
+        0.00014077093982553795
+      ],
+      "mean_stored_linear_velocity": [
+        0.011480823636422763,
+        0.001710268311566275,
+        0.0003138110395243493
+      ],
+      "mean_stored_angular_velocity": [
+        -0.006286181496897237,
+        0.003108426995371975,
+        1.0002379991917685
+      ],
+      "linear_velocity_body_rmse": 0.0034159081216611786,
+      "linear_velocity_world_rmse": 0.032414727280624354
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_0.5.txt",
+      "sha256": "ae74fc73c0d730774197d89974d029c154b69ca3ff5ad023cf4a229a554636c0",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.009240450362602242,
+        -0.0013864874078345767,
+        0.00016714427725683396
+      ],
+      "mean_stored_linear_velocity": [
+        0.008582950375879634,
+        -0.0013760901732193913,
+        -3.614509158640206e-05
+      ],
+      "mean_stored_angular_velocity": [
+        0.004974321027785109,
+        0.0012114377539342628,
+        -0.5000007561529194
+      ],
+      "linear_velocity_body_rmse": 0.0024907466886213924,
+      "linear_velocity_world_rmse": 0.023851194787187772
+    },
+    {
+      "file": "imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_1.0.txt",
+      "sha256": "c75133efd3ea7a0cad9e6012e24267c2d9dd04cc64ed134b1db4705cfbf1d80a",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.011599027485665221,
+        -0.0021093149166232696,
+        0.0002490731492929268
+      ],
+      "mean_stored_linear_velocity": [
+        0.01038953806245933,
+        -0.0020673516719900264,
+        -2.5338357514808404e-05
+      ],
+      "mean_stored_angular_velocity": [
+        0.006565451379523937,
+        0.0001589439045408599,
+        -0.9997117929216673
+      ],
+      "linear_velocity_body_rmse": 0.0017045749997762973,
+      "linear_velocity_world_rmse": 0.032301482669285835
+    }
+  ],
+  "limits": "Root pose differences use nominal FrameDuration; this cannot verify original ROS stamps or all recording labels."
+}

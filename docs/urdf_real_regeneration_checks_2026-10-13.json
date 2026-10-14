@@ -1,0 +1,24 @@
+[
+  {
+    "path": "imgo2_description/urdf/imgo2_real.urdf",
+    "links": 17,
+    "joints": 16,
+    "changed_links_vs_HEAD": [
+      "FL_THIGH",
+      "RL_THIGH"
+    ],
+    "joint_changes": 0,
+    "invalid_inertias": []
+  },
+  {
+    "path": "imgo2_description/urdf/imgo2_real.gazebo.urdf",
+    "links": 18,
+    "joints": 17,
+    "changed_links_vs_HEAD": [
+      "FL_THIGH",
+      "RL_THIGH"
+    ],
+    "joint_changes": 0,
+    "invalid_inertias": []
+  }
+]

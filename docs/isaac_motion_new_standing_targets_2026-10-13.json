@@ -1,0 +1,101 @@
+{
+  "task": "Imgo2-basemove-flat-amp-height-play",
+  "policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/exported/policy.pt",
+  "policy_sha256": "e40d81ec219c777a4aa88acffed935f12be526a2b8a52d7d56d38f3c9b7cc9d1",
+  "control_dt": 0.02,
+  "steps": 900,
+  "warmup_steps": 200,
+  "domain_randomization_disabled": [],
+  "cases": [
+    {
+      "case": "stand",
+      "command": [
+        0,
+        0,
+        0
+      ],
+      "mean_vx": -0.0011307777765926274,
+      "mean_vy": 0.0007305659706928834,
+      "mean_wz": 0.000562588774732181,
+      "mean_z": 0.2977322927543095,
+      "min_z": 0.2858442962169647,
+      "episode_resets": 0,
+      "per_foot": {
+        "FL_FOOT": {
+          "min_m": -0.005018536763452288,
+          "p95_m": 1.4401244017728922e-05,
+          "p99_m": 5.165831148222016e-05,
+          "max_m": 0.007671478792905643,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9928571428571429,
+          "raw_landing_count": 63,
+          "qualified_landings_air_at_least_20ms": 2,
+          "completed_air_time_mean_s": 0.020000457763671875,
+          "landing_median_period_s": 1.0199999999999996,
+          "landing_frequency_hz": 0.9803921568627455
+        },
+        "FR_FOOT": {
+          "min_m": -0.028185136461006677,
+          "p95_m": 1.182950156565273e-05,
+          "p99_m": 4.704789122959919e-05,
+          "max_m": 0.0002687688139290656,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 1.0,
+          "raw_landing_count": 15,
+          "qualified_landings_air_at_least_20ms": 0,
+          "completed_air_time_mean_s": null,
+          "landing_median_period_s": null,
+          "landing_frequency_hz": null
+        },
+        "RL_FOOT": {
+          "min_m": -0.014287089385225635,
+          "p95_m": 1.101065848722913e-05,
+          "p99_m": 0.0001897964148682205,
+          "max_m": 0.001859675048277571,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9971428571428571,
+          "raw_landing_count": 39,
+          "qualified_landings_air_at_least_20ms": 0,
+          "completed_air_time_mean_s": null,
+          "landing_median_period_s": null,
+          "landing_frequency_hz": null
+        },
+        "RR_FOOT": {
+          "min_m": -0.035716322982317326,
+          "p95_m": -0.0005827128660648177,
+          "p99_m": -2.32215132543448e-05,
+          "max_m": 0.0002716499526402398,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 1.0,
+          "raw_landing_count": 20,
+          "qualified_landings_air_at_least_20ms": 0,
+          "completed_air_time_mean_s": null,
+          "landing_median_period_s": null,
+          "landing_frequency_hz": null
+        }
+      }
+    }
+  ],
+  "limits": "One environment per command; current local URDF and nominal startup physics. Not an exact engine A/B. No training/export.",
+  "foot_limits": "Geometry uses FOOT collision primitives relative to a flat plane; contacts are actual force>1N. Landing periods exclude air-time<20ms chatter; one environment per command."
+}

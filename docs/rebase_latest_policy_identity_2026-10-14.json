@@ -1,0 +1,59 @@
+{
+  "run": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-14_00-20-45_motion_new_model_new",
+  "checkpoint": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-14_00-20-45_motion_new_model_new/model_25000.pt",
+  "iteration": 25000,
+  "deployed_policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+  "latest_export_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+  "checkpoint_sha256": "616e0884f6f01e370152facb7587dc5465d35827dd863aa5d79e3c2e44a21c95",
+  "actor_obs": 45,
+  "actions": 12,
+  "deterministic_inputs": 128,
+  "seed": 42,
+  "actor_jit_max_abs_diff": 0.0,
+  "scope": "CPU deterministic actor comparison; does not validate Gazebo/Isaac dynamics or deployment libtorch load.",
+  "latest_source_commit": "9f3228e",
+  "source_matches": {
+    "imgo2_description/xacro/core.xacro": true,
+    "imgo2_description/urdf/imgo2_real.urdf": true,
+    "imgo2_description/urdf/imgo2_real.gazebo.urdf": true,
+    "imgo2_rl/scripts/rl_lab/rl_lab/algorithms/amp_ppo.py": true,
+    "imgo2_rl/scripts/rl_lab/rl_lab/runners/amp_on_policy_runner.py": true,
+    "imgo2_rl/scripts/rl_lab/rl_lab/datasets/motion_loader.py": true,
+    "imgo2_rl/scripts/rl_lab/rl_lab/algorithms/amp_discriminator.py": true,
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/agents/amp_rsl_rl_cfg.py": true
+  },
+  "motion_matches_preflight_manifest": {
+    "imgo2_backward_0.3.txt": true,
+    "imgo2_backward_0.6.txt": true,
+    "imgo2_backward_0.9.txt": true,
+    "imgo2_backward_1.2.txt": true,
+    "imgo2_backward_turn_left_0.5.txt": true,
+    "imgo2_backward_turn_right_0.5.txt": true,
+    "imgo2_forward_0.3.txt": true,
+    "imgo2_forward_0.6.txt": true,
+    "imgo2_forward_0.9.txt": true,
+    "imgo2_forward_1.2.txt": true,
+    "imgo2_forward_turn_left_0.5.txt": true,
+    "imgo2_forward_turn_right_0.5.txt": true,
+    "imgo2_left_0.3.txt": true,
+    "imgo2_left_0.4.txt": true,
+    "imgo2_right_0.3.txt": true,
+    "imgo2_right_0.4.txt": true,
+    "imgo2_stance.txt": true,
+    "imgo2_turn_left_0.5.txt": true,
+    "imgo2_turn_left_1.0.txt": true,
+    "imgo2_turn_right_0.5.txt": true,
+    "imgo2_turn_right_1.0.txt": true
+  },
+  "training_reward_difference": "Latest checkpoint saved six base terms; rebased live recipe adds deficit threshold0.20/per-step-3.",
+  "gain_difference": {
+    "training": [
+      25.0,
+      0.5
+    ],
+    "deployment": [
+      24.0,
+      0.6
+    ]
+  }
+}

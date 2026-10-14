@@ -14,6 +14,8 @@
 #include "inference_runtime.hpp"
 #include "loop.hpp"
 #include "fsm_all.hpp"
+#include "policy_transition.hpp"
+#include "policy_action_clip.hpp"
 
 #include <csignal>
 #include <vector>
@@ -65,6 +67,17 @@ private:
     void SetCommand(const RobotCommand<float> *command) override;
     void RunModel();
     void RobotControl();
+    // Optional audit trace, written by the policy thread only.
+    std::ofstream policy_trace;
+    std::vector<float> policy_actor_input;
+    std::vector<float> policy_raw_actions;
+    bool policy_trace_fresh = false;
+    // Gazebo-only policy handover; the shared FSM and hardware path are unchanged.
+    RobotCommand<float> policy_transition_start;
+    RobotCommand<float> policy_transition_target;
+    float policy_transition_progress = 1.0f;
+    float policy_transition_duration = 0.0f;
+    bool policy_transition_active = false;
 
     // loop
     std::shared_ptr<LoopFunc> loop_keyboard;

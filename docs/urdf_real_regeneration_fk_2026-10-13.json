@@ -1,0 +1,16 @@
+[
+  {
+    "urdf": "imgo2_real.urdf",
+    "sha256": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2",
+    "motion_count": 21,
+    "worst_identity_fk_rmse_m": 0.0,
+    "fk_error_change_vs_HEAD_m": 0.0
+  },
+  {
+    "urdf": "imgo2_real.gazebo.urdf",
+    "sha256": "e8021e5f94108ccc2e441c605420f5dcb87d84e7aaaafe5db4484452aee1086f",
+    "motion_count": 21,
+    "worst_identity_fk_rmse_m": 0.0,
+    "fk_error_change_vs_HEAD_m": 0.0
+  }
+]

@@ -28,6 +28,8 @@ def literal_assignments(path, class_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--motion-dir", type=Path, default=ROOT / "datasets/imgo2_motion",
+                        help="Motion directory to audit; pass the actual AMP dataset explicitly.")
     args = parser.parse_args()
     base = literal_assignments(VELOCITY / "velocity_env_cfg.py", "LocomotionVelocityRoughEnvCfg")
     height = literal_assignments(VELOCITY / "base_move/amp_env_cfg.py", "Imgo2AmpMoveEnvCfg")
@@ -36,7 +38,7 @@ def main():
     decimation = height.get("self.decimation", base["self.decimation"])
     control_dt = physics_dt * decimation
     rows = []
-    for path in sorted((ROOT / "datasets/imgo2_motion").glob("*.txt")):
+    for path in sorted(args.motion_dir.glob("*.txt")):
         data = json.loads(path.read_text())
         count, dt = len(data["Frames"]), float(data["FrameDuration"])
         if count < 2 or dt <= 0:
@@ -50,6 +52,7 @@ def main():
     deploy_dt = float(re.search(r"^  dt:\s*([\d.]+)", deploy, re.M)[1])
     deploy_decimation = int(re.search(r"^  decimation:\s*(\d+)", deploy, re.M)[1])
     report = {
+        "motion_dir": str(args.motion_dir.resolve()),
         "physics_dt_s": physics_dt, "physics_hz": 1 / physics_dt,
         "decimation": decimation, "control_dt_s": control_dt, "policy_hz": 1 / control_dt,
         "rollout_steps": runner["num_steps_per_env"],

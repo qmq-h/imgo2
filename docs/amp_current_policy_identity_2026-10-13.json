@@ -1,0 +1,8 @@
+{
+  "checkpoint": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-09-24_00-57-38_xiaoji_real1/model_24000.pt",
+  "checkpoint_sha256": "c5c934842e8e2af3aef806b5c34abcd41d8cdf053ed2af410e4fd6ceb498a70e",
+  "iter": 24000,
+  "policy_sha256": "21e7ae53091f83ffc62eb465fd2db413acd3e063db51353db4d71b81fee77a29",
+  "actor_max_diff": 0.0,
+  "current_deploy_equals_original_export": true
+}

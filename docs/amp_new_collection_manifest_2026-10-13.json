@@ -1,0 +1,200 @@
+{
+  "motion_directory": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new",
+  "models": {
+    "imgo2_description/urdf/imgo2_real.urdf": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2",
+    "imgo2_description/urdf/imgo2_real.gazebo.urdf": "e8021e5f94108ccc2e441c605420f5dcb87d84e7aaaafe5db4484452aee1086f",
+    "imgo2_description/xacro/core.xacro": "6d760f088835949359dcd5d09c6b2c9f4f43d7a3b7bc5da52ea3dc1837f64029"
+  },
+  "motion_files": [
+    {
+      "file": "imgo2_backward_0.3.txt",
+      "sha256": "ae5de31d19e617a1b1b46710ba58ceb85aebe1ed69c41c4917e1dac2b8258332",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_backward_0.6.txt",
+      "sha256": "a5e63919ac5bfbb53d3eddd0422343efdaf9b71edb0a5338f20f4da3fc6e3a16",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_backward_0.9.txt",
+      "sha256": "5e851755c6df9c31027b471c49c6723e75ebd77e749d2ea851b102bccf937c75",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_backward_1.2.txt",
+      "sha256": "8f7208ffefabeb72c4c4d3917db13492e6ae9ef3197d5af2f37ec9f5a095b807",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_backward_turn_left_0.5.txt",
+      "sha256": "fd1289cfdc3d14ff5c67d2e1de758c47db771a508eae459889d0ad50a46a36e1",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_backward_turn_right_0.5.txt",
+      "sha256": "af6a35543761b908b0c8ad137958116be3f8349df88062e3d8fbcbb34496dca6",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_0.3.txt",
+      "sha256": "00fee77b9568c011f0f80805b0a6f6c657e89ea99e48e9f7117dc271bf93920c",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_0.6.txt",
+      "sha256": "b9a0fcc2923b06815606a2f2a7159b91308f8c16d1ede7340f4cdae840497d5b",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_0.9.txt",
+      "sha256": "58d94db234b62d6ec674bcc7a5d1ffb8008e88ac8506e01c48347b16cd0a28e7",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_1.2.txt",
+      "sha256": "1f5833adc318bada80cbf57939327356b4d341f4833aba0b5dc090c2604991bf",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_turn_left_0.5.txt",
+      "sha256": "cbcf9ab13f7b0066c469f0de9366bc3fc1dc40e103aa589c6ea1035c515e5820",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 4.440892098500626e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_forward_turn_right_0.5.txt",
+      "sha256": "171555a76ae9b7336b602afdff3202f71b343dbad6d79bef492f2e8fc9b6bc07",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 4.440892098500626e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_left_0.3.txt",
+      "sha256": "f1d686c6e8304fdba35219d4e6cec990339e5114eaaa92fbf81dc50a7312613a",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_left_0.4.txt",
+      "sha256": "299aefac0be8617d5ce62d1935fa840dd346d0b1707f8c8da914baf0280c10f7",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_right_0.3.txt",
+      "sha256": "7b4c464cc0ab98bffd81365d2630157cf58a85cae405d0725a9d6f44708c5004",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_right_0.4.txt",
+      "sha256": "c6a1bc107db714169dec983166c39cf32af6d906368e21a8ff0aeb6e10244bdd",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_stance.txt",
+      "sha256": "cbc0a74e1408aa4968165b94bfa901d50a18de19336c2114d9e29dd07294a497",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_turn_left_0.5.txt",
+      "sha256": "2eb80186b01d26ecd1794ab0d63ccb3b9e3e312d7df6571a91c45d1c13666fdd",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_turn_left_1.0.txt",
+      "sha256": "60ef24ae4a7909e7cf5e2c10d267364dacbcbdf99848411578d91a95778d08ba",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 3.3306690738754696e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_turn_right_0.5.txt",
+      "sha256": "ae74fc73c0d730774197d89974d029c154b69ca3ff5ad023cf4a229a554636c0",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 2.220446049250313e-16,
+      "joint_limit_violations": []
+    },
+    {
+      "file": "imgo2_turn_right_1.0.txt",
+      "sha256": "c75133efd3ea7a0cad9e6012e24267c2d9dd04cc64ed134b1db4705cfbf1d80a",
+      "frames": 600,
+      "frame_dt": 0.02,
+      "weight": 1.0,
+      "quaternion_max_norm_error": 4.440892098500626e-16,
+      "joint_limit_violations": []
+    }
+  ],
+  "scope": "Current files; nominal timestamps only, not original recording contact labels."
+}

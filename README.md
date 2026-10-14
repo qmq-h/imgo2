@@ -1,6 +1,6 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-10-14，当前rebase文件复审：AMP缺口接线与两套recipe共19项离线测试通过，冲突标记/旧测试/旧说明已修；内容修改仍需暂存，整个rebase尚未结束。当前默认motion目录已合入imgo2_motion_new，缺口项保留；新数据与短训仍待完整rebase后复核，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件)。
+> 最后核对：2026-10-14，最后9f3228e内容冲突已修、待暂存结束rebase；当前部署确为新model_new 25000（SHA9c6bf22b，与checkpoint actor128输入差0）。模型/21段数据与最新来源一致，算法核心同9f3228e；当前七项缺口配方与该checkpoint的原六项配方不同，PD训练25/.5、部署24/.6仍待动态对照。19项离线测试/路径/惯量检查通过，见 [最终身份复核](docs/rebase_amp_air_time_resolution_2026-10-14.md#最后9f3228e及最新策略算法身份)。
 
 > 2026-09-25 状态摘要：`main` 已新增 MuJoCo 小车拖曳场景，支持 5–15 kg 可变总质量和两种绳约束；静态模型契约通过，C++ 编译与动态回放待验证。上层 recurrent PPO／decoder 仍待训练机验证，任务已注册并完成 4 环境冒烟，完整验收仍待完成。详见 [拖曳 sim2sim 记录](docs/towing/towing_sim2sim_2026-09-24.md) 与 [拖曳 GRU 记录](docs/towing/towing_gru_design_2026-09-22.md)。
 >
@@ -164,6 +164,7 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 - 全新 Ubuntu 22.04/24.04 的 AMP Height 安装、前置检查与 10 轮试跑命令见 [完整安装流程](docs/ubuntu_amp_install_2026-10-10.md)。使用环境内 pip 安装的 Sim 5.1；新机器安装与运行结果待确认。
 - AMP Height 时间链路核对：物理 200 Hz、策略与专家状态对 50 Hz、24 步 rollout=0.48 s、部署策略 50 Hz；专家插值帧索引偏差已修并 CPU 验证，修正后短训练待运行，见 [采样检查](docs/amp_timing_audit_2026-10-10.md)。
 - AMP 风格与滞空奖励复核：判别器仅观察相隔 20 ms 的运动状态，未显式观察接触／滞空时长；0.3 s 为线性落地奖励门槛，过度增权的副作用待接触测量确认，见 [复核记录](docs/amp_air_time_style_2026-10-10.md)。
+- 当前motion_new 25000可在保持45维观测/动作及数据尺度兼容的前提下做奖励微调；新高度/防滑/周期奖励尚未实现，身体稳定项不能等同于抬脚惩罚，目标与恢复入口见 [慢步态续训复核](docs/amp_slow_gait_resume_review_2026-10-13.md)。
 
 - 当前训练机版本基线由用户确认：**Isaac Lab 2.2.1、RSL-RL 2.3.3**；Python、Isaac Sim、PyTorch、CUDA 和驱动版本仍需在训练机实际命令输出中补齐。
 - `imgo2_rl` 和 `rl_lab` 安装脚本声明 Python `>=3.10`，不代表完整兼容矩阵。上层拖曳已像 AMP 一样使用仓库自有 `rl_lab` runner／PPO／recurrent model，不依赖外部 RSL-RL runner/config API；普通 PPO 入口仍按 2.2.1 接口维护。详见 [训练栈兼容性记录](docs/training/training_stack_compatibility_2026-09-22.md)。
@@ -388,7 +389,8 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 | 策略 PD | `25.0 / 0.5` | `25.0 / 0.5`（与参考项目一致） |
 | 固定姿态 PD | — | `60.0 / 2.0`（参考项目） |
 | 力矩限制 | `23.7` | `23.7`（与 URDF/训练一致，参考项目为 23.5） |
-| 动作缩放 / 裁剪 | `0.125 / 0.25 / 0.25`，取值 `±3` | 同 |
+| 动作缩放 | `0.125 / 0.25 / 0.25` | 同 |
+| 动作裁剪（2026-10-13修正） | 缩放/偏置后的关节目标裁剪±3 rad，wrapper不裁剪raw action | Gazebo AMP启用gazebo_clip_joint_targets，先转换再clip，last_action保持raw；4182实际帧数值验证通过。controller额外URDF限位/其它后端待对齐，见 [修正对照](docs/gazebo_amp_clip_fix_comparison_2026-10-13.md) |
 | 观察缩放 | `1.0 / 0.25 / 1.0 / 0.05 / 1.0` | 同 |
 | 网络文件 | `imgo2_rl` 的 `play.py` 导出 | `policy.pt`（与 checkpoint actor 数值一致） |
 
@@ -402,7 +404,7 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 |---|---|---|---|---|
 | `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（参考项目 `~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/policy_flat.pt`，sha256 `53a57f909b61d2a7…`；2026-09-17 按四项指标评过 5 个候选后选它） |
 | `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
-| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45维（无base_lin_vel） | `policy.pt`（当前为2026-10-12 motion_new的4000轮官方play导出，SHA256 `6ee931a73b0186de…`；actor max diff=0、部署libtorch加载与接口契约通过，原25000已备份。新策略Gazebo步态待测，见 [替换记录](docs/amp_4000_deploy_2026-10-12.md)；历史结果见 [25000对比](docs/gazebo_amp_25000_2026-10-11.md)） |
+| `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45维actor/12动作 | 最新2026-10-14 motion_new_model_new的model_25000正式导出，SHA9c6bf22b...；CPU128输入actor差0，当前动态效果待验证，见 [身份](docs/rebase_latest_policy_identity_2026-10-14.json) |
 
 **2026-09-25 新入库的拖曳占位（未接线、不可加载）**：`policy/imgo2/towing/policy.pt` 是
 `logs/towing_rl_lab/towing_upper/2026-09-23_22-19-00/model_2000.pt` 的**原样拷贝**
@@ -594,7 +596,7 @@ ros2 run imgo2_deploy rl_sim
   `Couldn't parse parameter override rule`，controller_manager 起不来。
 - Gazebo 版 URDF 的网格用 `package://imgo2_description/meshes/...`（`xacro/robot.xacro` 的
   `mesh_prefix` 属性按 `gazebo` 开关切换）；纯 URDF 仍是 `../meshes/`，不受影响。
-- 默认模型仍为 `imgo2.gazebo.urdf`；评估当前 real 训练策略时，用 `IMGO2_GAZEBO_URDF` 指向仓库的 `imgo2_description/urdf/imgo2_real.gazebo.urdf`。测量脚本加 `--sim-time` 使用仿真时间并均匀采样关节，速度误差按身体坐标统计，详见 [29000 轮实测](docs/gazebo_amp_29000_2026-10-10.md)。
+- 当前ROS2 launch默认模型为 `imgo2_real.gazebo.urdf`；`IMGO2_GAZEBO_URDF` 可覆盖为其它已核对模型。本轮测试显式指定real，与当前训练策略一致。测量脚本加 `--sim-time` 使用仿真时间并均匀采样关节，速度误差按身体坐标统计，详见 [29000 轮实测](docs/gazebo_amp_29000_2026-10-10.md)。
 - 不要用 `gazebo_ros` 自带 launch：本机实测它起的 gzserver 未加载 factory 插件（`/spawn_entity`
   不出现），我们的 launch 直接起 `gzserver -s libgazebo_ros_init.so -s libgazebo_ros_factory.so`。
 - `imgo2_description` 现在是工作区里的标准包（软链进 `src/`，`package.ros1.xml`/`package.ros2.xml`
@@ -657,6 +659,11 @@ ctest --test-dir imgo2_deploy/go_imu/build --output-on-failure
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| DEPLOY-14 | P1 | 切换与持续目标变化已实测，整体抖动待修 | PD60/2→25/.5与首条目标跳变；新25000早期跳变.10–.62 rad，本轮当前旧24000站立.158 rad。渐变未一致降低速度峰，仍默认0；持续站立另见AMP-23。见 [复核](docs/amp_25000_loss_and_standing_review_2026-10-13.md) | 完整交接/初始化、接触/力矩/速度与GUI对照；日志精度已修已编译，新精度实录待验证；不能将第一条目标平滑等同于持续抖动修好 |
+| AMP-23 | P1 | 原Isaac零指令目标快速变化已验证，静止品质待改进 | 新/旧单环境站立最大目标步变.364/.508 rad，当前旧Gazebo稳定窗口.511 rad；实际关节位移较小。stand_still/action_rate等关闭、站立抽样2%。见 [复核](docs/amp_25000_loss_and_standing_review_2026-10-13.md) | 低速profile需处理0.2m/s平移死区、纯轴采样及零指令平滑/静止门控，站立样本/初始化单变量微调（见[方案](docs/amp_low_speed_finetune_plan_2026-10-13.md)），原Isaac与Gazebo多种子实际响应验证；未改奖励/PD |
+| AMP-20 | P1 | Gazebo AMP策略裁剪/last_action已修并验证，其它接口差异待确认 | 先转换后clip目标、raw反馈，4182帧目标/last_action差0，actor回放差≤2.15e−6，构建/C++回归/四方向通过。controller仍额外裁剪URDF限位，MuJoCo/硬件未改，见 [修正对照](docs/gazebo_amp_clip_fix_comparison_2026-10-13.md) | 更广指令/瞬态的controller限位、执行器/反馈/时钟及其它后端对齐；不把局部修复视为全部sim2sim通过 |
+| AMP-21 | P1 | 新25000修正后方向已双仿真短测，后退/组合品质待改进 | 命令−.4，Isaac/Gazebo实际−.196/−.218；修正前后速度/步态未明显改善。纯yaw±.5能跟速但抬脚很少；新数据前后符号/身体速度核对未见错误。见 [对照](docs/gazebo_amp_clip_fix_comparison_2026-10-13.md) | 多种子固定方向/组合回放、接触时序与跟速训练单变量对照；未验证的调权建议不标为收益 |
+| AMP-22 | P1 | 新25000足端贴地/高频已双仿真实测，步态待修 | 修正后Gazebo前进.4足底p95约1.2–2.7 cm，后退−.4仅0.04–1.1 mm；原Isaac后退后脚约98%接触、腾空约20 ms。参考六段抬脚约7–8 cm/周期.6 s，当前AMP无air/height/slide任务项。见 [对照](docs/gazebo_amp_clip_fix_comparison_2026-10-13.md) | 设计/验证摆动高度、支撑脚世界速度及周期约束；启用前修正现有feet_slide身体相对速度语义；需新奖励单变量、多种子/长回放与Gazebo接触对照，未改奖励 |
 | AMP-19 | P1 | 续训说明已修并离线核对，服务器恢复待确认 | AMP需要resume门控与load_run/checkpoint定位；max_iterations为额外轮数，恢复产物写新run。见 [续训命令](docs/服务器训练.md#续训练从已有-checkpoint-接着训练) | 确认服务器原run、checkpoint内部iter与当前配置兼容；短恢复验证加载路径、轮号及新目录保存，本轮未启动训练 |
 | DEPLOY-13 | P1 | 真机架构已复核，接口移植待实现 | rl_real_imgo2仍为Unitree后端；快照同步、命令交接、故障/退出卸力及FSM与go_stand差异已列入 [架构指南](docs/project_architecture_2026-10-12.md#7-当前阻碍真机部署的问题与完成条件)；未改代码 | 先完成go_imu实测，再接RealHardware、验证映射/安装坐标/限幅、FSM与单策略；力矩队列另见DEPLOY-12 |
 | DEPLOY-12 | P2 | 已源码定位，待修复 | 推理持续向output_dof_tau_queue入队，全仓未找到消费；当前Gazebo RLControl发送目标角/PD且tau_ff=0，这份队列未用于驱动，见 [代码指南](docs/sim2sim_gazebo_code_guide_2026-10-12.md#7-已修复与待确认) | 明确或移除无用队列，验证控制输出保持一致与长时未消费数据不再累积；本轮未修改/运行测量 |
@@ -668,9 +675,9 @@ ctest --test-dir imgo2_deploy/go_imu/build --output-on-failure
 | DEPLOY-09 | P1 | 重构及离线验证已完成；实机待确认 | go_imu 五个短入口、共用通信、并行诊断、独立 RealHardware 库与全机故障锁定；17/17 测试通过，原两目录及 RL 入口未改。见 [记录](docs/go_imu_refactor_2026-10-11.md)；实机操作见 [手册](docs/go_imu_usage_2026-10-11.md) | 实机确认通信频率、机身坐标、关节映射、安全限幅与初始化姿态；尚未接入真机策略 |
 | IMU-01 | P1 | 显示改进已验证；实机待确认 | 固定刷新 RPY（度）、角速度、加速度；等待／超时可见。用户确认 IMU 串口为 ACM0 并提供有效数据，见 [记录](docs/imu_terminal_2026-10-10.md) | 在 IMU 所在电脑重新编译确认面板；安装坐标、静止零偏、更新频率仍待实测 |
 | AMP-11 | P1 | 29000 轮 real Gazebo 行走已验证；高步频／偏航待优化 | 正式导出及两次无界面步频测量通过，周期 0.2875–0.29 s、步频 3.45–3.48 Hz，身体速度误差 1.79%，偏航 −5.78°/s。见 [实测与奖励建议](docs/gazebo_amp_29000_2026-10-10.md) | 提供新训练 env.yaml/agent.yaml 和日志确认奖励版本；滞空增权／偏航核宽度单变量微调，复测 0.3/0.5/0.6 m/s 与接触周期 |
-| AMP-18 | P1 | 新数据训练曲线/4961快照复核完成；步态目标待验 | 本地到4426轮跟速/终止/noise总体改善，无非有限标量；4961air仍.0556 s，不能据此推精确周期。旧硬编码target提示已删，见 [复核](docs/amp_motion_new_training_2026-10-12.md) | 同步后续事件文件与5000/10000固定速度回放/接触时序；新提示运行验证，慢周期目标及平台待确认 |
-| AMP-17 | P1 | motion_new 4000导出/部署替换已验证；Gazebo效果待测 | 官方play导出、actor128输入diff=0、部署libtorch2.3加载与PD/默认姿态/观察/动作契约通过；原25000有备份。见 [记录](docs/amp_4000_deploy_2026-10-12.md) | 使用real Gazebo模型测周期/跟速/姿态；不沿用旧checkpoint测量结果 |
-| AMP-16 | P1 | 新数据路径/旧滞空关闭已核对，缺口保留待短训练 | 默认21段新数据路径已正确；Height范围vx±1、vy±.4、yaw±1，feet_air_time=None；本轮保留deficit共7项，原6项数据实验见历史复审，见 [复审](docs/amp_settings_review_2026-10-12.md) | 目标机器4环境10轮验证保存yaml与实际加载；确认CLI混合比例/旧环境变量，新策略收益及接触同步待测 |
+| AMP-18 | P1 | 新数据到24999曲线已核对，收益递减；目标步态待改 | 末等长窗口reward+1.06%、xy误差下降1.82%、value loss下降2.31%，无NaN/Inf；air快照.057→.059 s，不能由loss收敛推断目标周期达成。见 [复核](docs/amp_25000_loss_and_standing_review_2026-10-13.md) | 有目标约束的新微调与固定命令/接触指标；原配置继续收益需新窗口证明，不保证慢步态 |
+| AMP-17 | P1 | 最新model_new 25000身份/CPU契约已验证，动态待确认 | 当前9c6bf22b...与2026-10-14_00-20-45_motion_new_model_new/exported逐字节一致，与model_25000 actor128输入差0。旧21e7/e40d记录为历史，见 [最新核对](docs/rebase_latest_policy_identity_2026-10-14.json) | 最新策略下Gazebo实测、PD25/.5训练与24/.6部署差异、新奖励微调效果；不得将旧回放当当前品质 |
+| AMP-16 | P1 | 当前新模型/21段数据身份已核对，七项微调待运行 | model/data与原9f3228e及离线清单一致，范围vx±1.2、vy±1、yaw±1.2；旧feet_air_time关闭、deficit保留。最新25000保存配置原为六项，见 [核对](docs/rebase_amp_air_time_resolution_2026-10-14.md#最后9f3228e及最新策略算法身份) | 新七项配方短训与实际步态；侧向专家仅±.4，低速/平滑方案尚未实施 |
 | AMP-15 | P1 | 原始24000基准补测与MPC采集复核完成；同步/元数据待修 | 原始24000同条件vx=.5：周期.2825 s、跟速误差1.11%、yaw−.15°/s、z .291 m，整体优于25000；录制器时间同步风险待修。见 [采集与基准复核](docs/amp_collection_review_2026-10-11.md) | 确认实际MPC工作区/模型与采集参数；修同步、接触元数据/退出保存，小批重采对照 |
 | AMP-14 | P1 | 25000微调sim2sim两次对比通过；周期目标、低站高与超调待优化 | 0.5 m/s命令下周期0.27 s、body vx约0.586 m/s、z约0.263 m、yaw约−2.2°/s；周期测量边界误判已修复并CPU/复测验证。见 [记录](docs/gazebo_amp_25000_2026-10-11.md) | 真实接触计步与0.3/0.6速度复测；单变量处理高度/跟速/节律，未永久切换默认策略 |
 | AMP-13 | P1 | 服务器配置与sim2sim收益已确认；接触对齐待确认 | 实际任务比例0.7、滞空weight100/threshold0.3；25000相对本次24000周期/偏航改善，负日志不能直接判无效。见 [实测](docs/gazebo_amp_25000_2026-10-11.md) | 补参考与策略真实接触时间、其他速度回放及奖励目标验证 |
@@ -731,9 +738,10 @@ ctest --test-dir imgo2_deploy/go_imu/build --output-on-failure
 | DEPLOY-06 | P1 | AMP 路径已解决，himloco 路径仍在 | `rl_sim_mujoco.cpp` 用 `joint_mapping` 直接索引 MJCF，因此配置的映射必须与场景顺序一致。2026-09-17 采用自建场景（关节声明顺序 = 策略顺序 `FL,FR,RL,RR`）+ `base.yaml`/`amp/config.yaml` 恒等映射，AMP 路径自洽 | AMP 已在 16 s 回放中确认基座高度稳定、无 NaN；`himloco/config.yaml` 仍带硬件置换映射 `[3,4,5,0,1,2,9,10,11,6,7,8]`，在 MuJoCo 上会索引错腿，需单独处理；`imgo2_description/mjcf/` 那份现成 MJCF 未再复用 |
 | DEPLOY-07 | P0 | 已修，待编译验证 | ROS2 两个控制器把 `std::clamp(…)` 当语句调用、丢弃返回值，限位实际失效；单关节版还把参数名写成 `"robot_description_"`，URDF 从未解析成功。已改为赋值形式并加空指针/越界保护、补 `<algorithm>`、修正参数名 | 在装有 ROS 2 的 Linux 上编译并跑通，确认限位生效且不再有空指针风险 |
 | EXPORT-01 | P1 | 待验证 | 导出配置与 C++ 配置格式不同；比较脚本假设六帧历史 | 明确转换规则，记录实际网络维度、历史规则与误差指标 |
-| DATA-01 | P1 | 当前一致 | 两处动作数据副本哈希一致 | 每次更新后核对副本，记录数据来源和版本 |
+| DATA-01 | P1 | 当前RL新目录已核对，外层副本/服务器同步待确认 | 2026-10-13重采21段，RL新目录与外层imgo2_dataset旧副本19同名全不同、1.0/1.2文件不同；默认读RL目录，新1.2文件未跟踪。见 [核查](docs/amp_new_collection_preflight_2026-10-13.md) | 明确外层旧副本用途与同步方式，服务器包含新增文件并清除旧motion覆盖变量；不以相同文件夹名认定相同数据 |
 | EXP-01 | P1 | 待补充 | 已记录 PPO 验证与 AMP 贴地现象的用户反馈，尚缺对应日志、命令和模型路径 | 按第 8 节补充真实实验与产物路径 |
-| MODEL-05 | P1 | 新 URDF 已生成，模型接入待确认 | 用户指定的 `imgo2_description_real` 已从其 xacro 生成纯 URDF 与 Gazebo 版；Gazebo 网格仍引用原 `imgo2_description` 包 | 需确认 real 模型的 ROS 包/网格映射并登记模型检查；生成前全仓检查已有 3 个 real URDF 未登记，新生成两份后也需登记。未运行 Isaac Lab/Gazebo 导入验证 |
+| MODEL-05 | P1 | real模型对比/短回放已验证，全仓登记与指纹仍待修复 | 14网格/指纹66c496556453、两份real URDF未登记使全仓守门失败；2026-10-13独立real对比17本体link一致、惯量有效，并完成两仿真短回放。见 [本轮排查](docs/gazebo_amp_motion_new_25000_2026-10-13.md#3-模型与惯量检查)；历史见 [rebase记录](docs/rebase_main_2026-10-07.md) | 确认新网格/模型族设计基线、生成来源及注册，复跑全仓守门；不能把本体一致性当成实机惯量辨识 |
+| MODEL-06 | P1 | real新惯量已生成并离线验证，动态待确认 | 用户将左前/左后thigh ixz改负；新real两份解析/惯量一致性与21段FK通过，见 [生成](docs/urdf_real_regeneration_2026-10-13.md)。此前短回放使用旧惯量 | 新惯量下Isaac/Gazebo回放、服务器USD缓存；确认旧imgo2生成物/MJCF版本关系，四份real/real_wrong未登记仍由MODEL-05处理 |
 | MODEL-04 | P1 | 已修复并验证 | `sorted(Path)` 在 Windows 与 Linux 对大小写排序不同导致同一套网格指纹不同；改为按文件名字符串排序，恢复原预期值，未改网格 | 大小写混合排序与内容篡改回归通过；全模型检查通过，指纹 `8dc5b5995a11` |
 | TOW-CLUS-01 | P2 | **已修，待复现/定机理** | 2026-10-12 用 `v3_800_policy_c008` 的 700 个有车样本做聚类检验：无监督 k-means 能把「绳 vs 杆」分开（station 纯度 0.920/ARI 0.703，绳 210 例压成一点、rigid 按质量排开），但 **compliant 与 inextensible 从未被分开**；tow 全量上连接被质量/速度淹没（k=3 ARI 0.001），固定坡度/质量/速度后才恢复（ARI 1.000，n=13）。质量档在站定阶段**只在 rigid 下可见**（绳组 latent 半径 0.020、η² p=0.36/0.67、decoder 质量输出误差中位 5.001 kg = 常数；rigid 半径 3.468、η² 0.737、p=0.002），tow/coast 三类都可见且 rigid 最强；**固定速度后质量可分性更高**（η² 0.358→0.565、kNN 0.940→0.975），混淆只在低端 5 vs 10 kg。详见 [聚类检验记录](docs/towing/towing_latent_cluster_2026-10-12.md) | 缺两样：① **第二轮带 latent 的报告**（换 checkpoint 或换 c=0.032 阻尼端）复现「绳/杆边界 + 两类绳不可分 + rigid 质量最强」这三条；② 若要定机理（力语义 vs 出生松弛几何），需要**出生间隙对齐但传力不同**的对照工况——当前网格把 `SLACK_RATIO=0.8` 与 `d≡L0` 绑在连接类型上，离线无法拆分。单轮结论不得当成「连接可辨识」的通用结论 |
 | TOW-CLUS-02 | P2 | **行为层已测出量级；latent 层的可比性缺第二个阻尼取值** | 用户 2026-10-12 追问「看看对轮摩擦的情况呢」。**核实**：`--wheel-damping`/`--ground-friction` 是**整轮标量**且 report 只在 `arguments` 记全局值（case 无摩擦字段）⇒ 单轮内部没有摩擦标签；本机 20 份 report 里 **μ 恒 0.8**（训练随机 0.4–1.2 从未扫）、**阻尼只有 0.008/0.032**、**latent 只在 c=0.008 那轮**。**行为层（同策略 `model_2700`、同 800 网格、同 μ=0.8，逐 cell 配对 700 有车）**：硬证据 **3.6% → 23.0%**（800 格口径 3.1%→20.1%，与 `compare_play_runs.py` 一致），滑移中位 0.26→**0.55 m**、P95 1.57→**3.80 m**、最小间隙中位 0.543→0.372 m、甲板峰值力 P95 0→**255 N**；代价几乎全在绳侧（compliant +31.8pt、inextensible +31.4pt），**rigid 只 +1.1pt（3 格）**；速度 1.5 m/s **+41.7pt**、20 kg **+25.1pt**。⇒ 阻尼影响量级大于端到端上层策略的收益量级（同 c=0.008 下策略只救回 68 格，见 §8.9）。详见 [聚类检验记录 §3](docs/towing/towing_latent_cluster_2026-10-12.md) | 缺一次**带 `--dump-latent` 的 c=0.032 复跑**（命令已 `--dry-run` 通过、checkpoint 在盘上，需 GPU shell）⇒ 之后可池化两轮 latent 做 η²/kNN/ARI/置换检验，与质量·连接强度对比；**工具还需加多报告池化**（如 `--report LABEL=PATH`）。另：μ 要单独补 `--ground-friction 0.4` 与 `1.2` 两轮；阻尼是整轮标量，dose-response 需多档（0.008/0.016/0.024/0.032）。**当前不得声称「latent 能/不能区分轮摩擦」** |
@@ -805,11 +813,31 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-14 | 已解最后提交内容冲突，确认最新25000/算法/模型数据身份 | policy与10-14 model_new导出SHA相同，checkpoint actor128输入差0；算法核心/模型同9f3228e、21新数据SHA匹配，19测试/路径/惯量通过。保留用户选择的七项deficit配方（checkpoint原六项），PD差异未改；最后暂存/continue、七项短训及动态回放待完成，见 [记录](docs/rebase_amp_air_time_resolution_2026-10-14.md#最后9f3228e及最新策略算法身份) |
 | 2026-10-14 | 已合并64ac334的README四处冲突 | 前轮代码冲突已通过，此轮仅文档；保留新服务器/4000部署历史与缺口配方，消除AMP-17编号碰撞。标记/格式/链接检查通过，README/记录待暂存，最后9f3228e及最终模型数据验证未完成，见 [记录](docs/rebase_amp_air_time_resolution_2026-10-14.md#后续64ac334的文档冲突) |
 | 2026-10-14 | 已确认无冲突按钮是内容已修但索引未标记解决 | README已暂存，配置/recipe测试仍UU；磁盘无标记、两份AST/diff及19测试通过，无需再改代码。需git add清除索引stage1/2/3并暂存本轮记录后继续rebase，未执行Git写操作，见 [核对](docs/rebase_amp_air_time_resolution_2026-10-14.md#编辑器不再显示冲突按钮的核对) |
 | 2026-10-14 | 已合并95fab8d的重复滞空冲突，保留七项缺口配方 | 配置/recipe测试/README内容已解，保留新数据路径和速度更新；19测试/路径/语法与无标记检查通过，新目录21×600帧。索引仍需git add，整次rebase与最终版本/训练gate待完成，见 [记录](docs/rebase_amp_air_time_resolution_2026-10-14.md#后续95fab8d再次冲突) |
 | 2026-10-14 | 已核对rebase继续前的暂存缺口 | 索引无未解决冲突，但README/AMP配置/两份测试最新修复未暂存，复审文档未跟踪；五份需git add，仍有3条提交待应用。未操作索引或继续，最终数据与训练gate待完成，见 [状态](docs/rebase_amp_air_time_resolution_2026-10-14.md#暂存状态复核) |
 | 2026-10-14 | 已复审rebase当前文件，修旧recipe测试/README残留 | 两套AMP相关19测试、修改Python语法、工作树/暂存diff格式检查通过；清理标记、10条移动文档链接、旧奖励与重复AMP编号说明。未git add/继续rebase或运行训练；当前imgo2_motion数据不同于前轮600帧新采集，最终版本与短测待确认，见 [复审](docs/rebase_amp_air_time_resolution_2026-10-14.md#复审当前文件) |
+| 2026-10-14 | 已修play命令日期重复的路径说明 | 用户checkpoint目录误写20262026；本机确认2026-10-14_00-20-45_motion_new_model_new/model_25000.pt存在，仅核对路径，未运行回放/导出，AMP-17/21/22效果待验。见 [说明](docs/策略导出与ROS2仿真.md) |
+| 2026-10-14 | 已补齐当前AMP机身高度项的位置与尺度说明 | 源码核对base_height_l2启用、目标0.30m、每步−5/原始weight−250及平地root-link高度语义。仅文档说明，未改参数；服务器实际配置与新数据短训仍待验证，见 [核查](docs/amp_new_collection_preflight_2026-10-13.md#5-状态) |
+| 2026-10-13 | 已核对修正模型与重采motion，修正数据一致性/时间检查说明 | real生成逐字节一致、惯量、21×600帧/FK0、腿序/dq、50Hz时间与路径通过；check_amp_timing新增显式目录。发现侧移范围±1超出专家±.4、外层旧副本与新文件同步待DATA-01。两次GPU短测自动审核超时未启动，AMP-16/19、MODEL-06运行gate及低速方案未完成，见 [记录](docs/amp_new_collection_preflight_2026-10-13.md) |
+| 2026-10-13 | 已补齐四足PD参考与本项目单变量试验建议 | 核对legged_gym A1=20/0.5、Isaac Lab A1/Go2=25/0.5；本地25/0.5仍为训练基线，部署24/0.6。仅更新文档，未改增益/运行；AMP-23/DEPLOY-14各增益下响应与一致性待验，见 [说明](docs/amp_low_speed_finetune_plan_2026-10-13.md#训练pd位置补充核对) |
+| 2026-10-13 | 已补齐AMP训练PD位置与部署同步说明 | 源码确认共享assets/imgo2.py执行器P25/D0.5、AMP加载位置及导入drive=0的区别；仅更新说明，未改增益/运行，AMP-23/DEPLOY-14新增益收益与部署一致性待确认，见 [方案](docs/amp_low_speed_finetune_plan_2026-10-13.md#训练pd位置补充核对) |
+| 2026-10-13 | 已按用户core的ixz符号生成两份real URDF | Humble xacro生成；check_urdf、17共有link惯量、轴/限位不变、21段motion_new FK与资源路径通过；SHA前缀1d97de78/e8021e5f。未运行新惯量仿真/训练，MODEL-06动态及MODEL-05旧模型版本/登记/网格待确认。见 [记录](docs/urdf_real_regeneration_2026-10-13.md) |
+| 2026-10-13 | 已恢复外层description的ROS引用并清理重复Gazebo | 原src软链缺失、安装资源失效已修，colcon识别/资源0失效；默认master模型含GUI18s及独立无头AMP26s短测通过，结束端口释放。未改模型/策略/训练参数；DEPLOY-05画面/硬件GL、DEPLOY-14/AMP-22/23行为待确认。见 [修复](docs/gazebo_startup_repair_2026-10-13.md) |
+| 2026-10-13 | 已修低速侧移死区遗漏说明，完成AMP低速微调方案 | 源码/保存yaml与21段motion离线复核，stance角变化约0.003rad；提出分组采样、平滑/静止、净空/防滑及周期分阶段系数。未改训练参数/新奖励或启动训练；AMP-22/23指令与奖励实现、AMP-19短恢复及多种子双仿真待验。见 [方案](docs/amp_low_speed_finetune_plan_2026-10-13.md) |
+| 2026-10-13 | 已补齐静止/低速到高速课程及换数据恢复边界 | 公开方法与本地源码核对：当前速度课程关闭、AMP无指令条件、默认全量恢复。仅文档建议，未改配置/数据或训练；AMP-22/23课程实现及AMP-19短恢复收益待验证。见 [记录](docs/amp_slow_gait_resume_review_2026-10-13.md#7-静止低速到高速的训练课程建议) |
+| 2026-10-13 | 已补齐现存足端高度/节律奖励的复用边界 | 源码确认height/body-height可作误差约束、air-time仅落地事件结算、feet_gait仅同步关系，当前AMP均关闭；目标0.5–0.6s周期需新增/扩展，AMP-22待实现与训练验证。只更新文档，见 [函数核对](docs/amp_slow_gait_resume_review_2026-10-13.md#6-现存足端奖励可以复用到什么程度) |
+| 2026-10-13 | 复核新25000趋势、新旧静止响应及当前部署身份 | 新事件到24999无非有限值、末窗仍小幅改善；原checkpoint/旧导出actor差0，当前默认已是旧24000。本轮旧8方向、新/旧明确路径单环境与Gazebo旧站立短测完成，确认持续目标变化。已修策略字节/SHA记录与诊断时间精度（编译通过），新精度实录待验；未改奖励/PD/策略文件或训练。AMP-23/22及DEPLOY-14待修，见 [记录](docs/amp_25000_loss_and_standing_review_2026-10-13.md) |
+| 2026-10-13 | 核对当前25000慢步态续训与奖励缺口，已修系数强弱注释 | 保存配置确认六项任务、air/height/slide/gait与动作变化项关闭，task/style=.3/.7；公式/恢复门控和现存checkpoint离线核对，源码语法与命令语法检查通过。仅修注释/说明，未改奖励数值或启动训练；新足端/周期实现与微调收益待AMP-22/19，见 [记录](docs/amp_slow_gait_resume_review_2026-10-13.md) |
+| 2026-10-13 | 已修Gazebo AMP裁剪/反馈并完成双仿真步态对照 | rl_sim构建/C++回归通过，4个全新Gazebo栈与Isaac8环境900步完成；4182帧目标/last_action差0，actor回放差≤2.15e−6。新21段数据方向/线速度坐标核对完成。裁剪修正未明显改善后退/转向贴地；controller额外限位、其它后端与DEPLOY-14/AMP-21/22仍待处理，未改policy/模型/训练奖励。见 [记录](docs/gazebo_amp_clip_fix_comparison_2026-10-13.md) |
+| 2026-10-13 | 复核用户追问的Gazebo转换正确性，已补修裁剪匹配注释 | 真实逆旋转C++500姿态检查最大误差2.35202e−7，编译/运行通过；网络导出一致性沿用上轮实测。未改控制数值或裁剪实现；AMP-20动作执行/last_action不等价、端到端接口与DEPLOY-14仍待修复验证。见 [记录](docs/gazebo_conversion_review_2026-10-13.md) |
+| 2026-10-13 | 补测新25000前后.4与转向足端，已补齐几何/接触测量 | Gazebo±.4两次、Isaac8环境900步实际完成；4项足底/FK回归通过，图已检查。已确认后退/转向贴地在原Isaac也存在，参考有约.6s节律与7–8cm抬脚；未改奖励/策略/惯量。抬脚训练与现有slide语义修正待AMP-22，裁剪待AMP-20。见 [记录](docs/amp_foot_lift_review_2026-10-13.md) |
+| 2026-10-13 | 新motion_new 25000的惯量/接口/切换与双仿真方向排查 | 已修来源/裁剪说明、方向/瞬态评测与可选过渡工具；17本体link物理一致、惯量有效，actor差0/部署加载通过，Gazebo17个短测试与Isaac900步方向/20步脚本冒烟完成，构建及7项Python/C++过渡检查通过。过渡默认关闭，整体抖动、裁剪与后退品质待DEPLOY-14/AMP-20/21，全仓模型登记仍待MODEL-05。见 [记录](docs/gazebo_amp_motion_new_25000_2026-10-13.md) |
+| 2026-10-13 | 用户运行新25000导出后核对Starting playback与产物 | 已修无界面持续回放说明；源码确认日志在两次导出之后，本机确认新run中policy.pt/onnx存在（约752/741 KiB）。未检查数值/部署契约或替换策略，Gazebo效果待AMP-17/18，见 [流程](docs/策略导出与ROS2仿真.md) |
+| 2026-10-13 | 修正策略导出文档的分步执行写法与旧checkpoint示例 | 已修：变量设置独立export，导出/备份/复制统一motion_new_resume/model_25000.pt；去除旧路径缺失说明。Bash语法及实际启动器轻量环境传递验证通过；未运行导出/复制/Gazebo，新25000配置契约与效果待AMP-17/18，见 [流程](docs/策略导出与ROS2仿真.md) |
+| 2026-10-13 | 核对env_isaaclab激活后启动器仍选默认Python的报错 | 已修说明，当前终端export指定CONDA_PREFIX/bin/python；真实启动器轻量检查选中本机env_isaaclab，motion_new_resume/model_25000.pt存在。未运行play/导出或替换策略，回放/效果待AMP-17/18，见 [补充](docs/策略导出与ROS2仿真.md#2026-10-13已激活env_isaaclab仍提示找不到解释器) |
 | 2026-10-13 | 在服务器训练.md补齐AMP续训命令与参数语义 | 已修复checkpoint单参数误解；系统Python/Conda两种命令、CLI/源码、路径定位与额外轮数离线核对。未运行远端续训，目录/iter与短恢复待AMP-19，见 [续训章节](docs/服务器训练.md#续训练从已有-checkpoint-接着训练) |
 | 2026-10-12 | 补齐整体架构、主入口、运行和真机移植指南 | 已修说明缺口，按当前源码/配置核对目录、main调用链与构建命令；只改根README及docs，未编译/运行或修改go_imu。真机后端/同步/安全适配待DEPLOY-13，见 [指南](docs/project_architecture_2026-10-12.md) |
 | 2026-10-12 | 补齐Gazebo sim2sim源码调用指南并纠正旧接口说明 | 当前ROS2源码/配置核对；已修README旧48维actor与joint_states订阅注释，数值/运行逻辑未改。未编译或启动仿真；初始化及4000步态沿用DEPLOY-11/AMP-17，新增无消费力矩队列待修DEPLOY-12，见 [指南](docs/sim2sim_gazebo_code_guide_2026-10-12.md) |

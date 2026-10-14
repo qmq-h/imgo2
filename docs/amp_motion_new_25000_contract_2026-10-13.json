@@ -1,0 +1,80 @@
+{
+  "checkpoint": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/model_25000.pt",
+  "checkpoint_sha256": "93284a62dfff214f9f4e79109c524dca7e6b3fb2892ae8651b1004a06a524f94",
+  "iter": 25000,
+  "exported_policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/exported/policy.pt",
+  "deployed_policy_sha256": "e40d81ec219c777a4aa88acffed935f12be526a2b8a52d7d56d38f3c9b7cc9d1",
+  "installed_equals_exported": true,
+  "actor_max_diff_128_inputs": 0.0,
+  "input_dim": 45,
+  "output_dim": 12,
+  "pd_mapping_scale_observation_contract": "PD/default pose/joint mapping/affine scales audited; Gazebo AMP policy-stage clip+last_action runtime verified; controller limits and other backend differences remain.",
+  "ideal_standing_zero_command_first_action": [
+    -0.5027251839637756,
+    0.10733417421579361,
+    0.4290984869003296,
+    0.446342796087265,
+    -0.130721777677536,
+    0.2858395576477051,
+    -0.7042157649993896,
+    0.06515221297740936,
+    0.2618177533149719,
+    0.529522180557251,
+    0.03131513297557831,
+    0.3950986862182617
+  ],
+  "ideal_first_target_shift_rad": [
+    -0.06284064799547195,
+    0.026833543553948402,
+    0.1072746217250824,
+    0.05579284951090813,
+    -0.032680444419384,
+    0.07145988941192627,
+    -0.0880269706249237,
+    0.01628805324435234,
+    0.06545443832874298,
+    0.06619027256965637,
+    0.007828783243894577,
+    0.09877467155456543
+  ],
+  "deployment_libtorch": "2.3.0+cpu load/finite forward passed in /tmp/imgo2_check_4000_libtorch",
+  "limitations": "Ideal first action is an offline input, not measured startup; actual trajectory measured separately.",
+  "action_clipping_difference": {
+    "training": "Isaac JointAction.process_actions clamps scaled+offset joint targets to [-3,3] rad; AMP wrapper has clip_actions=None",
+    "gazebo": "Forward clamps raw network action to [-3,3] before scale/offset; last_action is also clamped",
+    "impact": "Measured separately via runtime target saturation; not assumed to explain all jitter.",
+    "state": "Historical pre-fix observation; Gazebo AMP policy-stage clipping and last_action corrected in conversion_fix."
+  },
+  "sources_sha256": {
+    "imgo2_deploy/src/imgo2_deploy/src/rl_sim.cpp": "dc2d6d01f3c52df9a03ed3a1f2fe20edf33f28fc0c8b67f314eedfeb18ed45a5",
+    "imgo2_deploy/src/imgo2_deploy/include/policy_transition.hpp": "4ec3ba2886b77347dc88869edb8b7625cc35bd743979b93539157e7bbf9e611e",
+    "imgo2_deploy/build/imgo2_deploy/rl_sim": "8ca501e993a05f50f2cc33c180ebd3e5117d5358b2714d841b3056d60dd3f2f9",
+    "imgo2_deploy/policy/imgo2/amp/config.yaml": "7894a07e894a4fc66def15d476e2eb31d6f555fda927c1b3a2525330cc043dc8"
+  },
+  "conversion_followup": {
+    "date": "2026-10-13",
+    "config_comment_only_sha256": "51e29264f793787c010be684020b701441d8574a4360882adca2c37523e207cd",
+    "inverse_rotation_cases": 500,
+    "inverse_rotation_max_error": 2.35202e-07,
+    "implementation_status": "Action clipping and last_action remain unequal; no control value changes.",
+    "record": "docs/gazebo_conversion_review_2026-10-13.md",
+    "source_hash_note": "sources_sha256 captures the earlier simulation audit; the config subsequently received comment-only corrections."
+  },
+  "conversion_fix": {
+    "date": "2026-10-13",
+    "gazebo_amp_joint_target_clip_enabled": true,
+    "runtime_frames": 4182,
+    "target_max_diff": 0,
+    "last_action_max_diff": 0,
+    "actor_max_diff": 2.1457672119140625e-06,
+    "record": "docs/gazebo_amp_clip_fix_comparison_2026-10-13.md",
+    "source_sha256": {
+      "imgo2_deploy/src/imgo2_deploy/src/rl_sim.cpp": "4c4bb00514d2d10143a0ea1ba1be423ccfa95732a4a45ec68e3400b2174e00bf",
+      "imgo2_deploy/src/imgo2_deploy/include/rl_sim.hpp": "1b1c073899a9f12b227b194a6963f953757774ae71e71a10f0341d8a301a18bc",
+      "imgo2_deploy/src/imgo2_deploy/include/policy_action_clip.hpp": "bbb821cb14b341a81b11dd480d5468fae712c2f0812350f3e665eb6c48e6e150",
+      "imgo2_deploy/policy/imgo2/amp/config.yaml": "6995d73729fc82dee4d3ad1f18e4b7f7a6a3187c5fb6e11645ce29883d86af06",
+      "imgo2_deploy/build/imgo2_deploy/rl_sim": "54ffdc489d1e6263e8ac91316e0a618913370333ab94d5b05552404416c84a5a"
+    },
+    "limits": "Controller URDF position clamp and other engine/feedback differences remain; MuJoCo/hardware not changed."
+  }
+}

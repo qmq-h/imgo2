@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <iomanip>
 #include <set>
 #include <thread>
 
@@ -225,6 +226,22 @@ RL_Sim::RL_Sim(int argc, char **argv)
     auto empty_request = std::make_shared<std_srvs::srv::Empty::Request>();
     auto result = this->gazebo_reset_world_client->async_send_request(empty_request);
 #endif
+
+    // Optional conversion audit. Empty/unset keeps the normal path silent.
+    if (const char* path = std::getenv("IMGO2_POLICY_TRACE"))
+    {
+        if (*path)
+        {
+            this->policy_trace.open(path);
+            if (!this->policy_trace)
+                throw std::runtime_error("Cannot open requested policy trace");
+            this->policy_trace << "wall_s,joint_target_clip";
+            for (int i=0; i<12; ++i) this->policy_trace << ",raw_" << i;
+            for (int i=0; i<12; ++i) this->policy_trace << ",target_" << i;
+            for (int i=0; i<45; ++i) this->policy_trace << ",obs_" << i;
+            this->policy_trace << '\n' << std::setprecision(10);
+        }
+    }
 
     // loop
     this->loop_control = std::make_shared<LoopFunc>("loop_control", this->params.Get<float>("dt"), std::bind(&RL_Sim::RobotControl, this));
@@ -556,7 +573,35 @@ void RL_Sim::RobotControl()
 #endif
     this->GetState(&this->robot_state);
 
+    // FSM commands persist between policy updates. Restore the unblended target
+    // before running it, so a held target is never blended again recursively.
+    if (this->policy_transition_active)
+        this->robot_command = this->policy_transition_target;
+    const auto previous_command = this->robot_command;
+    const std::string previous_state = this->fsm.current_state_ ? this->fsm.current_state_->GetStateName() : "";
     this->StateController(&this->robot_state, &this->robot_command);
+    const std::string current_state = this->fsm.current_state_ ? this->fsm.current_state_->GetStateName() : "";
+    if (current_state == "RLFSMStateAMPLocomotion" && previous_state != current_state)
+    {
+        this->policy_transition_start = previous_command;
+        this->policy_transition_progress = 0.0f;
+        this->policy_transition_duration = this->params.Has("policy_transition_duration")
+            ? std::max(0.0f, this->params.Get<float>("policy_transition_duration")) : 0.0f;
+        this->policy_transition_active = this->policy_transition_duration > 0.0f;
+    }
+    if (current_state != "RLFSMStateAMPLocomotion")
+        this->policy_transition_active = false;
+    if (this->policy_transition_active)
+    {
+        this->policy_transition_target = this->robot_command;
+        this->policy_transition_progress = std::min(1.0f, this->policy_transition_progress
+            + this->params.Get<float>("dt") / this->policy_transition_duration);
+        this->robot_command = BlendPolicyCommand(this->policy_transition_start, this->policy_transition_target,
+            this->policy_transition_progress, this->params.Has("policy_transition_blend_gains")
+                ? this->params.Get<bool>("policy_transition_blend_gains") : false);
+        if (this->policy_transition_progress >= 1.0f)
+            this->policy_transition_active = false;
+    }
 
     if (this->control.current_keyboard == Input::Keyboard::R || this->control.current_gamepad == Input::Gamepad::RB_Y)
     {
@@ -712,6 +757,34 @@ void RL_Sim::RunModel()
         this->obs.actions = this->Forward();
         this->ComputeOutput(this->obs.actions, this->output_dof_pos, this->output_dof_vel, this->output_dof_tau);
 
+        // Isaac AMP clips processed targets while retaining raw last_action.
+        const bool target_clip = UseAmpJointTargetClip(this->config_name,
+            this->params.Get<bool>("gazebo_clip_joint_targets", false));
+        if (target_clip)
+        {
+            this->output_dof_pos = ClipPolicyJointTargets(this->output_dof_pos,
+                this->params.Get<std::vector<float>>("clip_actions_lower"),
+                this->params.Get<std::vector<float>>("clip_actions_upper"));
+            // Diagnostic torque uses the position actually sent to controller PD.
+            this->output_dof_tau = this->params.Get<std::vector<float>>("rl_kp")
+                * (this->output_dof_pos - this->obs.dof_pos)
+                - this->params.Get<std::vector<float>>("rl_kd") * this->obs.dof_vel;
+            this->output_dof_tau = clamp(this->output_dof_tau,
+                -this->params.Get<std::vector<float>>("torque_limits"),
+                this->params.Get<std::vector<float>>("torque_limits"));
+        }
+        if (this->policy_trace.is_open() && this->policy_trace_fresh && this->config_name == "amp")
+        {
+            const double wall = std::chrono::duration<double>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            this->policy_trace << std::setprecision(17) << wall << ',' << target_clip
+                << std::setprecision(10);
+            for (float value : this->policy_raw_actions) this->policy_trace << ',' << value;
+            for (float value : this->output_dof_pos) this->policy_trace << ',' << value;
+            for (float value : this->policy_actor_input) this->policy_trace << ',' << value;
+            this->policy_trace << '\n';
+        }
+
         if (!this->output_dof_pos.empty())
         {
             output_dof_pos_queue.push(this->output_dof_pos);
@@ -741,6 +814,7 @@ void RL_Sim::RunModel()
 
 std::vector<float> RL_Sim::Forward()
 {
+    this->policy_trace_fresh = false;
     std::unique_lock<std::mutex> lock(this->model_mutex, std::try_to_lock);
 
     // If model is being reinitialized, return previous actions to avoid blocking
@@ -763,6 +837,16 @@ std::vector<float> RL_Sim::Forward()
     {
         actions = this->model->forward({clamped_obs});
     }
+
+    if (this->policy_trace.is_open() && this->config_name == "amp")
+    {
+        this->policy_actor_input = clamped_obs;
+        this->policy_raw_actions = actions;
+        this->policy_trace_fresh = true;
+    }
+    if (UseAmpJointTargetClip(this->config_name,
+            this->params.Get<bool>("gazebo_clip_joint_targets", false)))
+        return actions;
 
     if (!this->params.Get<std::vector<float>>("clip_actions_upper").empty() && !this->params.Get<std::vector<float>>("clip_actions_lower").empty())
     {

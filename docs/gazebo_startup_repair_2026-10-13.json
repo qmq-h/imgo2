@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-13",
+  "restored_link": "imgo2_deploy/src/imgo2_description -> ../../imgo2_description",
+  "resolved_urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.gazebo.urdf",
+  "deployed_policy_sha256": "21e7ae53091f83ffc62eb465fd2db413acd3e063db51353db4d71b81fee77a29",
+  "headless_stand_summary": [
+    {
+      "case": "stand",
+      "log_dir": "/tmp/imgo2_startup_repair_2026-10-13/stand",
+      "vx_cmd": 0.0,
+      "vy_cmd": 0.0,
+      "wz_cmd": 0.0,
+      "samples": {
+        "odom": 1598,
+        "joint_states": 15986,
+        "resampled_joint_states": 1599
+      },
+      "time_base": "simulation",
+      "pose": {
+        "z_mean": 0.28515470164617057,
+        "z_min": 0.28336524230251536,
+        "z_max": 0.2918182896967539,
+        "roll_range_deg": 1.2695403337660633,
+        "pitch_range_deg": 0.8532476121373265,
+        "yaw_drift_deg_per_s": -0.26230037579801935,
+        "dx_m": 0.07504992005501887,
+        "dx_per_s": 0.004699431437383775
+      },
+      "tracking": {
+        "speed_mean": 0.004657481289018562,
+        "lateral_speed_mean": 0.00042492812053579666,
+        "world_x_speed_mean": 0.004699431437383775,
+        "coordinate_frame": "body",
+        "error_abs": 0.004657481289018562,
+        "error_pct": 0.0,
+        "lateral_error_abs": 0.00042492812053579666,
+        "yaw_rate_mean": -0.004578005186893886,
+        "yaw_error_abs": 0.004578005186893886
+      },
+      "jitter": {
+        "hip": {
+          "mean_abs_ddq": 9.73508867900139,
+          "reversals_per_s": 15.018773466831261
+        },
+        "thigh": {
+          "mean_abs_ddq": 9.696702200317912,
+          "reversals_per_s": 11.608260325404995
+        },
+        "shank": {
+          "mean_abs_ddq": 13.926897637993758,
+          "reversals_per_s": 10.419274092614188
+        }
+      },
+      "periodicity": {
+        "period_s": 0.23500000000003674,
+        "freq_hz": 4.7033984533977184,
+        "score": 0.7288099923173776,
+        "FL_FR_phase_deg": 26.666666666666668,
+        "per_leg": {
+          "FL": {
+            "period_s": 0.2700000000000422,
+            "freq_hz": 3.7037037037031246,
+            "score": 0.6894530024744431
+          },
+          "FR": {
+            "period_s": 0.28000000000004377,
+            "freq_hz": 3.571428571428013,
+            "score": 0.718185411739288
+          },
+          "RL": {
+            "period_s": 0.13000000000002032,
+            "freq_hz": 7.69230769230649,
+            "score": 0.9001356073909433
+          },
+          "RR": {
+            "period_s": 0.26000000000004064,
+            "freq_hz": 3.846153846153245,
+            "score": 0.6074659476648362
+          }
+        }
+      }
+    }
+  ],
+  "default_gui_launch": {
+    "launch_alive": true,
+    "spawn_success": true,
+    "controllers_loaded": true,
+    "log": "/tmp/imgo2_default_startup.log",
+    "software_gl": true,
+    "uses_default_urdf_and_master": true
+  },
+  "limits": "GUI process remained alive with software GL; screen content and hardware GL were not inspected. Tests stopped and ports 11345/11369 released."
+}

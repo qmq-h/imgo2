@@ -1,0 +1,446 @@
+{
+  "training": {
+    "path": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+    "sha256": "a9b62f8b3a81e17dba83c1d2ab6302a2707f81e6b75f61b7fd5d60142ee49754",
+    "mass_total": 12.956409839999997,
+    "inertias": [
+      {
+        "link": "base",
+        "mass": 5.5339402,
+        "principal_inertias": [
+          0.03866859649134493,
+          0.10411418315961422,
+          0.12554154034904078
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00048620598896707465,
+          0.000577715334597741,
+          0.0009099651964351846
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008488712906692443,
+          0.0054974451752430415,
+          0.005801082534087713
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00048620598896707465,
+          0.000577715334597741,
+          0.0009099651964351846
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008478239337608918,
+          0.005515547582324469,
+          0.005784027483914639
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00047389245285101207,
+          0.0005777135494645714,
+          0.0009099361176844165
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008488712906692443,
+          0.0054974451752430415,
+          0.005801082534087713
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00047389245285101207,
+          0.0005777135494645714,
+          0.0009099361176844165
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008478239337608918,
+          0.005515547582324469,
+          0.005784027483914639
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      }
+    ]
+  },
+  "gazebo": {
+    "path": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.gazebo.urdf",
+    "sha256": "a28a0078ceb59d7fff23c740d3e7b27b19eb99a314ce1abfc65dec0527ca958a",
+    "mass_total": 12.966409839999997,
+    "inertias": [
+      {
+        "link": "base",
+        "mass": 5.5339402,
+        "principal_inertias": [
+          0.03866859649134493,
+          0.10411418315961422,
+          0.12554154034904078
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00048620598896707465,
+          0.000577715334597741,
+          0.0009099651964351846
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008488712906692443,
+          0.0054974451752430415,
+          0.005801082534087713
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FL_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00048620598896707465,
+          0.000577715334597741,
+          0.0009099651964351846
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008478239337608918,
+          0.005515547582324469,
+          0.005784027483914639
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "FR_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00047389245285101207,
+          0.0005777135494645714,
+          0.0009099361176844165
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008488712906692443,
+          0.0054974451752430415,
+          0.005801082534087713
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RL_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_HIP",
+        "mass": 0.66,
+        "principal_inertias": [
+          0.00047389245285101207,
+          0.0005777135494645714,
+          0.0009099361176844165
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_THIGH",
+        "mass": 1.044,
+        "principal_inertias": [
+          0.0008478239337608918,
+          0.005515547582324469,
+          0.005784027483914639
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_SHANK",
+        "mass": 0.09561741,
+        "principal_inertias": [
+          1.062658229497403e-05,
+          0.0005441318971630541,
+          0.000551461520541972
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "RR_FOOT",
+        "mass": 0.056,
+        "principal_inertias": [
+          9.6e-06,
+          9.6e-06,
+          9.6e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      },
+      {
+        "link": "base_imu",
+        "mass": 0.01,
+        "principal_inertias": [
+          1e-06,
+          1e-06,
+          1e-06
+        ],
+        "positive_definite": true,
+        "triangle_inequality": true,
+        "positive_mass": true
+      }
+    ]
+  },
+  "common_link_count": 17,
+  "link_differences": [],
+  "joint_differences": [],
+  "missing_links": [],
+  "extra_links": [
+    "base_imu"
+  ],
+  "invalid_inertias": [],
+  "passed": true,
+  "limits": "URDF consistency/physical validity only; does not verify server USD cache or identify real hardware inertia."
+}

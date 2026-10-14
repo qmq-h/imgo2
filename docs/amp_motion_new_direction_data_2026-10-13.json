@@ -1,0 +1,509 @@
+{
+  "clips": [
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.3.txt",
+      "sha256": "375f338e0cadc6dd5c316cd013fcc8a592ba80421586833e04c9dd0ef20c1e57",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.2886372581364633,
+        -1.0301785781372785e-06,
+        -0.006502720528240716
+      ],
+      "mean_stored_linear_velocity": [
+        -0.28845861184834026,
+        -0.00010898191717914785,
+        -0.007095097130408863
+      ],
+      "mean_stored_angular_velocity": [
+        0.000717432992771979,
+        -0.004824872472467396,
+        7.695899965508219e-05
+      ],
+      "linear_velocity_body_rmse": 0.002305496400652188,
+      "linear_velocity_world_rmse": 0.163722430684702
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.6.txt",
+      "sha256": "71ddda8e7ce312496127fc26f7d07d3f7f5c02cda74117165d12a99ef29ca0ac",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.5831178554723669,
+        0.0004177123130311904,
+        -0.0188803245304574
+      ],
+      "mean_stored_linear_velocity": [
+        -0.5830024251249729,
+        0.0002014869321023184,
+        -0.02034991703077906
+      ],
+      "mean_stored_angular_velocity": [
+        0.002267855978794108,
+        -0.0006251438913918295,
+        -0.00012573097535672516
+      ],
+      "linear_velocity_body_rmse": 0.004758472209085651,
+      "linear_velocity_world_rmse": 0.342802559783476
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.9.txt",
+      "sha256": "64f693afcc8011f6a8227ec1f5392598689b0c2301748c4af910df49b9ffc566",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.893473533055434,
+        -0.0003929251260500948,
+        -0.02698011070409036
+      ],
+      "mean_stored_linear_velocity": [
+        -0.8931273498798872,
+        -0.0005156604045055068,
+        -0.02693334443931845
+      ],
+      "mean_stored_angular_velocity": [
+        0.0018477834950872485,
+        0.0005429794341503669,
+        -7.718079486286893e-05
+      ],
+      "linear_velocity_body_rmse": 0.009160362009083023,
+      "linear_velocity_world_rmse": 0.5405707512495523
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_1.0.txt",
+      "sha256": "3e4cceb95121998728e3eca32a036d22f10422ce5c75868c5bfebfb7ea3ef3a9",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.9794074085229717,
+        0.0008862984336434348,
+        -0.027169071515663414
+      ],
+      "mean_stored_linear_velocity": [
+        -0.9799020108217064,
+        0.0010863513759832187,
+        -0.02589568122484763
+      ],
+      "mean_stored_angular_velocity": [
+        0.0029551238460123887,
+        0.0007223473649102366,
+        5.157155841216769e-05
+      ],
+      "linear_velocity_body_rmse": 0.01051738450139619,
+      "linear_velocity_world_rmse": 0.6137329180493112
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_left_0.5.txt",
+      "sha256": "42e42fe72b0d6761908ede6f7e9672807efd590093de8c2b4465a93e7788655b",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.48912675805859357,
+        0.013149168941676207,
+        -0.013497052800804514
+      ],
+      "mean_stored_linear_velocity": [
+        -0.48828188804704964,
+        0.015683203264894623,
+        -0.013464835031147954
+      ],
+      "mean_stored_angular_velocity": [
+        -0.014367144025353384,
+        0.002238331929135278,
+        0.5000876098952938
+      ],
+      "linear_velocity_body_rmse": 0.005148562755937884,
+      "linear_velocity_world_rmse": 0.715927347633883
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_right_0.5.txt",
+      "sha256": "4b7ec0d303682d93e7ca0a32be7c90a13abb2aae161da8b6e0276187301dfd3c",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        -0.4885483385892133,
+        -0.014568869354667347,
+        -0.013493090842885871
+      ],
+      "mean_stored_linear_velocity": [
+        -0.488883453698513,
+        -0.017408190059443027,
+        -0.01421289764716427
+      ],
+      "mean_stored_angular_velocity": [
+        0.017034934555033812,
+        -0.0008145619284057899,
+        -0.49969189573288697
+      ],
+      "linear_velocity_body_rmse": 0.00576494095931512,
+      "linear_velocity_world_rmse": 0.7158521262809396
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.3.txt",
+      "sha256": "eb70f77a8164d509ad8b204ff07d97071b73e5ddfbd8388ca6af9635e71ab847",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.3082171690346324,
+        -0.0004022520543613336,
+        -5.678345427192028e-05
+      ],
+      "mean_stored_linear_velocity": [
+        0.30836855909317523,
+        -0.0003660514748423192,
+        0.00014283571199258355
+      ],
+      "mean_stored_angular_velocity": [
+        0.0017886868728956332,
+        0.0012563490424071125,
+        -0.00022262558814963544
+      ],
+      "linear_velocity_body_rmse": 0.001932894914363784,
+      "linear_velocity_world_rmse": 0.13237451848250614
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.6.txt",
+      "sha256": "8ed29a4536b0c18df310f850f9badf7b84f80f1ba9de1ba03971e284b56549b2",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.6165715033263305,
+        0.00010648072445187639,
+        -0.007390827523174147
+      ],
+      "mean_stored_linear_velocity": [
+        0.6168160123756843,
+        2.5527854619360253e-05,
+        -0.007807987281342778
+      ],
+      "mean_stored_angular_velocity": [
+        0.00035350963540186936,
+        -0.0018737698684948383,
+        -0.0049604495187620294
+      ],
+      "linear_velocity_body_rmse": 0.004460298884099706,
+      "linear_velocity_world_rmse": 0.027225772416525337
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.9.txt",
+      "sha256": "221fdc7ea2e344259995c2df97278eb6ba98b96ef97f0c1268bd67e62b49f817",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.8905939797330878,
+        -0.003450853124849112,
+        -0.026573293164284285
+      ],
+      "mean_stored_linear_velocity": [
+        0.8909226140612982,
+        -0.003709218111201629,
+        -0.026832314533237266
+      ],
+      "mean_stored_angular_velocity": [
+        0.0017258631077411899,
+        0.00021813815078323653,
+        0.00024342385462324957
+      ],
+      "linear_velocity_body_rmse": 0.006267756187953674,
+      "linear_velocity_world_rmse": 0.4149596857953757
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_1.0.txt",
+      "sha256": "8cf221f7ef6ac82c9f650ec3d76adfc3eff355dcd86509038e7eed956541f462",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.9795396925310217,
+        -0.002772683613302303,
+        -0.03741785864841591
+      ],
+      "mean_stored_linear_velocity": [
+        0.978816068015751,
+        -0.0029361821319623164,
+        -0.036919083716288645
+      ],
+      "mean_stored_angular_velocity": [
+        0.0009480633710127062,
+        0.009049448533796524,
+        -0.0006252936427595266
+      ],
+      "linear_velocity_body_rmse": 0.004950387045183943,
+      "linear_velocity_world_rmse": 0.5142620828922794
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_left_0.5.txt",
+      "sha256": "e0056c8df424e6e2d472809d89977b9a6f861c54d31777554b23b599a28d07d0",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.5118626405465349,
+        -0.014844664613505235,
+        -0.003949314331656243
+      ],
+      "mean_stored_linear_velocity": [
+        0.5126198562726875,
+        -0.01752939259129189,
+        -0.004503928421177157
+      ],
+      "mean_stored_angular_velocity": [
+        0.002316207588442637,
+        0.0018903176151969744,
+        0.5001318996070373
+      ],
+      "linear_velocity_body_rmse": 0.004485340854344518,
+      "linear_velocity_world_rmse": 0.7432009808134356
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_right_0.5.txt",
+      "sha256": "48f28cad8d2325e5d57afede6b4bc1cef94179095b66da347f5a172a23ddd6d4",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.5128672509853697,
+        0.015068282582631773,
+        -0.0036516924451454684
+      ],
+      "mean_stored_linear_velocity": [
+        0.5122682690934555,
+        0.0177273882992422,
+        -0.003709964742831025
+      ],
+      "mean_stored_angular_velocity": [
+        -0.008528234665649883,
+        0.0015701366415156706,
+        -0.4994959202231572
+      ],
+      "linear_velocity_body_rmse": 0.004057738435714452,
+      "linear_velocity_world_rmse": 0.7447004068529192
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.3.txt",
+      "sha256": "48914775aa55a8bf81344a8c8ac5497a4628f56ca5e54413a81dcb948e0e1877",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.01019620816410432,
+        0.29808773872465016,
+        -0.0028655099286311317
+      ],
+      "mean_stored_linear_velocity": [
+        0.010366898215208633,
+        0.2979419812457148,
+        -0.0028368040934526806
+      ],
+      "mean_stored_angular_velocity": [
+        0.0032132865954507964,
+        0.00037709289697160044,
+        -0.001291628316195789
+      ],
+      "linear_velocity_body_rmse": 0.0036966578498432066,
+      "linear_velocity_world_rmse": 0.18995803055131152
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.4.txt",
+      "sha256": "b5a914ea8d06e2cbf5254c7fc4b92990de42de9534dc4bcc786e4ae966dd8e54",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.011565690312226571,
+        0.3999427997568379,
+        -0.004713640111946886
+      ],
+      "mean_stored_linear_velocity": [
+        0.011750812576022455,
+        0.39984718891625326,
+        -0.005246956638575225
+      ],
+      "mean_stored_angular_velocity": [
+        -0.0042167293417942776,
+        0.00016438983261382413,
+        -0.0004982727050453158
+      ],
+      "linear_velocity_body_rmse": 0.0036373750884722586,
+      "linear_velocity_world_rmse": 0.21526047671947246
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.3.txt",
+      "sha256": "dab7b41e1fd6673b121669b73bd4a67349fda466b4870d18614d8d25ac28c4f1",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.009558348338220288,
+        -0.29887835912721833,
+        -0.0024333132290503766
+      ],
+      "mean_stored_linear_velocity": [
+        0.00959186811284121,
+        -0.29888460008030976,
+        -0.002465465223214625
+      ],
+      "mean_stored_angular_velocity": [
+        -0.0033334487246564327,
+        0.0005366707762009806,
+        0.0009500839224711634
+      ],
+      "linear_velocity_body_rmse": 0.0031409340806220014,
+      "linear_velocity_world_rmse": 0.20091233088138807
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.4.txt",
+      "sha256": "5484118c4e47f30455513504569a1ee716dada752a76e6ce0ed3b360849656c7",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.012378323148281117,
+        -0.4001216958189008,
+        -0.004383474856220519
+      ],
+      "mean_stored_linear_velocity": [
+        0.012359113351009783,
+        -0.40033808368768387,
+        -0.003991549491015603
+      ],
+      "mean_stored_angular_velocity": [
+        -0.00375887092521352,
+        4.5731928360833655e-05,
+        0.00014182376765340136
+      ],
+      "linear_velocity_body_rmse": 0.002812505198314693,
+      "linear_velocity_world_rmse": 0.22452339913981356
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_stance.txt",
+      "sha256": "8c32cfcf7ed4273ccd41b29aeac80ee74552057edc52e25e3b3608ee132dc54b",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.00041134075663741993,
+        5.404092627140793e-07,
+        1.1161089108529534e-06
+      ],
+      "mean_stored_linear_velocity": [
+        0.0005044714595045905,
+        -4.583768885066012e-06,
+        -0.0002112282526570117
+      ],
+      "mean_stored_angular_velocity": [
+        0.00018778514817547148,
+        0.0006173743797326667,
+        2.8337066272004726e-05
+      ],
+      "linear_velocity_body_rmse": 0.0002542363280754555,
+      "linear_velocity_world_rmse": 0.00025398921156031233
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_0.5.txt",
+      "sha256": "22372dcf2e03642236e0bc7831f431019caeb02f1e9d4fe365d5d6d69e35e8e5",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.008166139198251538,
+        0.0005230062670115164,
+        0.0001458389161037544
+      ],
+      "mean_stored_linear_velocity": [
+        0.008935056351555542,
+        0.000455303592857951,
+        -0.00037680471891900376
+      ],
+      "mean_stored_angular_velocity": [
+        -0.005087602038648677,
+        -3.068421835733084e-05,
+        0.49979307219365615
+      ],
+      "linear_velocity_body_rmse": 0.0019934991346042133,
+      "linear_velocity_world_rmse": 0.0244249512669315
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_1.0.txt",
+      "sha256": "64122c674d2c15ca771b8c9232a047ddf269b08f285bab10e492ce1aba30b451",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.009259495205358119,
+        0.0017911351706197322,
+        0.00016577202193956614
+      ],
+      "mean_stored_linear_velocity": [
+        0.010762535365402743,
+        0.0016859408806059477,
+        -0.00026024527748059215
+      ],
+      "mean_stored_angular_velocity": [
+        -0.007867258872455313,
+        0.0016778469983216423,
+        0.999625922900947
+      ],
+      "linear_velocity_body_rmse": 0.0020073104937424345,
+      "linear_velocity_world_rmse": 0.03150186123245842
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_0.5.txt",
+      "sha256": "4b3afd405dbc08150495f28b2ec66baeb3c51437b81d900d8d97d09f2c52626a",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.009167133149898183,
+        -0.0019172666043661604,
+        0.0001891307950067039
+      ],
+      "mean_stored_linear_velocity": [
+        0.008604228281947431,
+        -0.0019106720270640023,
+        -3.3772747793832005e-05
+      ],
+      "mean_stored_angular_velocity": [
+        0.004014682454911316,
+        -0.0008242382579710879,
+        -0.499721284486871
+      ],
+      "linear_velocity_body_rmse": 0.0010993559026339693,
+      "linear_velocity_world_rmse": 0.024476707495282423
+    },
+    {
+      "file": "/home/tommy0929/Documents/imgo2/imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_1.0.txt",
+      "sha256": "76e5bd8afb78b8e3cc4092904ed0b266aee4515f941b38a59463a351043779e9",
+      "frames": 600,
+      "dt": 0.02,
+      "weight": 1.0,
+      "mean_pose_derived_body_velocity": [
+        0.011340109850793844,
+        -0.002421037131449767,
+        0.00021673078492779688
+      ],
+      "mean_stored_linear_velocity": [
+        0.010053009422898206,
+        -0.002346396982506224,
+        -3.7328592935495535e-05
+      ],
+      "mean_stored_angular_velocity": [
+        0.01095494746524538,
+        0.0027263827836540126,
+        -1.0004155466480893
+      ],
+      "linear_velocity_body_rmse": 0.003490621092605594,
+      "linear_velocity_world_rmse": 0.03216296609249676
+    }
+  ],
+  "limits": "Root pose differences use nominal FrameDuration; this cannot verify original ROS stamps or all recording labels."
+}

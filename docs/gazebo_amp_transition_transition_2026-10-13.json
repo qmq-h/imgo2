@@ -1,0 +1,62 @@
+[
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_transition/backward/transient.json",
+    "first_policy_target_jump_rad": 0.0036482810974121094,
+    "first_policy_kp_change": -0.9800033569335938,
+    "max_target_step_first_half_second_rad": 0.3537120819091797,
+    "peak_joint_velocity_first_second": 8.535004615783691,
+    "peak_feedback_effort_first_second": 17.02101707458496,
+    "first_second_z_min": 0.2743097132898187,
+    "stable_raw_action_boundary_fraction": 0.0,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "backward"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_transition/backward_turn/transient.json",
+    "first_policy_target_jump_rad": 0.009224534034729004,
+    "first_policy_kp_change": -0.9800033569335938,
+    "max_target_step_first_half_second_rad": 0.2812685966491699,
+    "peak_joint_velocity_first_second": 12.327234268188477,
+    "peak_feedback_effort_first_second": 22.32452964782715,
+    "first_second_z_min": 0.2800692118917055,
+    "stable_raw_action_boundary_fraction": 0.0,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "backward_turn"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_transition/forward/transient.json",
+    "first_policy_target_jump_rad": 0.006231069564819336,
+    "first_policy_kp_change": -0.9800033569335938,
+    "max_target_step_first_half_second_rad": 0.4928293228149414,
+    "peak_joint_velocity_first_second": 18.764829635620117,
+    "peak_feedback_effort_first_second": 23.700000762939453,
+    "first_second_z_min": 0.2771730815035819,
+    "stable_raw_action_boundary_fraction": 0.0007228044813877846,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "forward"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_transition/stand/transient.json",
+    "first_policy_target_jump_rad": 0.003440558910369873,
+    "first_policy_kp_change": -1.1773300170898438,
+    "max_target_step_first_half_second_rad": 0.09867620468139648,
+    "peak_joint_velocity_first_second": 6.851052761077881,
+    "peak_feedback_effort_first_second": 15.531205177307129,
+    "first_second_z_min": 0.2656193459920967,
+    "stable_raw_action_boundary_fraction": 0.0,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "stand"
+  },
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_transition/turn_fast/transient.json",
+    "first_policy_target_jump_rad": 0.014097213745117188,
+    "first_policy_kp_change": -0.799468994140625,
+    "max_target_step_first_half_second_rad": 0.6917808055877686,
+    "peak_joint_velocity_first_second": 10.588273048400879,
+    "peak_feedback_effort_first_second": 23.495155334472656,
+    "first_second_z_min": 0.27797945733284035,
+    "stable_raw_action_boundary_fraction": 0.0035877954655089243,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps.",
+    "case": "turn_fast"
+  }
+]

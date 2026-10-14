@@ -1,0 +1,306 @@
+[
+  {
+    "case": "turn_left",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/turn_left",
+    "vx_cmd": 0.0,
+    "vy_cmd": 0.0,
+    "wz_cmd": 0.5,
+    "samples": {
+      "odom": 1598,
+      "joint_states": 15983,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.28461130318131145,
+      "z_min": 0.27651947353959416,
+      "z_max": 0.29071044543950486,
+      "roll_range_deg": 6.075464943917953,
+      "pitch_range_deg": 4.270353337605883,
+      "yaw_drift_deg_per_s": 26.37275589213482,
+      "dx_m": 0.02833763400151873,
+      "dx_per_s": 0.001774429179807059
+    },
+    "tracking": {
+      "speed_mean": 0.020405155917759252,
+      "lateral_speed_mean": -0.03312603409245706,
+      "world_x_speed_mean": 0.001774429179807059,
+      "coordinate_frame": "body",
+      "error_abs": 0.020405155917759252,
+      "error_pct": 0.0,
+      "lateral_error_abs": 0.03312603409245706,
+      "yaw_rate_mean": 0.4602914231424871,
+      "yaw_error_abs": 0.03970857685751289
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 35.919854173846794,
+        "reversals_per_s": 17.14643304129899
+      },
+      "thigh": {
+        "mean_abs_ddq": 26.221259113469046,
+        "reversals_per_s": 15.378598247807398
+      },
+      "shank": {
+        "mean_abs_ddq": 39.15731777340139,
+        "reversals_per_s": 15.675844806005099
+      }
+    },
+    "periodicity": {
+      "period_s": 0.47750000000007464,
+      "freq_hz": 2.5191139505651696,
+      "score": 0.24206627108306278,
+      "FL_FR_phase_deg": 11.612903225806452,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.31000000000004846,
+          "freq_hz": 3.225806451612399,
+          "score": 0.4001143873615401
+        },
+        "FR": {
+          "period_s": 0.42000000000006565,
+          "freq_hz": 2.380952380952009,
+          "score": 0.22173898993521757
+        },
+        "RL": {
+          "period_s": 0.3000000000000469,
+          "freq_hz": 3.333333333332812,
+          "score": 0.16618289568186867
+        },
+        "RR": {
+          "period_s": 0.8800000000001376,
+          "freq_hz": 1.1363636363634588,
+          "score": 0.18022881135362476
+        }
+      }
+    }
+  },
+  {
+    "case": "turn_right",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/turn_right",
+    "vx_cmd": 0.0,
+    "vy_cmd": 0.0,
+    "wz_cmd": -0.5,
+    "samples": {
+      "odom": 1599,
+      "joint_states": 15989,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.28519152700505046,
+      "z_min": 0.2789318548194681,
+      "z_max": 0.2985078694349574,
+      "roll_range_deg": 7.136650524141981,
+      "pitch_range_deg": 8.764238419855358,
+      "yaw_drift_deg_per_s": -27.738539363794523,
+      "dx_m": -0.050168940772732346,
+      "dx_per_s": -0.003139483152236067
+    },
+    "tracking": {
+      "speed_mean": 0.03311746809185925,
+      "lateral_speed_mean": 0.013041913412201584,
+      "world_x_speed_mean": -0.003139483152236067,
+      "coordinate_frame": "body",
+      "error_abs": 0.03311746809185925,
+      "error_pct": 0.0,
+      "lateral_error_abs": 0.013041913412201584,
+      "yaw_rate_mean": -0.4841288415922676,
+      "yaw_error_abs": 0.0158711584077324
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 35.59733657695288,
+        "reversals_per_s": 18.804755944928264
+      },
+      "thigh": {
+        "mean_abs_ddq": 32.192155346225036,
+        "reversals_per_s": 18.804755944928264
+      },
+      "shank": {
+        "mean_abs_ddq": 51.08844300760349,
+        "reversals_per_s": 18.241551939922093
+      }
+    },
+    "periodicity": {
+      "period_s": 0.2766666666667099,
+      "freq_hz": 4.722597784576695,
+      "score": 0.36618939155289115,
+      "FL_FR_phase_deg": NaN,
+      "per_leg": {
+        "FL": {
+          "period_s": NaN,
+          "freq_hz": NaN,
+          "score": NaN
+        },
+        "FR": {
+          "period_s": 0.13000000000002032,
+          "freq_hz": 7.69230769230649,
+          "score": 0.6956009819898133
+        },
+        "RL": {
+          "period_s": 0.47000000000007347,
+          "freq_hz": 2.1276595744677524,
+          "score": 0.16452220333904788
+        },
+        "RR": {
+          "period_s": 0.23000000000003595,
+          "freq_hz": 4.347826086955842,
+          "score": 0.23844498932981226
+        }
+      }
+    }
+  },
+  {
+    "case": "forward_04",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/forward_04",
+    "vx_cmd": 0.4,
+    "vy_cmd": 0.0,
+    "wz_cmd": 0.0,
+    "samples": {
+      "odom": 1599,
+      "joint_states": 15986,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.2854969256631513,
+      "z_min": 0.27928809206588046,
+      "z_max": 0.292436978707002,
+      "roll_range_deg": 4.512506153928761,
+      "pitch_range_deg": 5.277066526194907,
+      "yaw_drift_deg_per_s": 0.2115185907561471,
+      "dx_m": 6.140588681763091,
+      "dx_per_s": 0.3842671265183411
+    },
+    "tracking": {
+      "speed_mean": 0.3843830736361468,
+      "lateral_speed_mean": -0.002790573489161231,
+      "world_x_speed_mean": 0.3842671265183411,
+      "coordinate_frame": "body",
+      "error_abs": 0.0156169263638532,
+      "error_pct": 3.9042315909633003,
+      "lateral_error_abs": 0.002790573489161231,
+      "yaw_rate_mean": 0.0036916958378732092,
+      "yaw_error_abs": 0.0036916958378732092
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 19.602952218390463,
+        "reversals_per_s": 18.679599499371346
+      },
+      "thigh": {
+        "mean_abs_ddq": 48.16101499708341,
+        "reversals_per_s": 8.588861076344111
+      },
+      "shank": {
+        "mean_abs_ddq": 85.79905108534946,
+        "reversals_per_s": 14.549436795992756
+      }
+    },
+    "periodicity": {
+      "period_s": 0.2975000000000465,
+      "freq_hz": 3.3620689655167157,
+      "score": 0.6140436809139167,
+      "FL_FR_phase_deg": 132.0,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.3000000000000469,
+          "freq_hz": 3.333333333332812,
+          "score": 0.6022242001255957
+        },
+        "FR": {
+          "period_s": 0.3000000000000469,
+          "freq_hz": 3.333333333332812,
+          "score": 0.5962956752163608
+        },
+        "RL": {
+          "period_s": 0.29000000000004533,
+          "freq_hz": 3.4482758620684266,
+          "score": 0.6327897732216855
+        },
+        "RR": {
+          "period_s": 0.3000000000000469,
+          "freq_hz": 3.333333333332812,
+          "score": 0.6248650750920248
+        }
+      }
+    }
+  },
+  {
+    "case": "backward_04",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_target_clip/backward_04",
+    "vx_cmd": -0.4,
+    "vy_cmd": 0.0,
+    "wz_cmd": 0.0,
+    "samples": {
+      "odom": 1598,
+      "joint_states": 15983,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.285416823082854,
+      "z_min": 0.2806147839941619,
+      "z_max": 0.29003354030941564,
+      "roll_range_deg": 3.954103082142222,
+      "pitch_range_deg": 3.8780109101510525,
+      "yaw_drift_deg_per_s": -3.6960946826792216,
+      "dx_m": -2.3319590690352445,
+      "dx_per_s": -0.14602123162399777
+    },
+    "tracking": {
+      "speed_mean": -0.21838274333867194,
+      "lateral_speed_mean": -0.013645037587764216,
+      "world_x_speed_mean": -0.14602123162399777,
+      "coordinate_frame": "body",
+      "error_abs": 0.18161725666132808,
+      "error_pct": 45.40431416533202,
+      "lateral_error_abs": 0.013645037587764216,
+      "yaw_rate_mean": -0.06450902167820745,
+      "yaw_error_abs": 0.06450902167820745
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 19.44110853039723,
+        "reversals_per_s": 20.416145181473727
+      },
+      "thigh": {
+        "mean_abs_ddq": 53.3434257027349,
+        "reversals_per_s": 11.78035043804576
+      },
+      "shank": {
+        "mean_abs_ddq": 29.650227462766356,
+        "reversals_per_s": 14.612015018771235
+      }
+    },
+    "periodicity": {
+      "period_s": 0.3300000000000516,
+      "freq_hz": 3.0303030303025564,
+      "score": 0.4837961832466229,
+      "FL_FR_phase_deg": -87.27272727272727,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.3300000000000516,
+          "freq_hz": 3.0303030303025564,
+          "score": 0.3319292449251977
+        },
+        "FR": {
+          "period_s": 0.3300000000000516,
+          "freq_hz": 3.0303030303025564,
+          "score": 0.69553245246664
+        },
+        "RL": {
+          "period_s": 0.3300000000000516,
+          "freq_hz": 3.0303030303025564,
+          "score": 0.4552313737509547
+        },
+        "RR": {
+          "period_s": 0.3300000000000516,
+          "freq_hz": 3.0303030303025564,
+          "score": 0.4524916618436991
+        }
+      }
+    }
+  }
+]

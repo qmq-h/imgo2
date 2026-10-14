@@ -1,0 +1,102 @@
+{
+  "task": "Imgo2-basemove-flat-amp-height-play",
+  "policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-09-24_00-57-38_xiaoji_real1/exported/policy.pt",
+  "control_dt": 0.02,
+  "steps": 900,
+  "warmup_steps": 200,
+  "domain_randomization_disabled": [],
+  "cases": [
+    {
+      "case": "stand",
+      "command": [
+        0,
+        0,
+        0
+      ],
+      "mean_vx": -0.010046302293402342,
+      "mean_vy": 0.0002854835706031216,
+      "mean_wz": 0.008431760645596245,
+      "mean_z": 0.29959338975804195,
+      "min_z": 0.2960452139377594,
+      "episode_resets": 0,
+      "per_foot": {
+        "FL_FOOT": {
+          "min_m": -0.00980310034642835,
+          "p95_m": 1.3337290241314179e-05,
+          "p99_m": 0.00011853981061592402,
+          "max_m": 0.003797743594749388,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9914285714285714,
+          "raw_landing_count": 55,
+          "qualified_landings_air_at_least_20ms": 2,
+          "completed_air_time_mean_s": 0.04499626159667969,
+          "landing_median_period_s": 10.120000000000001,
+          "landing_frequency_hz": 0.09881422924901184
+        },
+        "FR_FOOT": {
+          "min_m": -0.010296784431086874,
+          "p95_m": 0.0006679809773438195,
+          "p99_m": 0.003658503677358318,
+          "max_m": 0.007813594676021732,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9514285714285714,
+          "raw_landing_count": 103,
+          "qualified_landings_air_at_least_20ms": 13,
+          "completed_air_time_mean_s": 0.02884534689096304,
+          "landing_median_period_s": 0.7999999999999998,
+          "landing_frequency_hz": 1.2500000000000002
+        },
+        "RL_FOOT": {
+          "min_m": -0.00997568429140824,
+          "p95_m": -5.532350859794104e-06,
+          "p99_m": 4.174448595689062e-05,
+          "max_m": 0.0003097597289170931,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9985714285714286,
+          "raw_landing_count": 18,
+          "qualified_landings_air_at_least_20ms": 0,
+          "completed_air_time_mean_s": null,
+          "landing_median_period_s": null,
+          "landing_frequency_hz": null
+        },
+        "RR_FOOT": {
+          "min_m": -0.005428744062457316,
+          "p95_m": 3.8539884348467704e-05,
+          "p99_m": 0.0022233618225643926,
+          "max_m": 0.00500076022600162,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null,
+          "contact_fraction": 0.9742857142857143,
+          "raw_landing_count": 61,
+          "qualified_landings_air_at_least_20ms": 2,
+          "completed_air_time_mean_s": 0.032497406005859375,
+          "landing_median_period_s": 6.340000000000002,
+          "landing_frequency_hz": 0.15772870662460564
+        }
+      }
+    }
+  ],
+  "limits": "One environment per command; current local URDF and nominal startup physics. Not an exact engine A/B. No training/export.",
+  "foot_limits": "Geometry uses FOOT collision primitives relative to a flat plane; contacts are actual force>1N. Landing periods exclude air-time<20ms chatter; one environment per command.",
+  "policy_sha256": "21e7ae53091f83ffc62eb465fd2db413acd3e063db51353db4d71b81fee77a29",
+  "identity_note": "Explicit original exported path; verified original checkpoint actor equality; SHA added in follow-up audit."
+}

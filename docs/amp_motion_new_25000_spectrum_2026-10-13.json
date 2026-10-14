@@ -1,0 +1,140 @@
+{
+  "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/forward/stable.json": {
+    "raw_sha256": "ebbc35a8e3be48993b5322da31345d5ac92ada658a96f5edf3e0910debcb0cbd",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.8326933894884226,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.759766,
+          3.417969,
+          3.125
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.863049384838943,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.710937,
+          3.417969,
+          4.003906
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.26000000000004064,
+        "autocorr_score": 0.87386929975001,
+        "autocorr_frequency_hz": 3.846153846153245,
+        "fft_top_peaks_hz": [
+          3.759766,
+          3.417969,
+          4.003906
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.2700000000000422,
+        "autocorr_score": 0.8457795373551287,
+        "autocorr_frequency_hz": 3.7037037037031246,
+        "fft_top_peaks_hz": [
+          3.759766,
+          3.417969,
+          4.003906
+        ]
+      }
+    }
+  },
+  "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/backward/stable.json": {
+    "raw_sha256": "8c8e97e3d5150af976e8564b2f8b54b58a016eba040232f4cfa41f609a231600",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.3300000000000516,
+        "autocorr_score": 0.3276466479297105,
+        "autocorr_frequency_hz": 3.0303030303025564,
+        "fft_top_peaks_hz": [
+          6.005859,
+          2.050781,
+          2.636719
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.3300000000000516,
+        "autocorr_score": 0.47013651965511355,
+        "autocorr_frequency_hz": 3.0303030303025564,
+        "fft_top_peaks_hz": [
+          6.005859,
+          2.490234,
+          3.515625
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.3300000000000516,
+        "autocorr_score": 0.34522353855958654,
+        "autocorr_frequency_hz": 3.0303030303025564,
+        "fft_top_peaks_hz": [
+          6.005859,
+          2.929687,
+          1.171875
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.3300000000000516,
+        "autocorr_score": 0.38093222580825087,
+        "autocorr_frequency_hz": 3.0303030303025564,
+        "fft_top_peaks_hz": [
+          6.005859,
+          2.929687,
+          2.636719
+        ]
+      }
+    }
+  },
+  "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline_high/backward_turn/stable.json": {
+    "raw_sha256": "d566750f63f0f6ed4a6568837a42fedc88dfccc9d29a8388349cb19dbfa0c584",
+    "sample_dt_s": 0.010000000000001563,
+    "per_leg": {
+      "FL": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.6631776134925771,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.152344,
+          1.025391,
+          5.859375
+        ]
+      },
+      "FR": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.17693305686491995,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.152344,
+          3.125,
+          2.832031
+        ]
+      },
+      "RL": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.33622808743637267,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.152344,
+          2.832031,
+          3.125
+        ]
+      },
+      "RR": {
+        "autocorr_period_s": 0.160000000000025,
+        "autocorr_score": 0.316243121413128,
+        "autocorr_frequency_hz": 6.249999999999023,
+        "fft_top_peaks_hz": [
+          6.152344,
+          3.125,
+          6.25
+        ]
+      }
+    }
+  }
+}

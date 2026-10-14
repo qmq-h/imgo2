@@ -1,0 +1,13 @@
+[
+  {
+    "path": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_standing_postclip/stand/transient.json",
+    "first_policy_target_jump_rad": 0.15774083137512207,
+    "first_policy_kp_change": -35.0,
+    "max_target_step_first_half_second_rad": 0.4340388774871826,
+    "peak_joint_velocity_first_second": 2.7623958587646484,
+    "peak_feedback_effort_first_second": 17.48860740661621,
+    "first_second_z_min": 0.2678183932979202,
+    "stable_raw_action_boundary_fraction": 0.0,
+    "limits": "Boundary fraction inferred from transmitted targets; not exact unclipped network output. Commands/feedback use wall timestamps; pose rows use simulation stamps."
+  }
+]

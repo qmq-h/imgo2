@@ -1,0 +1,94 @@
+{
+  "task": "Imgo2-basemove-flat-amp-height-play",
+  "control_dt": 0.02,
+  "steps": 900,
+  "warmup_steps": 200,
+  "domain_randomization_disabled": [],
+  "cases": [
+    {
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mean_vx": -0.0003330955076281888,
+      "mean_vy": 0.000975944401626683,
+      "mean_wz": -0.0022149120207593243,
+      "mean_z": 0.2967699620979173,
+      "min_z": 0.2869485020637512,
+      "episode_resets": 0
+    },
+    {
+      "case": "forward",
+      "command": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "mean_vx": 0.36424089636121476,
+      "mean_vy": -0.005069665741123442,
+      "mean_wz": 0.008044495317943594,
+      "mean_z": 0.300942545235157,
+      "min_z": 0.2923954725265503,
+      "episode_resets": 0
+    },
+    {
+      "case": "backward",
+      "command": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "mean_vx": -0.3165823448023626,
+      "mean_vy": -0.0049873439338989555,
+      "mean_wz": -0.04655570633518177,
+      "mean_z": 0.3004195859176772,
+      "min_z": 0.29492536187171936,
+      "episode_resets": 0
+    },
+    {
+      "case": "turn_fast",
+      "command": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mean_vx": 0.02564672358230122,
+      "mean_vy": 0.03793065666470544,
+      "mean_wz": 0.9523318640674864,
+      "mean_z": 0.29652649815593446,
+      "min_z": 0.2909606099128723,
+      "episode_resets": 0
+    },
+    {
+      "case": "backward_turn",
+      "command": [
+        -0.5,
+        0.0,
+        0.5
+      ],
+      "mean_vx": -0.3227270479500294,
+      "mean_vy": -0.011062308799508693,
+      "mean_wz": 0.4221553592613366,
+      "mean_z": 0.3002926197222301,
+      "min_z": 0.29502010345458984,
+      "episode_resets": 0
+    },
+    {
+      "case": "backward_fast",
+      "command": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "mean_vx": -0.8353857168981007,
+      "mean_vy": -9.395105107354799e-05,
+      "mean_wz": -0.03214149255239006,
+      "mean_z": 0.3074982080715043,
+      "min_z": 0.29899781942367554,
+      "episode_resets": 0
+    }
+  ],
+  "limits": "Native deterministic actor check in current local URDF; not an exact engine A/B. No training/export or checkpoint changes."
+}

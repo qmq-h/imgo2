@@ -1,0 +1,81 @@
+[
+  {
+    "case": "stand",
+    "log_dir": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_standing_postclip/stand",
+    "vx_cmd": 0.0,
+    "vy_cmd": 0.0,
+    "wz_cmd": 0.0,
+    "samples": {
+      "odom": 1598,
+      "joint_states": 15985,
+      "resampled_joint_states": 1599
+    },
+    "time_base": "simulation",
+    "pose": {
+      "z_mean": 0.2857841451645181,
+      "z_min": 0.28334946746386275,
+      "z_max": 0.28931015759912243,
+      "roll_range_deg": 1.0334112835330334,
+      "pitch_range_deg": 0.7311267508442567,
+      "yaw_drift_deg_per_s": 0.5784994294431823,
+      "dx_m": 0.10525584369789714,
+      "dx_per_s": 0.006590848071252169
+    },
+    "tracking": {
+      "speed_mean": 0.006522395980442306,
+      "lateral_speed_mean": -0.0016337564270649178,
+      "world_x_speed_mean": 0.006590848071252169,
+      "coordinate_frame": "body",
+      "error_abs": 0.006522395980442306,
+      "error_pct": 0.0,
+      "lateral_error_abs": 0.0016337564270649178,
+      "yaw_rate_mean": 0.010096719764692159,
+      "yaw_error_abs": 0.010096719764692159
+    },
+    "jitter": {
+      "hip": {
+        "mean_abs_ddq": 12.68354964034107,
+        "reversals_per_s": 16.082603254065134
+      },
+      "thigh": {
+        "mean_abs_ddq": 12.336668884004533,
+        "reversals_per_s": 14.971839799747405
+      },
+      "shank": {
+        "mean_abs_ddq": 18.839900180658407,
+        "reversals_per_s": 15.065707133915101
+      }
+    },
+    "periodicity": {
+      "period_s": 0.26250000000004103,
+      "freq_hz": 4.451566951566256,
+      "score": 0.5445353400505797,
+      "FL_FR_phase_deg": 80.0,
+      "per_leg": {
+        "FL": {
+          "period_s": 0.2700000000000422,
+          "freq_hz": 3.7037037037031246,
+          "score": 0.6036093629537858
+        },
+        "FR": {
+          "period_s": 0.26000000000004064,
+          "freq_hz": 3.846153846153245,
+          "score": 0.6374269814417252
+        },
+        "RL": {
+          "period_s": 0.13000000000002032,
+          "freq_hz": 7.69230769230649,
+          "score": 0.6713721535527292
+        },
+        "RR": {
+          "period_s": 0.39000000000006096,
+          "freq_hz": 2.5641025641021633,
+          "score": 0.26573286225407855
+        }
+      }
+    },
+    "tested_policy_sha256": "21e7ae53091f83ffc62eb465fd2db413acd3e063db51353db4d71b81fee77a29",
+    "tested_checkpoint": "xiaoji_real1/model_24000.pt",
+    "identity_note": "Default deployment was changed outside this audit before this standing test; actual actor trace matches the original export. Output folder is under new run for bookkeeping only."
+  }
+]

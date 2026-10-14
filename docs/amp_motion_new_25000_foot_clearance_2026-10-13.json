@@ -1,0 +1,230 @@
+[
+  {
+    "raw_file": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/forward/stable.json",
+    "urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+    "samples": 1597,
+    "duration_s": 15.960000000002411,
+    "per_foot": {
+      "FL": {
+        "min_m": -0.0004952226812874674,
+        "p95_m": 0.019189675033655557,
+        "p99_m": 0.024216160036501132,
+        "max_m": 0.029068666518903594,
+        "above_1cm_fraction": 0.18096430807764557,
+        "above_2cm_fraction": 0.035691922354414526,
+        "height_bouts_over_5mm": 59,
+        "height_bout_mean_peak_m": 0.018827299633246947,
+        "height_bout_mean_duration_s": 0.06677966101695941,
+        "height_bout_median_period_s": 0.2650000000000414
+      },
+      "FR": {
+        "min_m": -0.00039344848657041007,
+        "p95_m": 0.01964782233094896,
+        "p99_m": 0.02352354698168176,
+        "max_m": 0.026249256701451236,
+        "above_1cm_fraction": 0.2485911083281152,
+        "above_2cm_fraction": 0.045084533500313086,
+        "height_bouts_over_5mm": 60,
+        "height_bout_mean_peak_m": 0.018341218743047904,
+        "height_bout_mean_duration_s": 0.08750000000001311,
+        "height_bout_median_period_s": 0.26000000000004064
+      },
+      "RL": {
+        "min_m": -0.0007867224277104401,
+        "p95_m": 0.03116741389949672,
+        "p99_m": 0.03695617483588677,
+        "max_m": 0.04401913583606947,
+        "above_1cm_fraction": 0.32185347526612396,
+        "above_2cm_fraction": 0.21603005635566688,
+        "height_bouts_over_5mm": 60,
+        "height_bout_mean_peak_m": 0.03042487953378672,
+        "height_bout_mean_duration_s": 0.09783333333334807,
+        "height_bout_median_period_s": 0.2700000000000422
+      },
+      "RR": {
+        "min_m": -0.001040926799568246,
+        "p95_m": 0.02400766505260596,
+        "p99_m": 0.03000374820391274,
+        "max_m": 0.04338168749993459,
+        "above_1cm_fraction": 0.184721352536005,
+        "above_2cm_fraction": 0.09079524107701942,
+        "height_bouts_over_5mm": 59,
+        "height_bout_mean_peak_m": 0.025011437638078542,
+        "height_bout_mean_duration_s": 0.06220338983051796,
+        "height_bout_median_period_s": 0.2700000000000422
+      }
+    },
+    "limits": "Lowest primitive collision surface above z=0 flat ground; reconstructed at telemetry rate. 5mm bouts are geometric, not contact/air-time measurement."
+  },
+  {
+    "raw_file": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/backward/stable.json",
+    "urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+    "samples": 1597,
+    "duration_s": 15.960000000002248,
+    "per_foot": {
+      "FL": {
+        "min_m": -0.00044920207392884146,
+        "p95_m": 0.0016119455909303314,
+        "p99_m": 0.006900538737963068,
+        "max_m": 0.009875310861009241,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 2,
+        "height_bout_mean_peak_m": 0.008707818465127904,
+        "height_bout_mean_duration_s": 0.050000000000007816,
+        "height_bout_median_period_s": 7.87000000000123
+      },
+      "FR": {
+        "min_m": -0.00042203850821549704,
+        "p95_m": 0.00015708491589246695,
+        "p99_m": 0.002007372992319797,
+        "max_m": 0.004902356279124963,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 0,
+        "height_bout_mean_peak_m": null,
+        "height_bout_mean_duration_s": null,
+        "height_bout_median_period_s": null
+      },
+      "RL": {
+        "min_m": -0.0003037891800661968,
+        "p95_m": 0.0016891343193879307,
+        "p99_m": 0.004426648329798132,
+        "max_m": 0.006776601010263679,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 0,
+        "height_bout_mean_peak_m": null,
+        "height_bout_mean_duration_s": null,
+        "height_bout_median_period_s": null
+      },
+      "RR": {
+        "min_m": -0.0002305150537161016,
+        "p95_m": 0.0031812209630271942,
+        "p99_m": 0.006288333656250136,
+        "max_m": 0.012674817098353906,
+        "above_1cm_fraction": 0.001878522229179712,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 3,
+        "height_bout_mean_peak_m": 0.010105519241258956,
+        "height_bout_mean_duration_s": 0.056666666666675525,
+        "height_bout_median_period_s": 4.135000000000646
+      }
+    },
+    "limits": "Lowest primitive collision surface above z=0 flat ground; reconstructed at telemetry rate. 5mm bouts are geometric, not contact/air-time measurement."
+  },
+  {
+    "raw_file": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/turn_left/stable.json",
+    "urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+    "samples": 1598,
+    "duration_s": 15.970000000002482,
+    "per_foot": {
+      "FL": {
+        "min_m": -0.0002761070586761241,
+        "p95_m": 0.003470515550670442,
+        "p99_m": 0.009540846780548147,
+        "max_m": 0.014439302445484616,
+        "above_1cm_fraction": 0.00688360450563204,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 9,
+        "height_bout_mean_peak_m": 0.011596602526607075,
+        "height_bout_mean_duration_s": 0.04222222222222882,
+        "height_bout_median_period_s": 1.420000000000222
+      },
+      "FR": {
+        "min_m": -0.00036017144166976614,
+        "p95_m": 2.8886906606719216e-05,
+        "p99_m": 0.0008066922703574931,
+        "max_m": 0.004759399248573468,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 0,
+        "height_bout_mean_peak_m": null,
+        "height_bout_mean_duration_s": null,
+        "height_bout_median_period_s": null
+      },
+      "RL": {
+        "min_m": -0.00038153247013730796,
+        "p95_m": 0.0005760673460178949,
+        "p99_m": 0.005376258503766137,
+        "max_m": 0.010386999881735345,
+        "above_1cm_fraction": 0.0006257822277847309,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 1,
+        "height_bout_mean_peak_m": 0.010386999881735345,
+        "height_bout_mean_duration_s": 0.04000000000000625,
+        "height_bout_median_period_s": null
+      },
+      "RR": {
+        "min_m": -0.00022854779363275235,
+        "p95_m": 0.0044308707164180325,
+        "p99_m": 0.010357212428294016,
+        "max_m": 0.021951144926688766,
+        "above_1cm_fraction": 0.011264080100125156,
+        "above_2cm_fraction": 0.0006257822277847309,
+        "height_bouts_over_5mm": 9,
+        "height_bout_mean_peak_m": 0.013399516787919822,
+        "height_bout_mean_duration_s": 0.04555555555556268,
+        "height_bout_median_period_s": 1.5950000000002493
+      }
+    },
+    "limits": "Lowest primitive collision surface above z=0 flat ground; reconstructed at telemetry rate. 5mm bouts are geometric, not contact/air-time measurement."
+  },
+  {
+    "raw_file": "imgo2_rl/logs/amp_rsl_rl/base_move_amp_height/2026-10-13_00-35-21_motion_new_resume/gazebo_audit_2026-10-13_baseline/turn_right/stable.json",
+    "urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+    "samples": 1597,
+    "duration_s": 15.960000000002452,
+    "per_foot": {
+      "FL": {
+        "min_m": -0.0003152856540877928,
+        "p95_m": 0.0019120477292543724,
+        "p99_m": 0.008421848384833695,
+        "max_m": 0.016045112214401303,
+        "above_1cm_fraction": 0.006261740763932373,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 5,
+        "height_bout_mean_peak_m": 0.01143388686175349,
+        "height_bout_mean_duration_s": 0.04400000000000688,
+        "height_bout_median_period_s": 2.3450000000003666
+      },
+      "FR": {
+        "min_m": -0.0002550015428926834,
+        "p95_m": 0.003733571613750113,
+        "p99_m": 0.007386750001061967,
+        "max_m": 0.009336792242721957,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 2,
+        "height_bout_mean_peak_m": 0.009152227973123738,
+        "height_bout_mean_duration_s": 0.04000000000000625,
+        "height_bout_median_period_s": 1.4000000000002188
+      },
+      "RL": {
+        "min_m": -0.00022652338707117997,
+        "p95_m": 0.009907108963328437,
+        "p99_m": 0.017465420119473506,
+        "max_m": 0.02447967937292718,
+        "above_1cm_fraction": 0.048841577958672514,
+        "above_2cm_fraction": 0.003757044458359424,
+        "height_bouts_over_5mm": 25,
+        "height_bout_mean_peak_m": 0.015547804776961691,
+        "height_bout_mean_duration_s": 0.04840000000000757,
+        "height_bout_median_period_s": 0.5450000000000852
+      },
+      "RR": {
+        "min_m": -0.0003248073759187231,
+        "p95_m": 0.0001720823690357467,
+        "p99_m": 0.00390812917182227,
+        "max_m": 0.009703003264835836,
+        "above_1cm_fraction": 0.0,
+        "above_2cm_fraction": 0.0,
+        "height_bouts_over_5mm": 1,
+        "height_bout_mean_peak_m": 0.009703003264835836,
+        "height_bout_mean_duration_s": 0.04000000000000625,
+        "height_bout_median_period_s": null
+      }
+    },
+    "limits": "Lowest primitive collision surface above z=0 flat ground; reconstructed at telemetry rate. 5mm bouts are geometric, not contact/air-time measurement."
+  }
+]

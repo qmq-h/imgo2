@@ -40,10 +40,15 @@ def pitch_of(q):
     return math.asin(max(-1.0, min(1.0, 2 * (q.w * q.y - q.z * q.x))))
 
 class Eval(Node):
-    def __init__(self, vx, key=1, getup=True, sim_time=False):
+    def __init__(self, vx, key=1, getup=True, sim_time=False, vy=0.0, wz=0.0, diagnostics=False):
         super().__init__("eval_gazebo_policy")
         q = QoSProfile(depth=2000, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.vx = vx
+        self.vy = vy
+        self.wz = wz
+        self.commands = []
+        self.motor_feedback = []
+        self._last_motor_wall = 0.0
         # 策略按键与手柄组合：1 = PPO (RB+DPadUp)，2 = himloco (RB+DPadRight)，3 = amp (RB+DPadDown)
         # 见 imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp
         self.key = key
@@ -55,6 +60,10 @@ class Eval(Node):
         self.js = []        # (t, {name: (q, dq)})
         self.create_subscription(Odometry, "/odom", self.on_odom, q)
         self.create_subscription(JointState, "/joint_states", self.on_js, q)
+        if diagnostics:
+            from robot_msgs.msg import RobotCommand, RobotState
+            self.create_subscription(RobotCommand, "/robot_joint_controller/command", self.on_command, q)
+            self.create_subscription(RobotState, "/robot_joint_controller/state", self.on_motor, q)
         self.joy_pub = self.create_publisher(Joy, "/joy", 10)
         self.state = "passive"
         self.t0 = time.time()
@@ -78,6 +87,15 @@ class Eval(Node):
         j.axes = list(axes) + [0.0] * (8 - len(axes))
         self.joy_pub.publish(j)
 
+    def on_command(self, m):
+        self.commands.append((time.time(), [(x.q, x.dq, x.kp, x.kd, x.tau) for x in m.motor_command]))
+
+    def on_motor(self, m):
+        wall = time.time()
+        if wall - self._last_motor_wall >= 0.01:
+            self._last_motor_wall = wall
+            self.motor_feedback.append((wall, [(x.q, x.dq, x.tau_est) for x in m.motor_state]))
+
     def tick(self):
         """按时间推进按键序列：0~6s 起身(A)，6s 起按 --key 进策略并持续给 vx。"""
         el = time.time() - self.t0
@@ -94,6 +112,8 @@ class Eval(Node):
                     3: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0]}[self.key]
             axes = list(dpad)
             axes[1] = self.vx
+            axes[0] = self.vy
+            axes[3] = self.wz
             self.send_joy([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], axes)
 
 def autocorr_peak(sig, dt):
@@ -144,6 +164,8 @@ def phase_deg(sig_a, sig_b, dt):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vx", type=float, default=0.0)
+    ap.add_argument("--vy", type=float, default=0.0, help="Body lateral velocity command (m/s).")
+    ap.add_argument("--wz", type=float, default=0.0, help="Yaw velocity command (rad/s).")
     ap.add_argument("--key", type=int, default=1, choices=[1, 2, 3], help="1=PPO 2=himloco 3=amp")
     ap.add_argument("--no-getup", dest="getup", action="store_false",
                     help="跳过前 6s 的 A 起身。仅在已经处于策略状态时使用："
@@ -155,10 +177,11 @@ def main():
     ap.add_argument("--json", type=str, default=None)
     ap.add_argument("--sim-time", action="store_true", help="Use ROS message simulation timestamps and resample joints at 100 Hz.")
     ap.add_argument("--raw-json", type=str, default=None, help="Save stable-window pose and joint samples for offline review.")
+    ap.add_argument("--transient-json", type=str, default=None, help="Save the full startup/transition samples and motor commands/feedback.")
     a = ap.parse_args()
 
     rclpy.init()
-    n = Eval(a.vx, a.key, a.getup, a.sim_time)
+    n = Eval(a.vx, a.key, a.getup, a.sim_time, a.vy, a.wz, bool(a.transient_json))
     t_end = time.time() + a.duration
     while time.time() < t_end:
         n.tick()
@@ -166,9 +189,18 @@ def main():
 
     # 取稳定窗口
     t_start = getattr(n, "entry_time", n.t0) + a.skip
+    if a.transient_json:
+        with open(a.transient_json, "w") as f:
+            json.dump({"time_base": "simulation" if a.sim_time else "wall",
+                       "policy_entry_wall": getattr(n, "entry_time", None),
+                       "odom": n.odom, "odom_wall": n.odom_wall,
+                       "joint_states": n.js, "joint_wall": n.js_wall,
+                       "motor_commands_wall": n.commands,
+                       "motor_feedback_wall": n.motor_feedback}, f)
     od = [e for wall, e in zip(n.odom_wall, n.odom) if wall >= t_start]
     js = [e for wall, e in zip(n.js_wall, n.js) if wall >= t_start]
-    out = {"vx_cmd": a.vx, "samples": {"odom": len(od), "joint_states": len(js)}}
+    out = {"vx_cmd": a.vx, "vy_cmd": a.vy, "wz_cmd": a.wz,
+           "samples": {"odom": len(od), "joint_states": len(js)}}
     if len(od) < 20 or len(js) < 50:
         print("样本不足：确认 Gazebo 在跑、策略已进入（--key 指定）且 /odom、/joint_states 有数据")
         print(json.dumps(out, ensure_ascii=False)); rclpy.shutdown(); sys.exit(1)
@@ -236,7 +268,10 @@ def main():
         "world_x_speed_mean": dx / dt_pose,
         "coordinate_frame": "body",
         "error_abs": abs(forward_speed - a.vx),
-        "error_pct": (abs(forward_speed - a.vx) / a.vx * 100.0) if a.vx > 1e-6 else 0.0,
+        "error_pct": (abs(forward_speed - a.vx) / abs(a.vx) * 100.0) if abs(a.vx) > 1e-6 else 0.0,
+        "lateral_error_abs": abs(lateral_distance / dt_pose - a.vy),
+        "yaw_rate_mean": math.radians(out["pose"]["yaw_drift_deg_per_s"]),
+        "yaw_error_abs": abs(math.radians(out["pose"]["yaw_drift_deg_per_s"]) - a.wz),
     }
     # ---- 抖动：dq 相邻变化（角加速度量级）与换向率 ----
     dt_js = []
