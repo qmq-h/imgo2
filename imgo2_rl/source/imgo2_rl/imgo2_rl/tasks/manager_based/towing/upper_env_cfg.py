@@ -102,7 +102,7 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
     light = AssetBaseCfg(prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=2000))
     robot: ArticulationCfg = IMGO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     cart: ArticulationCfg = make_cart_cfg(_USD_CACHE)[0]
-    cart.init_state.pos = (-0.7564, 0.0, 0.18)
+    cart.init_state.pos = (-0.7564, 0.0, 0.13)   # 2026-10-17 新小车静置高度 0.10 + drop 0.03
     # 每个车体部件一个传感器，各自与**逐个列出的**机器人 body 过滤，避免把轮地接触算进碰撞。
     # filter 项必须每环境只匹配一个 prim，见 `_ROBOT_BODY_FILTERS` 的说明。
     cart_deck_robot_contacts = ContactSensorCfg(

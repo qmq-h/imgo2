@@ -161,21 +161,28 @@ RL_Sim::RL_Sim(int argc, char **argv)
 void RL_Sim::ConfigureCartMass()
 {
     const std::lock_guard<std::recursive_mutex> lock(sim->mtx);
-    // All masses and principal inertias scale together from the 10 kg URDF model.
-    const double scale = this->cart_mass_kg / 10.0;
-    for (const char* name : {"cart_base", "cart_wheel_fl", "cart_wheel_fr",
-                             "cart_wheel_rl", "cart_wheel_rr"})
+    // 2026-10-17 新小车：车斗（0.6x0.45x0.02）+ 四轮（6 cm，各 0.05 kg）质量固定，
+    // **只改车斗正中的重物块**；与训练侧 `assets/cart_mass.py` 同一口径。
+    // 车身/轮子不再按比例缩放——那样会把车斗也从 0.8 kg 拖走。
+    constexpr double deck_mass = 0.8;
+    constexpr double wheel_mass = 0.05;
+    constexpr double fixed_mass = deck_mass + 4.0 * wheel_mass;
+    constexpr double ballast_unit_inertia = 0.015;   // 0.3 m 立方体：m·(0.09+0.09)/12
+    const double ballast_mass = this->cart_mass_kg - fixed_mass;
+    if (ballast_mass <= 0.0)
     {
-        const int id = mj_name2id(this->mj_model, mjOBJ_BODY, name);
-        if (id < 0)
-        {
-            throw std::runtime_error(std::string("Towing scene missing cart body: ") + name);
-        }
-        this->mj_model->body_mass[id] *= scale;
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            this->mj_model->body_inertia[3 * id + axis] *= scale;
-        }
+        throw std::runtime_error("Cart total mass must exceed deck + wheels = " +
+                                 std::to_string(fixed_mass) + " kg");
+    }
+    const int id = mj_name2id(this->mj_model, mjOBJ_BODY, "cart_ballast");
+    if (id < 0)
+    {
+        throw std::runtime_error("Towing scene missing cart body: cart_ballast");
+    }
+    this->mj_model->body_mass[id] = ballast_mass;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        this->mj_model->body_inertia[3 * id + axis] = ballast_unit_inertia * ballast_mass;
     }
     mj_setConst(this->mj_model, this->mj_data);
     mj_forward(this->mj_model, this->mj_data);

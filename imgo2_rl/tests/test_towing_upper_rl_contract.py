@@ -1016,17 +1016,17 @@ class UpperLogicTests(unittest.TestCase):
 
         本测试只用仓库里既有的常量与网格（`connection_grid` + 源码 regex）复算，不重复硬编码；
         若日后改 `SLACK_RATIO` / 长度区间 / 挂点常量 / 死区，这里的数值会自动跟着变，
-        只有量级断言会提醒。⑥ 同时断言**阈值恒 > 0**（最短绳行 0.3646 − 0.02 = 0.3446 m）。
+        只有量级断言会提醒。⑥ 同时断言**阈值恒 > 0**（最短绳行 0.3366 − 0.02 = 0.3166 m）。
         """
         deadband_m, softness, delta_z, base_offset = _spawn_gap_constants()
         self.assertAlmostEqual(deadband_m, 0.02, places=12)
         self.assertAlmostEqual(softness, 0.02, places=12)
-        self.assertAlmostEqual(delta_z, 0.17, places=6)
+        self.assertAlmostEqual(delta_z, 0.22, places=6)
         self.assertAlmostEqual(base_offset, 0.0025, places=6)
         # ③ 逐行：绳行阈值 = 出生间隙 − 0.02（= 0.689–0.780·L）；杆行 = 0.905–0.968·L
-        for model_name, lo_ratio, hi_ratio in (("compliant", 0.68, 0.79),
-                                               ("inextensible", 0.68, 0.79),
-                                               ("rigid", 0.90, 0.97)):
+        for model_name, lo_ratio, hi_ratio in (("compliant", 0.62, 0.79),
+                                               ("inextensible", 0.62, 0.79),
+                                               ("rigid", 0.86, 0.97)):
             ratios = []
             for row in range(grid.ROWS):
                 length = grid.row_length(row, model_name)
@@ -1036,25 +1036,26 @@ class UpperLogicTests(unittest.TestCase):
                 self.assertAlmostEqual(threshold, gap - 0.02, places=12,
                                        msg=f"{model_name} row {row} 阈值 ≠ 出生间隙 − 0.02")
                 self.assertLess(threshold, gap, f"{model_name} row {row} 阈值未低于出生间隙")
-                # ⑥ 阈值恒 > 0（最短绳行 0.3646 − 0.02 = 0.3446）
+                # ⑥ 阈值恒 > 0（最短绳行 0.3366 − 0.02 = 0.3166）
                 self.assertGreater(threshold, 0.0)
             self.assertGreater(min(ratios), lo_ratio, f"{model_name} 阈值比低于预期区间")
             self.assertLess(max(ratios), hi_ratio, f"{model_name} 阈值比高于预期区间")
-            # 端点：绳 L=0.5 → 0.3446 m、L=1.5 → 1.1704 m；杆 L=0.5 → 0.4527 m、L=1.0 → 0.9679 m
+            # 端点（2026-10-17 新小车 Δz=0.22）：绳 L=0.5 → 0.3166 m、L=1.5 → 1.1622 m；
+            # 杆 L=0.5 → 0.4315 m、L=1.0 → 0.9580 m
             if model_name == "compliant":
                 self.assertAlmostEqual(
                     _spawn_gap("compliant", grid.ROPE_LENGTH_MIN_M, delta_z, base_offset) - deadband_m,
-                    0.3446, places=4)
+                    0.3166, places=4)
                 self.assertAlmostEqual(
                     _spawn_gap("compliant", grid.ROPE_LENGTH_MAX_M, delta_z, base_offset) - deadband_m,
-                    1.1704, places=4)
+                    1.1622, places=4)
             if model_name == "rigid":
                 self.assertAlmostEqual(
                     _spawn_gap("rigid", grid.RIGID_LENGTH_MIN_M, delta_z, base_offset) - deadband_m,
-                    0.4527, places=4)
+                    0.4315, places=4)
                 self.assertAlmostEqual(
                     _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, delta_z, base_offset) - deadband_m,
-                    0.9679, places=4)
+                    0.9580, places=4)
 
     def test_min_clearance_doc_table_matches_the_source_constants(self):
         """**文档表格与源码逐项一致**：`docs/towing/towing_reward_retune_2026-10-10.md` §2.2 的
@@ -1147,15 +1148,14 @@ class UpperLogicTests(unittest.TestCase):
         论证分三层：
 
         1. **恒等式**：连杆约束 `|p_robot_attach − p_cart_attach| = L`（`RigidLink` 的双边约束，
-           已由 `test_towing_rope_models` 等钉住），且 Δz = 出生值 0.17 m 时实际间隙 =
+           已由 `test_towing_rope_models` 等钉住），且 Δz = 出生值 0.22 m（2026-10-17 新小车）时实际间隙 =
            `sqrt(L² − Δz²) + base_offset` = 出生间隙 ⇒ 缺口 = `deadband_m = 0.02 m` > 0
            ⇒ `func` 精确为 0（逐行断言）；
-        2. **Δz 扫描**：间隙随 Δz 单调减。在出生值 ±0.04 m（即 `Δz ∈ [0.13, 0.21]`，已宽于
-           步态里 base 高度的变化）上全部 20 行的间隙仍高于阈值，最小余量 ≈ +0.0036 m
-           （出现在最短杆 L=0.5、Δz=0.21）；
+        2. **Δz 扫描**：间隙随 Δz 单调减。在出生值 ±0.02 m（即 `Δz ∈ [0.20, 0.24]`）上全部
+           20 行的间隙仍高于阈值（0.22 → 0.24 时最短杆余量仍 > 0）；
         3. **触发需要多大的 Δz**：解 `sqrt(L²−Δz²)+base_offset = 出生间隙 − deadband_m` 得
-           `Δz*(L=0.5) = 0.2175 m` … `Δz*(L=1.0) = 0.2606 m`，即最短杆要 Δz 比出生高差再大
-           **+0.0475 m**（杆越长要求越大）。
+           `Δz*(L=0.5) ≈ 0.257 m` … `Δz*(L=1.0) ≈ 0.295 m`，即最短杆要 Δz 比出生高差再大
+           **+0.037 m**（旧车 Δz=0.17 时是 +0.0475）——新小车挂点更低，余量随之变小。
 
         **口径变更的代价（必须记住）**：旧的 `spawn_margin = 0.85` 相对余量下，间隙恒比阈值大
         `0.15 × 间隙`（最短杆 +0.071 m）、Δz* 是 0.301/0.547 m（最短杆余量 +0.131 m）；
@@ -1172,9 +1172,9 @@ class UpperLogicTests(unittest.TestCase):
             # 1) 恒等式：连杆下间隙 == 出生间隙 ⇒ 缺口恒为 deadband_m > 0
             self.assertAlmostEqual(gap - threshold, deadband_m, places=12)
             self.assertGreater(gap - threshold, 0.0)
-            # 2) Δz 扫描：出生值 ±0.04 m（远宽于步态里 base 高度的变化）
+            # 2) Δz 扫描：出生值 ±0.02 m（新小车 Δz=0.22，再大就会接近触发点）
             for step in range(9):
-                swept = delta_z - 0.04 + 0.08 * step / 8.0
+                swept = delta_z - 0.02 + 0.04 * step / 8.0
                 if swept >= length:
                     continue
                 swept_gap = _spawn_gap("rigid", length, swept, base_offset)
@@ -1188,12 +1188,12 @@ class UpperLogicTests(unittest.TestCase):
                     low = middle
                 else:
                     high = middle
-            self.assertGreater(low - delta_z, 0.045,
+            self.assertGreater(low - delta_z, 0.030,
                                f"rigid row {row}（L={length:.3f}）只需 Δz 再大 "
                                f"{low - delta_z:.3f} m 就触发，余量不足")
             self.assertLess(low - delta_z, 0.10,
                             f"rigid row {row}（L={length:.3f}）Δz 余量 {low - delta_z:.3f} m "
-                            f"超出新口径的预期量级（绝对死区下应约 0.05–0.09 m）")
+                            f"超出新口径的预期量级（绝对死区下应约 0.04–0.09 m）")
         # L 上界（1.0 m）也核对一次：需要 Δz ≈ 0.26 m 才触发，仍不可达
         self.assertGreater(
             _spawn_gap("rigid", grid.RIGID_LENGTH_MAX_M, 0.21, base_offset),
@@ -1599,13 +1599,14 @@ class UpperLogicTests(unittest.TestCase):
             '"robot_y_range": (0.0, 0.0)',
             '"robot_yaw_range": (0.0, 0.0)',
             '"friction_range": (0.4, 1.2)',
-            '"wheel_damping_range": (0.008, 0.032)',
+            '"wheel_damping_range": (0.001125, 0.0045)',
             '"no_cart_fraction": 0.125',
             '"no_cart_lateral_offset": 2.0',
         ):
             self.assertIn(fragment, cfg)
-        self.assertIn("default_masses[ids_cpu] * scale[:, None]", mdp)
-        self.assertIn("default_inertias[ids_cpu] * scale[:, None, None]", mdp)
+        # 2026-10-17 新小车：只改重物块 ⇒ 直接写 base_link 的 mass/inertia/CoM（不再按比例缩放全部刚体）
+        self.assertIn("cart_mass.body_properties(", mdp)
+        self.assertIn("set_coms(all_coms, ids_cpu)", mdp)
         # 类型/长度来自确定性网格，不再是逐 env 随机采样
         self.assertIn("specs = [env_spec(index) for index in range(env.num_envs)]", mdp)
         self.assertNotIn("torch.randint(0, len(CONNECTION_MODELS)", mdp)

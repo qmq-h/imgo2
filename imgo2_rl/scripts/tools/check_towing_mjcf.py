@@ -31,7 +31,7 @@ def check() -> None:
     robot = ET.parse(DESCRIPTION / "mjcf/imgo2.xml").getroot()
     links = {link.get("name"): link for link in urdf.findall("link")}
     cart_bodies = {body.get("name"): body for body in cart.findall(".//body")}
-    expected_bodies = {"base_link": "cart_base", **{
+    expected_bodies = {"base_link": "cart_base", "ballast": "cart_ballast", **{
         f"wheel_{leg}": f"cart_wheel_{leg}" for leg in ("fl", "fr", "rl", "rr")
     }}
     total_mass = 0.0
@@ -44,15 +44,15 @@ def check() -> None:
         inertia = source.find("inertia")
         close(floats(target.get("diaginertia")), tuple(float(inertia.get(key))
               for key in ("ixx", "iyy", "izz")), mjcf_name + " inertia")
-        if urdf_name != "base_link":
+        if urdf_name.startswith("wheel_"):
             joint = urdf.find(f"joint[@name='{urdf_name}_joint']")
             close(floats(cart_bodies[mjcf_name].get("pos")),
                   floats(joint.find("origin").get("xyz")), mjcf_name + " origin")
             hinge = cart_bodies[mjcf_name].find("joint")
             close(floats(hinge.get("axis")), floats(joint.find("axis").get("xyz")),
                   mjcf_name + " axis")
-            close((float(hinge.get("damping")),), (0.016,), mjcf_name + " damping")
-    close((total_mass,), (10.0,), "nominal cart mass")
+            close((float(hinge.get("damping")),), (0.0045,), mjcf_name + " damping")
+    close((total_mass,), (3.0,), "nominal cart mass")
     close(floats(robot.find(".//site[@name='tow_robot']").get("pos")),
           (-0.16, 0.0, 0.0), "robot tow point")
     close(floats(cart.find(".//site[@name='tow_cart']").get("pos")),

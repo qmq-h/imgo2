@@ -728,7 +728,7 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     cart_wheel_body_names: tuple[str, ...] = (
         "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr")
     robot_attachment: tuple[float, float, float] = (-0.16, 0.0, 0.0)
-    cart_attachment: tuple[float, float, float] = (0.25, 0.0, 0.0)
+    cart_attachment: tuple[float, float, float] = (0.30, 0.0, 0.0)
     # 连接长度 L0（绳）/ L（刚体）与弹性绳的 k/c 都来自场景网格 `mdp/connection_grid.py`，
     # 逐 env 不同，不再是这里的标量配置。这里只留两类约束共用的回拉增益。
     rope_position_gain: float = 0.2
