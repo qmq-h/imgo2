@@ -7,6 +7,5 @@ from .towing_decoder import (
     DynamicsDecoderTrainer,
     TowingDynamicsDecoder,
     augment_actor_observation,
-    mass_supervision_weight,
     reset_gru_hidden,
 )

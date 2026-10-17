@@ -52,7 +52,8 @@ COMMAND_FIELDS = (
     ("upper_cmd_action_coast_mean", "STOP 后偏移头动作"),
     ("loco_cmd_vx_tow_mean_mps", "牵引段合成指令 vx"),
 )
-ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "mass_kg", "force_norm_n")
+#: 2026-10-16 契约 v4 起 decoder 不再输出质量 ⇒ 估算项只留这 3 个
+ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "force_norm_n")
 PHASES = ("station", "tow", "coast")
 
 

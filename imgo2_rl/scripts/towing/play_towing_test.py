@@ -20,7 +20,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   （参考量 = 冻结策略当拍输出），但**默认不进判定**（用户 2026-10-10 决定，见「判读与限制」；
   `--count-jnt` 可复现旧口径）。
 - **开（给了 checkpoint 路径）**：从训练侧联合 checkpoint 恢复 actor + dynamics decoder
-  （**v3 双头契约**：58 维 policy 帧 → 6 维显式估计 + 16 维 latent → 80 维 actor →
+  （**v4 双头契约**：58 维 policy 帧 → 5 维显式估计 + 16 维 latent → 79 维 actor →
   **13 维动作** = 1 维 vx 偏移 + 12 维关节残差），并按**训练侧的链路顺序**接线
   （`upper_mdp.HierarchicalVelocityAction`）：
 
@@ -57,7 +57,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   （同 `HierarchicalVelocityAction.apply_actions`）。`--upper-stochastic` 时用 actor 的分布
   采样（默认取均值，与 `towing/play.py` 的确定性口径一致）。
 - **契约校验（加载前硬校验，不匹配就抛错）**：`towing_contract` 必须精确等于
-  `{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
+  `{'version': 4, 'frame_dim': 58, 'explicit_dim': 5, 'latent_dim': 16}`；网络超参从注册的
   agent cfg（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`）建，然后
   `load_state_dict(strict=True)`。**旧 v2（帧 57 / actor 79 / 动作 12）与更早的 51/56/63 维
   checkpoint 会被拒绝**（`TowingCheckpointContractError`）。
@@ -71,7 +71,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
 
 - `--num-envs`（默认 800 = 训练网格全集 `connection_grid.GRID_SIZE` = 40 列 × 20 行，
   行距/列距由 `slope_geometry.ROW_SPACING_M` / `COLUMN_SPACING_M` 拼成一张连续地面）：
-  环境 `i` 的**连接类型 / 连接长度 / 坡度量级**直接取 `connection_grid.env_spec(i)`
+  环境 `i` 的**连接类型 / 连接长度 / 坡度量级**直接取 `connection_grid.env_spec(case.cell_index)`
+  （无 `--columns` 时它就是 `env_spec(i)`；过滤后 env i ↔ 过滤后第 i 条 lane）
   （row-major：列 = i % 40、行 = i // 40），与训练时逐 env 的分配**逐位一致**。
 - 地形 mesh、机器人与小车资产、五个「车体 vs 机器人」接触传感器、物理材质、重力
   （世界竖直）全部沿用训练配置；本脚本只覆盖**物理量标量**（地面摩擦、轮轴阻尼）与
@@ -316,14 +317,14 @@ TRAINING_WHEEL_DAMPING = 0.032
 #: 20 kg 仍在域内。`--dry-run` 的 plan 行与 `experiment.json.caveats` 会显式标出域外档位。
 TRAINING_MASS_RANGE_KG = (5.0, 20.0)
 
-# ---- 上层 checkpoint 契约 / 偏移头的离线镜像（v3 双头，TOW-21/TOW-26）----
+# ---- 上层 checkpoint 契约 / 偏移头的离线镜像（v4 双头，TOW-21/TOW-26）----
 #: `upper_policy_runtime` 顶部 import torch，而 `--dry-run`／`--help` 必须保持**纯标准库**可跑，
 #: 所以期望契约与偏移边界在这里重述一份；离线测试把每个字段与 `upper_policy_runtime` 的常量、
 #: `expected_towing_contract(UpperNetworkSpec())` 逐项交叉核对（两边漂移就报错），实跑时
 #: `experiment.json` 的 `towing_contract_expected` 还会被运行时的 spec 覆写。
-UPPER_CONTRACT_VERSION = 3
+UPPER_CONTRACT_VERSION = 4          # 2026-10-16：decoder 去质量 ⇒ explicit 6 → 5、actor 80 → 79
 UPPER_FRAME_DIM = 58               # = 3 + 13 + 3 + 3 + 12 + 12 + 12
-UPPER_EXPLICIT_DIM = 6
+UPPER_EXPLICIT_DIM = 5             # 机器人速度 2 + 牵引力 3（不再含质量）
 UPPER_LATENT_DIM = 16
 UPPER_CMD_ACTION_DIM = 1           # 动作第 1 维 = vx 偏移头（`upper_mdp.CMD_ACTION_DIM`）
 UPPER_JOINT_ACTION_DIM = 12        # 动作后 12 维 = 关节位置残差头
@@ -516,6 +517,8 @@ recording = _load_module(
 connection_grid = _load_module("connection_grid", MDP_DIR / "connection_grid.py")
 slope_geometry = _load_module("slope_geometry", MDP_DIR / "slope_geometry.py")
 rolling_geometry = _load_module("rolling_geometry", MDP_DIR / "rolling_geometry.py")
+speedbump_geometry = _load_module("speedbump_geometry", MDP_DIR / "speedbump_geometry.py")
+wave_geometry = _load_module("wave_geometry", MDP_DIR / "wave_geometry.py")
 # 回合相位几何（纯标准库）：只需它的 `SETTLE_TIME_S` —— 训练侧
 # `HierarchicalVelocityActionCfg.tow_start_s` 的默认值就是它，用来给偏移门控一个
 # **离线可打印**的期望阈值（实跑时仍以 `action_cfg.tow_start_s` 为准）。
@@ -554,7 +557,7 @@ EXTRA_FIELDS = (
     "velocity_cmd_vy_mps", "velocity_cmd_wz_radps",
     "lane_offset_m", "lane_heading_rad", "robot_vy_b_mps", "robot_wz_b_radps",
     "load_offset_m",
-    # 上层 v3 的指令侧诊断（2026-10-11 新增；**观测列，不进判据**）：
+    # 上层 v4 的指令侧诊断（2026-10-11 新增；**观测列，不进判据**）：
     #   `loco_cmd_vx_mps`     = **合成后**送冻结策略的 vx（= 任务指令 + 偏移，两层限幅之后；
     #                           基线路径下 ≡ 任务指令 ⇒ 两类产物同一列都有意义）
     #   `upper_offset_vx_mps` = 实际生效的偏移量（门控 + 两层限幅之后；基线恒 0）
@@ -755,7 +758,38 @@ def cart_present_for(index: int, no_cart_fraction: float) -> bool:
     return index % period != 0
 
 
-def build_env_cases(num_envs: int, velocities, cart_masses, *, no_cart_fraction: float = 0.0) -> list:
+def parse_columns(text) -> tuple:
+    """把 `"0-19"` / `"40-49,50"` 解析成列号元组（升序、去重、越界报错）。
+
+    `--columns` 用：按地形族挑列（平地 0–19、5° 20–29、10° 30–39、减速带 40–49、波浪 50–59）。
+    """
+    if text is None:
+        return ()
+    columns = set()
+    for chunk in str(text).replace(" ", "").split(","):
+        if not chunk:
+            continue
+        if "-" in chunk:
+            low_text, high_text = chunk.split("-", 1)
+            try:
+                low, high = int(low_text), int(high_text)
+            except ValueError:
+                raise SystemExit(f"--columns 段 {chunk!r} 不是 a-b 形式") from None
+        else:
+            try:
+                low = high = int(chunk)
+            except ValueError:
+                raise SystemExit(f"--columns 段 {chunk!r} 不是整数") from None
+        if low > high:
+            raise SystemExit(f"--columns 段 {chunk!r} 起点大于终点")
+        if low < 0 or high >= connection_grid.COLUMNS:
+            raise SystemExit(f"--columns 段 {chunk!r} 越界（0 ≤ 列 < {connection_grid.COLUMNS}）")
+        columns.update(range(low, high + 1))
+    return tuple(sorted(columns))
+
+
+def build_env_cases(num_envs: int, velocities, cart_masses, *, no_cart_fraction: float = 0.0,
+                    columns=None) -> list:
     """逐 env 的 `EnvCase` 列表：cell 参数取训练网格，工作条件取 `work_conditions`。
 
     env → cell 的映射用训练侧同一函数（`connection_grid.env_spec`，row-major：列 = i % 40、
@@ -763,9 +797,19 @@ def build_env_cases(num_envs: int, velocities, cart_masses, *, no_cart_fraction:
     是**同一条 lane、同一种连接、同一段长度、同一个坡度量级**。
     """
     conditions = work_conditions(num_envs, velocities, cart_masses)
+    selected = None
+    if columns:
+        # 只保留选定列（行优先顺序不变），env i ↔ 过滤后第 i 条 lane
+        allowed = set(int(column) for column in columns)
+        specs = [connection_grid.env_spec(index) for index in range(connection_grid.GRID_SIZE)]
+        selected = [spec for spec in specs if int(spec["column"]) in allowed]
+        if len(selected) < num_envs:
+            raise SystemExit(
+                f"--num-envs {num_envs} 超过选定列的 lane 总数 {len(selected)}"
+                f"（{len(allowed)} 列 × {connection_grid.ROWS} 行）")
     cases = []
     for index in range(num_envs):
-        spec = connection_grid.env_spec(index)
+        spec = selected[index] if selected else connection_grid.env_spec(index)
         velocity, mass = conditions[index]
         cases.append(EnvCase(
             env_index=index, cell_index=int(spec["grid_index"]), column=int(spec["column"]),
@@ -774,6 +818,24 @@ def build_env_cases(num_envs: int, velocities, cart_masses, *, no_cart_fraction:
             velocity_mps=velocity, cart_mass_kg=mass,
             cart_present=cart_present_for(index, no_cart_fraction)))
     return cases
+
+
+def case_specs(cases) -> list:
+    """每个 case 对应的网格 spec：按 `cell_index` 取，**不能按 env 序号**。
+
+    `connection_grid.env_spec(i)` 把 env 序号映射到 grid_index = i % GRID_SIZE；`--columns`
+    过滤后 env i ↔ 过滤后第 i 条 lane，用序号取会拿到别的 lane（坡度量级/连接类型/长度全错）。
+    """
+    return [connection_grid.env_spec(int(case.cell_index)) for case in cases]
+
+
+def case_tile_origins(origins_grid, cases) -> list:
+    """每个 case 的**世界原点**：取它自己那条 lane 的 (row, column) 地砖原点。
+
+    Isaac Lab 默认的 `scene.env_origins` 按 env 序号（i//COLUMNS, i%COLUMNS）分配；过滤列之后
+    必须显式覆盖，否则机器人会站在错误的 lane 上（地形是整张网格，地砖位置固定）。
+    """
+    return [origins_grid[int(case.row)][int(case.column)] for case in cases]
 
 
 def env_case_summary(cases) -> dict:
@@ -1578,8 +1640,9 @@ def stability_stats(rows, *, transition_window_s: float, record_dt: float,
 
 #: `--dump-latent` 汇总进 `metrics` 的阶段顺序（与记录行的 `phase` 一一对应）。
 DECODER_PHASES = ("station", "tow", "coast")
-#: `metrics["estimator"]["abs_err"]` 的四个量（与 decoder 的 6 维输出对齐）。
-DECODER_ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "mass_kg", "force_norm_n")
+#: `metrics["estimator"]["abs_err"]` 的三个量（与 decoder 的 **5 维**输出对齐；
+#: 2026-10-16 契约 v4 去掉质量——质量不再是 decoder 的输出，也不再有该项误差）。
+DECODER_ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "force_norm_n")
 
 
 def _decoder_observation(env_index, *, latent_sums, estimate_sums, gt_sums, abs_err,
@@ -2438,9 +2501,22 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="拖曳上层任务必要性：冻结 AMP 策略 + 脚本指令，直接跑训练场景的网格基线测试",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--policy", default="amp", help="冻结底层策略名（见 policy_cfg.POLICIES）")
+    parser.add_argument("--policy", default="amp",
+                        help="冻结底层策略名（见 policy_cfg.POLICIES：amp / ppo；两者的观测与动作"
+                             "接口相同，只有权重不同）")
+    parser.add_argument("--policy-checkpoint", type=Path, default=None,
+                        help="覆盖冻结低层的**权重文件**（TorchScript policy.pt；契约仍取 --policy）。"
+                             "用于试某个新 run 的 exported/policy.pt，而不动部署目录里的产物")
     parser.add_argument("--terrain-profile", choices=("hill", "rolling"), default="hill",
-                        help="hill=现有单坡包；rolling=平滑、不等宽的连续起伏")
+                        help="平滑段（平地/平坡列）的高度场：hill=单坡包（默认）、"
+                             "rolling=连续起伏；列 40–49 减速带块、列 50–59 波浪块始终在网格里，"
+                             "不受本开关影响")
+    parser.add_argument("--columns", default=None,
+                        help="只跑这些列（地形族）：\"0-19\" 平地、\"20-29\" 5°、\"30-39\" 10°、"
+                             "\"40-49\" 减速带、\"50-59\" 波浪；也接受逗号列表 \"40-49,50-59\"")
+    parser.add_argument("--stop-progress", type=float, default=None,
+                        help="逐 env **按里程**置零指令（m，沿 lane 的水平进度）：到达后该 env 的 phase "
+                             "变 coast、指令恒 0（训练侧 STOP 语义）；缺省 = 按 --tow-duration 时间停")
     parser.add_argument("--num-envs", type=int, default=DEFAULT_NUM_ENVS,
                         help=f"并行环境数（默认训练网格全集 {DEFAULT_NUM_ENVS} = 40 列 × 20 行；"
                              f"不是 {DEFAULT_NUM_ENVS} 的整数倍时只覆盖网格前缀，脚本会警告）")
@@ -2516,7 +2592,7 @@ def parse_args(argv=None):
                              "给了路径就打开上层网络：delta = clamp(action,±1)⊙action_scale，"
                              "held = 冻结策略关节目标 + delta 既下发又作为 JNT 指标参考")
     parser.add_argument("--dump-latent", action="store_true",
-                        help="把上层 decoder 的 16 维 latent 与 6 维显式估计**按 case/阶段汇总**写进 "
+                        help="把上层 decoder 的 16 维 latent 与 5 维显式估计**按 case/阶段汇总**写进 "
                              "report.json 的 metrics['latent'] / metrics['estimator']（观测，不进判据）；"
                              "需要同时给 --upper-checkpoint。latent 无法从 tow.csv 事后重建"
                              "（帧里的 last_action/last_loco_action/joint_vel 没记录），所以只能跑的时候存")
@@ -2617,8 +2693,16 @@ def parse_args(argv=None):
         reference_profile = (payload.get("arguments") or {}).get("terrain_profile", "hill")
         if reference_profile != args.terrain_profile:
             parser.error("--compare-report 地形剖面不同，不能标为同条件策略对照")
+    if args.stop_progress is not None:
+        if not math.isfinite(args.stop_progress) or args.stop_progress <= 0.0:
+            parser.error(f"--stop-progress 必须是有限正数，收到 {args.stop_progress!r}")
+        if args.tow_duration * min(args.velocities) < args.stop_progress:
+            parser.error(f"--tow-duration {args.tow_duration:g} s × 最慢速度 "
+                         f"{min(args.velocities):g} m/s 走不到 {args.stop_progress:g} m："
+                         f"至少给 {args.stop_progress / min(args.velocities):.1f} s")
     args.cases = build_env_cases(args.num_envs, args.velocities, args.cart_masses,
-                                 no_cart_fraction=args.no_cart_fraction)
+                                 no_cart_fraction=args.no_cart_fraction,
+                                 columns=parse_columns(args.columns))
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
                                   tow_duration=args.tow_duration,
                                   coast_duration=args.coast_duration, dt=args.dt)
@@ -2628,7 +2712,7 @@ def parse_args(argv=None):
 def upper_policy_record(args) -> dict:
     """`experiment.json.upper_policy` 段（纯逻辑：离线测试直接构造并逐字段核对）。
 
-    记的是**期望契约**（v3 双头：帧 58 / explicit 6 / latent 16 / 动作 13 = 1 维 vx 偏移 +
+    记的是**期望契约**（v4 双头：帧 58 / explicit 5 / latent 16 / 动作 13 = 1 维 vx 偏移 +
     12 维关节残差）与偏移头的**两层限幅 + 门控边界**。仿真路径（`main()`）会把
     `towing_contract` / `iter` / 维数 / `residual_scale` 覆写成**实际加载到**的值，并把
     `towing_contract_expected` 换成 `expected_towing_contract(upper.spec)`（从实际 spec 派生）；
@@ -2676,7 +2760,8 @@ def upper_policy_record(args) -> dict:
                 "合成后的指令送**冻结策略**得到冻结关节目标，再加 12 维残差 ⇒ held，"
                 "held 只在冻结策略刷新那一拍重算并下发（同训练侧 apply_actions），"
                 "既是下发目标也是 JNT 参考。加载前硬校验 towing_contract"
-                "（v3：帧 58 / explicit 6 / latent 16），旧 v2（帧 57 / actor 79 / 动作 12）"
+                "（v4：帧 58 / explicit 5 / latent 16），旧 v3（explicit 6 / actor 80）与 v2"
+                "（帧 57 / actor 79 / 动作 12）"
                 "与 56/63 维 checkpoint 会被拒绝。",
         "loaded": False,
     }
@@ -2689,7 +2774,18 @@ def planned_grid_lines(args) -> list:
     summary = env_case_summary(cases)
     recorded = schedule.total_steps // args.record_every
     lines = [
-        f"[plan] 地形剖面 = {getattr(args, 'terrain_profile', 'hill')}（rolling 为平滑起伏高度场）",
+        f"[plan] 地形剖面 = {getattr(args, 'terrain_profile', 'hill')}"
+        f"（平滑段高度场；减速带块列 40–49 与波浪块列 50–59 始终在网格里）",
+        f"[plan] 地形过滤 = `--columns {getattr(args, 'columns', None)}`"
+        f"（{len(getattr(args, 'cases', []))} 条 lane）；停车 = "
+        + (f"按里程 `--stop-progress {args.stop_progress:g} m`（逐 env 置零指令）"
+           if getattr(args, "stop_progress", None) is not None
+           else f"按时间 `--tow-duration {args.tow_duration:g} s`"),
+        f"[plan] 冻结低层 = **{getattr(args, 'policy', 'amp')}**"
+        + (f"（权重覆盖 `{getattr(args, 'policy_checkpoint', None)}`，"
+           f"契约仍取该名字的 45 维观测 / 12 维动作）"
+           if getattr(args, "policy_checkpoint", None) is not None else "")
+        + "；上层网络在下面单独一行",
         f"[plan] 场景 = **训练场景** `UpperTowingSceneCfg`：{NUM_COLUMNS} 列 × {NUM_ROWS} 行 = "
         f"{connection_grid.GRID_SIZE} 条 lane（env i 的连接/长度/坡度量级取 "
         f"`connection_grid.env_spec(i)`，与训练逐位一致）",
@@ -2766,7 +2862,7 @@ def planned_grid_lines(args) -> list:
     if args.upper_checkpoint is None:
         lines.append("[plan] 上层网络：**关闭**（基线；12 维关节位置残差恒 0、vx 偏移恒 0"
                      "（`loco_command` ≡ 任务指令）；JNT 参考 = 冻结策略当拍输出"
-                     "——与加开关之前逐位一致）；打开后按 **v3 双头**契约："
+                     "——与加开关之前逐位一致）；打开后按 **v4 双头**契约："
                      f"帧 {UPPER_FRAME_DIM} / 动作 {UPPER_ACTION_DIM}"
                      f"（{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差）、"
                      "offset 有界且门控（加 `--upper-checkpoint` 后打印完整边界/门控）")
@@ -2774,7 +2870,7 @@ def planned_grid_lines(args) -> list:
         lines.append(
             f"[plan] 上层网络：**开启**（checkpoint={args.upper_checkpoint}；"
             f"{'随机采样' if args.upper_stochastic else '确定性均值'}；"
-            f"契约 **v3 双头**：帧 {UPPER_FRAME_DIM} = loco_command 3 + last_action 13 "
+            f"契约 **v4 双头**：帧 {UPPER_FRAME_DIM} = loco_command 3 + last_action 13 "
             f"+ base_ang_vel 3 + projected_gravity 3 + last_loco_action 12 + joint_pos 12 "
             f"+ joint_vel 12，动作 {UPPER_ACTION_DIM} = "
             f"{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差；"
@@ -2791,7 +2887,7 @@ def planned_grid_lines(args) -> list:
             f"{max(1, int(round(UPPER_CONTROL_DT_S / args.dt)))} 物理步 = "
             f"{UPPER_CONTROL_DT_S:g} s = 训练侧 `upper_control_dt`）推理一次、"
             f"两次之间偏移与残差都不变；"
-            f"加载前硬校验 towing_contract：version=3 / frame_dim=58 / explicit_dim=6 / "
+            f"加载前硬校验 towing_contract：version=4 / frame_dim=58 / explicit_dim=5 / "
             f"latent_dim=16，**旧 v2（帧 57 / actor 79 / 动作 12）与 56/63 维 checkpoint "
             f"会被拒绝**）")
     if args.compare_report is not None:
@@ -2875,7 +2971,7 @@ def main(args):
                  "脚本指令的基线，**默认不加载**任何上层 checkpoint（可用 `--upper-checkpoint` "
                  "打开）"
                  if args.upper_checkpoint is None else
-                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：v3 双头动作 13 维"
+                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：v4 双头动作 13 维"
                  f"（1 维 vx 偏移 + 12 维关节残差）；偏移经两层限幅"
                  f"（[{UPPER_OFFSET_RANGE_MPS[0]:g}, {UPPER_OFFSET_RANGE_MPS[1]:g}] m/s → "
                  f"clamp 进 [{UPPER_AMP_VX_RANGE_MPS[0]:g}, {UPPER_AMP_VX_RANGE_MPS[1]:g}]）"
@@ -2951,34 +3047,62 @@ def main(args):
         from imgo2_rl.tasks.manager_based.towing.agents.upper_ppo_cfg import (
             UpperTowingPPORunnerCfg)
         from imgo2_rl.tasks.manager_based.towing.mdp.profile_torch import (
-            profile_height_tensor)
+            profile_height_tensor as hill_height_tensor)
+        from imgo2_rl.tasks.manager_based.towing.mdp.rolling_torch import (
+            profile_height_tensor as rolling_height_tensor)
         from imgo2_rl.tasks.manager_based.towing.mdp.resistance import viscous_resistance
         from imgo2_rl.tasks.manager_based.towing.mdp.rope import point_velocity
         from imgo2_rl.tasks.manager_based.towing.mdp.rope_model import (
             BodyProperties, MultiRopeModel, make_rope_model, world_inverse_inertia)
         from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
-            profile_slope_degrees as profile_slope_fn)
+            profile_slope_degrees as hill_slope_degrees)
         from imgo2_rl.tasks.manager_based.towing.upper_env_cfg import (
             UpperTowingEnvCfg, UpperTowingSceneCfg, UpperRollingTowingEnvCfg)
         from imgo2_rl.tasks.manager_based.towing.utils.low_level_policy import (
             FrozenLowLevelPolicy, parts_from_robot_state)
-        from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
+        from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import (
+            get_policy, with_model_path)
 
         policy_cfg = get_policy(args.policy)
+        if args.policy_checkpoint is not None:
+            # 只换权重、不换契约：观测布局/动作缩放/裁剪都仍按 --policy 的名字取。
+            # 部署目录里的 policy.pt 是已验收的产物，实验性试跑不应该覆盖它。
+            override = args.policy_checkpoint.expanduser().resolve()
+            policy_cfg = with_model_path(policy_cfg, override)
+            print(f"[info] 冻结低层权重**覆盖**：policy={args.policy} "
+                  f"→ {override}（契约仍为 {policy_cfg.num_observations} 维观测 / "
+                  f"{policy_cfg.num_joints} 维动作 / control_dt {policy_cfg.control_dt:g} s）",
+                  flush=True)
         num_envs = args.num_envs
         dt = args.dt
         record_dt = dt * args.record_every
 
         # ------------------------------------------------------------ 训练场景
+        # 2026-10-16：地面是**一张混合网格**（列 40–49 恒为减速带块，见 `mixed_geometry`），
+        # `--terrain-profile` 只决定前 40 列的平滑段用哪套高度场；所以这里要按列分派高度/坡度
+        # （下面两个包装把两族的签名统一成 (grade, x, y)）。
         training_cfg = UpperTowingEnvCfg()
-        scalar_profile = slope_geometry
+        smooth_profile = slope_geometry
         if args.terrain_profile == "rolling":
             training_cfg = UpperRollingTowingEnvCfg()
-            from imgo2_rl.tasks.manager_based.towing.mdp.rolling_torch import (
-                profile_height_tensor as rolling_height_tensor)
-            profile_height_tensor = rolling_height_tensor
-            scalar_profile = rolling_geometry
-            profile_slope_fn = rolling_geometry.profile_slope_degrees
+            smooth_profile = rolling_geometry
+        from imgo2_rl.tasks.manager_based.towing.mdp.speedbump_torch import (
+            profile_height_tensor as speedbump_height_tensor)
+        from imgo2_rl.tasks.manager_based.towing.mdp.wave_torch import (
+            profile_height_tensor as wave_height_tensor)
+
+        def smooth_height_tensor(grade, x, y=None):
+            """平滑段高度：hill 剖面与 y 无关（忽略 y），rolling 用二维版。"""
+            if args.terrain_profile == "rolling":
+                return rolling_height_tensor(grade, x, y)
+            return hill_height_tensor(grade, x)
+
+        def smooth_slope_fn(grade, x, y=0.0):
+            """平滑段局部坡度（deg）：hill 与 y 无关，rolling 依赖 y。"""
+            if args.terrain_profile == "rolling":
+                return rolling_geometry.profile_slope_degrees(grade, x, y)
+            return hill_slope_degrees(grade, x)
+
         action_cfg = training_cfg.actions.high_level_velocity
         # 偏移门控以**训练 cfg 的实际值**为准（`--dry-run`／加载前记的是离线镜像
         # `UPPER_GATE_AFTER_S = episode_geometry.SETTLE_TIME_S`，两者应当相等）。
@@ -3006,7 +3130,13 @@ def main(args):
         robot, cart = scene["robot"], scene["cart"]
         deck_sensor = scene[action_cfg.collision_sensor_names[0]]
         wheel_sensors = [scene[name] for name in action_cfg.collision_sensor_names[1:]]
-        origins = scene.env_origins
+        # env → lane 的**世界原点**按 case 的 (row, column) 取，而不是用 Isaac Lab 默认的
+        # `env_origins`（它按 env 序号 i//COLUMNS / i%COLUMNS 分配）。`--columns` 过滤后
+        # env i 不再对应第 i 块地砖，必须显式覆盖，否则机器人会站到错误的 lane 上。
+        # 无过滤时 case.row/column 就是 (i//COLUMNS, i%COLUMNS) ⇒ 与原来逐位一致。
+        terrain_origins = scene.terrain.terrain_origins
+        origins = torch.stack(case_tile_origins(terrain_origins, cases))
+        origins = origins.to(device=scene.env_origins.device, dtype=scene.env_origins.dtype)
         cart_model = read_cart_model(resolve_cart_path())
         dt = sim.get_physics_dt()
         if not math.isclose(dt, args.dt, rel_tol=1e-6):
@@ -3076,7 +3206,7 @@ def main(args):
         # ------------------------------------------------------------ 上层网络开关（默认关）
         # 关：`upper = None` ⇒ 主循环只走基线路径（残差与偏移都恒 0，与加开关之前逐位一致）。
         # 开：从 checkpoint 恢复 actor + decoder。网络超参从**注册的 agent cfg** 建，
-        # 加载前硬校验 `towing_contract`（v3：58/6/16；旧 v2 57/79 与 56/63 维 checkpoint 直接抛错）。
+        # 加载前硬校验 `towing_contract`（v4：58/5/16；旧 v3 58/6/16、v2 57/79 与 56/63 直接抛错）。
         upper = None
         if args.upper_checkpoint is not None:
             upper = UpperPolicyRuntime(
@@ -3145,7 +3275,7 @@ def main(args):
                       f"{AMP_VX_MAX:g}：开开关后合成 vx 一律裁进包络（训练侧同口径），"
                       f"基线轮不裁 ⇒ 这一档的两轮不可逐位对照。", flush=True)
 
-        # 相机：一次覆盖整张 40×20 网格（默认 800 环境时跨度约 230 m × 110 m）
+        # 相机：一次覆盖整张 60×20 网格（默认 1200 环境时跨度约 300 m × 360 m）
         centre = origins.mean(dim=0)
         extent = (origins.max(dim=0).values - origins.min(dim=0).values)
         span = max(float(extent.max()), 10.0)
@@ -3153,9 +3283,26 @@ def main(args):
                              0.9 * span), tuple(float(value) for value in centre))
 
         # ------------------------------------------------------------ 逐 env 参数
-        specs = [connection_grid.env_spec(index) for index in range(num_envs)]
+        # **按 case 的 cell_index 取 spec**，不能按 env 序号：`--columns` 过滤后 env i 不再
+        # 对应 `env_spec(i)`（env i ↔ 过滤后第 i 条 lane），按序号取会和 case 的坡度量级对不上。
+        specs = case_specs(cases)
         grade_deg = torch.tensor([float(case.grade_deg) for case in cases],
                                  dtype=torch.float32, device=args.device)
+        # 2026-10-16 混合网格：列 40–49 是减速带块、列 50–59 是波浪块（两者地形固定、与档位
+        # 无关），按列分派高度/坡度。
+        speedbump_mask = torch.tensor(
+            [connection_grid.is_speedbump(spec["column"]) for spec in specs],
+            dtype=torch.bool, device=args.device)
+        wave_mask = torch.tensor(
+            [connection_grid.is_wave(spec["column"]) for spec in specs],
+            dtype=torch.bool, device=args.device)
+
+        def surface_heights(progress, lateral):
+            """逐 env 的局部地面高度：平滑列 hill/rolling、减速带列梯形、波浪列正弦。"""
+            smooth = smooth_height_tensor(grade_deg, progress, lateral)
+            bump = speedbump_height_tensor(grade_deg, progress, lateral)
+            wave = wave_height_tensor(grade_deg, progress, lateral)
+            return torch.where(speedbump_mask, bump, torch.where(wave_mask, wave, smooth))
         if any(abs(float(spec["slope_degrees"]) - case.grade_deg) > 1e-9
                for spec, case in zip(specs, cases)):
             raise RuntimeError("case 的坡度量级与 env_spec 不一致（内部错误）")
@@ -3369,29 +3516,51 @@ def main(args):
         def pitch_offsets_for(progress, lateral):
             """逐 env 的局部坡度（rad）：相对剖面参考姿态的俯仰偏移。
 
-            只有 0/5/10 三个档位，所以按档位分组做（每组一次 torch 赋值），避免逐 env 标量
-            调用在 800 环境 × 440 个记录步上累计成几百万次 Python 调用。
+            档位只有 0/5/10（平坡列）、26.565（减速带列的梯形侧坡）与 15.603（波浪列的
+            正弦最大侧坡）几种，所以按
+            **(档位, 地形族)** 分组做（每组一次 torch 赋值），避免逐 env 标量调用在
+            1200 环境 × 440 个记录步上累计成几百万次 Python 调用。
             """
             offsets = torch.zeros_like(progress)
             for grade in torch.unique(grade_deg).tolist():
                 if float(grade) == 0.0:
                     continue
-                mask = grade_deg == grade
-                values = [math.radians(profile_slope_fn(grade, x))
-                          for x in progress[mask].tolist()]
-                if args.terrain_profile == "rolling":
-                    values = [math.radians(profile_slope_fn(grade, x, y))
-                              for x, y in zip(progress[mask].tolist(), lateral[mask].tolist())]
-                offsets[mask] = torch.tensor(values, dtype=torch.float32, device=args.device)
+                for family, slope_fn in (("smooth", smooth_slope_fn),
+                                         ("speedbump", speedbump_geometry.profile_slope_degrees),
+                                         ("wave", wave_geometry.profile_slope_degrees)):
+                    if family == "speedbump":
+                        family_mask = speedbump_mask
+                    elif family == "wave":
+                        family_mask = wave_mask
+                    else:
+                        family_mask = ~(speedbump_mask | wave_mask)
+                    mask = (grade_deg == grade) & family_mask
+                    if not bool(mask.any()):
+                        continue
+                    # 两个族的坡度都依赖 y（rolling 的横向起伏、减速带的横向收零），
+                    # hill 的平坦剖面也接受 y 参数，统一按三维传。
+                    values = [math.radians(slope_fn(grade, x, y)) for x, y in
+                              zip(progress[mask].tolist(), lateral[mask].tolist())]
+                    offsets[mask] = torch.tensor(values, dtype=torch.float32, device=args.device)
             return offsets
 
-        # 交叉核对：张量版剖面高度必须与训练侧标量版逐点一致（新的 15 m 剖面同样检查）
+        # 交叉核对：两族的张量版高度都必须与训练侧标量版逐点一致
+        xs = torch.linspace(0.0, 14.0, 29, device=args.device)
         for grade in (0.0, 5.0, 10.0):
-            xs = torch.linspace(0.0, 14.0, 29, device=args.device)
-            got = profile_height_tensor(torch.full_like(xs, grade), xs).tolist()
-            want = [scalar_profile.profile_height(grade, float(x)) for x in xs.tolist()]
+            got = smooth_height_tensor(torch.full_like(xs, grade), xs).tolist()
+            want = [smooth_profile.profile_height(grade, float(x)) for x in xs.tolist()]
             if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
-                raise RuntimeError(f"profile_height_tensor 与标量版不一致（档位 {grade:g}°）")
+                raise RuntimeError(f"平滑段张量高度与标量版不一致（档位 {grade:g}°）")
+        bump_grade = speedbump_geometry.RAMP_DEG
+        got = speedbump_height_tensor(torch.full_like(xs, bump_grade), xs).tolist()
+        want = [speedbump_geometry.profile_height(bump_grade, float(x)) for x in xs.tolist()]
+        if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
+            raise RuntimeError("减速带张量高度与标量版不一致")
+        wave_grade = wave_geometry.MAX_SLOPE_DEG
+        got = wave_height_tensor(torch.full_like(xs, wave_grade), xs).tolist()
+        want = [wave_geometry.profile_height(wave_grade, float(x)) for x in xs.tolist()]
+        if any(abs(a - b) > 1e-5 for a, b in zip(got, want)):
+            raise RuntimeError("波浪张量高度与标量版不一致")
 
         # 逐 env 的「是否拖车」掩码：无小车 env 的绳力、轮阻全部置 0（训练侧 `cart_present` 同义）。
         present = torch.tensor([1.0 if case.cart_present else 0.0 for case in cases],
@@ -3554,10 +3723,10 @@ def main(args):
                                       dtype=torch.float64, device=args.device)
             estimate_sums = torch.zeros(num_envs, 3, upper.spec.explicit_dim,
                                         dtype=torch.float64, device=args.device)
-            # 真值 4 项：vx / vy（机体系，与 decoder 输出同口径）、小车质量、绳张力标量
-            decoder_gt_sums = torch.zeros(num_envs, 3, 4, dtype=torch.float64, device=args.device)
-            # 同 4 项的 |估计 − 真值|（vx/vy/质量直接比；第 4 项比 ‖F_est‖ 对张力）
-            decoder_abs_err = torch.zeros(num_envs, 3, 4, dtype=torch.float64, device=args.device)
+            # 真值 3 项：vx / vy（机体系，与 decoder 输出同口径）、绳张力标量
+            decoder_gt_sums = torch.zeros(num_envs, 3, 3, dtype=torch.float64, device=args.device)
+            # 同 3 项的 |估计 − 真值|（vx/vy 直接比；第 3 项比 ‖F_est‖ 对张力）
+            decoder_abs_err = torch.zeros(num_envs, 3, 3, dtype=torch.float64, device=args.device)
             decoder_counts = torch.zeros(num_envs, 3, dtype=torch.float64, device=args.device)
         tangent_t = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float32, device=args.device)
         normal_t = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32, device=args.device)
@@ -3568,11 +3737,14 @@ def main(args):
               f"{len({case.length_m for case in cases})} 种连接长度、"
               f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
               f"重力 {gravity}（世界竖直）；上层网络"
-              f"{'**开启**（v3 双头：帧 58 / 动作 13）' if upper is not None else '关闭（基线，残差与偏移恒 0）'}",
+              f"{'**开启**（v4 双头：帧 58 / 动作 13）' if upper is not None else '关闭（基线，残差与偏移恒 0）'}",
               flush=True)
         started = time.time()
         # 进度打印节拍：全程约 20 行，够看出在走又不刷屏（长跑的黑盒问题见循环内的注释）。
         progress_every = max(1, args.schedule.total_steps // 20)
+        # 逐 env 的「已到 STOP 里程」掩码（`--stop-progress`）：置零后**粘住**，phase 记为 coast。
+        env_stopped = (torch.zeros(num_envs, dtype=torch.bool, device=args.device)
+                       if args.stop_progress is not None else None)
         for step in range(args.schedule.total_steps):
             phase = args.schedule.phase_of(step)
             step_in_phase = args.schedule.step_in_phase(step)
@@ -3583,6 +3755,8 @@ def main(args):
                     vx_command = velocities * shaped_command(
                         phase="tow", step_in_phase=step_in_phase, velocity=1.0,
                         shaping="ramp", ramp_time_s=args.ramp_time_s, dt=dt)
+                if env_stopped is not None:
+                    vx_command = vx_command * (~env_stopped).to(vx_command.dtype)
             else:
                 vx_command = torch.zeros_like(velocities)
             if upper is None:
@@ -3594,7 +3768,7 @@ def main(args):
                     loco_joint_targets = policy_step(command_tensor)
                     joint_targets = loco_joint_targets
             else:
-                # ---- 上层 v3 双头接线（开关开）----
+                # ---- 上层 v4 双头接线（开关开）----
                 # 1) 上层一拍：训练侧 20 Hz（每 `upper_control_decimation` 个物理步），
                 #    **与冻结策略的 `decimation` 步刷新独立**（训练里 `process_actions` 由 env
                 #    step 驱动、`apply_actions` 由每个物理步驱动 ⇒ tick 会落在两次刷新之间）。
@@ -3683,18 +3857,16 @@ def main(args):
                 estimate_sums[:, phase_index, :] += upper.last_estimate.to(torch.float64)
                 vx_gt = robot.data.root_lin_vel_b[:, 0].to(torch.float64)
                 vy_gt = robot.data.root_lin_vel_b[:, 1].to(torch.float64)
-                mass_gt = torch.tensor(actual_masses, dtype=torch.float64, device=args.device)
                 tension_gt = state.rope_tension.to(torch.float64)
                 estimate = upper.last_estimate.to(torch.float64)
+                # estimate = [vx, vy, Fx, Fy, Fz]（契约 v4）；力的模长与真值张力比。
                 force_est = torch.linalg.vector_norm(estimate[:, 2:5], dim=1)
                 decoder_gt_sums[:, phase_index, 0] += vx_gt
                 decoder_gt_sums[:, phase_index, 1] += vy_gt
-                decoder_gt_sums[:, phase_index, 2] += mass_gt
-                decoder_gt_sums[:, phase_index, 3] += tension_gt
+                decoder_gt_sums[:, phase_index, 2] += tension_gt
                 decoder_abs_err[:, phase_index, 0] += (estimate[:, 0] - vx_gt).abs()
                 decoder_abs_err[:, phase_index, 1] += (estimate[:, 1] - vy_gt).abs()
-                decoder_abs_err[:, phase_index, 2] += (estimate[:, 2] - mass_gt).abs()
-                decoder_abs_err[:, phase_index, 3] += (force_est - tension_gt).abs()
+                decoder_abs_err[:, phase_index, 2] += (force_est - tension_gt).abs()
                 decoder_counts[:, phase_index] += 1.0
             offsets_vx = recorded_offset_vx.tolist()
             cmd_actions = recorded_cmd_action.tolist()
@@ -3713,26 +3885,25 @@ def main(args):
             relative_load = cart.data.root_pos_w - origins
             progress_robot = (relative_robot * tangent_t).sum(dim=1)
             progress_load = (relative_load * tangent_t).sum(dim=1)
-            # 离面高度 = lane 系 z − 局部剖面高度（逐 env 的坡度量级参与；0° lane 恒 0）
+            # 离面高度 = lane 系 z − 局部地面高度（逐 env 的档位/地形族参与；平地列恒 0）
             height_robot = (relative_robot * normal_t).sum(dim=1)
             height_load = (relative_load * normal_t).sum(dim=1)
             if float(grade_deg.max()) > 0.0:
-                if args.terrain_profile == "rolling":
-                    height_robot = height_robot - profile_height_tensor(
-                        grade_deg, progress_robot, relative_robot[:, 1])
-                    height_load = height_load - profile_height_tensor(
-                        grade_deg, progress_load, relative_load[:, 1])
-                else:
-                    height_robot = height_robot - profile_height_tensor(grade_deg, progress_robot)
-                    height_load = height_load - profile_height_tensor(grade_deg, progress_load)
+                height_robot = height_robot - surface_heights(progress_robot,
+                                                              relative_robot[:, 1])
+                height_load = height_load - surface_heights(progress_load,
+                                                            relative_load[:, 1])
             height_robot = height_robot.tolist()
             height_load = height_load.tolist()
             pitch_offsets = pitch_offsets_for(progress_robot, relative_robot[:, 1]).tolist()
             progress_robot = progress_robot.tolist()
             progress_load = progress_load.tolist()
+            stopped_list = (env_stopped.tolist() if env_stopped is not None
+                            else [False] * num_envs)
             for env_index in range(num_envs):
                 case_rows[env_index].append(make_row(
-                    env_index, phase=phase, step=step,
+                    env_index, phase=("coast" if stopped_list[env_index] else phase),
+                    step=step,
                     command=commands[env_index][0],
                     loco_cmd_vx=loco_cmds_vx[env_index],
                     upper_offset_vx=offsets_vx[env_index],
@@ -3748,6 +3919,11 @@ def main(args):
                     body_vy=body_vy[env_index], body_wz=body_wz[env_index],
                     load_offset=load_lane[env_index],
                     deck_fx=deck_fx[env_index], wheel_fx=wheel_fx[env_index]))
+            # 本步 progress 决定**下一步**是否已到 STOP（本步指令仍按旧掩码下发）
+            if env_stopped is not None and phase == "tow":
+                reached = torch.tensor(progress_robot, dtype=torch.float32,
+                                       device=args.device) >= float(args.stop_progress)
+                env_stopped |= reached
         elapsed = time.time() - started
         print(f"[run] 完成 {args.schedule.total_steps} 步 × {num_envs} 环境，用时 {elapsed:.1f} s",
               flush=True)
@@ -3960,7 +4136,7 @@ def main(args):
                                "reference_report": (str(args.compare_report)
                                                     if args.compare_report is not None else None),
                                "archived": ARCHIVED_BASELINE_2026_10_09,
-                               # 本轮开关状态 + 上层策略的动作/契约口径（v3 双头，TOW-26）：
+                               # 本轮开关状态 + 上层策略的动作/契约口径（v4 双头，TOW-26）：
                                # 13 = 1 维 vx 偏移 + 12 维关节残差；关时策略轮不存在。
                                "upper_policy_enabled": args.upper_checkpoint is not None,
                                "upper_contract_version": UPPER_CONTRACT_VERSION,

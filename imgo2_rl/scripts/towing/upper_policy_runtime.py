@@ -16,9 +16,10 @@
 2. **decoder**：`TowingDynamicsDecoder(frame_dim=58, feature_dim=128, hidden_dim=128,
    num_layers=1, latent_dim=16, force_scale=10.0)`，用 `forward_with_latent(frame, hidden)`
    且**必须 `.eval()`**（`sample=None` 会取 `self.training=False` ⇒ latent 取均值，与训练
-   rollout 一致）⇒ 返回 `(estimate(6), latent(16), hidden)`。
+   rollout 一致）⇒ 返回 `(estimate(5), latent(16), hidden)`（契约 v4 起 explicit=5，
+   不再含质量）。
 3. **actor**：`ActorCriticRecurrent`（hidden `[256,128,64]`、GRU 256×1、elu），输入 =
-   `cat(frame, estimate, latent)` = **80** 维（`towing_decoder.augment_actor_observation`）。
+   `cat(frame, estimate, latent)` = **79** 维（`towing_decoder.augment_actor_observation`）。
    确定性推理用 `act_inference()`（取均值，与 `rl_lab/towing/play.py` 同口径）；GRU 隐状态
    由模块内部的 `Memory` 持有，`reset()` 清空。
 4. **动作（13 维）**：`processed = clamp(action, ±1)`，切分为
@@ -33,12 +34,14 @@
    **之前**（它进底层观测），关节残差加在底层输出**之后** ⇒ 上层同时影响底层输入与输出，
    两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 已按本条接线
    （帧 58 / 动作 13 / 偏移在冻结策略推理前合成 + `elapsed_s >= tow_start_s` 门控），
-   见 `docs/towing/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
+   见 `docs/towing/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节（契约版本此后升到
+   v4：2026-10-16 去掉 decoder 显式质量）。
 5. **checkpoint**：`torch.load(path, map_location="cpu", weights_only=False)` ⇒ 键
    `model_state_dict`、`decoder_state_dict`、`towing_contract`
-   （`{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
-   加载前**硬校验** `towing_contract` 四个字段：旧 v2（57/79）与更早的 56/63 维 checkpoint
-   必须被拒绝，而不是等到 `load_state_dict(strict=True)` 才报一句难读的 shape mismatch。
+   （`{'version': 4, 'frame_dim': 58, 'explicit_dim': 5, 'latent_dim': 16}`）、`iter`。
+   加载前**硬校验** `towing_contract` 四个字段：旧 v3（explicit 6 / actor 80）、v2（57/79）
+   与更早的 56/63 维 checkpoint 必须被拒绝，而不是等到 `load_state_dict(strict=True)` 才报
+   一句难读的 shape mismatch。
 6. 网络超参从注册的 agent cfg 建（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`，
    它镜像训练超参）；`UpperNetworkSpec.from_agent_cfg()` 接受任意带
    `.policy` / `.decoder` 属性的对象（`configclass`、`SimpleNamespace`、dict 都行），
@@ -74,8 +77,9 @@ FRAME_TERMS: tuple[tuple[str, int, float], ...] = (
 )
 FRAME_DIM = sum(dim for _, dim, _ in FRAME_TERMS)
 
-#: decoder 显式输出（`towing_decoder.OUTPUT_DIM`：速度 2 + 质量 1 + 力 3）与 latent。
-EXPLICIT_DIM = 6
+#: decoder 显式输出（`towing_decoder.OUTPUT_DIM`：速度 2 + 力 3 = 5，契约 v4 去掉质量）
+#: 与 latent。
+EXPLICIT_DIM = 5
 LATENT_DIM = 16
 #: 动作 13 = 1 维 vx 偏移（`CMD_ACTION_DIM`）+ 12 维关节残差（`JOINT_ACTION_DIM`）。
 CMD_ACTION_DIM = 1
@@ -96,8 +100,9 @@ COMMAND_OFFSET_MAX = 0.6
 #: 偏移为 0 时是恒等裁剪（退化性）。与 `HierarchicalVelocityActionCfg.amp_vx_range` 同值。
 AMP_VX_MIN = -1.0
 AMP_VX_MAX = 1.5
-#: checkpoint 契约版本：v3（frame 58 / explicit 6 / latent 16）。v2（57/79）必须被拒。
-CHECKPOINT_CONTRACT_VERSION = 3
+#: checkpoint 契约版本：**v4**（frame 58 / explicit **5** / latent 16；2026-10-16 去掉
+#: decoder 显式质量）。v3（explicit 6）、v2（57/79）与更早的都必须被拒。
+CHECKPOINT_CONTRACT_VERSION = 4
 
 #: critic 观测维数（actor 里附带 critic 网络，`load_state_dict(strict=True)` 需要它）。
 #: 出处：`upper_env_cfg.UpperTowingEnvCfg.observations.critic` =
@@ -108,7 +113,7 @@ DEFAULT_CRITIC_OBS_DIM = 73
 
 
 class TowingCheckpointContractError(ValueError):
-    """checkpoint 的 `towing_contract` 与运行时契约不符（含旧 v2 57/79 与 56/63 维 checkpoint）。"""
+    """checkpoint 的 `towing_contract` 与运行时契约不符（含 v3 6 维、v2 57/79 与 56/63）。"""
 
 
 @dataclass(frozen=True)
@@ -297,9 +302,10 @@ def validate_towing_contract(contract: Any, spec: UpperNetworkSpec) -> dict:
     if found != expected:
         raise TowingCheckpointContractError(
             f"checkpoint 的 towing_contract {found} 与当前契约 {expected} 不一致："
-            f"**旧 v2 的 57 维帧 / 79 维 actor / 12 维动作 checkpoint 已随双头迁移（动作 12 → 13、"
-            f"帧 57 → 58、actor 79 → 80）全部失效**，更早的 51/56/63 维 checkpoint 同样不兼容；"
-            f"必须用 v3 契约重训（不要用改元数据的方式绕过）")
+            f"**v3 的 explicit 6 / actor 80 checkpoint 已随 2026-10-16 的『decoder 去质量』"
+            f"（explicit 6 → 5、actor 80 → 79）失效**；旧 v2 的 57 维帧 / 79 维 actor / 12 维动作"
+            f"（双头迁移前）与更早的 51/56/63 维 checkpoint 同样不兼容；"
+            f"必须用 v4 契约重训（不要用改元数据的方式绕过）")
     return expected
 
 

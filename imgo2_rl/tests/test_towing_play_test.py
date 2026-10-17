@@ -1133,6 +1133,93 @@ class NoCartTests(unittest.TestCase):
         self.assertIn('"_nocart"', source)
 
 
+class TerrainFilterTests(unittest.TestCase):
+    """`--columns` / `--stop-progress`：按地形拆开跑 + 按里程停车（2026-10-17 用户口径）。"""
+
+    def test_parse_columns_accepts_ranges_and_lists(self):
+        parse = play.parse_columns
+        self.assertEqual(parse("40-49"), tuple(range(40, 50)))
+        self.assertEqual(parse("0-3, 6"), (0, 1, 2, 3, 6))
+        self.assertEqual(parse("5"), (5,))
+        self.assertEqual(parse(None), ())
+        self.assertEqual(parse("10-10"), (10,))
+        for bad in ("60", "-1", "5-3", "a-b", "1,,x"):
+            with self.assertRaises(SystemExit):
+                parse(bad)
+
+    def test_columns_filter_keeps_lane_identity(self):
+        all_cases = play.build_env_cases(40, [1.0], [10.0])
+        bump = play.build_env_cases(20, [1.0], [10.0], columns=play.parse_columns("40-49"))
+        self.assertEqual(len(bump), 20)
+        # env i ↔ 过滤后第 i 条 lane：前 10 个是 row0 的列 40–49，后 10 个是 row1
+        self.assertEqual([case.column for case in bump[:10]], list(range(40, 50)))
+        self.assertEqual([case.row for case in bump[:10]], [0] * 10)
+        self.assertEqual([case.row for case in bump[10:]], [1] * 10)
+        self.assertEqual({case.grade_deg for case in bump}, {26.565051177077994})
+        # 连接比例仍是 4 弹性 / 4 刚体 / 2 低弹（每行）
+        first_row = [case.connection for case in bump[:10]]
+        self.assertEqual(first_row.count("compliant"), 4)
+        self.assertEqual(first_row.count("rigid"), 4)
+        self.assertEqual(first_row.count("inextensible"), 2)
+        self.assertNotEqual([case.cell_index for case in bump],
+                            [case.cell_index for case in all_cases[:20]])
+        # 10 列 × 20 行 = 200 条 lane 是上限，要 201 条就得报错（不静默截断）
+        self.assertEqual(len(play.build_env_cases(200, [1.0], [10.0],
+                                                  columns=play.parse_columns("40-49"))), 200)
+        with self.assertRaises(SystemExit):
+            play.build_env_cases(201, [1.0], [10.0], columns=play.parse_columns("40-49"))
+
+    def test_case_specs_and_tile_origins_follow_the_filter(self):
+        """过滤列之后 env i ↔ 过滤后第 i 条 lane：spec 与地砖原点都必须按 case 取。
+
+        2026-10-17 训练机实跑报过「case 的坡度量级与 env_spec 不一致」：`--columns` 过滤后
+        仍按 env 序号取 `env_spec(i)` / `scene.env_origins[i]`，会拿到别的 lane 甚至在别的
+        地砖上出生。
+        """
+        cases = play.build_env_cases(20, [1.0], [10.0], columns=play.parse_columns("40-49"))
+        specs = play.case_specs(cases)
+        for case, spec in zip(cases, specs):
+            self.assertEqual(int(spec["column"]), case.column)
+            self.assertEqual(int(spec["row"]), case.row)
+            self.assertAlmostEqual(float(spec["slope_degrees"]), case.grade_deg, places=9)
+            self.assertEqual(int(spec["grid_index"]), case.cell_index)
+            self.assertEqual(str(spec["model_name"]), case.connection)
+        # 地砖原点（合成网格：第 (row, col) 块 = (row*100+col, 0, 0)）
+        grid = [[[(row * 100 + col, 0.0, 0.0) for col in range(play.connection_grid.COLUMNS)]
+                 for row in range(play.connection_grid.ROWS)]]
+        origins = play.case_tile_origins(grid[0], cases)
+        self.assertEqual(origins, [(case.row * 100 + case.column, 0.0, 0.0) for case in cases])
+        self.assertEqual(origins[0][0], 40.0)          # 第 0 个 case = row0/col40
+        self.assertEqual(origins[10][0], 140.0)        # 第 11 个 = row1/col40
+        # 不过滤时与默认 env 序号映射一致（回归）
+        plain = play.build_env_cases(20, [1.0], [10.0])
+        plain_origins = play.case_tile_origins(grid[0], plain)
+        self.assertEqual([origin[0] for origin in plain_origins],
+                         [float(((index // play.connection_grid.COLUMNS) * 100
+                                 + index % play.connection_grid.COLUMNS)) for index in range(20)])
+
+    def test_stop_progress_must_be_reachable_in_time(self):
+        # 0.5 m/s × 5 s = 2.5 m < 6.5 m ⇒ 必须报错并给出至少需要的时长
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--stop-progress", "6.5", "--velocities", "0.5",
+                             "--tow-duration", "5"])
+        args = play.parse_args(["--stop-progress", "6.5", "--velocities", "0.5",
+                                "--tow-duration", "14", "--num-envs", "10"])
+        self.assertEqual(args.stop_progress, 6.5)
+        self.assertIsNotNone(args.cases)
+
+    def test_dry_run_plan_prints_filter_and_stop_mode(self):
+        args = play.parse_args(["--dry-run", "--columns", "40-49", "--stop-progress", "6.5",
+                                "--velocities", "0.5", "--tow-duration", "14",
+                                "--num-envs", "10"])
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("--columns 40-49", text)
+        self.assertIn("按里程 `--stop-progress 6.5 m`", text)
+        args = play.parse_args(["--dry-run", "--num-envs", "10"])
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("按时间 `--tow-duration", text)
+
+
 class WorkConditionTests(unittest.TestCase):
     """工作条件的确定性轮转：`slot = row + column` ⇒ 质量 `slot % len(masses)`、速度每 len(masses) 个 slot 换一档。"""
 
@@ -1146,7 +1233,7 @@ class WorkConditionTests(unittest.TestCase):
                          [(0.5, 5.0), (0.5, 10.0), (0.5, 10.0), (0.5, 20.0)])
 
     def test_bucket_counts_are_balanced_within_a_few(self):
-        conditions = play.work_conditions(800, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
+        conditions = play.work_conditions(1200, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
         counts = {}
         for condition in conditions:
             counts[condition] = counts.get(condition, 0) + 1
@@ -1154,14 +1241,13 @@ class WorkConditionTests(unittest.TestCase):
         self.assertEqual(sorted(counts), sorted(
             (velocity, mass) for velocity in (0.5, 1.0, 1.5)
             for mass in (5.0, 10.0, 15.0, 20.0, 25.0)))
-        # slot 的取值个数在 20×40 网格里两头少中间多 ⇒ 不是严格 ±1，但都靠近 800/15 = 53.3
-        self.assertLessEqual(max(counts.values()) - min(counts.values()), 5)
-        self.assertTrue(all(50 <= value <= 55 for value in counts.values()), sorted(counts.values()))
-        self.assertEqual(sum(counts.values()), 800)
+        # 60×20 = 1200 是 15 的整数倍且 slot = row + column 铺满 0..78 ⇒ 每组**恰好 80** 个
+        self.assertEqual(set(counts.values()), {80}, sorted(counts.values()))
+        self.assertEqual(sum(counts.values()), 1200)
 
     def test_mass_is_balanced_across_connection_and_grade(self):
         """回归：质量**不能**只由列决定，否则 (连接 × 质量)/(坡度量级 × 质量) 会混淆。"""
-        cases = play.build_env_cases(800, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
+        cases = play.build_env_cases(1200, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
         by_connection, by_grade, per_column = {}, {}, {}
         for case in cases:
             by_connection.setdefault(case.connection, {}).setdefault(case.cart_mass_kg, 0)
@@ -1203,23 +1289,26 @@ class EnvCaseTests(unittest.TestCase):
             self.assertEqual(case.grade_deg, spec["slope_degrees"])
 
     def test_cell_distribution_matches_the_training_grid(self):
-        cases = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        cases = play.build_env_cases(1200, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
         connections = {}
         grades = {}
         for case in cases:
             connections[case.connection] = connections.get(case.connection, 0) + 1
             grades[case.grade_deg] = grades.get(case.grade_deg, 0) + 1
-        # 20 平列 + 10 个 5° + 10 个 10°；连接 8/8/4（平列）与 4/4/2（坡列）
-        self.assertEqual(grades, {0.0: 400, 5.0: 200, 10.0: 200})
-        self.assertEqual(connections, {"compliant": 320, "inextensible": 160, "rigid": 320})
+        # 20 平列 + 10 个 5° + 10 个 10° + 10 列减速带 + 10 列波浪（档位 = 各自真实最大坡度），
+        # 连接 8/8/4（平列）与 4/4/2（四个 10 列块）
+        self.assertEqual(grades, {0.0: 400, 5.0: 200, 10.0: 200,
+                                  connection_grid.SPEEDBUMP_RAMP_DEG: 200,
+                                  connection_grid.WAVE_MAX_SLOPE_DEG: 200})
+        self.assertEqual(connections, {"compliant": 480, "inextensible": 240, "rigid": 480})
 
     def test_multiple_of_the_grid_repeats_cells_with_other_work_conditions(self):
-        # 轮转周期 = 3 速度 × 5 质量 = 15，800 % 15 = 5 ≠ 0 ⇒ 同一 cell 的第二个 env 落在别的组合
-        cases = play.build_env_cases(1600, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
-        self.assertEqual(len(cases), 1600)
-        self.assertEqual(cases[0].cell_index, cases[800].cell_index)
+        # 轮转周期 = 3 速度 × 5 质量 = 15，1200 % 15 = 0 ⇒ 第二个网格从同一 slot 重开
+        cases = play.build_env_cases(2400, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        self.assertEqual(len(cases), 2400)
+        self.assertEqual(cases[0].cell_index, cases[1200].cell_index)
         self.assertNotEqual((cases[0].velocity_mps, cases[0].cart_mass_kg),
-                            (cases[800].velocity_mps, cases[800].cart_mass_kg))
+                            (cases[1200].velocity_mps, cases[1200].cart_mass_kg))
 
     def test_slug_is_unique_and_filename_safe(self):
         cases = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
@@ -1238,28 +1327,29 @@ class EnvCaseTests(unittest.TestCase):
         _json.dumps(payload)
 
     def test_env_case_summary_reports_the_distribution(self):
-        cases = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        cases = play.build_env_cases(1200, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
         summary = play.env_case_summary(cases)
-        self.assertEqual(summary["envs"], 800)
-        self.assertEqual(summary["cells"], 800)
+        self.assertEqual(summary["envs"], 1200)
+        self.assertEqual(summary["cells"], 1200)
         self.assertEqual(summary["cell_repeats"], 1.0)
-        self.assertEqual(summary["grades_deg"], {"0": 400, "5": 200, "10": 200})
+        self.assertEqual(summary["grades_deg"],
+                         {"0": 400, "5": 200, "10": 200, "15.6025": 200, "26.5651": 200})
         # 绳 0.5–1.5 与杆 0.5–1.0 的并集
         self.assertEqual(summary["length_m"], {"min": 0.5, "max": 1.5})
         self.assertEqual(len(summary["work_condition_buckets"]), 15)
         self.assertLessEqual(max(summary["bucket_env_counts"]) -
                              min(summary["bucket_env_counts"]), 5)
         # 「连接 × 质量」计数用来核对 slot 轮转的均衡性：每个连接类型内各质量档相等
-        # （compliant/rigid 各 64、inextensible 各 32），15 个组合全部非空
+        # （compliant/rigid 各 96、inextensible 各 48），15 个组合全部非空
         masses = summary["mass_counts_by_connection"]
-        self.assertEqual(sum(sum(counts.values()) for counts in masses.values()), 800)
-        self.assertEqual(sum(masses["compliant"].values()), 320)
-        self.assertEqual(sum(masses["rigid"].values()), 320)
-        self.assertEqual(sum(masses["inextensible"].values()), 160)
+        self.assertEqual(sum(sum(counts.values()) for counts in masses.values()), 1200)
+        self.assertEqual(sum(masses["compliant"].values()), 480)
+        self.assertEqual(sum(masses["rigid"].values()), 480)
+        self.assertEqual(sum(masses["inextensible"].values()), 240)
         self.assertEqual(sum(len(counts) for counts in masses.values()), 15)
         self.assertEqual(sorted(masses["inextensible"]), ["10", "15", "20", "25", "5"])
         self.assertEqual({count for counts in masses.values() for count in counts.values()},
-                         {32, 64})
+                         {48, 96})
 
 
 class SpawnGeometryTests(unittest.TestCase):
@@ -1316,7 +1406,7 @@ class SpawnGeometryTests(unittest.TestCase):
         两者不再是"同一长度按比例"，所以旧断言"同一行的两类挂点距差一倍"已作废。
         """
         def spec_for(model, row):
-            return next(connection_grid.env_spec(i) for i in range(800)
+            return next(connection_grid.env_spec(i) for i in range(connection_grid.GRID_SIZE)
                         if connection_grid.env_spec(i)["model_name"] == model
                         and connection_grid.env_spec(i)["row"] == row)
         for row in (0, connection_grid.ROWS // 2, connection_grid.ROWS - 1):
@@ -1400,9 +1490,13 @@ class CliTests(unittest.TestCase):
         args = play.parse_args(["--dry-run"])
         text = "\n".join(play.planned_grid_lines(args))
         self.assertIn("训练场景", text)
-        self.assertIn("800", text)
-        self.assertIn("compliant 320", text)
+        self.assertIn("1200", text)
+        self.assertIn("compliant 480", text)
         self.assertIn("0° 400", text)
+        # 2026-10-16：减速带块（列 40–49）与波浪块（列 50–59）拼进同一张网格，
+        # 档位分别报梯形侧坡 26.5651° 与正弦最大侧坡 15.6025°
+        self.assertIn("26.5651° 200", text)
+        self.assertIn("15.6025° 200", text)
         self.assertIn("env0000", text)
         # 训练上限 2026-10-10 收紧为 20 kg ⇒ 默认档里的 25 kg 是域外外推检查
         self.assertEqual(play.TRAINING_MASS_RANGE_KG, (5.0, 20.0))
@@ -1465,10 +1559,10 @@ class CliTests(unittest.TestCase):
         self.assertEqual([case.cell_index for case in args.cases], list(range(40)))
 
     def test_num_envs_multiple_of_the_grid_repeats_cells(self):
-        args = play.parse_args(["--num-envs", "1600", "--velocities", "1.0",
+        args = play.parse_args(["--num-envs", "2400", "--velocities", "1.0",
                                 "--cart-masses", "10"])
-        self.assertEqual(len(args.cases), 1600)
-        self.assertEqual(args.cases[0].cell_index, args.cases[800].cell_index)
+        self.assertEqual(len(args.cases), 2400)
+        self.assertEqual(args.cases[0].cell_index, args.cases[1200].cell_index)
 
     def test_upper_switch_defaults_off(self):
         """开关默认关：不给路径就是现在的基线（残差恒 0），确定性取均值。"""
@@ -1482,8 +1576,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**关闭**", text)
         self.assertIn("残差恒 0", text)
         self.assertIn("vx 偏移恒 0", text)
-        # 关时也要打印打开后的**契约口径**（v3 双头：帧 58 / 动作 13）与偏移有界/门控
-        self.assertIn("v3 双头", text)
+        # 关时也要打印打开后的**契约口径**（v4 双头：帧 58 / explicit 5 / 动作 13）
+        self.assertIn("v4 双头", text)
         self.assertIn("帧 58", text)
         self.assertIn("动作 13", text)
         self.assertIn("offset 有界且门控", text)
@@ -1499,13 +1593,15 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**开启**", opened)
         self.assertIn("确定性均值", opened)
         self.assertIn("towing_contract", opened)
-        # TOW-26：期望契约是 v3 双头（帧 58 / 动作 13），不再是 v2（帧 57 / 动作 12）
-        self.assertIn("契约 **v3 双头**", opened)
+        # TOW-26：期望契约是 v4 双头（帧 58 / explicit 5 / 动作 13），不是 v3（explicit 6）/ v2
+        self.assertIn("契约 **v4 双头**", opened)
         self.assertIn("帧 58", opened)
         self.assertIn("frame_dim=58", opened)
+        self.assertIn("explicit_dim=5", opened)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", opened)
         self.assertIn("旧 v2（帧 57 / actor 79 / 动作 12）", opened)
         self.assertNotIn("frame_dim=57", opened)
+        self.assertNotIn("explicit_dim=6", opened)
         # 偏移头：有界（两层限幅）+ 门控（出生段不叠加、STOP 之后仍生效）都要在 plan 里
         self.assertIn("有界", opened)
         self.assertIn("两层限幅", opened)
@@ -2048,9 +2144,9 @@ class DryRunTests(unittest.TestCase):
         # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
         self.assertIn("判定口径：**JNT 不计入**", result.stdout)
         self.assertIn("--count-jnt", result.stdout)
-        # ⑤ 上层开关状态与 v3 双头口径（帧 58 / 动作 13 / offset 有界 + 门控）也要在 plan 里
+        # ⑤ 上层开关状态与 v4 双头口径（帧 58 / explicit 5 / 动作 13 / offset 有界 + 门控）也在 plan 里
         self.assertIn("上层网络：**关闭**", result.stdout)
-        self.assertIn("v3 双头", result.stdout)
+        self.assertIn("v4 双头", result.stdout)
         self.assertIn("帧 58", result.stdout)
         self.assertIn("动作 13", result.stdout)
         self.assertIn("offset 有界且门控", result.stdout)
@@ -2080,7 +2176,7 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)
         self.assertIn("上层网络：**开启**", result.stdout)
-        self.assertIn("契约 **v3 双头**", result.stdout)
+        self.assertIn("契约 **v4 双头**", result.stdout)
         self.assertIn("frame_dim=58", result.stdout)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", result.stdout)
         self.assertIn("两层限幅", result.stdout)
@@ -2362,12 +2458,12 @@ class UpperV3WiringTests(unittest.TestCase):
         cls.source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
 
     # ------------------------------------------------------------------ 契约镜像
-    def test_expected_contract_matches_the_runtime_and_is_v3(self):
+    def test_expected_contract_matches_the_runtime_and_is_v4(self):
         runtime = self.runtime
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
                          runtime.expected_towing_contract(runtime.UpperNetworkSpec()))
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
-                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
+                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
         self.assertEqual(play.UPPER_CONTRACT_VERSION, runtime.CHECKPOINT_CONTRACT_VERSION)
         self.assertEqual(play.UPPER_FRAME_DIM, runtime.FRAME_DIM)
         self.assertEqual(play.UPPER_EXPLICIT_DIM, runtime.EXPLICIT_DIM)
@@ -2487,7 +2583,7 @@ class UpperV3WiringTests(unittest.TestCase):
         self.assertIsNone(off["towing_contract"])          # 实际加载到的契约只有实跑才有
         self.assertFalse(off["loaded"])
         self.assertEqual(off["towing_contract_expected"], play.UPPER_TOWING_CONTRACT_EXPECTED)
-        self.assertEqual(off["towing_contract_expected"]["version"], 3)
+        self.assertEqual(off["towing_contract_expected"]["version"], 4)
         self.assertEqual(off["towing_contract_expected"]["frame_dim"], 58)
         self.assertEqual(off["frame_dim_expected"], 58)
         self.assertEqual(off["action_dim_expected"], 13)
@@ -2624,15 +2720,15 @@ class DecoderDumpTests(unittest.TestCase):
             self.skipTest("需要 torch 才能构造累加张量")
         latent_sums = torch.zeros(1, 3, 2)
         estimate_sums = torch.zeros(1, 3, 2)
-        gt_sums = torch.zeros(1, 3, 4)
-        abs_err = torch.zeros(1, 3, 4)
+        gt_sums = torch.zeros(1, 3, 3)
+        abs_err = torch.zeros(1, 3, 3)
         counts = torch.zeros(1, 3)
         # station：1 拍（latent 1, 3 / 估计 0.5, -0.5）tow：2 拍（latent 2,4 与 4,8）
         latent_sums[0, 0] = torch.tensor([1.0, 3.0]); counts[0, 0] = 1
         latent_sums[0, 1] = torch.tensor([6.0, 12.0]); counts[0, 1] = 2
         estimate_sums[0, 0] = torch.tensor([0.5, -0.5])
-        gt_sums[0, 0] = torch.tensor([1.0, 0.0, 10.0, 50.0])
-        abs_err[0, 0] = torch.tensor([0.1, 0.2, 0.3, 0.4])
+        gt_sums[0, 0] = torch.tensor([1.0, 0.0, 50.0])
+        abs_err[0, 0] = torch.tensor([0.1, 0.2, 0.4])
         latent, estimator = play._decoder_observation(
             0, latent_sums=latent_sums, estimate_sums=estimate_sums, gt_sums=gt_sums,
             abs_err=abs_err, counts=counts)

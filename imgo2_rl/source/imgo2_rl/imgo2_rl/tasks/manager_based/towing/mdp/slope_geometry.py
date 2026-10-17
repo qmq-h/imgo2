@@ -219,19 +219,8 @@ def tile_mesh(row, column):
     return vertices, faces, origin
 
 
-def grid_mesh():
-    """Return vertices/faces and origins[row][column]; no simulator imports."""
-    vertices, faces, origins = [], [], []
-    for row in range(ROWS):
-        row_origins = []
-        for column in range(COLUMNS):
-            tile_vertices, tile_faces, origin = tile_mesh(row, column)
-            offset = len(vertices)
-            vertices.extend(tile_vertices)
-            faces.extend(tuple(offset+index for index in face) for face in tile_faces)
-            row_origins.append(origin)
-        origins.append(row_origins)
-    return vertices, faces, origins
+# 整块地面的组装在 `mixed_geometry.grid_mesh()`（2026-10-16 起地面是混合网格：平坡列走本模块、
+# 减速带列走 `speedbump_geometry`），本模块只负责单块板的几何。
 
 
 def attachment_root_positions(degrees, distance, robot_height=0.35, cart_height=0.18):

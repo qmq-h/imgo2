@@ -17,8 +17,13 @@
 配套的 `reset_work_condition.mass_range` 上限 **30 → 20 kg**。因为 `episode_timeout_s` 用
 `SPEED_RANGE[0]` 算「最慢速度走完 STOP 距离 + 余量」，下界抬高后**超时会变短**：
 最陡档坡面弧长 10.0926 m / 0.5 m/s ⇒ `episode_length_s` 由 29.23 s 降到 24.19 s
-（`max_episode_length` = ceil(24.185/0.05)：585 → **484 步**）。契约（帧 58 / actor 80 /
-critic 73 / 动作 13 / `towing_contract v3`）**不受工作域影响**，有守卫钉住。
+（`max_episode_length` = ceil(24.185/0.05)：585 → **484 步**）。
+
+**2026-10-16 又有两处变化**（都不改本模块的常量）：① 网格加入波浪块后，混合地面的最长行程
+上界由波浪给出 **10.116044 m** ⇒ `episode_length_s = 24.232088 s` / **485 步**（见
+`mixed_geometry.arc_length_upper_bound` 与 `docs/towing/towing_mixed_terrain_2026-10-16.md`）；
+② 契约升到 **v4**（帧 58 / explicit 5 / actor **79** / critic 73 / 动作 13，decoder 去掉显式
+质量）。`episode_timeout_s` 本身与这两项无关，只是被上面的数字驱动。
 
 `POST_STOP_WINDOW_S` 是 STOP 之后的评分窗口，作为 `episode_timeout_s` 的 margin：
 timeout = settle + 到 STOP 点的坡面弧长 / 最小速度 + 窗口，所以**最慢速度下**
@@ -29,6 +34,8 @@ import math
 
 SPEED_RANGE = (0.5, 1.5)
 # 指令归零的沿 lane 水平距离（m）。必须 > FLAT_OUT_START_M（坡面出口 9.0 m）。
+# 2026-10-17 用户确认：训练侧**保持 10 m**（不再改动，凸条位置也不动）；测评侧的「按地形拆分 +
+# 按里程停车」是测试台的 `--columns` / `--stop-progress`，与训练口径互不影响。
 STOP_DISTANCE_M = 10.0
 SETTLE_TIME_S = 1.0
 # STOP 之后至少要留下的评分窗口（s），用作 timeout 的 margin。

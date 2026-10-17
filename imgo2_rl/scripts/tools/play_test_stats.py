@@ -85,15 +85,39 @@ def metric_of(case: dict) -> dict:
 #: lane 局部 x 的剖面分段（边界与 `mdp/slope_geometry.py` 同源，不另写一份魔数）
 SEGMENT_BOUNDS = ((0.0, 2.25, "平地(出生)"), (2.25, 5.25, "上坡"), (5.25, 6.0, "坡顶"),
                   (6.0, 9.0, "下坡"), (9.0, float("inf"), "平地(出口)"))
-SEGMENT_ORDER = ("平地(出生)", "上坡", "坡顶", "下坡", "平地(出口)")
+#: 后四个名字只有混合网格的**减速带列**（40–49）会产生：那条 lane 只有一条居中梯形凸条，
+#: 所以「带前平地 → 上坡 → 带顶 → 下坡 → 带后平地」是它独有的相位（2026-10-16）。
+SEGMENT_ORDER = ("平地(出生)", "平地(带前)", "上坡", "坡顶", "带顶", "下坡",
+                 "平地(带后)", "平地(出口)")
+
+
+def _mdp_path():
+    """把 `mdp/` 放进 `sys.path`（几何常量与训练侧同源，不复制魔数）。"""
+    mdp = RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
+    if str(mdp) not in sys.path:
+        sys.path.insert(0, str(mdp))
+    return mdp
+
+
+def profile_for_column(terrain_profile: str, column: int) -> str:
+    """混合网格（2026-10-16）里该列属于哪个剖面族：列 40–49 减速带、列 50–59 波浪。
+
+    只有 `--terrain-profile hill|rolling` 两种平滑段；减速带块与波浪块拼在同一张网格里，
+    与这个开关无关，所以分段时必须按**列**再分派一次。
+    """
+    _mdp_path()
+    from connection_grid import is_speedbump, is_wave
+    if is_speedbump(column):
+        return "speedbump"
+    if is_wave(column):
+        return "wave"
+    return terrain_profile
 
 
 def segment_of(progress_m: float, terrain_profile="hill") -> str:
     """`robot_progress_m`（相对 lane 原点的水平行程）→ 剖面分段名。"""
     if terrain_profile == "rolling":
-        mdp = RL_ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp"
-        if str(mdp) not in sys.path:
-            sys.path.insert(0, str(mdp))
+        _mdp_path()
         from rolling_geometry import START_M, END_M, HILL_WIDTHS_M
         if progress_m < START_M:
             return "平地(出生)"
@@ -104,6 +128,44 @@ def segment_of(progress_m: float, terrain_profile="hill") -> str:
             if progress_m < start + width:
                 return "上坡" if progress_m < start + width / 2 else "下坡"
             start += width
+    elif terrain_profile == "wave":
+        _mdp_path()
+        from wave_geometry import (END_M, PERIOD_M, START_M,
+                                   profile_slope_degrees)
+        if progress_m < START_M:
+            return "平地(出生)"
+        if progress_m >= END_M:
+            return "平地(出口)"
+        # 正弦的坡度符号每**半周期**翻一次。这里直接用几何模块的**解析坡度**定号
+        # （而不是按位置拍脑袋分箱）—— 两端 `cos²` 包络会把零交点略微挪动，用解析值才与
+        # 训练侧 `robot_fall` / 测试台 `pitch_offsets_for` 的口径完全一致。
+        slope = profile_slope_degrees(0.0, progress_m)
+        if slope > 0.0:
+            return "上坡"
+        if slope < 0.0:
+            return "下坡"
+        # 恰在波峰/波谷（导数为 0，测度零）：按理想正弦的四分之一分箱兜底
+        quarter = PERIOD_M / 4.0
+        half = PERIOD_M / 2.0
+        index = int((progress_m - START_M + quarter) / half)
+        return "上坡" if index % 2 == 0 else "下坡"
+    elif terrain_profile == "speedbump":
+        _mdp_path()
+        from speedbump_geometry import (BUMP_END_M, BUMP_START_M, BUMP_TOP_END_M,
+                                        BUMP_TOP_START_M, END_M, START_M)
+        if progress_m < START_M:
+            return "平地(出生)"
+        if progress_m >= END_M:
+            return "平地(出口)"
+        if progress_m < BUMP_START_M:
+            return "平地(带前)"
+        if progress_m < BUMP_TOP_START_M:
+            return "上坡"
+        if progress_m < BUMP_TOP_END_M:
+            return "带顶"
+        if progress_m < BUMP_END_M:
+            return "下坡"
+        return "平地(带后)"
     elif terrain_profile != "hill":
         raise ValueError("unknown terrain profile")
     if progress_m < 0.0:
@@ -155,7 +217,9 @@ def segment_stats(case_dirs, summaries, *, limit=None, stride=1, terrain_profile
             for row in csv.DictReader(stream):
                 if row["phase"] != "tow":
                     continue
-                segment = segment_of(float(row["robot_progress_m"]), terrain_profile)
+                # 混合网格：减速带列（40–49）按自己的剖面切片，其余列按平滑段剖面
+                segment = segment_of(float(row["robot_progress_m"]),
+                                     profile_for_column(terrain_profile, column))
                 speed = f"{float(row['user_cmd_mps']):g}"
                 speed_matrix.setdefault(cart_present, {}).setdefault(segment, {}).setdefault(
                     speed, {"sumsq": 0.0, "n": 0})

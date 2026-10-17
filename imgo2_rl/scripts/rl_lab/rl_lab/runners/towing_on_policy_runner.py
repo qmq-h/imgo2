@@ -17,11 +17,12 @@ from rl_lab.modules import (
 )
 
 
-#: 上层拖曳 checkpoint 契约版本。**v3**（2026-10-10 双头迁移）= policy 帧 58
-#: （`last_action` 12 → 13）/ actor 80 / critic 73 / 动作 13（1 维 vx 偏移 + 12 维关节残差）。
-#: 旧 v2（frame 57 / actor 79 / 动作 12）checkpoint 一律拒绝，必须新建 run。
+#: 上层拖曳 checkpoint 契约版本。**v4**（2026-10-16 去掉 decoder 的显式质量预测）= policy 帧 58
+#: / explicit **5**（vel 2 + force 3）/ latent 16 / actor **79** / critic 73 / 动作 13
+#: （1 维 vx 偏移 + 12 维关节残差）。旧 v3（explicit 6 / actor 80）、v2（frame 57 / 动作 12）
+#: checkpoint 一律拒绝，必须新建 run。
 #: 与 `scripts/towing/upper_policy_runtime.CHECKPOINT_CONTRACT_VERSION` 同值（离线测试交叉核对）。
-TOWING_CONTRACT_VERSION = 3
+TOWING_CONTRACT_VERSION = 4
 
 
 class TowingOnPolicyRunner:
@@ -58,7 +59,6 @@ class TowingOnPolicyRunner:
             max_grad_norm=self.decoder_cfg["max_grad_norm"],
             velocity_coef=self.decoder_cfg["velocity_coef"],
             force_coef=self.decoder_cfg["force_coef"],
-            mass_coef=self.decoder_cfg["mass_coef"],
             kld_weight=self.decoder_cfg["kld_weight"],
         )
 
@@ -128,7 +128,7 @@ class TowingOnPolicyRunner:
 
         raw_obs = self.env.get_observations().to(self.device)
         critic_obs = self.env.get_privileged_observations().to(self.device)
-        decoder_targets, mass_weights = self.env.get_decoder_supervision()
+        decoder_targets = self.env.get_decoder_supervision()
         self.alg.actor_critic.train()
 
         reward_buffer = deque(maxlen=100)
@@ -141,7 +141,7 @@ class TowingOnPolicyRunner:
         for iteration in range(start_iter, total_iter):
             self.current_learning_iteration = iteration
             start = time.time()
-            frame_rollout, target_rollout, weight_rollout, done_rollout = [], [], [], []
+            frame_rollout, target_rollout, done_rollout = [], [], []
             episode_infos = []
 
             decoder_initial_hidden = (self.decoder_hidden.detach().clone()
@@ -156,13 +156,12 @@ class TowingOnPolicyRunner:
 
                     frame_rollout.append(raw_obs)
                     target_rollout.append(decoder_targets.to(self.device))
-                    weight_rollout.append(mass_weights.to(self.device))
                     raw_obs, critic_obs, rewards, dones, infos = self.env.step(actions)
                     raw_obs = raw_obs.to(self.device)
                     critic_obs = critic_obs.to(self.device)
                     rewards, dones = rewards.to(self.device), dones.to(self.device)
                     done_rollout.append(dones.bool())
-                    decoder_targets, mass_weights = self.env.get_decoder_supervision()
+                    decoder_targets = self.env.get_decoder_supervision()
 
                     self.alg.process_env_step(rewards, dones, infos)
                     self.decoder_hidden = reset_gru_hidden(self.decoder_hidden, dones.bool())
@@ -192,7 +191,6 @@ class TowingOnPolicyRunner:
             decoder_loss = self.decoder_trainer.update(
                 torch.stack(frame_rollout),
                 torch.stack(target_rollout),
-                torch.stack(weight_rollout),
                 dones=torch.stack(done_rollout),
                 hidden_state=decoder_initial_hidden,
             )
@@ -236,10 +234,10 @@ class TowingOnPolicyRunner:
         self.writer.add_scalar("Loss/value_function", value_loss, iteration)
         self.writer.add_scalar("Loss/surrogate", surrogate_loss, iteration)
         self.writer.add_scalar("Loss/decoder", decoder_loss.item(), iteration)
-        # 三项分量单独记录：去掉 target 归一化后三项尺度不同（m/s、kg、N），
-        # 1:1:1 的权重并不等权。用这三条判断权重是否真的配平。
+        # 两项分量单独记录：去掉 target 归一化后两项尺度不同（m/s、N），
+        # 1:1 的权重并不等权。用这两条判断权重是否真的配平。
         _trainer = getattr(self, "decoder_trainer", None)
-        for _name, _val in zip(("velocity", "force", "mass"),
+        for _name, _val in zip(("velocity", "force"),
                                getattr(_trainer, "last_parts", ())):
             self.writer.add_scalar(f"Loss/decoder_{_name}", _val, iteration)
         self.writer.add_scalar("Loss/decoder_kl", getattr(_trainer, "last_kl", 0.0), iteration)
@@ -293,7 +291,7 @@ class TowingOnPolicyRunner:
         decoder_rows = [
             f"{'Mean decoder loss:':>{pad}} {decoder_loss.item():.4f}",
         ]
-        for name, value in zip(("velocity", "force", "mass"),
+        for name, value in zip(("velocity", "force"),
                                getattr(trainer, "last_parts", ())):
             decoder_rows.append(f"{f'Mean decoder {name} loss:':>{pad}} {value:.4f}")
         decoder_rows.append(

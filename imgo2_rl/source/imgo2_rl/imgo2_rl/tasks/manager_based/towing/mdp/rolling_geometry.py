@@ -106,15 +106,5 @@ def tile_mesh(row, column):
     return vertices, faces, origin
 
 
-def grid_mesh():
-    vertices, faces, origins = [], [], []
-    for row in range(ROWS):
-        row_origins = []
-        for column in range(COLUMNS):
-            points, triangles, origin = tile_mesh(row, column)
-            offset = len(vertices)
-            vertices.extend(points)
-            faces.extend(tuple(offset + i for i in face) for face in triangles)
-            row_origins.append(origin)
-        origins.append(row_origins)
-    return vertices, faces, origins
+# 整块地面的组装在 `mixed_geometry.grid_mesh()`（2026-10-16 起地面是混合网格：平滑列走本模块、
+# 减速带列走 `speedbump_geometry`），本模块只负责单块板的几何。

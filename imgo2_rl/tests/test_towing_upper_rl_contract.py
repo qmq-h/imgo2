@@ -133,20 +133,23 @@ def _float32_threshold(spawn_clearance, deadband_m):
 
 class UpperLogicTests(unittest.TestCase):
     def test_actor_contract_matches_paper_plan(self):
-        """双头契约 v3：**58** 维单帧 + 6 维 estimate = **80** 维 actor 输入；动作 **13**。
+        """双头契约 **v4**：**58** 维单帧 + **5** 维 estimate = **79** 维 actor 输入；动作 **13**。
 
         2026-10-10 由单头（帧 57 / actor 79 / 动作 12）迁移而来：`last_action` 由 12 维
         关节残差变成 13 维（1 维 vx 偏移 + 12 维关节残差），故帧 +1、actor +1。
         命令项 `loco_command` 现在是「任务指令 + 有界偏移」（策略看得见自己下了什么指令），
         奖励参考量改读 `task_command`（防作弊红线）。
+
+        2026-10-16（契约 v3 → v4）：decoder 去掉显式质量预测（准则「只建模与四足机器人直接
+        相关的量，质量用 latent 假定」）⇒ estimate 6 → 5、actor 80 → **79**。
         """
         spec = logic.UpperObservationSpec()
         self.assertEqual([name for name, _ in spec.terms],
                          ["loco_command", "last_action", "base_ang_vel", "projected_gravity",
                           "last_loco_action", "joint_pos", "joint_vel"])
         self.assertEqual(spec.frame_dim, 58)
-        self.assertEqual(spec.decoder_dim, 6)
-        self.assertEqual(spec.actor_dim, 80)
+        self.assertEqual(spec.decoder_dim, 5)
+        self.assertEqual(spec.actor_dim, 79)
         self.assertEqual(dict(spec.terms)["loco_command"], 3)
         self.assertEqual(dict(spec.terms)["last_action"], 13)
         # 动作布局常量：13 = 1（vx 偏移）+ 12（关节残差），切分点唯一定义在 upper_logic
@@ -155,63 +158,60 @@ class UpperLogicTests(unittest.TestCase):
     def test_work_domain_ranges_do_not_touch_the_contract(self):
         """工作域常量（质量 5–20 kg、速度 0.5–1.5 m/s）**不得**改动契约。
 
-        2026-10-10 用户收紧工作域：`reset_work_condition.mass_range` 与
-        `DecoderSpec.mass_range` 上限 30 → 20 kg、`episode_geometry.SPEED_RANGE` 下界
-        0.4 → 0.5 m/s（回合超时随之由 29.231 s 缩短到 24.185 s，见几何测试）。本守卫把
-        「工作域」与「契约」隔开：三个训练域常量必须**四处一致**（env cfg 源码 /
-        `DecoderSpec.mass_range` / `episode_geometry.SPEED_RANGE` / 测量台
-        `TRAINING_MASS_RANGE_KG`），而契约维数 **58 / 6 / 80 / 动作 13** 与
-        `towing_contract v3` 不受这些范围影响——`DecoderSpec.mass_range` 只作文档/派生用，
-        改它不动 `dim`。
-        """
-        import dataclasses
+        2026-10-10 用户收紧工作域：`reset_work_condition.mass_range` 上限 30 → 20 kg、
+        `episode_geometry.SPEED_RANGE` 下界 0.4 → 0.5 m/s（回合超时随之由 29.231 s 缩短到
+        24.185 s，见几何测试）。本守卫把「工作域」与「契约」隔开。
 
+        **2026-10-16 变更**：decoder 去掉显式质量预测（契约 v3 → v4），`DecoderSpec.mass_range`
+        随之删除——质量不再是 decoder 的目标，工作域的权威位置只剩**环境 cfg**（
+        `reset_work_condition.mass_range`）与**测量台** `TRAINING_MASS_RANGE_KG`，两处必须一致；
+        契约维数 **58 / 5 / 79 / 动作 13** 与 `towing_contract v4` 与这些范围无关。
+        """
         geometry = load("towing_episode_geometry_contract_test",
                         PKG / "mdp/episode_geometry.py")
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         play = (RL / "scripts/towing/play_towing_test.py").read_text("utf-8")
 
-        # 工作域：训练侧四处常量逐项对齐（少改一处就会漂移）
+        # 工作域：环境 cfg 与测量台两处常量逐项对齐（少改一处就会漂移）
         self.assertEqual(geometry.SPEED_RANGE, (0.5, 1.5))
         self.assertIn('"speed_range": SPEED_RANGE', cfg)
         self.assertIn('"mass_range": (5.0, 20.0)', cfg)
-        self.assertEqual(logic.DecoderSpec().mass_range, (5.0, 20.0))
         match = re.search(r"TRAINING_MASS_RANGE_KG = \(([0-9.]+), ([0-9.]+)\)", play)
         self.assertIsNotNone(match, "测量台找不到 TRAINING_MASS_RANGE_KG")
-        self.assertEqual((float(match.group(1)), float(match.group(2))),
-                         logic.DecoderSpec().mass_range,
-                         "测量台的训练侧质量范围必须与 DecoderSpec.mass_range 一致")
+        self.assertEqual((float(match.group(1)), float(match.group(2))), (5.0, 20.0),
+                         "测量台的训练侧质量范围必须与环境 cfg 的 mass_range 一致")
+        # DecoderSpec 不再有 mass_range（质量不是 decoder 的目标）
+        self.assertFalse(hasattr(logic.DecoderSpec(), "mass_range"))
 
-        # 契约：工作域改了也不许动这些维数/版本（改 mass_range 后 dim 不变）
+        # 契约：工作域改了也不许动这些维数/版本
         spec = logic.UpperObservationSpec()
-        widened = dataclasses.replace(logic.DecoderSpec(), mass_range=(1.0, 99.0))
-        self.assertEqual(widened.dim, logic.DecoderSpec().dim)
-        self.assertEqual((spec.frame_dim, spec.decoder_dim, spec.actor_dim), (58, 6, 80))
+        self.assertEqual((spec.frame_dim, spec.decoder_dim, spec.actor_dim), (58, 5, 79))
         self.assertEqual(dict(spec.terms)["last_action"], 13)
         self.assertEqual(logic.CMD_ACTION_DIM, 1)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 3", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
 
     def test_decoder_targets_are_physical_units(self):
         """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
 
         原先归一化到 [-1,1] 配合 tanh，但归一化尺度会按 s² 压低 loss 的物理权重
-        （力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；且 `v/(1.0,0.5)` 的
-        clamp 会截断超速真值。现在直接回归 m/s、kg、N。
+        （力 s=10 ⇒ 0.01），使该项几乎训不动；且 `v/(1.0,0.5)` 的 clamp 会截断超速真值。
+        现在直接回归 m/s、N（**5 维**）。
         2026-10-08：速度保持 2 维、牵引力改 3 维（机体系 x/y/z），故 dim 5 → 6。
+        **2026-10-16（契约 v4）**：去掉质量 ⇒ 6 → **5**，只留机器人速度与作用于机器人的拉力。
         """
         decoder = logic.DecoderSpec()
-        self.assertEqual(decoder.dim, 6)
+        self.assertEqual(decoder.dim, 5)
         self.assertEqual(
             decoder.terms,
-            (("robot_velocity_xy", 2), ("cart_mass", 1), ("towing_force_xyz", 3)))
+            (("robot_velocity_xy", 2), ("towing_force_xyz", 3)))
         # normalize_decoder_targets 已废弃，现为恒等（仅保留维数检查）
-        for values in ((0, 0, 5, 0, 0, 0), (0.5, -0.25, 10, 10, -10, 3), (2, -2, 15, 30, -30, 0)):
+        for values in ((0, 0, 0, 0, 0), (0.5, -0.25, 10, -10, 3), (2, -2, 30, -30, 0)):
             self.assertEqual(logic.normalize_decoder_targets(values), tuple(float(v) for v in values))
         self.assertAlmostEqual(logic.denormalize_force(0.5), 0.5)
         self.assertAlmostEqual(logic.denormalize_force(-3.5), -3.5)
         with self.assertRaises(ValueError):
-            logic.normalize_decoder_targets((0, 0, 5, 0, 0))  # 维数不符仍要报错
+            logic.normalize_decoder_targets((0, 0, 0, 0))  # 维数不符仍要报错
 
     def test_upper_action_is_a_scaled_clipped_joint_residual(self):
         """动作 = 13 维（1 维 vx 偏移 + 12 维归一化关节残差）。
@@ -604,20 +604,20 @@ class UpperLogicTests(unittest.TestCase):
             frame_dim=51, feature_dim=8, hidden_dim=8)
         frames = torch.zeros(3, 51, requires_grad=True)
         prediction, latent, hidden = decoder.forward_with_latent(frames)
-        self.assertEqual(tuple(prediction.shape), (3, 6))
-        self.assertEqual(decoder.output_dim, 6)
+        self.assertEqual(tuple(prediction.shape), (3, 5))
+        self.assertEqual(decoder.output_dim, 5)
         self.assertEqual(tuple(hidden.shape), (1, 3, 8))
         actor_obs = decoder_module.augment_actor_observation(frames, prediction, latent)
-        self.assertEqual(tuple(actor_obs.shape), (3, 73))
+        self.assertEqual(tuple(actor_obs.shape), (3, 51 + 5 + 16))
         actor_obs.sum().backward()
         self.assertTrue(all(parameter.grad is None for parameter in decoder.parameters()))
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_towing_network_forward_contract_and_zero_init(self):
-        """端到端数值契约：58 帧 → 6 维估计(GRU 128) → 80 维 actor(GRU 256) → 13 维动作；critic 73 → 1。
+        """端到端数值契约：58 帧 → 5 维估计(GRU 128) → 79 维 actor(GRU 256) → 13 维动作；critic 73 → 1。
 
         这条用**真实网络类**跑一次前向，锁住三件事：
-        1. 各层宽度与 `upper_logic` 契约一致（frame 58 / decoder 6 / actor 80 / action 13）；
+        1. 各层宽度与 `upper_logic` 契约一致（frame 58 / decoder 5 / actor 79 / action 13）；
         2. `augment_actor_observation` 的拼接结果能直接喂进 `ActorCriticRecurrent`；
         3. towing runner 的**零初始化**语义：零初始化后首拍残差必须精确为 0（实测未初始化时
            为 |a|max ≈ 0.149 归一化，即约 ±0.04 rad 的系统性关节偏置），保证起点等于冻结策略自身的步态。
@@ -704,8 +704,8 @@ class UpperLogicTests(unittest.TestCase):
                     sys.modules[name] = module
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
-    def test_decoder_head_widths_are_two_velocity_one_mass_three_force(self):
-        """力 3 维、速度 2 维必须落在 head 宽度上，且索引常量与之一致。
+    def test_decoder_head_widths_are_two_velocity_three_force(self):
+        """力 3 维、速度 2 维必须落在 head 宽度上，且索引常量与之一致（契约 v4：无质量头）。
 
         这条守的是「改了 head 忘了切片」：`force_newtons`／`loss()`／play 的列都从
         `FORCE_SLICE` 推导，一旦 head 宽度与常量脱钩就会静默错位。
@@ -715,40 +715,32 @@ class UpperLogicTests(unittest.TestCase):
             RL / "scripts/rl_lab/rl_lab/modules/towing_decoder.py")
         decoder = decoder_module.TowingDynamicsDecoder(frame_dim=51, feature_dim=8, hidden_dim=8)
         self.assertEqual(decoder.velocity_head.out_features, 2)
-        self.assertEqual(decoder.mass_head.out_features, 1)
         self.assertEqual(decoder.force_head.out_features, 3)
-        self.assertEqual(decoder_module.OUTPUT_DIM, 6)
-        self.assertEqual(decoder_module.MASS_INDEX, 2)
-        self.assertEqual(decoder_module.FORCE_SLICE, slice(3, 6))
-        prediction = torch.arange(2 * 6, dtype=torch.float32).reshape(2, 6)
-        self.assertTrue(torch.equal(decoder.force_newtons(prediction), prediction[:, 3:6]))
-        # 三维力的质量监督权重按真实张力算；二维力必须直接报错（旧布局不能悄悄通过）
-        three_d = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 11.0]])
-        weight = decoder_module.mass_supervision_weight(three_d)
-        self.assertTrue(torch.equal(weight, torch.tensor([0.0, 0.0, 0.5])))
-        with self.assertRaises(ValueError):
-            decoder_module.mass_supervision_weight(torch.zeros(3, 2))
+        self.assertFalse(hasattr(decoder, "mass_head"), "契约 v4 起不得再有质量头")
+        self.assertFalse(hasattr(decoder_module, "mass_supervision_weight"))
+        self.assertEqual(decoder_module.OUTPUT_DIM, 5)
+        self.assertEqual(decoder_module.FORCE_SLICE, slice(2, 5))
+        prediction = torch.arange(2 * 5, dtype=torch.float32).reshape(2, 5)
+        self.assertTrue(torch.equal(decoder.force_newtons(prediction), prediction[:, 2:5]))
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
-    def test_decoder_force_weighted_mass_supervision_and_update(self):
+    def test_decoder_trainer_update_without_mass_weight(self):
+        """契约 v4：trainer.update 只吃 (frames, targets)，目标 5 维，不再有质量权重。"""
         decoder_module = load(
             "towing_dynamics_decoder_train_test",
             RL / "scripts/rl_lab/rl_lab/modules/towing_decoder.py")
-        force = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [11.0, 0.0, 0.0]])
-        weight = decoder_module.mass_supervision_weight(force)
-        self.assertTrue(torch.equal(weight, torch.tensor([0.0, 0.0, 0.5])))
-
         decoder = decoder_module.TowingDynamicsDecoder(
             frame_dim=51, feature_dim=8, hidden_dim=8)
         trainer = decoder_module.DynamicsDecoderTrainer(decoder)
         frames = torch.randn(4, 3, 51, requires_grad=True)
-        targets = torch.zeros(4, 3, 6)
-        weights = torch.zeros(4, 3)
-        weights[:, 1] = 1.0
-        loss = trainer.update(frames, targets, weights)
+        targets = torch.zeros(4, 3, 5)
+        loss = trainer.update(frames, targets)
         self.assertEqual(loss.ndim, 0)
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
+        self.assertEqual(len(trainer.last_parts), 2, "loss 只应报速度/力两项")
+        with self.assertRaises(TypeError):
+            trainer.update(frames, targets, torch.ones(4, 3))   # 旧签名必须报错
 
     def test_low_level_position_error_expectation_is_switchable(self):
         """角度跟踪项：期望可取「含残差的下发目标」（当前）或「底层原始期望」。
@@ -815,14 +807,22 @@ class UpperLogicTests(unittest.TestCase):
         标定逻辑：以前 −50 是一次性的（触发即终止），现在碰撞可以持续整个回合 ⇒ 必须小一个
         量级（每步 −0.25，顶住 1 s 约 −5，与一个回合的正奖励同量级）。
         `mdp.cart_collision` 函数本身要保留（奖励与日志在用），只是不再注册成 DoneTerm。
+
+        2026-10-17 追加：**只在下坡段**降权 —— `weight` 仍是字面 −5.0，相位靠
+        `mdp.cart_collision_cost(downhill_scale=0.2)` 缩放 func（有效权重 −1.0）。
+        断言「−5.0 × 0.2 == −1.0」而不是只钉字符串，防止有人把两个数一起改掉。
         """
         cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         active = [ln.strip() for ln in cfg.splitlines()
                   if ln.strip().startswith("cart_collision = DoneTerm")]
         self.assertEqual(active, [], f"碰撞不应再是终止条件：{active}")
-        self.assertIn("collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0)", cfg)
+        self.assertIn("collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0,", cfg)
+        self.assertIn('params={"downhill_scale": 0.2}', cfg)
+        self.assertAlmostEqual(-5.0 * 0.2, -1.0, places=12)
         self.assertIn("def cart_collision(env):", mdp)
+        self.assertIn("def downhill_segment(env):", mdp)
+        self.assertIn("def cart_collision_cost(env, downhill_scale=1.0):", mdp)
         # 剩下的终止项：超时 + 倒地 + 出界
         for name in ("time_out", "robot_fall", "terrain_exit"):
             self.assertIn(f"{name} = DoneTerm(", cfg)
@@ -902,25 +902,24 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("应为 4 个（FL/FR/RL/RR_FOOT）", mdp)
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
-    def test_decoder_loss_reports_three_weighted_components(self):
-        """去掉 target 归一化与 head tanh 后，三项尺度不同（m/s、kg、N），
-        1:1:1 的权重并不等权（实测质量项可占 85%、速度项仅 0.1%）。因此 loss()
-        必须把三项加权后的贡献单独返回，供日志判断权重是否真的配平。
+    def test_decoder_loss_reports_two_weighted_components(self):
+        """去掉 target 归一化与 head tanh 后，两项尺度不同（m/s、N），1:1 的权重并不等权
+        （力项可大两个数量级）。因此 loss() 必须把两项加权后的贡献单独返回，
+        供日志判断权重是否真的配平。契约 v4 起不再有质量项。
         """
         decoder_module = load(
             "towing_decoder_parts_test",
             RL / "scripts/rl_lab/rl_lab/modules/towing_decoder.py")
         decoder = decoder_module.TowingDynamicsDecoder(
             frame_dim=51, feature_dim=8, hidden_dim=8)
-        prediction = torch.zeros(2, 6)
-        targets = torch.tensor([[0.0, 0.0, 10.0, 0.0, 0.0, 0.0],
-                                [1.0, 0.0, 12.0, 2.0, 0.0, 0.0]])
-        weight = torch.ones(2)
-        total, parts = decoder.loss(prediction, targets, weight)
-        self.assertEqual(len(parts), 3)
+        prediction = torch.zeros(2, 5)
+        targets = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1.0, 0.0, 12.0, 2.0, 0.0]])
+        total, parts = decoder.loss(prediction, targets)
+        self.assertEqual(len(parts), 2)
         self.assertAlmostEqual(float(total), float(sum(parts)), places=5)
-        # 质量项的绝对贡献应远大于速度项（尺度差异的直接体现）
-        self.assertGreater(float(parts[2]), float(parts[0]))
+        # 力项的绝对贡献应远大于速度项（尺度差异的直接体现）
+        self.assertGreater(float(parts[1]), float(parts[0]))
 
     def test_min_clearance_reward_uses_spawn_geometry_and_is_gated(self):
         """最小间距奖励：阈值按**出生几何 − 绝对死区**（`出生间隙 − deadband_m`）给出，且对无小车环境屏蔽。
@@ -1349,10 +1348,11 @@ class UpperLogicTests(unittest.TestCase):
         # 代码里不能再有任何 reference_command（文档串里保留历史说明是允许的）
         self.assertNotIn("self.reference_command", mdp)
         self.assertNotIn("term.reference_command", mdp)
-        # 治抖动的两项仍在，且权重沿用 2026-09-23 的重调值
+        # 治抖动的两项仍在：action_magnitude 沿用 −0.05，action_rate 2026-10-17 由 −0.1 减半
         self.assertIn("def action_magnitude_l2(", mdp)
         self.assertIn("action_magnitude = RewTerm(func=mdp.action_magnitude_l2, weight=-0.05)", cfg)
-        self.assertIn("action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)", cfg)
+        self.assertIn("action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.05)", cfg)
+        self.assertNotIn("action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)", cfg)
 
     def test_reward_terms_never_read_loco_command(self):
         """**防作弊红线（AST 守卫）**：奖励函数一律不得读 `loco_command`。
@@ -1539,8 +1539,10 @@ class UpperLogicTests(unittest.TestCase):
         obs = logic.UpperObservationSpec()
         dec = logic.DecoderSpec()
         self.assertIn(f"self.num_obs != {obs.frame_dim}", wrapper)
-        self.assertIn(f"self.num_decoder_obs != {dec.dim + 1}", wrapper)
-        self.assertIn("decoder[:, :6], decoder[:, 6]", wrapper)
+        self.assertIn(f"self.num_decoder_obs != {dec.dim}", wrapper)
+        self.assertIn('"""decoder 的回归目标（**5 维**：vel 2 + force 3，契约 v4 起不再含质量）。"""',
+                      wrapper)
+        self.assertNotIn("mass", wrapper.split("def get_decoder_supervision")[1].split("def step")[0])
         # runner 的 actor 输入维数必须由 decoder 的输出维数推导，而不是硬编码 +5/+6
         self.assertIn("actor_obs_dim = env.num_obs + self.decoder.actor_feature_dim", runner)
         # decoder 的 frame_dim 必须等于 policy 帧维数（runner 会在启动时断言这一点，
@@ -1553,20 +1555,22 @@ class UpperLogicTests(unittest.TestCase):
             self.assertEqual(frame_dim, obs.frame_dim,
                              f"{label} 的 frame_dim={frame_dim} 与 policy 帧 {obs.frame_dim} 不一致")
         # decoder 模块的 OUTPUT_DIM 就是 DecoderSpec.dim
-        self.assertIn(f"OUTPUT_DIM = VELOCITY_DIM + MASS_DIM + FORCE_DIM", decoder)
+        self.assertIn("OUTPUT_DIM = VELOCITY_DIM + FORCE_DIM", decoder)
+        self.assertNotIn("MASS_DIM", decoder)
         # `TowingDynamicsDecoder()` 的默认 frame_dim 也不能退回旧契约（不传参会静默建错网络）
         default_frame = re.search(r"def __init__\(self, frame_dim=(\d+)", decoder)
         self.assertIsNotNone(default_frame, "找不到 decoder 的 frame_dim 默认值")
         self.assertEqual(int(default_frame.group(1)), obs.frame_dim)
-        self.assertEqual(dec.dim, 6)
+        self.assertEqual(dec.dim, 5)
         self.assertEqual(obs.frame_dim, 58)
         self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim + obs.latent_dim)
-        self.assertEqual(obs.actor_dim, 80)
-        # 训练侧 runner 的契约版本 = 运行时 = 3（v2 的 57/79 已失效）
-        self.assertIn("TOWING_CONTRACT_VERSION = 3", runner)
+        self.assertEqual(obs.actor_dim, 79)
+        # 训练侧 runner 的契约版本 = 运行时 = 4（v3 的 explicit 6 / actor 80 已失效）
+        self.assertIn("TOWING_CONTRACT_VERSION = 4", runner)
         self.assertIn('"version": TOWING_CONTRACT_VERSION', runner)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 3", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
+        self.assertIn("EXPLICIT_DIM = 5", runtime_src)
 
     def test_towing_runner_zero_inits_actor_output_layer(self):
         """残差策略必须从 0 起步：只对 towing runner 零初始化 actor 末层。
@@ -1613,13 +1617,11 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("self._physics_step % low_level_decimation", mdp)
         self.assertIn("-self.wheel_damping * self._cart.data.joint_vel", mdp)
         self.assertIn("MultiRopeModel(", mdp)
-        # target 改为物理量后不再有归一化；断言 decoder_targets 直接返回原始量
-        self.assertIn("return torch.cat((robot_velocity_xy, mass, force), dim=1)", mdp)
+        # target 为物理量、且**不再含质量**（契约 v4：decoder 只建模与四足直接相关的量）
+        self.assertIn("return torch.cat((robot_velocity_xy, force), dim=1)", mdp)
         self.assertNotIn("force / (force.abs() + 10.0)", mdp)
-        self.assertIn("(force - minimum_force).clamp_min(0.0)", mdp)
-        self.assertIn('params={"minimum_force": 1.0, "force_scale": 10.0}', cfg)
-        # 质量 target 也改为物理量（不再 (m-5)/5-1）
-        self.assertIn("    mass = term.cart_mass", mdp)
+        self.assertNotIn("def decoder_mass_weight", mdp)
+        self.assertNotIn("mass_weight = ObsTerm", cfg)
         self.assertNotIn("(term.cart_mass - 5.0) / 5.0 - 1.0", mdp)
 
     def test_no_cart_environments_are_physically_and_semantically_masked(self):
@@ -1756,8 +1758,10 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import", cfg)
         self.assertIn("FLAT_OUT_START_M", cfg)
         self.assertIn("if action.stop_distance_m <= FLAT_OUT_START_M:", cfg)
-        # timeout 用**坡面弧长上界** + 停车窗口，不是水平目标距离
-        self.assertIn("profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)", cfg)
+        # timeout 用**混合网格的弧长上界**（平滑段与减速带段取大者）+ 停车窗口，不是水平距离
+        self.assertIn("from .mdp.mixed_geometry import arc_length_upper_bound", cfg)
+        self.assertIn("mixed_arc_length(MAX_GRADE_DEG, action.stop_distance_m, smooth=smooth)",
+                      cfg)
         self.assertIn("margin=POST_STOP_WINDOW_S)", cfg)
         # 用户 2026-10-09 确认：正常回合**一律超时退出**，不加停车窗口终止项
         self.assertNotIn("post_stop_timeout = DoneTerm", cfg)

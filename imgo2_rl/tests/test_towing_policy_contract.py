@@ -133,6 +133,96 @@ class AmpContractTests(unittest.TestCase):
             self.cfg.joint_targets([0.0] * 3)
 
 
+class PPOContractTests(unittest.TestCase):
+    """PPO 45 维契约（2026-10-16 用户要求「用 PPO 替换底层策略」）。
+
+    要点：PPO 与 AMP 的**接口逐项相同**（45 维观测、12 维动作、同一 joint 顺序/缩放/裁剪/
+    默认姿态/控制周期），只有权重不同 ⇒ `--policy amp|ppo` 可以互换，喂错也不会静默错位。
+    这里把两件事钉住：① 与 `imgo2_deploy/policy/imgo2/ppo/config.yaml` 一致；
+    ② 与 AMP 契约逐字段相等（任何一项漂移都必须显式失败）。
+    """
+
+    def setUp(self):
+        self.cfg = policy_cfg.PPO_POLICY
+
+    def test_contract_is_self_consistent(self):
+        self.cfg.validate()
+        self.assertEqual(self.cfg.name, "ppo")
+        self.assertEqual(self.cfg.total_observation_dim, 45)
+        self.assertEqual(self.cfg.num_observations, 45)
+
+    def test_matches_deploy_yaml(self):
+        deploy = _load_yaml("ppo/config.yaml")["imgo2/ppo"]
+        base = _load_yaml("base.yaml")["imgo2"]
+
+        self.assertEqual(self.cfg.num_observations, deploy["num_observations"])
+        self.assertEqual(self.cfg.num_joints, deploy["num_of_dofs"])
+        self.assertEqual(self.cfg.model_name, deploy["model_name"])
+        self.assertEqual(self.cfg.clip_obs, deploy["clip_obs"])
+        self.assertEqual(list(self.cfg.observation_terms),
+                         [TERM_ALIASES[t] for t in deploy["observations"]])
+        self.assertEqual(list(self.cfg.observation_history), list(deploy["observations_history"]))
+        for ours, theirs, label in (
+            (self.cfg.action_scale, deploy["action_scale"], "action_scale"),
+            (self.cfg.default_dof_pos, deploy["default_dof_pos"], "default_dof_pos"),
+            (self.cfg.clip_actions_lower, deploy["clip_actions_lower"], "clip_actions_lower"),
+            (self.cfg.clip_actions_upper, deploy["clip_actions_upper"], "clip_actions_upper"),
+            (self.cfg.joint_mapping, deploy["joint_mapping"], "joint_mapping"),
+        ):
+            self.assertEqual([float(v) for v in ours], [float(v) for v in theirs], label)
+        scales, offset = [], 0
+        per_term = {
+            "base_ang_vel": [deploy["ang_vel_scale"]] * 3,
+            "projected_gravity": [1.0] * 3,
+            "velocity_commands": [float(v) for v in deploy["commands_scale"]],
+            "joint_pos_rel": [deploy["dof_pos_scale"]] * 12,
+            "joint_vel_rel": [deploy["dof_vel_scale"]] * 12,
+            "last_action": [1.0] * 12,
+        }
+        for term in self.cfg.observation_terms:
+            scales.extend(per_term[term])
+            offset += len(per_term[term])
+        self.assertEqual(offset, self.cfg.num_observations)
+        self.assertEqual([float(v) for v in self.cfg.observation_scales], scales)
+        self.assertEqual(self.cfg.control_dt, base["dt"] * base["decimation"])
+
+    def test_interface_is_identical_to_amp(self):
+        """两个底层只有权重不同；接口任何一项不同都不允许（否则切换会静默喂错）。"""
+        amp = policy_cfg.AMP_POLICY
+        for field in ("num_observations", "observation_terms", "observation_dims",
+                      "observation_scales", "clip_obs", "observation_history", "num_joints",
+                      "joint_names", "default_dof_pos", "action_scale",
+                      "clip_actions_lower", "clip_actions_upper", "joint_mapping",
+                      "control_dt", "reset_settle_s"):
+            self.assertEqual(getattr(self.cfg, field), getattr(amp, field), field)
+
+    def test_weights_override_keeps_the_contract(self):
+        """`--policy-checkpoint` 只换权重文件，契约字段一个都不动。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "policy.pt"
+            model.write_bytes(b"")
+            other = policy_cfg.with_model_path(self.cfg, model)
+            self.assertEqual(other.model_path.resolve(), model.resolve())
+            for field in ("name", "num_observations", "observation_terms", "observation_scales",
+                          "num_joints", "joint_names", "action_scale", "control_dt"):
+                self.assertEqual(getattr(other, field), getattr(self.cfg, field), field)
+            other.validate()
+            with self.assertRaises(FileNotFoundError):
+                policy_cfg.with_model_path(self.cfg, Path(tmp) / "missing.pt")
+
+    def test_deploy_policy_is_a_45_to_12_scripted_actor(self):
+        path = self.cfg.model_path
+        self.assertTrue(path.is_file(), path)
+        try:
+            import torch
+        except ImportError:  # pragma: no cover - 无 torch 的解释器只查存在性
+            self.skipTest("torch not available")
+        model = torch.jit.load(str(path), map_location="cpu")
+        with torch.inference_mode():
+            out = model(torch.zeros(1, self.cfg.num_observations))
+        self.assertEqual(tuple(out.shape), (1, self.cfg.num_joints))
+
+
 # 2026-09-20 训练机实跑 `tow_drag.py` 时报告的 PhysX DOF 顺序：按运动学树广度优先，
 # 全部 hip → 全部 thigh → 全部 shank。**不是** URDF 的声明顺序（URDF 是逐腿）。
 ISAAC_LAB_ASSET_ORDER = (

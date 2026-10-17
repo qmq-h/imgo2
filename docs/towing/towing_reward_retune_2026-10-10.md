@@ -10,6 +10,12 @@
 **本机没有 Isaac Lab**：以下全部结论只由离线 `pytest` / AST / 纯标准库复算得出；
 凡只有训练才能确认的一律标「**待训练机验证**」（见 §6）。README 问题表条目 = **TOW-24**。
 
+> **2026-10-17 后续变更（本文的权重已不是最新）**：`clearance` −1.0 → **−10.0**、
+> `action_rate` −0.1 → **−0.05**、`collision` 只在下坡段 −5.0 → **−1.0**（其他路段不变）。
+> 本文两项改动的**结论与数值仍然有效**（`min_clearance` 仍是 −5.0 / `deadband_m` 0.02、
+> `extra_distance` 仍为删除状态）；当前完整权重表与量级见
+> [奖励权重记录](towing_reward_weights_2026-10-17.md)、README **TOW-REW-01**。
+
 ---
 
 ## 1. 改动 ①：删除 `extra_distance`

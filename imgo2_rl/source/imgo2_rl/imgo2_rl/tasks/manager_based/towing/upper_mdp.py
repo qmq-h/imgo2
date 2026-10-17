@@ -36,11 +36,14 @@ from isaaclab.utils import configclass
 from isaaclab.utils import math as math_utils
 
 from .upper_logic import CMD_ACTION_DIM, UpperActionSpec
-from .mdp.connection_grid import ELASTIC_KC, GRID_SIZE, env_spec, is_full_grid
+from .mdp.connection_grid import (
+    ELASTIC_KC, GRID_SIZE, SPEEDBUMP_TERRAIN, WAVE_TERRAIN, env_spec, is_full_grid)
 from .mdp.episode_geometry import SETTLE_TIME_S, STOP_DISTANCE_M
 from .mdp.profile_torch import profile_height_tensor
+from .mdp.speedbump_torch import profile_height_tensor as speedbump_profile_height
+from .mdp.wave_torch import profile_height_tensor as wave_profile_height
 from .mdp.slope_geometry import (
-    BACK_M, BOUNDARY_MARGIN_M, FORWARD_M, HALF_WIDTH_M)
+    BACK_M, BOUNDARY_MARGIN_M, DOWN_START_M, FLAT_OUT_START_M, FORWARD_M, HALF_WIDTH_M)
 from .mdp.rope import point_velocity
 from .mdp.rope_model import (
     BodyProperties,
@@ -164,14 +167,24 @@ class HierarchicalVelocityAction(ActionTerm):
         if not is_full_grid(env.num_envs):
             # 允许非整倍数（例如 4 环境冒烟）跑通，但只覆盖网格前缀、不是平衡设计。
             print(f"[WARN] num_envs={env.num_envs} 不是网格 {GRID_SIZE} 的整数倍，"
-                  f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（40 列 × 20 行）的整数倍")
+                  f"只覆盖网格前缀；正式训练请用 {GRID_SIZE}（60 列 × 20 行）的整数倍")
         specs = [env_spec(index) for index in range(env.num_envs)]
-        # 每条 lane 的坡度量级（0 / 5 / 10 deg）。**出生点在剖面的平地段起点**，所以出生
-        # 坐标系就是世界系（+x 前、+z 上）：`terrain_tangent_w` / `terrain_normal_w` 不再是
-        # 逐 env 的恒定坡面系，而是同一组基；lane 内部的上/下坡由 `slope_geometry.profile_*`
-        # 按当前位置算（行程 / 离面高度 / 局部坡度）。
+        # 每条 lane 剖面的最大纵向坡度（0 / 5 / 10 deg = 平坡列，26.565 deg = 减速带列的梯形
+        # 侧坡）。**出生点在剖面的平地段起点**，所以出生坐标系就是世界系（+x 前、+z 上）：
+        # `terrain_tangent_w` / `terrain_normal_w` 不再是逐 env 的恒定坡面系，而是同一组基；
+        # lane 内部的地形由 `slope_geometry.profile_*` / `speedbump_geometry` 按当前位置算
+        # （行程 / 离面高度 / 局部坡度），用 `terrain_speedbump` 掩码按列分派。
         self.hill_grade_deg = torch.tensor(
             [spec["slope_degrees"] for spec in specs], dtype=torch.float32, device=env.device)
+        # 2026-10-16：混合网格里列 40–49 是减速带块、列 50–59 是波浪块（两者的地形都确定、
+        # 与档位无关）。离面高度与相对俯仰要按这两组掩码分派到 `speedbump_*` / `wave_*`，
+        # 见 `robot_fall`。
+        self.terrain_speedbump = torch.tensor(
+            [spec["terrain_family"] == SPEEDBUMP_TERRAIN for spec in specs],
+            dtype=torch.bool, device=env.device)
+        self.terrain_wave = torch.tensor(
+            [spec["terrain_family"] == WAVE_TERRAIN for spec in specs],
+            dtype=torch.bool, device=env.device)
         self.terrain_tangent_w = torch.tensor([1.0, 0.0, 0.0], device=env.device).expand(
             env.num_envs, 3).clone()
         self.terrain_normal_w = torch.tensor([0.0, 0.0, 1.0], device=env.device).expand(
@@ -937,27 +950,73 @@ def cart_privileged_parameters(env):
     return torch.cat((term.cart_mass, term.ground_friction, term.wheel_damping,
                       term.cart_present.float()), 1)
 def decoder_targets(env):
-    """decoder 的回归目标：**物理量**（m/s、kg、N），不归一化、不 clamp。
+    """decoder 的回归目标：**物理量**（m/s、N），不归一化、不 clamp（**5 维**，契约 v4）。
 
     2026-09-23 改为物理量：原先归一化到 [-1,1] 配合 head 的 tanh，但归一化尺度会按 s²
-    压低 loss 的物理权重（力 s=10 ⇒ 0.01、质量 s=5 ⇒ 0.04），使这两项几乎训不动；而且
-    `v/(1.0,0.5)` 的 clamp 会把超过 1.0/0.5 m/s 的真值截断。去掉后 head 也不带 tanh，
-    稳定性由 `TowingDynamicsDecoder.loss()` 的 smooth_l1(β=1) 提供。
+    压低 loss 的物理权重（力 s=10 ⇒ 0.01），使该项几乎训不动；而且 `v/(1.0,0.5)` 的 clamp
+    会把超过 1.0/0.5 m/s 的真值截断。去掉后 head 也不带 tanh，稳定性由
+    `TowingDynamicsDecoder.loss()` 的 smooth_l1(β=1) 提供。
+
+    2026-10-16（用户准则「decoder 只建模与四足机器人直接相关的量，质量用 latent 假定」）：
+    **去掉质量**这一维 ⇒ [vx, vy, Fx, Fy, Fz]；质量仍在 critic 特权组
+    （`cart_privileged_parameters`）、物理与记录里，只是不再作为 decoder 的显式目标。
     """
     term = _term(env)
     robot_velocity_xy = term._asset.data.root_lin_vel_b[:, :2]
-    mass = term.cart_mass
     force = term.towing_force_b
-    return torch.cat((robot_velocity_xy, mass, force), dim=1)
-def decoder_mass_weight(env, minimum_force, force_scale):
-    force = torch.linalg.vector_norm(_term(env).towing_force_b, dim=1, keepdim=True)
-    effective_force = (force - minimum_force).clamp_min(0.0)
-    return effective_force / (effective_force + force_scale)
+    return torch.cat((robot_velocity_xy, force), dim=1)
 
 
 def cart_collision(env):
     term = _term(env); term.update_safety_state(); return term.cart_collision
-def cart_collision_cost(env): return cart_collision(env).float()
+
+
+def downhill_segment(env):
+    """机器人是否正处在坡面剖面的**下坡段**（lane 局部 x ∈ (6.0, 9.0] m）。
+
+    只用于 `cart_collision_cost` 的相位权重（用户 2026-10-17：「collision 在下坡路段
+    （只在下坡段落）降低到 −1.0，其他情况不变」）。几何来源是 `slope_geometry` 的连续剖面：
+
+        平地 2.25 → 上坡 3 → 坡顶 0.75 → **下坡 3** → 平地 2.25   (lane 局部 x)
+        x: 0 ──── 2.25 ─── 5.25 ───── 6.0 ───── 9.0 ─── 11.25
+
+    即 `(DOWN_START_M, FLAT_OUT_START_M]`。**只对平滑列生效**：减速带列（`terrain_speedbump`）
+    与波浪列（`terrain_wave`）恒为 False（用户选的口径是"只算坡面剖面的下坡段"）。
+
+    坐标：`root_pos_w − env.scene.env_origins` 就是 lane 局部坐标（出生点在 lane 原点的平面上，
+    `terrain_tangent_w` 恒为 +x，见 `HierarchicalVelocityAction.__init__`），所以第 0 分量与
+    `slope_geometry.profile_height(grade, x)` 的 `x` 是**同一个量**，不含弧长修正
+    （与 `stop_reached` 用点积算 progress 不同，这里要的是剖面参数 x，不是行程）。
+
+    ⚠ **rolling 档不精确**：`Imgo2-towing-upper-rolling-rl-lab` 把平滑列换成
+    `rolling_geometry` 的 4 座 raised-cosine 山（宽度 1.5/2.0/1.25/2.0，起点 2.25），
+    5.75–7.0 与 7.0–9.0 各含一个**上坡半周期** ⇒ 同一个 x 窗口不等于"真的在下坡"。
+    该档要么接受这个近似，要么改成按局部坡度符号判定（对 `profile_height` 做有限差分），
+    见 docs/towing/towing_reward_weights_2026-10-17.md。
+    """
+    term = _term(env)
+    local_x = (term._asset.data.root_pos_w - env.scene.env_origins)[:, 0]
+    inside = (local_x > DOWN_START_M) & (local_x <= FLAT_OUT_START_M)
+    return inside & ~term.terrain_speedbump & ~term.terrain_wave
+
+
+def cart_collision_cost(env, downhill_scale=1.0):
+    """碰撞代价（0/1），可选按"下坡段"缩放。
+
+    `downhill_scale` 是**代价缩放**（不是权重）：`UpperRewardsCfg.collision` 的权重固定
+    −5.0，下坡段传 0.2 ⇒ `−5.0 × 0.2 = −1.0` 的有效权重（每步 −0.05 vs 其他路段 −0.25）。
+    默认 1.0 ⇒ 与旧行为**逐位一致**（不做下坡判断、没有额外张量运算）。
+    为什么把相位放在 func 而不是再注册一条 RewTerm：`Episode_Reward/collision` 保持**一条**
+    曲线，历史 run 的读数口径不变；也避免对同一判据算两遍。
+    """
+    cost = cart_collision(env).float()
+    if downhill_scale == 1.0:
+        return cost
+    scale = torch.where(
+        downhill_segment(env),
+        cost.new_tensor(float(downhill_scale)),
+        cost.new_tensor(1.0))
+    return cost * scale
 def velocity_tracking_exp(env, linear_std, yaw_std, use_lateral_and_heading=False):
     """**实际速度** vs 命令期望的指数跟踪项（唯一的正奖励）。
 
@@ -1135,14 +1194,25 @@ def yaw_heading_l2(env):
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
 def robot_fall(env, minimum_height):
-    """离**局部坡面**的高度低于阈值 ⇒ 判定为跌倒（坡上不能用绝对 z）。"""
+    """离**局部地面**的高度低于阈值 ⇒ 判定为跌倒（坡上/减速带/波浪上不能用绝对 z）。
+
+    混合网格（2026-10-16）按列分派三族：平滑列用 `profile_torch`（或 rolling 的二维版）、
+    减速带列（40–49）用 `speedbump_torch` 的梯形高度、波浪列（50–59）用 `wave_torch` 的正弦
+    高度（后两者都与档位无关，但仍要传 y 做横向收零）。
+    """
     term = _term(env)
     local = term._asset.data.root_pos_w - env.scene.env_origins
     if term.terrain_profile == "rolling":
         from .mdp.rolling_torch import profile_height_tensor as rolling_height
-        surface_height = rolling_height(term.hill_grade_deg, local[:, 0], local[:, 1])
+        smooth_height = rolling_height(term.hill_grade_deg, local[:, 0], local[:, 1])
     else:
-        surface_height = profile_height_tensor(term.hill_grade_deg, local[:, 0])
+        smooth_height = profile_height_tensor(term.hill_grade_deg, local[:, 0])
+    surface_height = torch.where(
+        term.terrain_speedbump,
+        speedbump_profile_height(term.hill_grade_deg, local[:, 0], local[:, 1]),
+        torch.where(term.terrain_wave,
+                    wave_profile_height(term.hill_grade_deg, local[:, 0], local[:, 1]),
+                    smooth_height))
     height = local[:, 2] - surface_height
     return height < minimum_height
 def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()

@@ -3,7 +3,7 @@
 本机（以及任何没有 GPU 的机器）只能验证**纯 torch** 的那一半：
 
 - **58 维**（契约 v3）policy 帧的布局/缩放与训练侧 `upper_mdp.policy_frame` 及
-  `upper_logic.UpperObservationSpec.terms` 逐项一致；actor 输入 80、critic 73；
+  `upper_logic.UpperObservationSpec.terms` 逐项一致；actor 输入 **79**（契约 v4）、critic 73；
 - **13 维**动作 = 1 维 vx 偏移 + 12 维关节残差：`delta = u_joint ⊙ action_scale`、
   `|delta| ≤ action_scale`、`_last_action` 的时序（首拍为零，次拍等于上一拍 clamp 后的
   13 维动作）、偏移头有界且与 cfg 默认值逐项一致；
@@ -84,7 +84,7 @@ def registered_agent_cfg_stub():
         decoder=SimpleNamespace(
             frame_dim=58, feature_dim=128, hidden_dim=128, num_layers=1, latent_dim=16,
             force_scale=10.0, kld_weight=0.005, learning_rate=1.0e-3, max_grad_norm=1.0,
-            velocity_coef=5.0, force_coef=10.0, mass_coef=1.0),
+            velocity_coef=5.0, force_coef=10.0),
     )
 
 
@@ -260,7 +260,7 @@ class FrameContractTests(unittest.TestCase):
         self.assertEqual(tuple((name, dim) for name, dim, _ in runtime.FRAME_TERMS), spec.terms)
         self.assertEqual(runtime.FRAME_DIM, spec.frame_dim)
         self.assertEqual(runtime.FRAME_DIM, 58)
-        self.assertEqual(spec.actor_dim, 80)
+        self.assertEqual(spec.actor_dim, 79)
         # 帧 58 = 57 + 1：双头迁移只把 `last_action` 由 12 加到 13
         self.assertEqual(dict(spec.terms)["last_action"], 13)
         self.assertEqual(runtime.ACTION_DIM, 13)
@@ -298,16 +298,16 @@ class RuntimeActTests(unittest.TestCase):
 
     def test_actor_and_decoder_dims_after_loading(self):
         instance, _, _, _ = make_runtime(self._tmp.name)
-        self.assertEqual(instance.actor.memory_a.rnn.input_size, 80)
+        self.assertEqual(instance.actor.memory_a.rnn.input_size, 79)
         self.assertEqual(instance.actor.memory_c.rnn.input_size, runtime.DEFAULT_CRITIC_OBS_DIM)
         self.assertEqual(runtime.DEFAULT_CRITIC_OBS_DIM, 73)
         self.assertEqual(instance.actor.memory_a.rnn.hidden_size, 256)
         self.assertEqual(instance.decoder.frame_dim, 58)
-        self.assertEqual(instance.decoder.output_dim, 6)
+        self.assertEqual(instance.decoder.output_dim, 5)
         self.assertEqual(instance.decoder.latent_dim, 16)
         self.assertEqual(instance.iteration, 42)
         self.assertEqual(instance.contract,
-                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
+                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
 
     def test_zero_initialised_actor_starts_at_zero_residual(self):
         """训练侧 towing runner 把 actor 末层零初始化 ⇒ 首拍残差精确为 0（起点 = 冻结步态）。"""
@@ -394,12 +394,12 @@ class RuntimeActTests(unittest.TestCase):
         self.assertEqual(scalars["stop_command_ramp_s"], 0.0)
 
     def test_checkpoint_contract_version_matches_the_training_runner(self):
-        """运行时的契约版本号必须与训练侧 runner 的 save/load 版本号一致（v3）。"""
+        """运行时的契约版本号必须与训练侧 runner 的 save/load 版本号一致（v4）。"""
         runner = (RL / "scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py").read_text("utf-8")
         match = re.search(r"TOWING_CONTRACT_VERSION\s*=\s*(\d+)", runner)
         self.assertIsNotNone(match, "runner 未声明 TOWING_CONTRACT_VERSION")
         self.assertEqual(int(match.group(1)), runtime.CHECKPOINT_CONTRACT_VERSION)
-        self.assertEqual(runtime.CHECKPOINT_CONTRACT_VERSION, 3)
+        self.assertEqual(runtime.CHECKPOINT_CONTRACT_VERSION, 4)
 
     def test_action_scale_is_the_frozen_policy_contract(self):
         instance, _, _, _ = make_runtime(self._tmp.name)
@@ -501,12 +501,14 @@ class CheckpointContractTests(unittest.TestCase):
                                           spec=self.spec, network_modules=network_modules())
 
     def test_legacy_and_mismatched_contracts_are_rejected(self):
-        """旧 v2（57/79）与更早的 51/56/63 维、以及任何字段漂移都必须在加载前被拒。"""
+        """旧 v3（explicit 6）、v2（57/79）与更早的 51/56/63 维、以及任何字段漂移都必须被拒。"""
         for contract in (
+            # 2026-10-16 之前的 v3：frame 58 / explicit 6（带质量头）/ actor 80 —— 现在必须被拒
+            {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16},
             # 2026-10-10 双头迁移前的 v2 契约：frame 57 / actor 79 / 动作 12 —— 现在必须被拒
             {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
-            # 只改 frame 不改 version 的"半迁移"也不能通过
-            {"version": 3, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
+            # 只改 explicit 不改 version 的"半迁移"也不能通过
+            {"version": 4, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16},
             {"version": 2, "frame_dim": 56, "explicit_dim": 5, "latent_dim": 16},
             {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 8},
             {"version": 1, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
@@ -517,11 +519,11 @@ class CheckpointContractTests(unittest.TestCase):
             with self.assertRaises(runtime.TowingCheckpointContractError):
                 self._runtime_for_contract(contract)
 
-    def test_v3_contract_is_accepted(self):
-        """v3（58/6/16）是当前契约：必须能加载（与上一条的"被拒"成对）。"""
+    def test_v4_contract_is_accepted(self):
+        """v4（58/**5**/16）是当前契约：必须能加载（与上一条的"被拒"成对）。"""
         instance = self._runtime_for_contract(runtime.expected_towing_contract(self.spec))
         self.assertEqual(instance.contract,
-                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
+                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
 
     def test_error_message_names_the_contract(self):
         with self.assertRaises(runtime.TowingCheckpointContractError) as caught:
@@ -549,8 +551,8 @@ class CheckpointContractTests(unittest.TestCase):
                                        network_modules=network_modules())
 
     def test_strict_load_catches_a_forged_contract(self):
-        """契约可以骗过校验，但**旧 79 维 actor** 权重躲不过 `load_state_dict(strict=True)`。"""
-        old_actor = build_actor(self.spec, num_actor_obs=79)   # 旧 v2 actor（57 帧 + 6 + 16）
+        """契约可以骗过校验，但**旧 v3 的 80 维 actor** 权重躲不过 `load_state_dict(strict=True)`。"""
+        old_actor = build_actor(self.spec, num_actor_obs=80)   # 旧 v3 actor（58 帧 + 6 + 16）
         path = write_checkpoint(self._tmp.name, actor=old_actor, decoder=self.decoder,
                                 contract=runtime.expected_towing_contract(self.spec))
         with self.assertRaises(RuntimeError):

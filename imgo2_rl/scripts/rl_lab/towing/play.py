@@ -95,7 +95,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import imgo2_rl.tasks  # noqa: F401
 from rl_lab.config import TowingOnPolicyRunnerCfg
 from rl_lab.modules import reset_gru_hidden
-from rl_lab.modules.towing_decoder import mass_supervision_weight
 from rl_lab.runners import TowingOnPolicyRunner
 from rl_lab.wrapper import TowingVecEnvWrapper
 
@@ -164,18 +163,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
     # 换算成关节偏移要乘 action_scale（hip 0.125 / thigh·shank 0.25 rad），见 upper_mdp.apply_actions。
     # 前 1 维是 vx 偏移头（×0.5 m/s 后再限 [-0.2, +0.6]），后 12 维才是关节残差。
     res_norm = torch.zeros(env.num_envs, device=env.device)
-    # decoder 精度统计（decoder 直接输出物理量，故误差单位即 m/s、N、kg）
+    # decoder 精度统计（decoder 直接输出物理量，故误差单位即 m/s、N；契约 v4 起不再输出质量）
     d_vel = torch.zeros(env.num_envs, device=env.device)
     d_force = torch.zeros(env.num_envs, device=env.device)
-    d_mass = torch.zeros(env.num_envs, device=env.device)   # 加权累计（权重 = 质量监督权重）
-    d_mass_w = torch.zeros(env.num_envs, device=env.device)
-    d_mass_n = torch.zeros(env.num_envs, device=env.device)
     d_n = torch.zeros(env.num_envs, device=env.device)
     if args_cli.decoder_interval > 0:
-        print("[dec] 列含义：vxT/vyT=真值速度  vxP/vyP=decoder估计  mT/mP=真值/估计质量(kg)  "
+        print("[dec] 列含义：vxT/vyT=真值速度  vxP/vyP=decoder估计  "
               "|F|T、|F|P=真值/估计牵引力(N)")
         print(f"[dec] {'step':>6} {'vxT':>7} {'vxP':>7} {'vyT':>7} {'vyP':>7} "
-              f"{'mT':>6} {'mP':>6} {'|F|T':>7} {'|F|P':>7}")
+              f"{'|F|T':>7} {'|F|P':>7}")
     if args_cli.cmd_interval > 0:
         print("[cmd] 列含义：t=时刻s  cmd=送冻结策略的指令(任务指令+有界偏移)  achieved=实际体速  "
               "|res|=13 维上层动作范数(归一化单位)  res_x=第 1 维(vx 偏移头)")
@@ -194,8 +190,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
             "steps": int(d_n[0].item()),
             "decoder_vel_mae_mps": float((d_vel / d_n.clamp_min(1.0)).mean().item()),
             "decoder_force_mae_N": float((d_force / d_n.clamp_min(1.0)).mean().item()),
-            "decoder_mass_mae_kg_weighted": float((d_mass / d_mass_w.clamp_min(1e-6)).mean().item()),
-            "decoder_mass_supervised_frac": float((d_mass_n / d_n.clamp_min(1.0)).mean().item()),
             "towing_force_gt_mean_N": float(action_term.towing_force_b.norm(dim=1).mean().item()),
         }
         track = track_steps.clamp_min(1.0)
@@ -261,22 +255,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
               if est is not None:
                   gt_vel = action_term._asset.data.root_lin_vel_b[:, :2]
                   gt_f = action_term.towing_force_b
-                  gt_m = action_term.cart_mass[:, 0]
-                  # decoder 直接回归物理量（m/s、kg、N），误差也在物理量上算
-                  # 布局：[vx, vy, m, Fx, Fy, Fz]（2026-10-08 起力为 3 维）
+                  # decoder 直接回归物理量（m/s、N），误差也在物理量上算
+                  # 布局（契约 v4）：[vx, vy, Fx, Fy, Fz] —— 质量不再是显式输出
                   d_vel += (est[:, :2] - gt_vel).abs().mean(dim=1)
-                  d_force += (est[:, 3:6] - gt_f).abs().mean(dim=1)
-                  mw = mass_supervision_weight(gt_f, minimum_force=1.0, force_scale=10.0)
-                  d_mass += (est[:, 2] - gt_m).abs() * mw
+                  d_force += (est[:, 2:5] - gt_f).abs().mean(dim=1)
                   d_n += 1.0
-                  d_mass_n += (mw > 0).float()
-                  d_mass_w += mw
                   if args_cli.decoder_interval > 0 and timestep % args_cli.decoder_interval == 0:
                       print(f"[dec] {timestep:>6} {gt_vel[0,0].item():>7.3f} {est[0,0].item():>7.3f} "
                             f"{gt_vel[0,1].item():>7.3f} {est[0,1].item():>7.3f} "
-                            f"{gt_m[0].item():>6.2f} {est[0,2].item():>6.2f} "
                             f"{gt_f[0].norm().item():>7.3f} "
-                            f"{est[0,3:6].norm().item():>7.3f}")
+                            f"{est[0,2:5].norm().item():>7.3f}")
 
               finished = (dones > 0).nonzero(as_tuple=False).flatten()
               if len(finished) > 0:
@@ -318,15 +306,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
           n = d_n.clamp_min(1.0)
           vel_n = (d_vel / n).mean().item()
           force_n = (d_force / n).mean().item()
-          mass_w = (d_mass / d_mass_w.clamp_min(1e-6)).mean().item()
-          frac = (d_mass_n / n).mean().item()
           print("\n[dec] decoder 预测误差（确定性推理，全部环境平均）")
           print(f"[dec]   {env.num_envs} 个环境，共 {int(d_n[0].item())} 步")
           print(f"[dec]   速度   MAE : {vel_n:.5f} m/s")
           print(f"[dec]   牵引力 MAE : {force_n:.5f} N")
-          print(f"[dec]   质量   MAE : {mass_w:.5f} kg   （仅统计被监督的步，"
-                f"仅统计被监督的步）")
-          print(f"[dec]   质量被监督的步占比 : {frac*100:.1f}%   （判据：|F_gt| > 1 N）")
 
     finally:
         # 无论正常结束、抛异常还是 Ctrl+C，都尽力留下已统计的部分数据。

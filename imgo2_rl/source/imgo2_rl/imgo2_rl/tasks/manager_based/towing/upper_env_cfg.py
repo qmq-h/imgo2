@@ -13,8 +13,9 @@
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 
-契约 v3（2026-10-10）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、actor **80**、
-critic **73**、decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
+契约 v4（2026-10-16）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、explicit **5**
+（机器人速度 2 + 牵引力 3，**去掉显式质量预测**）、latent **16**、actor **79**、critic **73**、
+decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
 """
 
 from dataclasses import MISSING
@@ -41,10 +42,11 @@ from imgo2_rl.tasks.manager_based.towing.mdp.connection_grid import COLUMNS, ROW
 from imgo2_rl.tasks.manager_based.towing.mdp.episode_geometry import (
     POST_STOP_WINDOW_S, SPEED_RANGE, episode_timeout_s)
 from imgo2_rl.tasks.manager_based.towing.mdp.slope_geometry import (
-    BOUNDARY_MARGIN_M, FLAT_OUT_START_M, FORWARD_M, MAX_GRADE_DEG, profile_arc_length)
+    BOUNDARY_MARGIN_M, FLAT_OUT_START_M, FORWARD_M, MAX_GRADE_DEG)
 from imgo2_rl.tasks.manager_based.towing.utils.policy_cfg import get_policy
 from imgo2_rl.tasks.manager_based.towing.slope_terrain import (
-    TowingSlopeTerrainGenerator, TowingSlopeTerrainImporter, TowingRollingTerrainGenerator,
+    TowingMixedTerrainGenerator, TowingMixedRollingTerrainGenerator,
+    TowingSlopeTerrainImporter,
 )
 
 
@@ -86,13 +88,13 @@ _ROBOT_BODY_FILTERS = _robot_body_filters()
 
 @configclass
 class UpperTowingSceneCfg(InteractiveSceneCfg):
-    # Real mesh: 20 flat columns, 10 at |5 deg| and 10 at |10 deg|.
-    # Exact origins come from the importer, not GridCloner's square arrangement.
+    # Real mesh: 20 flat columns, 10 at |5 deg|, 10 at |10 deg| and 10 speed-bump columns
+    # (2026-10-16). Exact origins come from the importer, not GridCloner's square arrangement.
     terrain = TerrainImporterCfg(
         prim_path="/World/Ground", terrain_type="generator",
         class_type=TowingSlopeTerrainImporter,
         terrain_generator=TerrainGeneratorCfg(
-            class_type=TowingSlopeTerrainGenerator, size=(20.0, 6.0),
+            class_type=TowingMixedTerrainGenerator, size=(20.0, 6.0),
             num_rows=ROWS, num_cols=COLUMNS, sub_terrains={}, curriculum=False),
         physics_material=sim_utils.RigidBodyMaterialCfg(
             static_friction=0.8, dynamic_friction=0.8, restitution=0.0,
@@ -175,11 +177,8 @@ class UpperObservationsCfg:
 
     @configclass
     class DecoderCfg(ObsGroup):
+        #: 回归目标（**5 维**：机器人速度 2 + 牵引力 3，契约 v4 起不含质量）。
         targets = ObsTerm(func=mdp.decoder_targets)
-        mass_weight = ObsTerm(
-            func=mdp.decoder_mass_weight,
-            params={"minimum_force": 1.0, "force_scale": 10.0},
-        )
 
         def __post_init__(self):
             self.concatenate_terms = True
@@ -218,6 +217,13 @@ class UpperRewardsCfg:
     原先与之并列的 `reference_tracking`（‖ref − user‖²）已删除：动作改成关节位置残差后不再有
     `reference_command`，该式恒为 0；其"起步即有效、全域有梯度"的作用由
     `tracking_velocity` 现在真的比较**实测速度**来承担。
+
+    **2026-10-17 用户要求的三处权重改动**（量级推导见各注册行上方注释）：
+    `clearance` −1.0 → **−10.0**（软间隙障碍提权 10 倍）、`action_rate` −0.1 → **−0.05**
+    （动作平滑减弱一半）、`collision` 保持 **−5.0** 但**只在下坡段**（坡面剖面 lane 局部
+    x ∈ (6.0, 9.0] m，仅平滑列）按 `downhill_scale=0.2` 缩放到有效 **−1.0**，
+    其他路段不变。相位掩码见 `mdp.downhill_segment`，记录见
+    docs/towing/towing_reward_weights_2026-10-17.md。
     """
 
     # ============================ 跟踪（任务主目标）============================
@@ -249,7 +255,22 @@ class UpperRewardsCfg:
     # 每步 r = −5.0×0.05 = −0.25，约为 `tracking_velocity` 满额（+0.05/步）的 5 倍；
     # 顶住 1 s（20 步）约 −5，与一个回合的正奖励（≈+6）同量级 ⇒ 有动机脱离但不至于
     # 让早期学习被"一碰就废"支配。若日志里该项长期压过跟踪项再下调。
-    collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0)
+    # **2026-10-17 用户要求：只在下坡段把碰撞惩罚降到 −1.0，其他路段不变（仍 −5.0）。**
+    # 实现：`mdp.cart_collision_cost(env, downhill_scale=…)` 在 `mdp.downhill_segment(env)`
+    # 为真的 env 上把 0/1 代价乘 `downhill_scale` ⇒ `−5.0 × 0.2 = **−1.0**`
+    # （下坡每步 −0.05 = `tracking_velocity` 满额的 1 倍；其他路段仍是 −0.25）。
+    # 为什么缩放 func 而不是再注册一条 RewTerm：这样 `Episode_Reward/collision` 仍是**一条**
+    # 曲线（与既有 run 的读数口径不变）；拆成两条会让同一语义在 TB/`--compact-log` 里分裂，
+    # 且历史对照全部作废。相位由 mask 承担，权重仍是字面的 −5.0（契约测试钉住这一行）。
+    # 「下坡段」的判定（用户 2026-10-17 选的"只算坡面剖面的下坡段"）：`slope_geometry` 的
+    # lane 局部 x ∈ (`DOWN_START_M`=6.0, `FLAT_OUT_START_M`=9.0] m，**只对平滑列生效**；
+    # 减速带列（`terrain_speedbump`）与波浪列（`terrain_wave`）恒不生效、全程 −5.0。
+    # ⚠ rolling 档（`Imgo2-towing-upper-rolling-rl-lab`）在同一个 x 窗口里**不是纯下坡**
+    # （`rolling_geometry` 的 4 座 raised-cosine 山在 5.75–7.0 与 7.0–9.0 各含一个上坡半周期）
+    # ⇒ 该档下这条 mask ≠ "真的在下坡"；要按真实坡度判定需改成局部坡度符号。见
+    # docs/towing/towing_reward_weights_2026-10-17.md 与 README TOW-REW-01。
+    collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0,
+                        params={"downhill_scale": 0.2})
 
     # 【跌倒】base 高度 < 0.18 m 时置 1，同时是终止条件。实测从未触发。
     fall = RewTerm(func=mdp.robot_fall_cost, weight=-50.0,
@@ -258,9 +279,19 @@ class UpperRewardsCfg:
     # ============================ 几何／安全约束 ============================
 
     # 【软间隙障碍】softplus((0.20 − 间隙)/0.05)，间隙趋向 0 时加大。
-    # 0.20 m 是**绝对**警戒线，线性区在警戒线**下方**；间隙 0.2 时约 −0.69/步、0 时约 −0.2/步。
+    # 0.20 m 是**绝对**警戒线，线性区在警戒线**下方**。
     # 无小车环境用 cart_present 屏蔽。
-    clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0,
+    # **2026-10-17 用户要求：权重 −1.0 → −10.0**。`RewardManager` 每步 = weight × func × 0.05 s
+    # （旧注释把"函数值 0.693/4.02"写成了"每步 −0.69/−0.2"，这里按每步重列）：
+    #   间隙 0.20 m（func 0.693）⇒ 每步 **−0.347**（原 −0.035）
+    #   间隙 0.10 m（func 2.127）⇒ 每步 **−1.064**
+    #   间隙 0     （func 4.018）⇒ 每步 **−2.009**（原 −0.201）
+    # 出生时几乎不生效：训练侧 `rope_state` 间距在最短绳行（L=0.5）是 0.365 m ⇒ func 0.037
+    # ⇒ −0.019/步；最短杆行 0.473 m ⇒ func 0.004 ⇒ ≈0。所以提权不会在出生那一拍就扣分；
+    # 但**近距（间隙 < 0.18 m）它会压过 `min_clearance`（缺口 0.2 m 才 −0.05/步）与
+    # `tracking_velocity` 满额（+0.05/步）** —— 这是用户要的"贴近就重罚"取向，
+    # 实际工作点上的量级待训练机读数（README TOW-REW-01）。
+    clearance = RewTerm(func=mdp.clearance_barrier, weight=-10.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
     # 【硬最小间距】间隙低于 `出生间隙 − deadband_m` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
     # 与上面 clearance 的分工：clearance 是"近了要缓"的软障碍；本项是"**不许比出生时更近**"的
@@ -378,10 +409,15 @@ class UpperRewardsCfg:
     # ============================ 动作平滑／幅值（治抖动）============================
 
     # 【动作变化率】‖a_t − a_{t−1}‖²，鼓励平滑。2026-09-23 由 −0.02 提到 −0.1：
-    # 原值实测每步仅 −0.026，被跟踪项压住、基本没起作用。±1 抖动时现约 −0.24/步。
+    # 原值实测每步仅 −0.026，被跟踪项压住、基本没起作用。
     # ⚠ 2026-10-08 动作由 3 维变 12 维关节残差，同等逐维幅值下本项量级约 ×4，
     #   权重是否仍合适待实跑确认（见 README 问题表）。
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.1)
+    # **2026-10-17 用户要求：−0.1 → −0.05。**
+    # 每步 = weight × func × step_dt（0.05 s）：12 维各变 1 ⇒ func 12 ⇒ 每步 −0.03（原 −0.06）；
+    # 从 +1 翻到 −1 的极端（Δa = ±2，func 48）⇒ 每步 −0.12（原 −0.24）。
+    # 减半的取向：−0.1 时满幅抖动 ≈ `tracking_velocity` 满额（+0.05/步）的 5 倍，会连带抑制
+    # 残差去补偿底层下垂（`low_level_pos_error` 只有 −0.0017/步），两项权重需一起看。
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
 
     # 【动作幅值】‖a‖²（裁剪后，3 维时 ≤3、12 维时 ≤12）。与 action_rate 互补：
     # 一个压"变化量"、一个压"绝对值"。目的是把残差压回小幅度、让冻结步态保持主导。
@@ -555,12 +591,12 @@ class UpperRobotDomainRandCfg:
 
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
+    #: 平滑段（平地/平坡列）用哪套高度场：`hill`（默认，连续单坡包）或 `rolling`（连续起伏）。
+    #: **减速带块（列 40–49）不随它变**：2026-10-16 起那 10 列始终是 300/100/50 mm 的梯形凸条，
+    #: 拼在同一张 60 列网格里（见 `mdp/mixed_geometry.py`）。
     towing_terrain_profile: str = "hill"
-    # 40 columns x 20 lengths (0.6--1.2 m) = 800 envs. 每条 lane 的剖面都是
-    # 「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」（`mdp/slope_geometry.py`，
-    # 跑道总长 15 m）；
-    # 列决定坡度量级：前 20 列是纯平地，之后 10 列 5°、10 列 10°（见 `connection_grid.py`）。
-    # A non-multiple of 800 only covers a grid prefix, not all work conditions.
+    # 50 columns x 20 lengths = 1000 envs（20 平列 + 10 个 5° + 10 个 10° + 10 列减速带，
+    # 见 `connection_grid.py`）。A non-multiple of 1000 only covers a grid prefix.
     scene: UpperTowingSceneCfg = UpperTowingSceneCfg(
         num_envs=COLUMNS * ROWS, env_spacing=6.0)
     observations: UpperObservationsCfg = UpperObservationsCfg()
@@ -575,9 +611,11 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         if self.towing_terrain_profile not in ("hill", "rolling"):
             raise ValueError("unknown towing terrain profile")
+        # 地面只有一张混合网格（2026-10-16）：profile 只决定前 40 列的平滑段高度场，
+        # 列 40–49 的减速带块始终存在（见 `mdp/mixed_geometry.py`）。
         self.scene.terrain.terrain_generator.class_type = (
-            TowingRollingTerrainGenerator if self.towing_terrain_profile == "rolling"
-            else TowingSlopeTerrainGenerator)
+            TowingMixedRollingTerrainGenerator if self.towing_terrain_profile == "rolling"
+            else TowingMixedTerrainGenerator)
         self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
         action = self.actions.high_level_velocity
         if action.stop_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
@@ -600,22 +638,23 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
                 f"amp_vx_range {(amp_vx_min, amp_vx_max)} 必须覆盖脚本速度范围 "
                 f"{(speed_min, speed_max)}，否则零偏移时脚本指令会被裁掉")
         # 正常回合一律由 `time_out` 收尾（用户 2026-10-09 确认）：timeout = settle +
-        # （到 STOP 点的**坡面弧长**上界）/ 最小速度 + 停车窗口。弧长上界取最陡档：
-        # 10 m 水平在 10° 剖面上是 `profile_arc_length(10, 10)=10.0926 m`。
-        # 2026-10-10 工作域收紧：最小速度 0.4 → **0.5 m/s** ⇒ 1 + 10.0926/0.5 + 3 =
-        # **24.185 s**（`max_episode_length` = ceil(24.185/0.05) = **484 步** @ 20 Hz，
-        # 见 Isaac Lab 0.45.9 `manager_based_rl_env.py:104`），此前是
-        # 1 + 10.0926/0.4 + 3 = 29.231 s（585 步）。
+        # （到 STOP 点的**地面弧长**上界）/ 最小速度 + 停车窗口。弧长上界 = 平滑段 / 减速带 /
+        # 波浪三段各自上界的大者。2026-10-16 加入波浪后由**波浪**给出
+        # （`wave_arc(10) = 10.116044 m`；对照：10° 坡列 10.092560、rolling 10.1041、
+        # 减速带梯形 10.023607）⇒ 1 + 10.116044/0.5 + 3 = **24.232088 s**
+        # （`max_episode_length` = ceil(24.232088/0.05) = **485 步** @ 20 Hz，
+        # 见 Isaac Lab 0.45.9 `manager_based_rl_env.py:104`），此前 484 步。
+        # 2026-10-10 工作域收紧（最小速度 0.4 → 0.5 m/s）时曾把 29.231 s / 585 步压到
+        # 24.185 s / 484 步。
         # 计算完全由 `episode_geometry.SPEED_RANGE[0]` 经 `speed_range` 参数驱动，没有第二处
         # 硬编码。`POST_STOP_WINDOW_S` 是最慢速度下的停车窗口；速度越快 STOP 越早、尾巴越长
         # （已与用户确认接受；"有没有走到 STOP 点"看 `obs_stop_reached` 诊断量，不靠终止原因区分）。
         # `decimation`（10，= 20 Hz 上层）与 `num_steps_per_env`（训练侧 rollout 长度）**不跟改**：
         # 前者由 frozen AMP 策略的 50 Hz 与上层 20 Hz 契约决定、后者是采样长度（与回合上限无关，
         # 只影响每轮 rollout 的步数）。
-        surface_distance = profile_arc_length(MAX_GRADE_DEG, action.stop_distance_m)
-        if self.towing_terrain_profile == "rolling":
-            from .mdp.rolling_geometry import arc_length_upper_bound
-            surface_distance = arc_length_upper_bound(MAX_GRADE_DEG, action.stop_distance_m)
+        smooth = "rolling" if self.towing_terrain_profile == "rolling" else "hill"
+        from .mdp.mixed_geometry import arc_length_upper_bound as mixed_arc_length
+        surface_distance = mixed_arc_length(MAX_GRADE_DEG, action.stop_distance_m, smooth=smooth)
         self.episode_length_s = episode_timeout_s(
             surface_distance, minimum_speed, action.tow_start_s,
             margin=POST_STOP_WINDOW_S)
@@ -629,5 +668,9 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
 
 @configclass
 class UpperRollingTowingEnvCfg(UpperTowingEnvCfg):
-    """Optional smooth rolling terrain; existing hill task remains available."""
+    """Same mixed ground with the smooth columns built from the rolling height field.
+
+    减速带块（列 40–49）与 hill 档**完全相同**；只有前 40 列的平滑段换成 `rolling_geometry`
+    的连续起伏。timeout 由 rolling 的弧长上界（10.1041 m ⇒ 24.208 s / 485 步）决定。
+    """
     towing_terrain_profile: str = "rolling"

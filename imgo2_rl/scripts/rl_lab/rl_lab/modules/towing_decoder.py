@@ -5,32 +5,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# 输出布局（2026-10-08 用户决定）：[vx, vy, m, Fx, Fy, Fz]
+# 输出布局（2026-10-16 用户口径）：[vx, vy, Fx, Fy, Fz] = **5 维**。
+# - **质量不再显式预测**：准则「decoder 只建模与四足机器人直接相关的量」。机器人自身速度
+#   （2 维）与作用在机器人上的牵引力（3 维）满足这条；小车质量是**负载的属性**，不是机器人
+#   的量 ⇒ 交给 latent 隐含（actor 通过 latent 间接用它，见 `augment_actor_observation`）。
+#   历史上质量是第 3 个显式输出（6 维，契约 v3），2026-10-16 删除 ⇒ 契约 v4（explicit 5、
+#   actor 79）。
 # - 机器人速度保持 **2 维**（机体系水平）：`root_lin_vel_b[:, 2]` 在 trot 步态下按步频
 #   大幅振荡，不是负载量，而上层也没有垂直控制通道；
-# - 牵引力改为 **3 维**：两挂点高差 0.17 m，绷紧时方向向量 z 分量 = 0.17/L0，在
+# - 牵引力是 **3 维**：两挂点高差 0.17 m，绷紧时方向向量 z 分量 = 0.17/L0，在
 #   L0 = 0.4…0.8 m 上就是张力的 21–43%（\|Fz\|/T），且 Fz 在 0.16 m 后置挂点上产生俯仰
 #   力矩。丢掉它会让「绳子往下拽」这件事对 actor 完全不可见。
 # 布局常量集中在这里，head 宽度、loss 切片与 `force_newtons` 全部由它们推导，
 # 避免再出现「改了 head 忘了切片」的静默错位。
 VELOCITY_DIM = 2
-MASS_DIM = 1
 FORCE_DIM = 3
-OUTPUT_DIM = VELOCITY_DIM + MASS_DIM + FORCE_DIM
-MASS_INDEX = VELOCITY_DIM
-FORCE_SLICE = slice(VELOCITY_DIM + MASS_DIM, OUTPUT_DIM)
+OUTPUT_DIM = VELOCITY_DIM + FORCE_DIM
+FORCE_SLICE = slice(VELOCITY_DIM, OUTPUT_DIM)
 
 
 class TowingDynamicsDecoder(nn.Module):
-    """Supervised variational bottleneck: history -> z -> explicit six-vector.
+    """Supervised variational bottleneck: history -> z -> explicit five-vector.
 
     Latent coordinates have no prescribed physical meanings. Unlike CMoE's
     next-proprioception reconstruction, this task reconstructs the privileged
-    [vx, vy, mass, Fx, Fy, Fz] target through the latent bottleneck.
+    [vx, vy, Fx, Fy, Fz] target through the latent bottleneck; cart mass is left
+    to the latent (2026-10-16: the decoder only models quantities of the robot).
     """
 
-    # 默认帧维 = 当前契约 v3 的 policy 帧（58）。调用方（runner / 运行时）一律显式传
-    # 配置值，这里只是防止"不传参构造"时悄悄退回旧 57 维契约。
+    # 默认帧维 = 当前契约 v4 的 policy 帧（58）。调用方（runner / 运行时）一律显式传
+    # 配置值，这里只是防止"不传参构造"时悄悄退回旧契约。
     def __init__(self, frame_dim=58, feature_dim=128, hidden_dim=128,
                  num_layers=1, force_scale=10.0, latent_dim=16):
         super().__init__()
@@ -45,7 +49,6 @@ class TowingDynamicsDecoder(nn.Module):
         self.fc_log_var = nn.Linear(hidden_dim, latent_dim)
         self.latent_decoder = nn.Sequential(nn.Linear(latent_dim, feature_dim), nn.ELU())
         self.velocity_head = nn.Linear(feature_dim, VELOCITY_DIM)
-        self.mass_head = nn.Linear(feature_dim, MASS_DIM)
         self.force_head = nn.Linear(feature_dim, FORCE_DIM)
 
     @property
@@ -80,8 +83,7 @@ class TowingDynamicsDecoder(nn.Module):
 
     def decode(self, latent):
         features = self.latent_decoder(latent)
-        return torch.cat((self.velocity_head(features), self.mass_head(features),
-                          self.force_head(features)), dim=-1)
+        return torch.cat((self.velocity_head(features), self.force_head(features)), dim=-1)
 
     def forward_with_latent(self, frames, hidden_state=None, *, sample=None):
         mu, log_var, state = self.encode(frames, hidden_state)
@@ -102,34 +104,21 @@ class TowingDynamicsDecoder(nn.Module):
         return prediction[..., FORCE_SLICE]
 
     @staticmethod
-    def loss(
-        prediction,
-        targets,
-        mass_supervision_weight,
-        *,
-        velocity_coef=1.0,
-        force_coef=1.0,
-        mass_coef=1.0,
-    ):
-        """Supervise velocity/force always and mass after the first towing interaction."""
+    def loss(prediction, targets, *, velocity_coef=1.0, force_coef=1.0):
+        """Supervise robot velocity and towing force（2026-10-16 起不再有质量项）。
+
+        两项加权后的实际贡献单独返回，供日志核对「权重是否真的配平了」。
+        去掉 target 归一化后两项尺度不同（m/s、N），1:1 并不等权。
+        """
         if prediction.shape != targets.shape or prediction.shape[-1] != OUTPUT_DIM:
             raise ValueError(
                 f"decoder shape mismatch: prediction={prediction.shape}, target={targets.shape}")
-        weight = mass_supervision_weight.to(
-            device=prediction.device, dtype=prediction.dtype).reshape(prediction.shape[:-1])
         velocity_loss = F.smooth_l1_loss(
             prediction[..., :VELOCITY_DIM], targets[..., :VELOCITY_DIM])
         force_loss = F.smooth_l1_loss(
             prediction[..., FORCE_SLICE], targets[..., FORCE_SLICE])
-        mass_error = F.smooth_l1_loss(
-            prediction[..., MASS_INDEX], targets[..., MASS_INDEX], reduction="none")
-        mass_loss = (mass_error * weight).sum() / weight.sum().clamp_min(1.0)
-        # 三项加权后的实际贡献单独返回，供日志核对「权重是否真的配平了」。
-        # 去掉归一化后三项尺度不同（m/s、kg、N），1:1:1 并不等权。
-        parts = (velocity_coef * velocity_loss,
-                 force_coef * force_loss,
-                 mass_coef * mass_loss)
-        return parts[0] + parts[1] + parts[2], parts
+        parts = (velocity_coef * velocity_loss, force_coef * force_loss)
+        return parts[0] + parts[1], parts
 
 
 def augment_actor_observation(frames, prediction, latent):
@@ -139,24 +128,6 @@ def augment_actor_observation(frames, prediction, latent):
             or prediction.shape[-1] != OUTPUT_DIM):
         raise ValueError("actor augmentation batch or explicit dimension mismatch")
     return torch.cat((frames, prediction.detach(), latent.detach()), dim=-1)
-
-
-def mass_supervision_weight(
-    towing_force_newtons,
-    *,
-    minimum_force=1.0,
-    force_scale=10.0,
-):
-    """Map GT towing-force magnitude to a continuous mass-loss weight.
-
-    2026-10-08 起入参是**三维**力，范数即真实张力（原先 2 维范数 = T·cosθ，偏小 2–10%）。
-    """
-    if minimum_force < 0.0 or force_scale <= 0.0 or towing_force_newtons.shape[-1] != FORCE_DIM:
-        raise ValueError(
-            f"minimum_force must be nonnegative, force_scale positive, and force shape [...,{FORCE_DIM}]")
-    effective_force = (
-        torch.linalg.vector_norm(towing_force_newtons, dim=-1) - minimum_force).clamp_min(0.0)
-    return effective_force / (effective_force + force_scale)
 
 
 def reset_gru_hidden(hidden_state, dones):
@@ -177,20 +148,21 @@ class DynamicsDecoderTrainer:
         max_grad_norm=1.0,
         velocity_coef=1.0,
         force_coef=1.0,
-        mass_coef=1.0,
         kld_weight=0.005,
     ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
         self.velocity_coef = velocity_coef
         self.force_coef = force_coef
-        self.mass_coef = mass_coef
         if kld_weight < 0:
             raise ValueError("kld_weight must be nonnegative")
         self.kld_weight = kld_weight
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    def update(self, frames, targets, mass_supervision_weight, dones=None, hidden_state=None):
+    def update(self, frames, targets, *, dones=None, hidden_state=None):
+        """注意 `dones` / `hidden_state` 是**关键字专用**：契约 v4 去掉了质量权重这个位置
+        参数，旧调用 `update(frames, targets, weights)` 若还能被当成 `dones` 静默接受，
+        就会把"质量监督权重"误当回合终止标志（一个非常难查的静默错位）。"""
         self.decoder.train()
         state = hidden_state.detach().clone() if hidden_state is not None else None
         if dones is None:
@@ -212,10 +184,8 @@ class DynamicsDecoderTrainer:
         loss, parts = self.decoder.loss(
             prediction,
             targets.detach(),
-            mass_supervision_weight.detach(),
             velocity_coef=self.velocity_coef,
             force_coef=self.force_coef,
-            mass_coef=self.mass_coef,
         )
         kl = self.decoder.kl_loss(mu, log_var)
         loss = loss + self.kld_weight * kl
@@ -226,6 +196,6 @@ class DynamicsDecoderTrainer:
         nn.utils.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)
         self.optimizer.step()
         self.decoder.eval()
-        # 记下最近一次的三项分量，供 runner 写日志（判断权重是否配平）
+        # 记下最近一次的两项分量，供 runner 写日志（判断权重是否配平）
         self.last_parts = tuple(float(x.detach()) for x in parts)
         return loss.detach()

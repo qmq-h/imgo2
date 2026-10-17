@@ -1,4 +1,4 @@
-"""Isaac Lab adapter for the deterministic straight-ramp towing grid."""
+"""Isaac Lab adapter for the deterministic mixed towing ground (slopes + speed bumps)."""
 
 import numpy as np
 import torch
@@ -7,11 +7,17 @@ import trimesh
 from isaaclab.terrains import TerrainImporter
 
 from .mdp.connection_grid import COLUMNS, ROWS, GRID_SIZE
-from .mdp.slope_geometry import grid_mesh
 
 
-class TowingSlopeTerrainGenerator:
-    """Generate actual ramp geometry and matching logical cell origins."""
+class TowingMixedTerrainGenerator:
+    """One ground mesh: flat + slope columns + the speed-bump block (2026-10-16).
+
+    `smooth` 选择前 40 列（平地/平坡）用哪套高度场；列 40–49 恒为减速带（见
+    `mdp/mixed_geometry.py`）。逻辑原点仍由 `env_spec` 的行优先映射给出。
+    """
+
+    #: 平滑段高度场：`"hill"`（单坡包，默认）或 `"rolling"`（连续起伏）。
+    smooth = "hill"
 
     def __init__(self, cfg, device="cpu"):
         if (cfg.num_rows, cfg.num_cols) != (ROWS, COLUMNS):
@@ -22,18 +28,16 @@ class TowingSlopeTerrainGenerator:
         self.terrain_origins = np.asarray(origins, dtype=np.float32)
         self.flat_patches = {}
 
-    @staticmethod
-    def generate_mesh():
-        return grid_mesh()
+    @classmethod
+    def generate_mesh(cls):
+        from .mdp.mixed_geometry import grid_mesh
+        return grid_mesh(cls.smooth)
 
 
-class TowingRollingTerrainGenerator(TowingSlopeTerrainGenerator):
-    """Smooth rough-style surface using the same deterministic cell origins."""
+class TowingMixedRollingTerrainGenerator(TowingMixedTerrainGenerator):
+    """Same mixed ground with the smooth columns built from the rolling height field."""
 
-    @staticmethod
-    def generate_mesh():
-        from .mdp.rolling_geometry import grid_mesh as rolling_grid_mesh
-        return rolling_grid_mesh()
+    smooth = "rolling"
 
 
 class TowingSlopeTerrainImporter(TerrainImporter):

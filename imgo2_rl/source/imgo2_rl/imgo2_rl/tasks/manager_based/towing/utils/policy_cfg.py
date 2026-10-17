@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -158,16 +158,20 @@ class LowLevelPolicyCfg:
             raise ValueError(f"LowLevelPolicyCfg '{self.name}' 契约不成立: " + "; ".join(problems))
 
 
-# ---------------------------------------------------------------------- AMP
-# 部署契约：imgo2_deploy/policy/imgo2/amp/config.yaml（45 维 actor）。
-# 观测顺序取自训练侧 velocity_env_cfg.py 的 PolicyCfg，去掉 base_lin_vel（AMP-05）。
-_AMP_JOINT_NAMES = (
+# ---------------------------------------------------------------- 共用关节表
+# base_move（AMP 与 PPO）两个底层都用**逐腿**顺序：URDF 声明顺序也是逐腿，但 Isaac Lab 的
+# 资产 DOF 顺序是广度优先（全部 hip → thigh → shank），所以运行时必须用
+# `asset_permutation()` 重排（见该方法的 docstring）。
+_IMGO2_JOINT_NAMES = (
     "FL_hip_joint", "FL_thigh_joint", "FL_shank_joint",
     "FR_hip_joint", "FR_thigh_joint", "FR_shank_joint",
     "RL_hip_joint", "RL_thigh_joint", "RL_shank_joint",
     "RR_hip_joint", "RR_thigh_joint", "RR_shank_joint",
 )
 
+# --------------------------------------------------------------------- AMP
+# 部署契约：imgo2_deploy/policy/imgo2/amp/config.yaml（45 维 actor）。
+# 观测顺序取自训练侧 velocity_env_cfg.py 的 PolicyCfg，去掉 base_lin_vel（AMP-05）。
 AMP_POLICY = LowLevelPolicyCfg(
     name="amp",
     model_name="policy.pt",
@@ -182,7 +186,7 @@ AMP_POLICY = LowLevelPolicyCfg(
     clip_obs=100.0,
     observation_history=(),
     num_joints=12,
-    joint_names=_AMP_JOINT_NAMES,
+    joint_names=_IMGO2_JOINT_NAMES,
     default_dof_pos=(0.0, 0.87, -1.82) * 4,
     action_scale=(0.125, 0.25, 0.25) * 4,
     clip_actions_lower=(-3.0,) * 12,
@@ -196,7 +200,52 @@ AMP_POLICY = LowLevelPolicyCfg(
     reset_settle_s=1.0,
 )
 
-POLICIES = {policy.name: policy for policy in (AMP_POLICY,)}
+# --------------------------------------------------------------------- PPO
+# 2026-10-16 用户要求「用 PPO 替换底层策略」：契约取
+# `imgo2_deploy/policy/imgo2/ppo/config.yaml`（同样是 **45 维**、同一组观测项与缩放），
+# 并逐个字段与 `logs/rsl_rl/base_move_rough/<run>/params/env.yaml` 核对过：
+#   decimation 4 × dt 0.005 = 0.02 s（= control_dt）、actuator stiffness 25 / damping 0.5
+#   （= `assets/imgo2.py` 的 IMGO2_CFG，**与 AMP 相同**）、action scale (0.125, 0.25, 0.25)、
+#   clip ±3、默认姿态 (0, 0.87, -1.82)、joint 逐腿顺序、命令范围 lin_vel_x (−1.5, 3.0)
+#   ⊃ 拖曳任务速度 0.5–1.5 m/s、lin_vel_y ±1.5 ⊃ PD 的 ±1.0、ang_vel_z ±1.5。
+# 也就是说：**接口与 AMP 逐项相同，只有权重不同**；PPO 训练用的是 base_lin_vel/height_scan
+# 置空后的 45 维 actor（rsl_rl ActorCritic，无 recurrent），所以同样可以直接当冻结策略。
+PPO_POLICY = LowLevelPolicyCfg(
+    name="ppo",
+    model_name="policy.pt",
+    policy_dir=repo_root() / "imgo2_deploy" / "policy" / "imgo2" / "ppo",
+    num_observations=45,
+    observation_terms=("base_ang_vel", "projected_gravity", "velocity_commands",
+                       "joint_pos_rel", "joint_vel_rel", "last_action"),
+    observation_dims=(3, 3, 3, 12, 12, 12),
+    observation_scales=((0.25,) * 3 + (1.0,) * 3 + (1.0,) * 3
+                        + (1.0,) * 12 + (0.05,) * 12 + (1.0,) * 12),
+    clip_obs=100.0,
+    observation_history=(),
+    num_joints=12,
+    joint_names=_IMGO2_JOINT_NAMES,
+    default_dof_pos=(0.0, 0.87, -1.82) * 4,
+    action_scale=(0.125, 0.25, 0.25) * 4,
+    clip_actions_lower=(-3.0,) * 12,
+    clip_actions_upper=(3.0,) * 12,
+    joint_mapping=tuple(range(12)),
+    control_dt=0.02,
+    reset_settle_s=1.0,
+)
+
+POLICIES = {policy.name: policy for policy in (AMP_POLICY, PPO_POLICY)}
+
+
+def with_model_path(cfg: LowLevelPolicyCfg, path) -> LowLevelPolicyCfg:
+    """把**权重文件**换成 `path` 的契约副本（其余字段完全不变）。
+
+    用途：试某个新 run 的 `exported/policy.pt` 而不动部署目录里的产物
+    （`imgo2_deploy/policy/imgo2/<name>/policy.pt` 是已验收的部署件，不应被实验覆盖）。
+    """
+    model = Path(path).expanduser()
+    if not model.is_file():
+        raise FileNotFoundError(f"给的冻结策略权重不存在：{model}")
+    return replace(cfg, policy_dir=model.parent, model_name=model.name)
 
 
 def get_policy(name: str) -> LowLevelPolicyCfg:

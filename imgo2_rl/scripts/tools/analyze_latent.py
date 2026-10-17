@@ -41,7 +41,8 @@ GROUPINGS = (
     ("velocity_mps", "速度档"),
 )
 #: `metrics["estimator"]["abs_err"]` 的四个量
-ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "mass_kg", "force_norm_n")
+#: 2026-10-16 契约 v4 起 decoder 不再输出质量 ⇒ 估算项只留这 3 个
+ESTIMATOR_ITEMS = ("vx_mps", "vy_mps", "force_norm_n")
 
 
 # ------------------------------------------------------------------ 线性代数（手写）
@@ -196,7 +197,8 @@ def summarise_estimator(metrics_list, phase):
                 errors.append(float(block[item]))
         rows[item] = (statistics.median(errors), len(errors)) if errors else (None, 0)
     gt = {}
-    for index, name in enumerate(("vx_mps", "vy_mps", "mass_kg", "rope_tension_n")):
+    #: 契约 v4：gt_mean 只有 [vx, vy, 张力] 三项（质量不再进 decoder 口径）
+    for index, name in enumerate(("vx_mps", "vy_mps", "rope_tension_n")):
         values = []
         for metrics in metrics_list:
             block = ((metrics.get("estimator") or {}).get("gt_mean") or {}).get(phase)

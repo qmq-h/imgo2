@@ -3,8 +3,9 @@
 任务已注册为 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）。
 
 `decoder.frame_dim` 必须等于环境的 policy 帧维数（``upper_logic.UpperObservationSpec``
-当前为 **58**，契约 v3）：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，
-写错会直接报错。
+当前为 **58**，契约 **v4**）：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，
+写错会直接报错。decoder 的显式输出是 **5 维**（vel 2 + force 3，2026-10-16 去掉质量），
+所以这里**没有** `mass_coef`。
 """
 
 from isaaclab.utils import configclass
@@ -54,7 +55,6 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
         max_grad_norm=1.0,
         velocity_coef=5.0,
         force_coef=10.0,
-        mass_coef=1.0,
     )
     critic_empirical_normalization = True
     algorithm = PPOAlgorithmCfg(

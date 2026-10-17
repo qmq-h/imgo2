@@ -160,8 +160,11 @@ class UpperObservationSpec:
     （2026-10-10 起是双头动作的第一个头写出来的，策略因此看得见自己下了什么指令）。
 
     ``last_action`` 2026-10-10 由 12 维变 **13 维**（1 维 vx 偏移 + 12 维关节残差），
-    因此帧 57 → **58**、actor 79 → **80**、decoder ``frame_dim`` 57 → 58，
-    checkpoint 契约 v2 → **v3**（旧 checkpoint 必须被拒，按仓库惯例新建 run）。
+    因此帧 57 → **58**、decoder ``frame_dim`` 57 → 58，checkpoint 契约 v2 → **v3**。
+
+    2026-10-16：decoder 去掉显式质量预测（准则「只建模与四足机器人直接相关的量」，质量交给
+    latent）⇒ explicit 6 → **5**、actor 80 → **79**、契约 v3 → **v4**。旧 checkpoint 必须被拒，
+    按仓库惯例新建 run。
 
     **防作弊红线**：奖励**只能**读 ``task_command``（脚本调度、到点归零），绝不能读
     ``loco_command``（含策略自己的偏移），否则策略只要把偏移开大就能自己给自己发目标。
@@ -195,18 +198,21 @@ class UpperObservationSpec:
 
 @dataclass(frozen=True)
 class DecoderSpec:
-    """GRU decoder targets used only during training.
+    """GRU decoder targets used only during training（**5 维**，2026-10-16 契约 v4）。
 
-    2026-10-08 用户决定：**牵引力 3 维（机体系 x/y/z）、机器人速度保持 2 维（x/y）**。
-    竖直分力不是小量——两挂点高差 0.17 m，绷紧时方向向量 z 分量 = 0.17/L0，
-    在 L0 = 0.4…0.8 m 上就是张力的 21–43%，且 Fz 在 0.16 m 挂点后臂上产生俯仰力矩。
-    速度则只保留水平两轴：`root_lin_vel_b[:, 2]` 在 trot 步态下按步频大幅振荡，
-    不是负载量，而上层也没有垂直控制通道。
+    准则（用户 2026-10-16）：「decoder 只建模与四足机器人直接相关的量，质量用 latent 假定」
+    ⇒ 只留**机器人自身速度**（机体系 x/y）与**作用在机器人上的牵引力**（机体系 x/y/z），
+    **不再显式预测小车质量**（质量是负载的属性；actor 通过 latent 间接使用它）。
+
+    - **牵引力 3 维**（2026-10-08 用户决定）：竖直分力不是小量——两挂点高差 0.17 m，绷紧时
+      方向向量 z 分量 = 0.17/L0，在 L0 = 0.4…0.8 m 上就是张力的 21–43%，且 Fz 在 0.16 m
+      挂点后臂上产生俯仰力矩。
+    - **速度 2 维**：`root_lin_vel_b[:, 2]` 在 trot 步态下按步频大幅振荡，不是负载量，
+      而上层也没有垂直控制通道。
     """
 
     terms: tuple[tuple[str, int], ...] = (
         ("robot_velocity_xy", 2),
-        ("cart_mass", 1),
         ("towing_force_xyz", 3),
     )
 
@@ -214,11 +220,10 @@ class DecoderSpec:
     def dim(self):
         return sum(dim for _, dim in self.terms)
 
-    # 训练侧质量范围随 `UpperEventsCfg.reset_work_condition` 同步：
-    # 2026-10-09 由 (5, 15) 提到 30 kg，**2026-10-10 收紧为 (5, 20) kg**（用户确认工作域＝
-    # 质量 5–20 kg、速度 0.5–1.5 m/s）。这里同步是为了避免契约/监督门控与训练域漂移
-    # （该字段只作文档/派生用，**不参与张量归一化**，所以改它不动任何维数）。
-    mass_range: tuple[float, float] = (5.0, 20.0)
+    # 2026-10-16：`mass_range` 字段随质量头一起删除——质量不再是 decoder 的目标，把工作域
+    # 留在 decoder spec 里会误导。工作域（质量 5–20 kg / 速度 0.5–1.5 m/s）的权威位置是
+    # `upper_env_cfg.UpperEventsCfg.reset_work_condition`（环境）与
+    # `episode_geometry.SPEED_RANGE`（速度），测量台用 `TRAINING_MASS_RANGE_KG` 对齐。
     velocity_scale: tuple[float, float] = (1.0, 0.5)
     force_scale: float = 10.0
 

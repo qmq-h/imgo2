@@ -5,6 +5,10 @@
 见 `mdp/slope_geometry.py`），
 所以这里检查的性质也跟着换：lane 的坡度量级（0/5/10）、闭合实体拓扑、剖面分段与弧长、
 出生点仍在平地段且挂点距/安全边界成立、最慢速度仍能在 timeout 内到达目标。
+
+2026-10-16：地面变成**混合网格**（`mdp/mixed_geometry.py`）——列 0–39 是本文件检查的平坡地形、
+列 40–49 是减速带块（由 `test_towing_speedbump_geometry.py` 检查），所以本文件的网格汇总检查
+走 `mixed_geometry.grid_mesh("hill")`，减速带列的 tile 尺寸从 `speedbump_geometry` 取。
 """
 
 from collections import Counter
@@ -20,6 +24,9 @@ sys.path.insert(0, str(MDP))
 import connection_grid as grid
 import slope_geometry as geometry
 import episode_geometry as episode
+import mixed_geometry as mixed
+import speedbump_geometry as speedbump
+import wave_geometry as wave
 
 
 def dot(a, b):
@@ -43,13 +50,23 @@ class SlopeGeometryTests(unittest.TestCase):
     def test_each_length_has_balanced_terrain_and_connection_types(self):
         for row in range(grid.ROWS):
             specs = [grid.env_spec(row*grid.COLUMNS+c) for c in range(grid.COLUMNS)]
-            # 坡度量级：20 个平地 lane + 10 个 5° + 10 个 10°（不再有正负号）
-            self.assertEqual(Counter(s['slope_degrees'] for s in specs), {0: 20, 5: 10, 10: 10})
+            # 坡度量级：20 平地 + 10×5° + 10×10° + 10 减速带（26.565°）+ 10 波浪（15.603°）
+            self.assertEqual(Counter(s['slope_degrees'] for s in specs),
+                             {0: 20, 5: 10, 10: 10, grid.SPEEDBUMP_RAMP_DEG: 10,
+                              grid.WAVE_MAX_SLOPE_DEG: 10})
             for start, end, expected in ((0, 20, (8, 8, 4)),
-                                         (20, 30, (4, 4, 2)), (30, 40, (4, 4, 2))):
+                                         (20, 30, (4, 4, 2)), (30, 40, (4, 4, 2)),
+                                         (40, 50, (4, 4, 2)), (50, 60, (4, 4, 2))):
                 counts = Counter(s['model_name'] for s in specs[start:end])
                 self.assertEqual(tuple(counts[n] for n in ('compliant', 'rigid', 'inextensible')),
                                  expected)
+            # 后 10 列是减速带块、最后 10 列是波浪块，各自地形相同（只有连接类型不同）
+            self.assertEqual({s['terrain_family'] for s in specs[:40]},
+                             {grid.SMOOTH_TERRAIN})
+            self.assertEqual({s['terrain_family'] for s in specs[40:50]},
+                             {grid.SPEEDBUMP_TERRAIN})
+            self.assertEqual({s['terrain_family'] for s in specs[50:]},
+                             {grid.WAVE_TERRAIN})
         # 方向平衡是构造上的：同一列的坡度量级在 20 行里恒定，剖面自带一段上坡一段下坡
         for column in (20, 30):
             grade = grid.slope_degrees(column, 0)
@@ -93,26 +110,40 @@ class SlopeGeometryTests(unittest.TestCase):
                                    2.25 + 6.0/cosine + 0.75 + (18.0 - geometry.FLAT_OUT_START_M),
                                    places=12)
             self.assertGreaterEqual(geometry.profile_arc_length(grade, 10.0), 10.0 - 1e-12)
-        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
-        # STOP 点 10 m 落在出口平地（9.0–11.25）上 ⇒ 弧长 = 2.25 + 6/cos10 + 0.75 + 1.0
-        self.assertAlmostEqual(worst, 2.25 + 6.0/math.cos(math.radians(10.0)) + 0.75 + 1.0,
+        # 本模块的剖面弧长（hill 口径）：STOP 点 10 m 落在出口平地上
+        hill_worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG,
+                                                 episode.STOP_DISTANCE_M)
+        self.assertAlmostEqual(hill_worst, 2.25 + 6.0/math.cos(math.radians(10.0)) + 0.75 + 1.0,
                                places=9)
-        self.assertLess(worst, 10.2)
+        self.assertLess(hill_worst, 10.2)
+        # 训练 cfg 用的是**混合网格**的上界（平滑段 / 减速带 / 波浪 三者取大）
+        # 2026-10-16 起由**波浪**主导（3 周期正弦 ≈ 10.1160 m），见几何测试与记录。
+        mixed_worst = mixed.arc_length_upper_bound(geometry.MAX_GRADE_DEG,
+                                                   episode.STOP_DISTANCE_M)
+        self.assertGreaterEqual(mixed_worst, hill_worst)
+        self.assertAlmostEqual(mixed_worst, 10.11604389909993, places=9)
 
     def test_closed_mesh_top_normal_and_origin_match_logical_cells(self):
-        vertices, faces, origins = geometry.grid_mesh()
-        # 平地 lane 的剖面退化成矩形（4 个剖面点 ⇒ 8 顶点 / 12 面），坡道 lane 是 8 点 / 16 顶点 / 28 面
+        """混合网格汇总（2026-10-16）：平坡 tile 逐块计入，减速带列与波浪列各按自己的 tile 计入。"""
+        vertices, faces, origins = mixed.grid_mesh("hill")
         lanes = Counter(grid.slope_degrees(c, r)
                         for r in range(grid.ROWS) for c in range(grid.COLUMNS))
-        slick = lanes[0.0]
-        hills = lanes[5.0] + lanes[10.0]
-        self.assertEqual(len(vertices), slick*8 + hills*16)
-        self.assertEqual(len(faces), slick*12 + hills*28)
+        slick = lanes[0.0]                       # 平地 lane 的剖面退化成矩形 ⇒ 8 顶点 / 12 面
+        hills = lanes[5.0] + lanes[10.0]         # 坡道 lane 8 个剖面点 ⇒ 16 顶点 / 28 面
+        bumps = lanes[grid.SPEEDBUMP_RAMP_DEG]   # 减速带列（梯形 tile，尺寸由该模块给出）
+        waves = lanes[grid.WAVE_MAX_SLOPE_DEG]   # 波浪列（正弦 tile，尺寸由该模块给出）
+        bump_verts, bump_faces, _ = speedbump.tile_mesh(0, grid.SPEEDBUMP_START_COLUMN)
+        wave_verts, wave_faces, _ = wave.tile_mesh(0, grid.WAVE_START_COLUMN)
+        self.assertEqual(len(vertices),
+                         slick*8 + hills*16 + bumps*len(bump_verts) + waves*len(wave_verts))
+        self.assertEqual(len(faces),
+                         slick*12 + hills*28 + bumps*len(bump_faces) + waves*len(wave_faces))
         self.assertEqual(len({o for row in origins for o in row}), grid.GRID_SIZE)
         for row in (0, 3, grid.ROWS - 1):
             for col in (0, 20, 25, 30, 39):
                 verts, tris, origin = geometry.tile_mesh(row, col)
                 self.assertEqual(origin, origins[row][col])
+                self.assertEqual((verts, tris), mixed.tile_mesh(row, col, "hill")[:2])
                 grade = grid.slope_degrees(col, row)
                 # 闭合二维流形：每条无向边恰好被两个面共享
                 edge_counts = Counter(tuple(sorted((f[i], f[(i+1) % 3])))
@@ -194,17 +225,17 @@ class SlopeGeometryTests(unittest.TestCase):
             self.assertLess(stop_x, geometry.FORWARD_M-geometry.BOUNDARY_MARGIN_M)
             self.assertGreater(episode.STOP_DISTANCE_M, geometry.FLAT_OUT_START_M)
             self.assertAlmostEqual(geometry.profile_height(grade, 0.0), 0.0, places=12)
-            self.assertGreaterEqual(geometry.profile_arc_length(grade, episode.STOP_DISTANCE_M),
+            self.assertGreaterEqual(mixed.arc_length_upper_bound(grade, episode.STOP_DISTANCE_M),
                                     episode.STOP_DISTANCE_M - 1e-12)
 
     def test_every_speed_arrives_before_the_discretized_timeout(self):
-        # timeout 用**最陡档的坡面弧长**（10 m 水平 STOP 点 → 10.0926 m 弧长）
-        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
+        # timeout 用**混合地面最长行程上界**（10 m 水平 STOP 点 → 波浪给 10.1160 m）
+        worst = mixed.arc_length_upper_bound(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
         limit = episode.episode_timeout_s(worst, episode.SPEED_RANGE[0])
-        # 2026-10-10 工作域收紧：最慢速度 0.4 → 0.5 m/s ⇒ 1 + 10.0926/0.5 + 2（默认 margin）
-        # = 23.185 s（此处的默认 margin 是 TIMEOUT_MARGIN_S=2；训练 cfg 用 POST_STOP_WINDOW_S=3
-        # ⇒ 24.185 s / 484 步（ceil），见下一个测试与 upper_env_cfg 注释）
-        self.assertLess(abs(limit - 23.1851), 0.01)
+        # 2026-10-10 工作域收紧：最慢速度 0.4 → 0.5 m/s；2026-10-16 加入波浪块后上界由波浪
+        # 给出（10.1160 m）⇒ 1 + 10.1160/0.5 + 2（默认 margin TIMEOUT_MARGIN_S=2）= 23.232 s；
+        # 训练 cfg 用 POST_STOP_WINDOW_S=3 ⇒ 24.2321 s / 485 步（ceil），见下一个测试。
+        self.assertLess(abs(limit - 23.2321), 0.01)
         slowest = episode.SPEED_RANGE[0]
         for index in range(int(round((episode.SPEED_RANGE[1] - slowest) / .01)) + 1):
             speed = slowest + index*.01
@@ -222,8 +253,8 @@ class SlopeGeometryTests(unittest.TestCase):
         `upper_env_cfg.__post_init__` 用的是 `margin=POST_STOP_WINDOW_S`（3.0 s），不是默认的
         `TIMEOUT_MARGIN_S`（2.0 s）⇒ 工作域收紧后
 
-            1（settle/tow_start）+ 10.0926/0.5（最慢速度走完最陡档坡面弧长）+ 3（停车窗口）
-            = **24.185 s** ⇒ `max_episode_length` = **484 步**（20 Hz；Isaac Lab 0.45.9 的
+            1（settle/tow_start）+ 10.1160/0.5（最慢速度走完混合地面的最长行程上界）+ 3（停车窗口）
+            = **24.2321 s** ⇒ `max_episode_length` = **485 步**（20 Hz；Isaac Lab 0.45.9 的
             `ManagerBasedRLEnv.max_episode_length` 用 `math.ceil(episode_length_s / step_dt)`，
             见 `manager_based_rl_env.py:104`；截断口径是 483 步）。
 
@@ -231,17 +262,17 @@ class SlopeGeometryTests(unittest.TestCase):
         比运行值少 0–1 步）。这里钉住耦合关系本身（数值改了必须一起改），避免只改
         `SPEED_RANGE` 而把超时/步数留在旧口径。
         """
-        worst = geometry.profile_arc_length(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
+        worst = mixed.arc_length_upper_bound(geometry.MAX_GRADE_DEG, episode.STOP_DISTANCE_M)
         timeout = episode.episode_timeout_s(worst, episode.SPEED_RANGE[0],
                                             episode.SETTLE_TIME_S,
                                             margin=episode.POST_STOP_WINDOW_S)
-        self.assertLess(abs(timeout - 24.1851), 0.01)
-        self.assertEqual(int(timeout / 0.05), 483)          # 截断（2026-10-09 记录口径）
-        self.assertEqual(math.ceil(timeout / 0.05), 484)    # Isaac Lab 运行值
+        self.assertLess(abs(timeout - 24.2321), 0.01)
+        self.assertEqual(int(timeout / 0.05), 484)          # 截断
+        self.assertEqual(math.ceil(timeout / 0.05), 485)    # Isaac Lab 运行值
         # 停车窗口自洽：最慢速度下到 STOP 点后仍剩约 POST_STOP_WINDOW_S 秒
         arrival = episode.SETTLE_TIME_S + worst / episode.SPEED_RANGE[0]
         self.assertLess(abs((timeout - arrival) - episode.POST_STOP_WINDOW_S), 0.01)
-        # 水平 10 m 在 0.5 m/s 下 20 s < 24.185 s（最慢速度也能走到 STOP 点）
+        # 水平 10 m 在 0.5 m/s 下 20 s < 24.2321 s（最慢速度也能走到 STOP 点）
         self.assertLess(episode.SETTLE_TIME_S + episode.STOP_DISTANCE_M
                         / episode.SPEED_RANGE[0], timeout)
 
