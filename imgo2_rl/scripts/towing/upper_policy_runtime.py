@@ -101,7 +101,7 @@ AMP_VX_MIN = -1.0
 AMP_VX_MAX = 1.0
 #: checkpoint 契约版本：**v4**（frame 58 / explicit **5** / latent 16；2026-10-16 去掉
 #: decoder 显式质量）。v3（explicit 6）、v2（57/79）与更早的都必须被拒。
-CHECKPOINT_CONTRACT_VERSION = 4
+CHECKPOINT_CONTRACT_VERSION = 5
 
 #: critic 观测维数（actor 里附带 critic 网络，`load_state_dict(strict=True)` 需要它）。
 #: 出处：`upper_env_cfg.UpperTowingEnvCfg.observations.critic` =

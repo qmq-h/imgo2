@@ -17,16 +17,17 @@ from rl_lab.modules import (
 )
 
 
-#: 上层拖曳 checkpoint 契约版本。**v4**（2026-10-16 去掉 decoder 的显式质量预测）= policy 帧 58
-#: / explicit **5**（vel 2 + force 3）/ latent 16 / actor **79** / critic 73 / 动作 13
-#: （1 维 vx 偏移 + 12 维关节残差）。旧 v3（explicit 6 / actor 80）、v2（frame 57 / 动作 12）
-#: checkpoint 一律拒绝，必须新建 run。
+#: **v5**（2026-10-17 CE Net）：GRU 并列显式估计（**5 维**，去质量）+ latent 16，
+#: 两者拼接重建下一帧；frame 58 / actor **79** / critic 73 / 动作 13。
+#: 版本号为什么不是 v4：v4 在本机指「去质量但不重建」的旧网络（58/5/16），
+#: 远端那条线也用过 v4 指「含质量 + 重建」（58/6/16）⇒ 三条线共用同一个号会混淆。
+#: v5 明确表示「5 维 + 重建」；v4 / v3 / v2 及更早 checkpoint 一律拒绝，必须新建 run。
 #: 与 `scripts/towing/upper_policy_runtime.CHECKPOINT_CONTRACT_VERSION` 同值（离线测试交叉核对）。
-TOWING_CONTRACT_VERSION = 4
+TOWING_CONTRACT_VERSION = 5
 
 
 class TowingOnPolicyRunner:
-    """Repository-owned recurrent PPO plus supervised towing dynamics decoder."""
+    """Recurrent PPO plus a CE Net context estimator with next-frame reconstruction."""
 
     def __init__(self, env, train_cfg, log_dir=None, device="cpu"):
         self.cfg = train_cfg.get("runner", train_cfg)
@@ -60,6 +61,7 @@ class TowingOnPolicyRunner:
             velocity_coef=self.decoder_cfg["velocity_coef"],
             force_coef=self.decoder_cfg["force_coef"],
             kld_weight=self.decoder_cfg["kld_weight"],
+            reconstruction_coef=self.decoder_cfg["reconstruction_coef"],
         )
 
         actor_obs_dim = env.num_obs + self.decoder.actor_feature_dim
@@ -142,6 +144,7 @@ class TowingOnPolicyRunner:
             self.current_learning_iteration = iteration
             start = time.time()
             frame_rollout, target_rollout, done_rollout = [], [], []
+            next_frame_rollout = []
             episode_infos = []
 
             decoder_initial_hidden = (self.decoder_hidden.detach().clone()
@@ -154,13 +157,15 @@ class TowingOnPolicyRunner:
                     normalized_critic_obs = self._critic_obs(critic_obs, update=True)
                     actions = self.alg.act(actor_obs, normalized_critic_obs)
 
-                    frame_rollout.append(raw_obs)
-                    target_rollout.append(decoder_targets.to(self.device))
+                    # Snapshot tensors: environment observation buffers can be reused.
+                    frame_rollout.append(raw_obs.clone())
+                    target_rollout.append(decoder_targets.to(self.device).clone())
                     raw_obs, critic_obs, rewards, dones, infos = self.env.step(actions)
                     raw_obs = raw_obs.to(self.device)
                     critic_obs = critic_obs.to(self.device)
                     rewards, dones = rewards.to(self.device), dones.to(self.device)
-                    done_rollout.append(dones.bool())
+                    next_frame_rollout.append(raw_obs.clone())
+                    done_rollout.append(dones.bool().clone())
                     decoder_targets = self.env.get_decoder_supervision()
 
                     self.alg.process_env_step(rewards, dones, infos)
@@ -193,6 +198,7 @@ class TowingOnPolicyRunner:
                 torch.stack(target_rollout),
                 dones=torch.stack(done_rollout),
                 hidden_state=decoder_initial_hidden,
+                next_frames=torch.stack(next_frame_rollout),
             )
             learn_time = time.time() - learn_start
 
@@ -242,6 +248,8 @@ class TowingOnPolicyRunner:
             self.writer.add_scalar(f"Loss/decoder_{_name}", _val, iteration)
         self.writer.add_scalar("Loss/decoder_kl", getattr(_trainer, "last_kl", 0.0), iteration)
         self.writer.add_scalar("Loss/decoder_weighted_kl", getattr(_trainer, "last_weighted_kl", 0.0), iteration)
+        self.writer.add_scalar("Loss/decoder_reconstruction", getattr(_trainer, "last_reconstruction", 0.0), iteration)
+        self.writer.add_scalar("Loss/decoder_weighted_reconstruction", getattr(_trainer, "last_weighted_reconstruction", 0.0), iteration)
         self.writer.add_scalar("Policy/mean_noise_std", mean_std, iteration)
         self.writer.add_scalar("Perf/total_fps", fps, iteration)
         self.writer.add_scalar("Perf/collection_time", collection_time, iteration)
@@ -296,6 +304,8 @@ class TowingOnPolicyRunner:
             decoder_rows.append(f"{f'Mean decoder {name} loss:':>{pad}} {value:.4f}")
         decoder_rows.append(
             f"{'Decoder weighted KL:':>{pad}} {getattr(trainer, 'last_weighted_kl', 0.0):.4f}")
+        decoder_rows.append(
+            f"{'Decoder reconstruction:':>{pad}} {getattr(trainer, 'last_reconstruction', 0.0):.4f}")
         air_rows = ([f"{'Mean last air time (s):':>{pad}} {air_time:.4f}",
                      f"{'Mean air-borne feet frac:':>{pad}} {air_fraction:.3f}"]
                     if air_time is not None else
@@ -374,8 +384,8 @@ class TowingOnPolicyRunner:
                                     start_iter), flush=True)
 
     def save(self, path, infos=None):
-        # 契约 **v3**（2026-10-10 双头迁移）：frame_dim 58 / 动作 13。旧 v2 的 57/79
-        # checkpoint 会被 `load()` 明确拒绝（必须新建 run，不续训）。
+        # CE Net v5（5 维显式 + 重建）：帧/动作维数没变，但权重布局变了。
+        # v4 / v3 及更早权重必须在 runner 与 runtime 两侧同时显式拒绝。
         torch.save({
             "towing_contract": {"version": TOWING_CONTRACT_VERSION,
                                 "frame_dim": self.decoder.frame_dim,
@@ -398,7 +408,7 @@ class TowingOnPolicyRunner:
             raise ValueError(
                 f"Checkpoint predates/mismatches the towing contract "
                 f"(got {checkpoint.get('towing_contract')!r}, expected {expected!r}); "
-                f"旧 v2 的 57 维帧 / 79 维 actor / 12 维动作 checkpoint 已随双头迁移失效，"
+                f"CE Net v5 changes the estimator architecture; v4/v3 and older checkpoints are incompatible; "
                 f"start a new run.")
         self.alg.actor_critic.load_state_dict(checkpoint["model_state_dict"])
         self.decoder.load_state_dict(checkpoint["decoder_state_dict"])
@@ -416,7 +426,7 @@ class TowingOnPolicyRunner:
             self.decoder.to(device)
         self.alg.actor_critic.eval()
         self.decoder.eval()
-        # 暴露最近一次的 6 维估计和 16 维 latent，供 play 端与真值对照（decoder 是部署件，必须能核对精度）。
+        # 暴露最近一次的 5 维估计和 16 维 latent，供 play 端与真值对照（decoder 是部署件，必须能核对精度）。
         self.last_estimate = None
         self.last_latent = None
 

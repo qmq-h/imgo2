@@ -2465,7 +2465,7 @@ class UpperV3WiringTests(unittest.TestCase):
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
                          runtime.expected_towing_contract(runtime.UpperNetworkSpec()))
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
-                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
+                         {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
         self.assertEqual(play.UPPER_CONTRACT_VERSION, runtime.CHECKPOINT_CONTRACT_VERSION)
         self.assertEqual(play.UPPER_FRAME_DIM, runtime.FRAME_DIM)
         self.assertEqual(play.UPPER_EXPLICIT_DIM, runtime.EXPLICIT_DIM)
@@ -2585,7 +2585,7 @@ class UpperV3WiringTests(unittest.TestCase):
         self.assertIsNone(off["towing_contract"])          # 实际加载到的契约只有实跑才有
         self.assertFalse(off["loaded"])
         self.assertEqual(off["towing_contract_expected"], play.UPPER_TOWING_CONTRACT_EXPECTED)
-        self.assertEqual(off["towing_contract_expected"]["version"], 4)
+        self.assertEqual(off["towing_contract_expected"]["version"], 5)
         self.assertEqual(off["towing_contract_expected"]["frame_dim"], 58)
         self.assertEqual(off["frame_dim_expected"], 58)
         self.assertEqual(off["action_dim_expected"], 13)

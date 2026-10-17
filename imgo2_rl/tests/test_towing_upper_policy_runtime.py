@@ -307,7 +307,7 @@ class RuntimeActTests(unittest.TestCase):
         self.assertEqual(instance.decoder.latent_dim, 16)
         self.assertEqual(instance.iteration, 42)
         self.assertEqual(instance.contract,
-                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
+                         {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
 
     def test_zero_initialised_actor_starts_at_zero_residual(self):
         """训练侧 towing runner 把 actor 末层零初始化 ⇒ 首拍残差精确为 0（起点 = 冻结步态）。"""
@@ -400,7 +400,7 @@ class RuntimeActTests(unittest.TestCase):
         match = re.search(r"TOWING_CONTRACT_VERSION\s*=\s*(\d+)", runner)
         self.assertIsNotNone(match, "runner 未声明 TOWING_CONTRACT_VERSION")
         self.assertEqual(int(match.group(1)), runtime.CHECKPOINT_CONTRACT_VERSION)
-        self.assertEqual(runtime.CHECKPOINT_CONTRACT_VERSION, 4)
+        self.assertEqual(runtime.CHECKPOINT_CONTRACT_VERSION, 5)
 
     def test_action_scale_is_the_frozen_policy_contract(self):
         instance, _, _, _ = make_runtime(self._tmp.name)
@@ -524,7 +524,7 @@ class CheckpointContractTests(unittest.TestCase):
         """v4（58/**5**/16）是当前契约：必须能加载（与上一条的"被拒"成对）。"""
         instance = self._runtime_for_contract(runtime.expected_towing_contract(self.spec))
         self.assertEqual(instance.contract,
-                         {"version": 4, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
+                         {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
 
     def test_error_message_names_the_contract(self):
         with self.assertRaises(runtime.TowingCheckpointContractError) as caught:

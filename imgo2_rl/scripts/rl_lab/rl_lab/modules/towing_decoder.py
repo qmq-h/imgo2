@@ -1,16 +1,26 @@
-"""Recurrent dynamics decoder used by the upper towing policy."""
+"""CE Net: recurrent context encoder for the upper towing policy.
+
+2026-10-17 结构（用户要求「GRU 并列输出显式动力学估计与变分隐向量，两者共同重建下一时刻
+的 58 维观测」；2026-10-16 的「去质量」保留 ⇒ 显式 **5** 维）：
+
+    o_t (58) ─ encoder(58→128)+GRU(128) ─┬─ velocity_head(128→2) ┐
+                                          ├─ force_head(128→3)    ┴ 显式 5 维（有监督）
+                                          ├─ fc_mu / fc_log_var → z(16)  （KL 只在这里）
+                                          └─ cat(显式5, z16) = 21 → MLP → ô_{t+1} (58)
+    actor 输入 = 58 + 5 + 16 = **79**（后两者 detach，PPO 不训练 CE Net）
+
+显式量仍然**不经过变分瓶颈**（直接读 GRU hidden），所以质量不再由 decoder 预测、只留给
+latent 与重建分支（2026-10-16 用户准则「decoder 只建模与四足机器人直接相关的量」）。
+"""
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-# 输出布局（2026-10-16 用户口径）：[vx, vy, Fx, Fy, Fz] = **5 维**。
-# - **质量不再显式预测**：准则「decoder 只建模与四足机器人直接相关的量」。机器人自身速度
-#   （2 维）与作用在机器人上的牵引力（3 维）满足这条；小车质量是**负载的属性**，不是机器人
-#   的量 ⇒ 交给 latent 隐含（actor 通过 latent 间接用它，见 `augment_actor_observation`）。
-#   历史上质量是第 3 个显式输出（6 维，契约 v3），2026-10-16 删除 ⇒ 契约 v4（explicit 5、
-#   actor 79）。
+# 显式输出布局（2026-10-16 起 **5 维**）：[vx, vy, Fx, Fy, Fz]
+# - **质量不显式预测**（2026-10-16 用户准则）：机器人自身速度（2 维）与作用在机器人上的
+#   牵引力（3 维）才是"与四足机器人直接相关的量"；质量是负载属性，交给 latent 与重建分支。
 # - 机器人速度保持 **2 维**（机体系水平）：`root_lin_vel_b[:, 2]` 在 trot 步态下按步频
 #   大幅振荡，不是负载量，而上层也没有垂直控制通道；
 # - 牵引力是 **3 维**：两挂点高差 0.17 m，绷紧时方向向量 z 分量 = 0.17/L0，在
@@ -25,16 +35,14 @@ FORCE_SLICE = slice(VELOCITY_DIM, OUTPUT_DIM)
 
 
 class TowingDynamicsDecoder(nn.Module):
-    """Supervised variational bottleneck: history -> z -> explicit five-vector.
+    """CE Net: history -> explicit state + variational latent -> next frame.
 
-    Latent coordinates have no prescribed physical meanings. Unlike CMoE's
-    next-proprioception reconstruction, this task reconstructs the privileged
-    [vx, vy, Fx, Fy, Fz] target through the latent bottleneck; cart mass is left
-    to the latent (2026-10-16: the decoder only models quantities of the robot).
+    显式 5 维有特权监督；16 维 latent 只受高斯先验（KL）与下一帧重建约束。
+    两路拼接（21 维）共同重建 ``o[t+1]``；推理只前向编码分支，不调用重建头。
     """
 
-    # 默认帧维 = 当前契约 v4 的 policy 帧（58）。调用方（runner / 运行时）一律显式传
-    # 配置值，这里只是防止"不传参构造"时悄悄退回旧契约。
+    # 默认帧维 = 当前契约的 policy 帧（58）。调用方（runner / 运行时）一律显式传配置值，
+    # 这里只是防止"不传参构造"时悄悄退回旧 57 维契约。
     def __init__(self, frame_dim=58, feature_dim=128, hidden_dim=128,
                  num_layers=1, force_scale=10.0, latent_dim=16):
         super().__init__()
@@ -47,9 +55,11 @@ class TowingDynamicsDecoder(nn.Module):
         self.gru = nn.GRU(feature_dim, hidden_dim, num_layers=num_layers)
         self.fc_mu = nn.Linear(hidden_dim, latent_dim)
         self.fc_log_var = nn.Linear(hidden_dim, latent_dim)
-        self.latent_decoder = nn.Sequential(nn.Linear(latent_dim, feature_dim), nn.ELU())
-        self.velocity_head = nn.Linear(feature_dim, VELOCITY_DIM)
-        self.force_head = nn.Linear(feature_dim, FORCE_DIM)
+        self.velocity_head = nn.Linear(hidden_dim, VELOCITY_DIM)
+        self.force_head = nn.Linear(hidden_dim, FORCE_DIM)
+        self.latent_decoder = nn.Sequential(
+            nn.Linear(OUTPUT_DIM + latent_dim, feature_dim), nn.ELU(),
+            nn.Linear(feature_dim, frame_dim))
 
     @property
     def output_dim(self):
@@ -74,23 +84,26 @@ class TowingDynamicsDecoder(nn.Module):
         if frames.ndim != 3 or frames.shape[-1] != self.frame_dim:
             raise ValueError(f"decoder expects [T,B,{self.frame_dim}] or [B,{self.frame_dim}]")
         features, hidden_state = self.gru(self.encoder(frames), hidden_state)
+        prediction = torch.cat((self.velocity_head(features),
+                                self.force_head(features)), dim=-1)
         mu = self.fc_mu(features)
         # Bound exp(log_var) to keep sampling and KL finite at startup.
         log_var = self.fc_log_var(features).clamp(-10.0, 4.0)
         if single_step:
+            prediction = prediction.squeeze(0)
             mu, log_var = mu.squeeze(0), log_var.squeeze(0)
-        return mu, log_var, hidden_state
+        return prediction, mu, log_var, hidden_state
 
-    def decode(self, latent):
-        features = self.latent_decoder(latent)
-        return torch.cat((self.velocity_head(features), self.force_head(features)), dim=-1)
+    def decode(self, prediction, latent):
+        """从拼接的「显式 5 + latent 16」上下文码重建下一帧（58 维）。"""
+        return self.latent_decoder(torch.cat((prediction, latent), dim=-1))
 
     def forward_with_latent(self, frames, hidden_state=None, *, sample=None):
-        mu, log_var, state = self.encode(frames, hidden_state)
+        prediction, mu, log_var, state = self.encode(frames, hidden_state)
         if sample is None:
             sample = self.training
         latent = self.reparameterize(mu, log_var) if sample else mu
-        return self.decode(latent), latent, state
+        return prediction, latent, state
 
     def forward(self, frames, hidden_state=None):
         prediction, _, state = self.forward_with_latent(frames, hidden_state)
@@ -105,7 +118,7 @@ class TowingDynamicsDecoder(nn.Module):
 
     @staticmethod
     def loss(prediction, targets, *, velocity_coef=1.0, force_coef=1.0):
-        """Supervise robot velocity and towing force（2026-10-16 起不再有质量项）。
+        """Supervise the explicit five-vector（2026-10-16 起没有质量项）。
 
         两项加权后的实际贡献单独返回，供日志核对「权重是否真的配平了」。
         去掉 target 归一化后两项尺度不同（m/s、N），1:1 并不等权。
@@ -122,7 +135,7 @@ class TowingDynamicsDecoder(nn.Module):
 
 
 def augment_actor_observation(frames, prediction, latent):
-    """Actor receives detached explicit estimates and latent; PPO cannot train VAE."""
+    """Actor receives detached explicit estimates and latent; PPO cannot train CE Net."""
     if (frames.shape[:-1] != prediction.shape[:-1]
             or frames.shape[:-1] != latent.shape[:-1]
             or prediction.shape[-1] != OUTPUT_DIM):
@@ -138,7 +151,7 @@ def reset_gru_hidden(hidden_state, dones):
 
 
 class DynamicsDecoderTrainer:
-    """Update the decoder on episode-consistent sequences between PPO updates."""
+    """Update the CE Net on episode-consistent sequences between PPO updates."""
 
     def __init__(
         self,
@@ -149,6 +162,7 @@ class DynamicsDecoderTrainer:
         velocity_coef=1.0,
         force_coef=1.0,
         kld_weight=0.005,
+        reconstruction_coef=1.0,
     ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
@@ -157,38 +171,57 @@ class DynamicsDecoderTrainer:
         if kld_weight < 0:
             raise ValueError("kld_weight must be nonnegative")
         self.kld_weight = kld_weight
+        if reconstruction_coef < 0:
+            raise ValueError("reconstruction_coef must be nonnegative")
+        self.reconstruction_coef = reconstruction_coef
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    def update(self, frames, targets, *, dones=None, hidden_state=None):
-        """注意 `dones` / `hidden_state` 是**关键字专用**：契约 v4 去掉了质量权重这个位置
-        参数，旧调用 `update(frames, targets, weights)` 若还能被当成 `dones` 静默接受，
-        就会把"质量监督权重"误当回合终止标志（一个非常难查的静默错位）。"""
+    def update(self, frames, targets, *, dones=None, hidden_state=None, next_frames):
+        """`dones` / `hidden_state` / `next_frames` 全是**关键字专用**（2026-10-16 起）：
+        去掉质量权重后若保留位置参数，旧调用 `update(frames, targets, weight)` 会被静默
+        当成 `dones` 接受，把「监督权重」当回合终止标志（非常难查的错位）。"""
+        if frames.ndim != 3 or next_frames.shape != frames.shape:
+            raise ValueError("frames and next_frames must have matching [T,B,D] shapes")
         self.decoder.train()
         state = hidden_state.detach().clone() if hidden_state is not None else None
         if dones is None:
-            mu, log_var, _ = self.decoder.encode(frames.detach(), state)
+            prediction, mu, log_var, _ = self.decoder.encode(frames.detach(), state)
         else:
             if dones.shape != frames.shape[:2]:
                 raise ValueError(f"decoder dones must have shape {frames.shape[:2]}, got {dones.shape}")
-            mus, log_vars = [], []
+            predictions, mus, log_vars = [], [], []
             for step in range(frames.shape[0]):
                 if step > 0 and state is not None:
                     keep = (~dones[step - 1].bool()).to(frames.dtype).view(1, -1, 1)
                     state = state * keep
-                step_mu, step_log_var, state = self.decoder.encode(frames[step].detach(), state)
+                step_prediction, step_mu, step_log_var, state = self.decoder.encode(
+                    frames[step].detach(), state)
+                predictions.append(step_prediction)
                 mus.append(step_mu)
                 log_vars.append(step_log_var)
             mu, log_var = torch.stack(mus), torch.stack(log_vars)
+            prediction = torch.stack(predictions)
         latent = self.decoder.reparameterize(mu, log_var)
-        prediction = self.decoder.decode(latent)
-        loss, parts = self.decoder.loss(
+        estimate_loss, parts = self.decoder.loss(
             prediction,
             targets.detach(),
             velocity_coef=self.velocity_coef,
             force_coef=self.force_coef,
         )
         kl = self.decoder.kl_loss(mu, log_var)
-        loss = loss + self.kld_weight * kl
+        reconstruction = self.decoder.decode(prediction, latent)
+        # Auto-reset observations belong to the NEXT episode. Exclude both
+        # terminations and timeouts from reconstruction; retain current-state
+        # supervision and KL, and reset GRU before encoding the next step.
+        valid = (torch.ones(frames.shape[:2], dtype=torch.bool, device=frames.device)
+                 if dones is None else ~dones.bool())
+        reconstruction_loss = (F.mse_loss(reconstruction[valid], next_frames.detach()[valid])
+                               if valid.any() else reconstruction.sum() * 0.0)
+        loss = (estimate_loss + self.reconstruction_coef * reconstruction_loss
+                + self.kld_weight * kl)
+        self.last_reconstruction = float(reconstruction_loss.detach())
+        self.last_weighted_reconstruction = float(
+            (self.reconstruction_coef * reconstruction_loss).detach())
         self.last_kl = float(kl.detach())
         self.last_weighted_kl = float((self.kld_weight * kl).detach())
         self.optimizer.zero_grad()

@@ -322,7 +322,7 @@ TRAINING_MASS_RANGE_KG = (5.0, 20.0)
 #: 所以期望契约与偏移边界在这里重述一份；离线测试把每个字段与 `upper_policy_runtime` 的常量、
 #: `expected_towing_contract(UpperNetworkSpec())` 逐项交叉核对（两边漂移就报错），实跑时
 #: `experiment.json` 的 `towing_contract_expected` 还会被运行时的 spec 覆写。
-UPPER_CONTRACT_VERSION = 4          # 2026-10-16：decoder 去质量 ⇒ explicit 6 → 5、actor 80 → 79
+UPPER_CONTRACT_VERSION = 5          # 2026-10-17 CE Net：5 维显式 + latent 16 重建下一帧（去质量保留）
 UPPER_FRAME_DIM = 58               # = 3 + 13 + 3 + 3 + 12 + 12 + 12
 UPPER_EXPLICIT_DIM = 5             # 机器人速度 2 + 牵引力 3（不再含质量）
 UPPER_LATENT_DIM = 16

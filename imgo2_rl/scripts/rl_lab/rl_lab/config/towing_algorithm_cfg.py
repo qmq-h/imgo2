@@ -20,10 +20,11 @@ class TowingActorCriticCfg:
 
 @configclass
 class TowingDecoderCfg:
-    """decoder 结构。输出布局固定为 vel 2 + force 3 = **5 维**（2026-10-16 契约 v4）。
+    """CE Net：GRU → 显式 5 维（vel 2 + force 3）+ latent 16 → 重建下一帧（契约 **v5**）。
 
-    质量不再显式预测（准则：decoder 只建模与四足机器人直接相关的量，质量交给 latent）；
-    因此这里也没有 `mass_coef`。
+    质量不显式预测（2026-10-16 准则：decoder 只建模与四足机器人直接相关的量，质量交给
+    latent）；因此这里也没有 `mass_coef`。2026-10-17 起加 `reconstruction_coef`：
+    显式 5 维与 latent 16 拼接（21 维）重建下一时刻的 58 维 policy 帧。
     """
 
     # 必须等于环境的 policy 帧维数（`upper_logic.UpperObservationSpec.frame_dim`，契约 v3
@@ -34,6 +35,7 @@ class TowingDecoderCfg:
     num_layers: int = 1
     latent_dim: int = 16
     kld_weight: float = 0.005
+    reconstruction_coef: float = 1.0
     force_scale: float = 10.0
     learning_rate: float = 1.0e-3
     max_grad_norm: float = 1.0

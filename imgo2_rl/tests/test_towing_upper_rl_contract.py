@@ -189,7 +189,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(dict(spec.terms)["last_action"], 13)
         self.assertEqual(logic.CMD_ACTION_DIM, 1)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 5", runtime_src)
 
     def test_decoder_targets_are_physical_units(self):
         """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
@@ -722,7 +722,8 @@ class UpperLogicTests(unittest.TestCase):
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_decoder_trainer_update_without_mass_weight(self):
-        """契约 v4：trainer.update 只吃 (frames, targets)，目标 5 维，不再有质量权重。"""
+        """契约 v5：trainer.update 只吃 (frames, targets[, next_frames])，目标 5 维、
+        不再有质量权重；`next_frames` 是关键字专用（2026-10-17 CE Net 重建下一帧）。"""
         decoder_module = load(
             "towing_dynamics_decoder_train_test",
             RL / "scripts/rl_lab/rl_lab/modules/towing_decoder.py")
@@ -731,7 +732,7 @@ class UpperLogicTests(unittest.TestCase):
         trainer = decoder_module.DynamicsDecoderTrainer(decoder)
         frames = torch.randn(4, 3, 51, requires_grad=True)
         targets = torch.zeros(4, 3, 5)
-        loss = trainer.update(frames, targets)
+        loss = trainer.update(frames, targets, next_frames=torch.zeros_like(frames))
         self.assertEqual(loss.ndim, 0)
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
@@ -1563,10 +1564,10 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim + obs.latent_dim)
         self.assertEqual(obs.actor_dim, 79)
         # 训练侧 runner 的契约版本 = 运行时 = 4（v3 的 explicit 6 / actor 80 已失效）
-        self.assertIn("TOWING_CONTRACT_VERSION = 4", runner)
+        self.assertIn("TOWING_CONTRACT_VERSION = 5", runner)
         self.assertIn('"version": TOWING_CONTRACT_VERSION', runner)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 5", runtime_src)
         self.assertIn("EXPLICIT_DIM = 5", runtime_src)
 
     def test_towing_runner_zero_inits_actor_output_layer(self):
