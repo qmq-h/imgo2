@@ -163,6 +163,7 @@ class DynamicsDecoderTrainer:
         force_coef=1.0,
         kld_weight=0.005,
         reconstruction_coef=1.0,
+        reconstruction_mask=None,
     ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
@@ -174,6 +175,22 @@ class DynamicsDecoderTrainer:
         if reconstruction_coef < 0:
             raise ValueError("reconstruction_coef must be nonnegative")
         self.reconstruction_coef = reconstruction_coef
+        #: 逐维重建掩码（`True` = 参与 MSE）。`None` = 全维（旧行为）。
+        #: 2026-10-17 起由 `UpperObservationSpec.reconstruction_mask()` 给出，
+        #: 排除 `loco_command`(3) + `last_action`(13) —— 它们在 `o[t+1]` 里由策略下一拍
+        #: 自己的动作决定，decoder 看不到（见 `docs/towing/towing_ce_net_2026-10-17.md` §5①）。
+        if reconstruction_mask is None:
+            self.reconstruction_mask = None
+        else:
+            mask = torch.as_tensor(tuple(bool(flag) for flag in reconstruction_mask),
+                                   dtype=torch.bool).flatten()
+            if mask.numel() != int(getattr(decoder, "frame_dim", mask.numel())):
+                raise ValueError(
+                    f"reconstruction_mask 有 {mask.numel()} 维，但 decoder.frame_dim="
+                    f"{getattr(decoder, 'frame_dim', None)}")
+            if not bool(mask.any()):
+                raise ValueError("reconstruction_mask 全为 False ⇒ 重建损失恒为 0，无意义")
+            self.reconstruction_mask = mask
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
     def update(self, frames, targets, *, dones=None, hidden_state=None, next_frames):
@@ -215,8 +232,21 @@ class DynamicsDecoderTrainer:
         # supervision and KL, and reset GRU before encoding the next step.
         valid = (torch.ones(frames.shape[:2], dtype=torch.bool, device=frames.device)
                  if dones is None else ~dones.bool())
-        reconstruction_loss = (F.mse_loss(reconstruction[valid], next_frames.detach()[valid])
-                               if valid.any() else reconstruction.sum() * 0.0)
+        if valid.any():
+            prediction_next = reconstruction[valid]
+            target_next = next_frames.detach()[valid]
+            if self.reconstruction_mask is None:
+                reconstruction_loss = F.mse_loss(prediction_next, target_next)
+            else:
+                mask = self.reconstruction_mask.to(prediction_next.device)
+                if mask.numel() != prediction_next.shape[-1]:
+                    raise ValueError(
+                        f"reconstruction_mask 有 {mask.numel()} 维，但重建输出是 "
+                        f"{prediction_next.shape[-1]} 维")
+                reconstruction_loss = F.mse_loss(prediction_next[:, mask],
+                                                 target_next[:, mask])
+        else:
+            reconstruction_loss = reconstruction.sum() * 0.0
         loss = (estimate_loss + self.reconstruction_coef * reconstruction_loss
                 + self.kld_weight * kl)
         self.last_reconstruction = float(reconstruction_loss.detach())

@@ -27,6 +27,10 @@ L = L_est + reconstruction_coef·MSE(ô_{t+1}, o_{t+1}) + kld_weight·KL
   重建只用于训练。
 - 布局常量集中在 `towing_decoder.py`（`VELOCITY_DIM`/`FORCE_DIM`/`OUTPUT_DIM`/`FORCE_SLICE`），
   `force_newtons` 由它们推导。
+- **重建只算 42 维**（2026-10-17 当天下一步的修正，见 §5①）：逐维掩码由
+  `UpperObservationSpec.reconstruction_mask()` 给出，排除 `loco_command`(3) + `last_action`(13)
+  ——这两项在 `o[t+1]` 里由策略下一拍自己的动作决定、decoder 看不到。
+  全维重建（`reconstruction_mask=None`）仍可作为对照开关。
 
 ## 2. 契约版本：v5（不是 v4）
 
@@ -59,12 +63,13 @@ runner 在 `env.step` **前**快照 `o_t` 与同拍物理监督，**后**快照�
 | `scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py` | 契约 **v5**；`next_frame_rollout` + `Loss/decoder_reconstruction(_weighted)` + 控制台重建行；**去掉** `weight_rollout`/`mass_weights`/`mass_coef`；分项日志只留 velocity/force |
 | `scripts/rl_lab/rl_lab/config/towing_algorithm_cfg.py`、`agents/upper_ppo_cfg.py` | 加 `reconstruction_coef=1.0`；仍**没有** `mass_coef` |
 | `scripts/towing/upper_policy_runtime.py`、`play_towing_test.py` | 版本 5；显式维保持 5；`estimate`/`latent` 观测口径不变 |
+| `upper_logic.py` + 两个 cfg + runner | 重建掩码：`UpperObservationSpec.reconstruction_mask()`（42 维）→ `TowingDecoderCfg.reconstruction_mask` → `DynamicsDecoderTrainer(reconstruction_mask=…)`；`None` = 全维对照 |
 | `tests/test_towing_ce_net.py` | 远端新增文件，按 5 维改写（显式头、targets 5、`update(..., next_frames=)`、真实 runner 循环的帧/下一帧配对），外加一条「合并不得把质量头带回来」的源码守卫 |
 | `tests/test_towing_upper_rl_contract.py`、`test_towing_upper_policy_runtime.py`、`test_towing_play_test.py` | 版本号 4 → 5；trainer 用例改为传 `next_frames` |
 
 ## 5. 评审发现（结构方向对，但下面三条要在训练机上确认）
 
-**① 重建目标里有 ~13–16 维不可观测的策略输出（结构性问题，最值得先处理）**
+**① 重建目标里有 16 维不可观测的策略输出 —— 已修（掩码只重建 42 维）**
 
 `upper_last_action` 返回 `processed_actions`（**当前**动作）；Isaac Lab `step()` 的顺序是
 `process_action → 物理 → reset → compute observations`（`manager_based_rl_env.py`），所以
@@ -75,9 +80,13 @@ runner 在 `env.step` **前**快照 `o_t` 与同拍物理监督，**后**快照�
 - 不可消除的 MSE 下限 ≈ 13/58 × Var(a) ≈ **0.05**（RMSE ≈ 0.23/维），外加 3 维偏移；
 - 重建梯度在这些维度上退化为噪声。
 
-可选修法（**尚未实现，等用户定**）：只对「外生可观测切片」算重建
-（`projected_gravity`/`base_ang_vel`/`joint_pos`/`joint_vel`/`last_loco_action` = 42 维）、
-或把这些切片 mask 掉、或把 `a_t` 一并喂进重建分支。
+**修法（已实现）**：`UpperObservationSpec.reconstruction_mask()` 给出逐维掩码，排除
+`loco_command`(3) + `last_action`(13) ⇒ 只对 **42 维**（`base_ang_vel`/`projected_gravity`/
+`last_loco_action`/`joint_pos`/`joint_vel`）算 MSE；链路是
+`agent cfg → TowingDecoderCfg.reconstruction_mask → runner → DynamicsDecoderTrainer`，
+`reconstruction_mask=None` 保留全维口径供对照。测试把被排除维度的真值替换成 **NaN**，
+损失必须逐位不变（掩码失效会直接变 NaN）。仍可选（**未实现**）：把 `a_t` 也喂进重建分支，
+让这 16 维也参与训练。
 
 **② 重建项与 KL 相对 force 项小 2~3 个数量级（标定风险）**
 
@@ -99,6 +108,7 @@ runner 在 `env.step` **前**快照 `o_t` 与同拍物理监督，**后**快照�
 |---|---|
 | 远端树（`git archive origin/main` 到独立目录）全量 `pytest` | **604 passed, 4 skipped**；其中 `test_towing_ce_net.py` **7/7 通过**（远端那台无 torch，6 项是跳过的 ⇒ 这些张量用例**第一次真正执行**） |
 | 合并后本机全量 `pytest imgo2_rl/tests -q` | **670 passed, 4 skipped, 1336 subtests passed** |
+| `test_towing_ce_net.py`（含新增 mask 用例） | **11/11 通过**：掩码接线（58 → 42、排除项名字）、被排除维填 NaN 后损失逐位不变、`None` 时 NaN 会传进损失、掩码长度/全 False 校验 |
 | `py_compile`（全部改动的 .py） | 通过 |
 | `git diff --check` / `git ls-files -i -c --exclude-standard` | 干净 / 0 条 |
 

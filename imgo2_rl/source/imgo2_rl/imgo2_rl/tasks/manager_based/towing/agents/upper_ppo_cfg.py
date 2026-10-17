@@ -16,6 +16,8 @@ from rl_lab.config import (
     TowingOnPolicyRunnerCfg,
 )
 
+from ..upper_logic import UpperObservationSpec
+
 
 @configclass
 class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
@@ -51,6 +53,9 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
         latent_dim=16,
         kld_weight=0.005,
         reconstruction_coef=1.0,
+        # 下一帧重建只算「不由策略下一拍动作决定」的 42 维（排除 loco_command 3 +
+        # last_action 13）；掩码的唯一定义处是 `UpperObservationSpec.reconstruction_mask()`。
+        reconstruction_mask=UpperObservationSpec().reconstruction_mask(),
         force_scale=10.0,
         learning_rate=1.0e-3,
         max_grad_norm=1.0,

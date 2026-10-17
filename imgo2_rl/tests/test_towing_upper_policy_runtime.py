@@ -170,12 +170,35 @@ def _class_def(tree, name):
                 if isinstance(node, ast.ClassDef) and node.name == name)
 
 
-def _call_kwargs(source_tree, class_name, call_name):
+def _call_node(source_tree, class_name, call_name):
     for node in _class_def(source_tree, class_name).body:
         if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Name) and node.value.func.id == call_name):
-            return {keyword.arg: ast.literal_eval(keyword.value) for keyword in node.value.keywords}
+            return node.value
     raise AssertionError(f"{class_name} 里找不到 {call_name}(...) 调用")
+
+
+def _call_kwargs(source_tree, class_name, call_name):
+    """字面量关键字参数（非字面量，如 `reconstruction_mask=UpperObservationSpec()...`，
+    由调用方用 `_call_kwarg_node` 单独断言，这里跳过）。"""
+    call = _call_node(source_tree, class_name, call_name)
+    values = {}
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            continue
+        try:
+            values[keyword.arg] = ast.literal_eval(keyword.value)
+        except ValueError:
+            continue
+    return values
+
+
+def _call_kwarg_node(source_tree, class_name, call_name, keyword_name):
+    call = _call_node(source_tree, class_name, call_name)
+    for keyword in call.keywords:
+        if keyword.arg == keyword_name:
+            return keyword.value
+    raise AssertionError(f"{class_name}.{call_name}(...) 里没有 {keyword_name}=")
 
 
 def _class_scalar_assignments(source_tree, class_name):
@@ -222,6 +245,12 @@ class RegisteredConfigTests(unittest.TestCase):
         self.assertEqual(spec.decoder_num_layers, decoder["num_layers"])
         self.assertEqual(spec.latent_dim, decoder["latent_dim"])
         self.assertEqual(spec.decoder_force_scale, decoder["force_scale"])
+        # 重建掩码不是字面量：它必须来自唯一权威定义处（UpperObservationSpec），
+        # 不能在 cfg 里手抄一串 bool（2026-10-17 CE Net 的 42 维排除口径）。
+        mask_node = _call_kwarg_node(self.tree, "UpperTowingPPORunnerCfg",
+                                     "TowingDecoderCfg", "reconstruction_mask")
+        self.assertEqual(ast.unparse(mask_node),
+                         "UpperObservationSpec().reconstruction_mask()")
 
     def test_clip_actions_matches_the_hardcoded_upper_clamp(self):
         """环境侧 `process_actions` 写死 `clamp(±1)`；注册 cfg 的 `clip_actions` 必须同为 1.0，

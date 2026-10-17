@@ -36,6 +36,11 @@ class TowingDecoderCfg:
     latent_dim: int = 16
     kld_weight: float = 0.005
     reconstruction_coef: float = 1.0
+    #: 逐维重建掩码（`True` = 参与 MSE）。`None` = 全 58 维（旧行为）。
+    #: 2026-10-17 起由任务侧填 `UpperObservationSpec.reconstruction_mask()`（42 维）：
+    #: 排除 `loco_command`(3) + `last_action`(13)，它们在 `o[t+1]` 里由策略下一拍自己的
+    #: 动作决定、decoder 看不到（见 docs/towing/towing_ce_net_2026-10-17.md §5①）。
+    reconstruction_mask: tuple[bool, ...] | None = None
     force_scale: float = 10.0
     learning_rate: float = 1.0e-3
     max_grad_norm: float = 1.0

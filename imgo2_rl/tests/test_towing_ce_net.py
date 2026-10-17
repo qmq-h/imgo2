@@ -45,6 +45,30 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(values["frame_dim"], 58)
         self.assertEqual(values["latent_dim"], 16)
 
+    def test_reconstruction_mask_wiring(self):
+        """重建掩码：唯一定义处 `UpperObservationSpec`，全链路（cfg → agent cfg → runner）接上。"""
+        import importlib.util as _ilu
+        logic_path = (ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py")
+        spec_obj = _ilu.spec_from_file_location("upper_logic_for_mask_test", logic_path)
+        logic = _ilu.module_from_spec(spec_obj)
+        spec_obj.loader.exec_module(logic)
+        spec = logic.UpperObservationSpec()
+        mask = spec.reconstruction_mask()
+        self.assertEqual(len(mask), 58)
+        self.assertEqual(spec.reconstruction_dim, 42)
+        # 排除 loco_command(3) + last_action(13)，其余 42 维参与重建
+        self.assertEqual(list(mask[:16]), [False] * 16)
+        self.assertTrue(all(mask[16:]))
+        self.assertEqual(spec.reconstruction_excluded_terms, ("loco_command", "last_action"))
+        cfg = (MODULES / "config/towing_algorithm_cfg.py").read_text("utf-8")
+        self.assertIn("reconstruction_mask: tuple[bool, ...] | None = None", cfg)
+        agent = (ROOT / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/agents/"
+                 "upper_ppo_cfg.py").read_text("utf-8")
+        self.assertIn("reconstruction_mask=UpperObservationSpec().reconstruction_mask()", agent)
+        runner = (MODULES / "runners/towing_on_policy_runner.py").read_text("utf-8")
+        self.assertIn(
+            'reconstruction_mask=self.decoder_cfg.get("reconstruction_mask")', runner)
+
     def test_no_mass_head_survives_the_ce_net_merge(self):
         """合并只拿 CE Net 结构，**不**恢复质量头（2026-10-16 的用户准则）。"""
         source = (MODULES / "modules/towing_decoder.py").read_text("utf-8")
@@ -147,6 +171,41 @@ class ContextEstimatorTests(unittest.TestCase):
         torch.testing.assert_close(states[1][:, 1], expected[:, 1])
         torch.testing.assert_close(hidden.detach(), original)
         self.assertIsNone(hidden.grad)
+
+    def test_reconstruction_mask_ignores_policy_driven_slices(self):
+        """排除的 16 维（loco_command 3 + last_action 13）**不得**影响重建损失。
+
+        这正是 2026-10-17 评审的 ①：`o[t+1]` 里那 16 维由策略下一拍自己的动作决定，
+        训练时是采样噪声。测试把它们的真值替换成 NaN —— 掩码正确时损失逐位不变，
+        掩码失效时会直接变成 NaN。
+        """
+        mask = [False] * 16 + [True] * 42
+        trainer = self.module.DynamicsDecoderTrainer(
+            self.net, learning_rate=0.0, reconstruction_mask=mask)
+        frames = torch.randn(2, 2, 58)
+        targets = torch.zeros(2, 2, 5)
+        next_frames = torch.randn(2, 2, 58)
+        torch.manual_seed(31)
+        clean = trainer.update(frames, targets, next_frames=next_frames)
+        clean_reconstruction = trainer.last_reconstruction
+        self.assertGreater(clean_reconstruction, 0)
+        poisoned = next_frames.clone()
+        poisoned[..., :16] = float("nan")
+        torch.manual_seed(31)
+        dirty = trainer.update(frames, targets, next_frames=poisoned)
+        torch.testing.assert_close(clean, dirty)
+        self.assertEqual(clean_reconstruction, trainer.last_reconstruction)
+        # 全维掩码（None）会把 NaN 传进损失 ⇒ 证明上面的不变性确实来自掩码
+        unmasked = self.module.DynamicsDecoderTrainer(self.net, learning_rate=0.0)
+        torch.manual_seed(31)
+        unmasked_loss = unmasked.update(frames, targets, next_frames=poisoned)
+        self.assertFalse(torch.isfinite(unmasked_loss))
+
+    def test_reconstruction_mask_is_validated(self):
+        with self.assertRaises(ValueError):
+            self.module.DynamicsDecoderTrainer(self.net, reconstruction_mask=[True] * 40)
+        with self.assertRaises(ValueError):
+            self.module.DynamicsDecoderTrainer(self.net, reconstruction_mask=[False] * 58)
 
     def test_real_rollout_pairs_frames_and_snapshots_reused_buffers(self):
         # Execute the actual runner loop with a tiny reusable-buffer environment.

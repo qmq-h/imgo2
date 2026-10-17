@@ -62,6 +62,7 @@ class TowingOnPolicyRunner:
             force_coef=self.decoder_cfg["force_coef"],
             kld_weight=self.decoder_cfg["kld_weight"],
             reconstruction_coef=self.decoder_cfg["reconstruction_coef"],
+            reconstruction_mask=self.decoder_cfg.get("reconstruction_mask"),
         )
 
         actor_obs_dim = env.num_obs + self.decoder.actor_feature_dim

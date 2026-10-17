@@ -181,6 +181,18 @@ class UpperObservationSpec:
     )
 
     latent_dim: int = 16
+    #: 下一帧重建要**排除**的帧项（2026-10-17 CE Net 引入重建后新增）。
+    #:
+    #: 这两个项在 ``o[t+1]`` 里由**策略自己下一拍的动作**决定，而 decoder 在 t 时刻只看到
+    #: ``o_t``（Isaac Lab 的 ``step()`` 顺序是 ``process_action → 物理 → reset → 算观测``，
+    #: 所以 ``o_t`` 里的 ``last_action`` 是 ``a_t``，``o[t+1]`` 里的是 ``a_{t+1}``）：
+    #: - ``last_action``（13 维）= ``a_{t+1}`` 本身 ⇒ 训练时是策略采样，**不可预测**；
+    #: - ``loco_command``（3 维）= ``task_command + 偏移(a_{t+1})`` ⇒ vx 维同样不可预测
+    #:   （vy/wz 由 PD 外环决定，可以预测，但整项一起排除更简单、也更保守）。
+    #: 只对剩下的 **42 维**（ang_vel/gravity/last_loco_action/joint_pos/joint_vel）算重建
+    #: ⇒ 去掉不可消除的 MSE 地板（≈0.05）与那 16 维上的噪声梯度。
+    #: 详见 docs/towing/towing_ce_net_2026-10-17.md §5①。
+    reconstruction_excluded_terms: tuple[str, ...] = ("loco_command", "last_action")
 
     @property
     def decoder_dim(self):
@@ -190,6 +202,22 @@ class UpperObservationSpec:
     @property
     def frame_dim(self):
         return sum(dim for _, dim in self.terms)
+
+    def reconstruction_mask(self) -> tuple[bool, ...]:
+        """逐维 bool：``True`` = 参与下一帧重建（排除 ``reconstruction_excluded_terms``）。"""
+        excluded = set(self.reconstruction_excluded_terms)
+        mask = []
+        for name, dim in self.terms:
+            mask.extend([name not in excluded] * int(dim))
+        if len(mask) != self.frame_dim:
+            raise ValueError(
+                f"重建掩码长度 {len(mask)} != 帧维数 {self.frame_dim}（terms 定义被改坏？）")
+        return tuple(mask)
+
+    @property
+    def reconstruction_dim(self) -> int:
+        """参与下一帧重建的维数（当前 58 − 13 − 3 = **42**）。"""
+        return sum(self.reconstruction_mask())
 
     @property
     def actor_dim(self):
