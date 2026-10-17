@@ -1482,8 +1482,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**关闭**", text)
         self.assertIn("残差恒 0", text)
         self.assertIn("vx 偏移恒 0", text)
-        # 关时也要打印打开后的**契约口径**（v3 双头：帧 58 / 动作 13）与偏移有界/门控
-        self.assertIn("v3 双头", text)
+        # 关时也要打印打开后的**契约口径**（v4 双头：帧 58 / 动作 13）与偏移有界/门控
+        self.assertIn("v4 双头", text)
         self.assertIn("帧 58", text)
         self.assertIn("动作 13", text)
         self.assertIn("offset 有界且门控", text)
@@ -1499,8 +1499,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**开启**", opened)
         self.assertIn("确定性均值", opened)
         self.assertIn("towing_contract", opened)
-        # TOW-26：期望契约是 v3 双头（帧 58 / 动作 13），不再是 v2（帧 57 / 动作 12）
-        self.assertIn("契约 **v3 双头**", opened)
+        # TOW-26：期望契约是 v4 双头（帧 58 / 动作 13），不再是 v2（帧 57 / 动作 12）
+        self.assertIn("契约 **v4 双头**", opened)
         self.assertIn("帧 58", opened)
         self.assertIn("frame_dim=58", opened)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", opened)
@@ -2048,9 +2048,9 @@ class DryRunTests(unittest.TestCase):
         # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
         self.assertIn("判定口径：**JNT 不计入**", result.stdout)
         self.assertIn("--count-jnt", result.stdout)
-        # ⑤ 上层开关状态与 v3 双头口径（帧 58 / 动作 13 / offset 有界 + 门控）也要在 plan 里
+        # ⑤ 上层开关状态与 v4 双头口径（帧 58 / 动作 13 / offset 有界 + 门控）也要在 plan 里
         self.assertIn("上层网络：**关闭**", result.stdout)
-        self.assertIn("v3 双头", result.stdout)
+        self.assertIn("v4 双头", result.stdout)
         self.assertIn("帧 58", result.stdout)
         self.assertIn("动作 13", result.stdout)
         self.assertIn("offset 有界且门控", result.stdout)
@@ -2080,7 +2080,7 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)
         self.assertIn("上层网络：**开启**", result.stdout)
-        self.assertIn("契约 **v3 双头**", result.stdout)
+        self.assertIn("契约 **v4 双头**", result.stdout)
         self.assertIn("frame_dim=58", result.stdout)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", result.stdout)
         self.assertIn("两层限幅", result.stdout)
@@ -2334,7 +2334,7 @@ class SimLoopStaticTests(unittest.TestCase):
 
 
 class UpperV3WiringTests(unittest.TestCase):
-    """必要性测试台接到 **v3 双头契约**（帧 58 / 动作 13）后的离线守卫（TOW-26 / TOW-21）。
+    """必要性测试台接到 **v4 双头契约**（帧 58 / 动作 13）后的离线守卫（TOW-26 / TOW-21）。
 
     仿真相位跑不了（本机无 Isaac Lab），这里只钉三件可离线复现的事：
 
@@ -2362,12 +2362,12 @@ class UpperV3WiringTests(unittest.TestCase):
         cls.source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
 
     # ------------------------------------------------------------------ 契约镜像
-    def test_expected_contract_matches_the_runtime_and_is_v3(self):
+    def test_expected_contract_matches_the_runtime_and_is_v4(self):
         runtime = self.runtime
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
                          runtime.expected_towing_contract(runtime.UpperNetworkSpec()))
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
-                         {"version": 3, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
+                         {"version": 4, "frame_dim": 58, "explicit_dim": 6, "latent_dim": 16})
         self.assertEqual(play.UPPER_CONTRACT_VERSION, runtime.CHECKPOINT_CONTRACT_VERSION)
         self.assertEqual(play.UPPER_FRAME_DIM, runtime.FRAME_DIM)
         self.assertEqual(play.UPPER_EXPLICIT_DIM, runtime.EXPLICIT_DIM)
@@ -2487,7 +2487,7 @@ class UpperV3WiringTests(unittest.TestCase):
         self.assertIsNone(off["towing_contract"])          # 实际加载到的契约只有实跑才有
         self.assertFalse(off["loaded"])
         self.assertEqual(off["towing_contract_expected"], play.UPPER_TOWING_CONTRACT_EXPECTED)
-        self.assertEqual(off["towing_contract_expected"]["version"], 3)
+        self.assertEqual(off["towing_contract_expected"]["version"], 4)
         self.assertEqual(off["towing_contract_expected"]["frame_dim"], 58)
         self.assertEqual(off["frame_dim_expected"], 58)
         self.assertEqual(off["action_dim_expected"], 13)
@@ -2700,7 +2700,7 @@ class AnalyzeLatentTests(unittest.TestCase):
 class ComparePlayRunsTests(unittest.TestCase):
     """`compare_play_runs.py`：评价上层策略的正确口径是「同条件下与基线的配对差」。
 
-    用户 2026-10-11 明确：只看 v3 与基线的 delta，基线差是好对照。所以这个工具必须
+    用户 2026-10-11 明确：只看 v4 与基线的 delta，基线差是好对照。所以这个工具必须
     ① 逐 cell（`cell_index`）配对；② 硬证据口径（不看会被代理通道带偏的判定码）；
     ③ 两轮物理参数不一致时必须警告（否则会把跨环境的数当成配对差）。
     """

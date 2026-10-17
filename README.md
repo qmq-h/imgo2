@@ -1,5 +1,7 @@
 # Imgo2 项目说明与维护记录
 
+> 最后核对：2026-10-17（CE Net）。已将拖曳估计网络改为 GRU 并列输出显式 6 维与 latent 16 维，拼接后重建下一时刻 58 维观测；checkpoint 升为 v4，旧 v3 必须新建运行。**已修，待网络数值与动态验证**：源码编译通过，相关离线检查 200 通过／21 缺 torch 跳过；本机无训练环境，未运行训练。实现、验证限制与待办见 [CE Net 记录](docs/towing/towing_ce_net_2026-10-17.md)／TOW-DEC-01。本轮拉取确认起点为远端 `4d66f2c`，见 [同步记录](docs/maintenance/main_sync_decoder_2026-10-17.md)。
+
 > 最后核对：2026-10-12。main 已快进到远端 `18122fd`（本轮从 `11394e8` 再快进 3 个提交：文档主题归档、towing latent t-SNE 工具、平滑起伏地形接入）；在此之前本机未提交改动已合回并保留拉取前 stash，见 [同步记录](docs/maintenance/git_sync_2026-10-12.md)。新增 rough 类似的**平滑起伏**任务 `Imgo2-towing-upper-rolling-rl-lab`，原单坡包／长下坡方案保留；四个不等宽小坡在坡顶、坡谷平滑衔接，横向车道边缘也平滑归零。**已修，待动态验证**：相关离线检查224项通过、18项缺torch跳过，未启动Isaac Lab或训练。配置、短跑命令与限制只在 [起伏地形记录](docs/towing/towing_rolling_terrain_2026-10-12.md) 展开，见 TOW-ROLL-01。2026-10-12 另用首次拿到的真 latent（`v3_800_policy_c008`）做了**聚类检验**：只有「绳 vs 杆」分得开、两类绳完全互混、质量档在站定阶段只在 rigid 下可见；工具、数字与限制见 [聚类检验记录](docs/towing/towing_latent_cluster_2026-10-12.md)，待办 TOW-CLUS-01。
 
 > 最后核对：2026-10-09（文档分类）。docs 已按主题建目录，数据归到主题 data/，文档引用与脚本中的路径同步调整。已完成文件迁移；历史缺失引用待补齐，本轮未运行代码或仿真测试。见 [分类记录](docs/maintenance/docs_reorganization_2026-10-09.md)。
@@ -50,7 +52,7 @@ URDF 与网格 ──→ Isaac Lab 环境 ──→ PPO / HIM-Loco / AMP 训练
                                       └─→ MuJoCo / Gazebo / 真机入口
 ```
 
-当前拖曳研究主线是：①完成上层 recurrent PPO 与 decoder 训练闭环；②导出读取 57 维单帧（+ 6 维 decoder 估计 = 63 维 actor 输入）、输出 12 维关节残差并维护 GRU hidden state 的 actor，完成 MuJoCo／Gazebo sim2sim 拖曳和停车验证。真机作为独立后续分支，目前只维护可部署 observation 与控制频率契约，不纳入这一阶段验收。详细路线见 [上层拖曳 RL 计划](docs/research/paper_plan_rl.md)。
+当前拖曳研究主线是：①完成上层 recurrent PPO 与 CE Net 的训练闭环；②导出读取 58 维单帧（+ 6 维显式估计 + 16 维 latent = 80 维 actor 输入）、输出 1 维速度偏移与 12 维关节残差并维护 GRU hidden state 的 actor，完成 MuJoCo／Gazebo sim2sim 拖曳和停车验证。CE Net v4 代码已调整、待训练机验证，见 [记录](docs/towing/towing_ce_net_2026-10-17.md)。真机作为独立后续分支，目前只维护可部署 observation 与控制频率契约，不纳入这一阶段验收。详细路线见 [上层拖曳 RL 计划](docs/research/paper_plan_rl.md)。
 
 最后一段部署链路仍需验证。`himloco` 仍是 Go2 参考占位策略；AMP 已于 2026-09-17 换成
 Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导出并接入部署，Gazebo 侧
@@ -428,7 +430,7 @@ python3 imgo2_deploy/scripts/eval_gazebo_policy.py --vx 0.5 --duration 20   # �
 | 网络 | 调用位置与频率 | 每次 batch |
 |---|---|---|
 | actor / critic（`ActorCriticRecurrent`） | `towing_on_policy_runner.py` rollout 循环，每控制步各一次 | `num_envs` |
-| decoder（`TowingDynamicsDecoder`） | 同上，每控制步一次；6 维 estimate（vel 2 / mass 1 / force 3）detach 后拼成 63 维 actor 输入 | `num_envs` |
+| CE Net（`TowingDynamicsDecoder`） | 同上，每控制步编码一次；6 维 estimate 与 16 维 latent detach 后，和 58 维帧拼成 80 维 actor 输入；重建 decoder 只用于训练 | `num_envs` |
 | 冻结低层 AMP（`FrozenLowLevelPolicy`） | `apply_actions` 里每 4 个物理步一次（`low_level_control_dt/physics_dt`） | `num_envs` |
 
 三者各维护自己的 GRU hidden，形状 `(1, num_envs, 256)`（decoder 为 128）。4096 环境时每轮前向次数约：
@@ -583,6 +585,7 @@ bash build.sh --cmake
 
 | 本次新增问题 | 优先级 | 状态与完成条件 |
 |---|---|---|
+| TOW-DEC-01 | P1 | **已修，待网络数值与动态验证**：CE Net 并列显式估计／latent + 下一帧重建，契约 v4。源码编译和相关静态检查通过；缺训练机 torch／Isaac Lab 补跑张量梯度、回合掩码、v4 保存加载及短训练，重建／KL 权重待实测。见 [记录](docs/towing/towing_ce_net_2026-10-17.md)。 |
 | DOC-CLASS-01 | P2 | **待确认**：历史 Markdown 引用存在缺失目标；缺原始归档或替代关系，详见 [分类记录](docs/maintenance/docs_reorganization_2026-10-09.md)。 |
 | TOW-07 | P2 | **待修复**：残差回放统计误标 rad、`clip_actions` 放大权限的说明与固定 ±1 裁剪不符；修正后需验证日志单位和动作边界。详见 [同步核对记录](docs/maintenance/git_sync_2026-10-08.md#第二次同步c321c14--c49be10) |
 | TOW-08 | P1 | **地形已被同日后续的连续剖面取代，待训练机验证**：跑道 15 m，每条 lane 现在是「平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」（坡度量级 0/5/10 由列决定，仍 800 条 lane；10 m 的 STOP 点落在出口平地上，**越过坡后才置零指令**），出生在平地段、跌倒判据用离局部剖面高度、timeout 用坡面弧长（28.23 s / 564 步）；需 Isaac Lab 构造 + 短回放覆盖平地/5°/10°、上坡与过顶、**STOP 触发**、停车段两条奖励与超时。见 [连续坡面剖面记录](docs/towing/towing_profile_terrain_2026-10-09.md)（旧恒定坡度设计见 [构建记录](docs/towing/towing_slope_goal_vae_2026-10-09.md)） |
@@ -718,6 +721,7 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-17 | CE Net：并列动力学估计与 latent，联合重建下一帧；checkpoint v4 | 编译通过；相关离线检查 200 通过／21 跳过；缺 torch 的网络数值及 Isaac Lab 短训练验证保留为 TOW-DEC-01。未安装训练依赖、未运行训练，详见 [记录](docs/towing/towing_ce_net_2026-10-17.md)。拉取起点 `4d66f2c` 与本地改动保留情况见 [同步记录](docs/maintenance/main_sync_decoder_2026-10-17.md)。 |
 | 2026-10-11 | 新增 towing latent t-SNE 工具 | 支持阶段均值/短窗口、四类工况着色、固定条件筛选、参数与CSV导出；3项数据契约测试、合成绘图和随机种子复现通过。真实结果待TOW-TSNE-01；见 [使用记录](docs/towing/towing_latent_tsne_2026-10-11.md) |
 | 2026-10-11 | 核查 HIMLoco latent 原型聚类 | 已对照本地源码与论文，确认32原型、Sinkhorn及双向swap训练和t-SNE展示；记录towing迁移的观测切片与损失尺度检查。未训练、未运行真实聚类；数据归档与表征消融仍待TOW-EXP-01，详见 [评估§8](docs/towing/towing_experiment_sufficiency_review_2026-10-11.md#8-himloco-原型聚类机制核查) |
 | 2026-10-11（latent连接/地形分析） | 核对11394e8分组工具：已有连接最近质心LOO0.573、坡度量级0.367，尚非无监督聚类；补充局部坡段标签、控制质量速度混杂及聚类/组留出验证方案 | 未收到带latent原始报告，未执行新聚类；阶段均值不能证明地形信息缺失。详见 [评估§7](docs/towing/towing_experiment_sufficiency_review_2026-10-11.md)，待办仍归TOW-EXP-01 |

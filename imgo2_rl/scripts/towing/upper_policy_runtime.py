@@ -7,7 +7,7 @@
 
 契约（全部由源码核对，逐条在下面注明出处）：
 
-1. **帧（58 维，契约 v3）** = `cat(loco_command(3), processed_actions(13),
+1. **帧（58 维，契约 v4）** = `cat(loco_command(3), processed_actions(13),
    base_ang_vel_b(3)·0.25, projected_gravity(3), last_loco_action(12), joint_pos_rel(12),
    joint_vel(12)·0.05)`。2026-10-10 双头迁移把 `last_action` 由 12 维改成 13 维
    （1 维 vx 偏移 + 12 维关节残差），帧 57 → 58。出处：`upper_mdp.policy_frame`；
@@ -17,6 +17,8 @@
    num_layers=1, latent_dim=16, force_scale=10.0)`，用 `forward_with_latent(frame, hidden)`
    且**必须 `.eval()`**（`sample=None` 会取 `self.training=False` ⇒ latent 取均值，与训练
    rollout 一致）⇒ 返回 `(estimate(6), latent(16), hidden)`。
+   v4 的显式估计与变分 latent 由 GRU 并列输出；训练时将二者拼接为 22 维，
+   重建下一时刻的 58 维帧。推理只使用编码分支，不调用重建 decoder。
 3. **actor**：`ActorCriticRecurrent`（hidden `[256,128,64]`、GRU 256×1、elu），输入 =
    `cat(frame, estimate, latent)` = **80** 维（`towing_decoder.augment_actor_observation`）。
    确定性推理用 `act_inference()`（取均值，与 `rl_lab/towing/play.py` 同口径）；GRU 隐状态
@@ -33,11 +35,11 @@
    **之前**（它进底层观测），关节残差加在底层输出**之后** ⇒ 上层同时影响底层输入与输出，
    两头不独立（别名/冗余，credit assignment 更难）。`play_towing_test.py` 已按本条接线
    （帧 58 / 动作 13 / 偏移在冻结策略推理前合成 + `elapsed_s >= tow_start_s` 门控），
-   见 `docs/towing/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
+   动作接线沿用 `docs/towing/towing_upper_switch_2026-10-10.md` 的「v3 接线」一节。
 5. **checkpoint**：`torch.load(path, map_location="cpu", weights_only=False)` ⇒ 键
    `model_state_dict`、`decoder_state_dict`、`towing_contract`
-   （`{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
-   加载前**硬校验** `towing_contract` 四个字段：旧 v2（57/79）与更早的 56/63 维 checkpoint
+   （`{'version': 4, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`）、`iter`。
+   加载前**硬校验** `towing_contract` 四个字段：旧 v3、v2（57/79）与更早的 56/63 维 checkpoint
    必须被拒绝，而不是等到 `load_state_dict(strict=True)` 才报一句难读的 shape mismatch。
 6. 网络超参从注册的 agent cfg 建（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`，
    它镜像训练超参）；`UpperNetworkSpec.from_agent_cfg()` 接受任意带
@@ -96,8 +98,8 @@ COMMAND_OFFSET_MAX = 0.6
 #: 偏移为 0 时是恒等裁剪（退化性）。与 `HierarchicalVelocityActionCfg.amp_vx_range` 同值。
 AMP_VX_MIN = -1.0
 AMP_VX_MAX = 1.5
-#: checkpoint 契约版本：v3（frame 58 / explicit 6 / latent 16）。v2（57/79）必须被拒。
-CHECKPOINT_CONTRACT_VERSION = 3
+#: v4: CE Net parallel heads, next-frame reconstruction. Reject v3 and older.
+CHECKPOINT_CONTRACT_VERSION = 4
 
 #: critic 观测维数（actor 里附带 critic 网络，`load_state_dict(strict=True)` 需要它）。
 #: 出处：`upper_env_cfg.UpperTowingEnvCfg.observations.critic` =
@@ -299,7 +301,8 @@ def validate_towing_contract(contract: Any, spec: UpperNetworkSpec) -> dict:
             f"checkpoint 的 towing_contract {found} 与当前契约 {expected} 不一致："
             f"**旧 v2 的 57 维帧 / 79 维 actor / 12 维动作 checkpoint 已随双头迁移（动作 12 → 13、"
             f"帧 57 → 58、actor 79 → 80）全部失效**，更早的 51/56/63 维 checkpoint 同样不兼容；"
-            f"必须用 v3 契约重训（不要用改元数据的方式绕过）")
+            f"CE Net v4 已改变估计网络结构，旧 v3（即使同为 58/6/16）也不兼容；"
+            f"必须用 v4 契约重训（不要用改元数据的方式绕过）")
     return expected
 
 

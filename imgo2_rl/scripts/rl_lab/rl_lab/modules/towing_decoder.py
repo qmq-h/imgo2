@@ -22,11 +22,10 @@ FORCE_SLICE = slice(VELOCITY_DIM + MASS_DIM, OUTPUT_DIM)
 
 
 class TowingDynamicsDecoder(nn.Module):
-    """Supervised variational bottleneck: history -> z -> explicit six-vector.
+    """CE Net: history -> explicit state + variational latent -> next frame.
 
-    Latent coordinates have no prescribed physical meanings. Unlike CMoE's
-    next-proprioception reconstruction, this task reconstructs the privileged
-    [vx, vy, mass, Fx, Fy, Fz] target through the latent bottleneck.
+    The six explicit coordinates have privileged supervision; only the remaining
+    latent coordinates receive a Gaussian prior. Both branches reconstruct o[t+1].
     """
 
     # 默认帧维 = 当前契约 v3 的 policy 帧（58）。调用方（runner / 运行时）一律显式传
@@ -43,10 +42,12 @@ class TowingDynamicsDecoder(nn.Module):
         self.gru = nn.GRU(feature_dim, hidden_dim, num_layers=num_layers)
         self.fc_mu = nn.Linear(hidden_dim, latent_dim)
         self.fc_log_var = nn.Linear(hidden_dim, latent_dim)
-        self.latent_decoder = nn.Sequential(nn.Linear(latent_dim, feature_dim), nn.ELU())
-        self.velocity_head = nn.Linear(feature_dim, VELOCITY_DIM)
-        self.mass_head = nn.Linear(feature_dim, MASS_DIM)
-        self.force_head = nn.Linear(feature_dim, FORCE_DIM)
+        self.velocity_head = nn.Linear(hidden_dim, VELOCITY_DIM)
+        self.mass_head = nn.Linear(hidden_dim, MASS_DIM)
+        self.force_head = nn.Linear(hidden_dim, FORCE_DIM)
+        self.latent_decoder = nn.Sequential(
+            nn.Linear(OUTPUT_DIM + latent_dim, feature_dim), nn.ELU(),
+            nn.Linear(feature_dim, frame_dim))
 
     @property
     def output_dim(self):
@@ -71,24 +72,26 @@ class TowingDynamicsDecoder(nn.Module):
         if frames.ndim != 3 or frames.shape[-1] != self.frame_dim:
             raise ValueError(f"decoder expects [T,B,{self.frame_dim}] or [B,{self.frame_dim}]")
         features, hidden_state = self.gru(self.encoder(frames), hidden_state)
+        prediction = torch.cat((self.velocity_head(features), self.mass_head(features),
+                                self.force_head(features)), dim=-1)
         mu = self.fc_mu(features)
         # Bound exp(log_var) to keep sampling and KL finite at startup.
         log_var = self.fc_log_var(features).clamp(-10.0, 4.0)
         if single_step:
+            prediction = prediction.squeeze(0)
             mu, log_var = mu.squeeze(0), log_var.squeeze(0)
-        return mu, log_var, hidden_state
+        return prediction, mu, log_var, hidden_state
 
-    def decode(self, latent):
-        features = self.latent_decoder(latent)
-        return torch.cat((self.velocity_head(features), self.mass_head(features),
-                          self.force_head(features)), dim=-1)
+    def decode(self, prediction, latent):
+        """Reconstruct the next frame from the joint 6+16 context code."""
+        return self.latent_decoder(torch.cat((prediction, latent), dim=-1))
 
     def forward_with_latent(self, frames, hidden_state=None, *, sample=None):
-        mu, log_var, state = self.encode(frames, hidden_state)
+        prediction, mu, log_var, state = self.encode(frames, hidden_state)
         if sample is None:
             sample = self.training
         latent = self.reparameterize(mu, log_var) if sample else mu
-        return self.decode(latent), latent, state
+        return prediction, latent, state
 
     def forward(self, frames, hidden_state=None):
         prediction, _, state = self.forward_with_latent(frames, hidden_state)
@@ -179,6 +182,7 @@ class DynamicsDecoderTrainer:
         force_coef=1.0,
         mass_coef=1.0,
         kld_weight=0.005,
+        reconstruction_coef=1.0,
     ):
         self.decoder = decoder
         self.max_grad_norm = max_grad_norm
@@ -188,27 +192,35 @@ class DynamicsDecoderTrainer:
         if kld_weight < 0:
             raise ValueError("kld_weight must be nonnegative")
         self.kld_weight = kld_weight
+        if reconstruction_coef < 0:
+            raise ValueError("reconstruction_coef must be nonnegative")
+        self.reconstruction_coef = reconstruction_coef
         self.optimizer = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    def update(self, frames, targets, mass_supervision_weight, dones=None, hidden_state=None):
+    def update(self, frames, targets, mass_supervision_weight, dones=None, hidden_state=None,
+               *, next_frames):
+        if frames.ndim != 3 or next_frames.shape != frames.shape:
+            raise ValueError("frames and next_frames must have matching [T,B,D] shapes")
         self.decoder.train()
         state = hidden_state.detach().clone() if hidden_state is not None else None
         if dones is None:
-            mu, log_var, _ = self.decoder.encode(frames.detach(), state)
+            prediction, mu, log_var, _ = self.decoder.encode(frames.detach(), state)
         else:
             if dones.shape != frames.shape[:2]:
                 raise ValueError(f"decoder dones must have shape {frames.shape[:2]}, got {dones.shape}")
-            mus, log_vars = [], []
+            predictions, mus, log_vars = [], [], []
             for step in range(frames.shape[0]):
                 if step > 0 and state is not None:
                     keep = (~dones[step - 1].bool()).to(frames.dtype).view(1, -1, 1)
                     state = state * keep
-                step_mu, step_log_var, state = self.decoder.encode(frames[step].detach(), state)
+                step_prediction, step_mu, step_log_var, state = self.decoder.encode(
+                    frames[step].detach(), state)
+                predictions.append(step_prediction)
                 mus.append(step_mu)
                 log_vars.append(step_log_var)
             mu, log_var = torch.stack(mus), torch.stack(log_vars)
+            prediction = torch.stack(predictions)
         latent = self.decoder.reparameterize(mu, log_var)
-        prediction = self.decoder.decode(latent)
         loss, parts = self.decoder.loss(
             prediction,
             targets.detach(),
@@ -218,7 +230,18 @@ class DynamicsDecoderTrainer:
             mass_coef=self.mass_coef,
         )
         kl = self.decoder.kl_loss(mu, log_var)
-        loss = loss + self.kld_weight * kl
+        reconstruction = self.decoder.decode(prediction, latent)
+        # Auto-reset observations belong to the NEXT episode. Exclude both
+        # terminations and timeouts from reconstruction; retain current-state
+        # supervision and KL, and reset GRU before encoding the next step.
+        valid = (torch.ones(frames.shape[:2], dtype=torch.bool, device=frames.device)
+                 if dones is None else ~dones.bool())
+        reconstruction_loss = (F.mse_loss(reconstruction[valid], next_frames.detach()[valid])
+                               if valid.any() else reconstruction.sum() * 0.0)
+        loss = loss + self.reconstruction_coef * reconstruction_loss + self.kld_weight * kl
+        self.last_reconstruction = float(reconstruction_loss.detach())
+        self.last_weighted_reconstruction = float(
+            (self.reconstruction_coef * reconstruction_loss).detach())
         self.last_kl = float(kl.detach())
         self.last_weighted_kl = float((self.kld_weight * kl).detach())
         self.optimizer.zero_grad()

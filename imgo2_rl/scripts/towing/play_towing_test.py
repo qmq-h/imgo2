@@ -20,7 +20,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   （参考量 = 冻结策略当拍输出），但**默认不进判定**（用户 2026-10-10 决定，见「判读与限制」；
   `--count-jnt` 可复现旧口径）。
 - **开（给了 checkpoint 路径）**：从训练侧联合 checkpoint 恢复 actor + dynamics decoder
-  （**v3 双头契约**：58 维 policy 帧 → 6 维显式估计 + 16 维 latent → 80 维 actor →
+  （**v4 双头契约**：58 维 policy 帧 → 6 维显式估计 + 16 维 latent → 80 维 actor →
   **13 维动作** = 1 维 vx 偏移 + 12 维关节残差），并按**训练侧的链路顺序**接线
   （`upper_mdp.HierarchicalVelocityAction`）：
 
@@ -57,7 +57,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   （同 `HierarchicalVelocityAction.apply_actions`）。`--upper-stochastic` 时用 actor 的分布
   采样（默认取均值，与 `towing/play.py` 的确定性口径一致）。
 - **契约校验（加载前硬校验，不匹配就抛错）**：`towing_contract` 必须精确等于
-  `{'version': 3, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
+  `{'version': 4, 'frame_dim': 58, 'explicit_dim': 6, 'latent_dim': 16}`；网络超参从注册的
   agent cfg（`agents/upper_ppo_cfg.py::UpperTowingPPORunnerCfg`）建，然后
   `load_state_dict(strict=True)`。**旧 v2（帧 57 / actor 79 / 动作 12）与更早的 51/56/63 维
   checkpoint 会被拒绝**（`TowingCheckpointContractError`）。
@@ -316,12 +316,12 @@ TRAINING_WHEEL_DAMPING = 0.032
 #: 20 kg 仍在域内。`--dry-run` 的 plan 行与 `experiment.json.caveats` 会显式标出域外档位。
 TRAINING_MASS_RANGE_KG = (5.0, 20.0)
 
-# ---- 上层 checkpoint 契约 / 偏移头的离线镜像（v3 双头，TOW-21/TOW-26）----
+# ---- 上层 checkpoint 契约 / 偏移头的离线镜像（v4 双头，TOW-21/TOW-26）----
 #: `upper_policy_runtime` 顶部 import torch，而 `--dry-run`／`--help` 必须保持**纯标准库**可跑，
 #: 所以期望契约与偏移边界在这里重述一份；离线测试把每个字段与 `upper_policy_runtime` 的常量、
 #: `expected_towing_contract(UpperNetworkSpec())` 逐项交叉核对（两边漂移就报错），实跑时
 #: `experiment.json` 的 `towing_contract_expected` 还会被运行时的 spec 覆写。
-UPPER_CONTRACT_VERSION = 3
+UPPER_CONTRACT_VERSION = 4
 UPPER_FRAME_DIM = 58               # = 3 + 13 + 3 + 3 + 12 + 12 + 12
 UPPER_EXPLICIT_DIM = 6
 UPPER_LATENT_DIM = 16
@@ -554,7 +554,7 @@ EXTRA_FIELDS = (
     "velocity_cmd_vy_mps", "velocity_cmd_wz_radps",
     "lane_offset_m", "lane_heading_rad", "robot_vy_b_mps", "robot_wz_b_radps",
     "load_offset_m",
-    # 上层 v3 的指令侧诊断（2026-10-11 新增；**观测列，不进判据**）：
+    # 上层 v4 的指令侧诊断（2026-10-11 新增；**观测列，不进判据**）：
     #   `loco_cmd_vx_mps`     = **合成后**送冻结策略的 vx（= 任务指令 + 偏移，两层限幅之后；
     #                           基线路径下 ≡ 任务指令 ⇒ 两类产物同一列都有意义）
     #   `upper_offset_vx_mps` = 实际生效的偏移量（门控 + 两层限幅之后；基线恒 0）
@@ -2628,7 +2628,7 @@ def parse_args(argv=None):
 def upper_policy_record(args) -> dict:
     """`experiment.json.upper_policy` 段（纯逻辑：离线测试直接构造并逐字段核对）。
 
-    记的是**期望契约**（v3 双头：帧 58 / explicit 6 / latent 16 / 动作 13 = 1 维 vx 偏移 +
+    记的是**期望契约**（v4 双头：帧 58 / explicit 6 / latent 16 / 动作 13 = 1 维 vx 偏移 +
     12 维关节残差）与偏移头的**两层限幅 + 门控边界**。仿真路径（`main()`）会把
     `towing_contract` / `iter` / 维数 / `residual_scale` 覆写成**实际加载到**的值，并把
     `towing_contract_expected` 换成 `expected_towing_contract(upper.spec)`（从实际 spec 派生）；
@@ -2676,7 +2676,7 @@ def upper_policy_record(args) -> dict:
                 "合成后的指令送**冻结策略**得到冻结关节目标，再加 12 维残差 ⇒ held，"
                 "held 只在冻结策略刷新那一拍重算并下发（同训练侧 apply_actions），"
                 "既是下发目标也是 JNT 参考。加载前硬校验 towing_contract"
-                "（v3：帧 58 / explicit 6 / latent 16），旧 v2（帧 57 / actor 79 / 动作 12）"
+                "（v4：CE Net，帧 58 / explicit 6 / latent 16），旧 v3 及旧 v2（帧 57 / actor 79 / 动作 12）"
                 "与 56/63 维 checkpoint 会被拒绝。",
         "loaded": False,
     }
@@ -2766,7 +2766,7 @@ def planned_grid_lines(args) -> list:
     if args.upper_checkpoint is None:
         lines.append("[plan] 上层网络：**关闭**（基线；12 维关节位置残差恒 0、vx 偏移恒 0"
                      "（`loco_command` ≡ 任务指令）；JNT 参考 = 冻结策略当拍输出"
-                     "——与加开关之前逐位一致）；打开后按 **v3 双头**契约："
+                     "——与加开关之前逐位一致）；打开后按 **v4 双头**契约："
                      f"帧 {UPPER_FRAME_DIM} / 动作 {UPPER_ACTION_DIM}"
                      f"（{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差）、"
                      "offset 有界且门控（加 `--upper-checkpoint` 后打印完整边界/门控）")
@@ -2774,7 +2774,7 @@ def planned_grid_lines(args) -> list:
         lines.append(
             f"[plan] 上层网络：**开启**（checkpoint={args.upper_checkpoint}；"
             f"{'随机采样' if args.upper_stochastic else '确定性均值'}；"
-            f"契约 **v3 双头**：帧 {UPPER_FRAME_DIM} = loco_command 3 + last_action 13 "
+            f"契约 **v4 双头**：帧 {UPPER_FRAME_DIM} = loco_command 3 + last_action 13 "
             f"+ base_ang_vel 3 + projected_gravity 3 + last_loco_action 12 + joint_pos 12 "
             f"+ joint_vel 12，动作 {UPPER_ACTION_DIM} = "
             f"{UPPER_CMD_ACTION_DIM} 维 vx 偏移 + {UPPER_JOINT_ACTION_DIM} 维关节残差；"
@@ -2791,8 +2791,8 @@ def planned_grid_lines(args) -> list:
             f"{max(1, int(round(UPPER_CONTROL_DT_S / args.dt)))} 物理步 = "
             f"{UPPER_CONTROL_DT_S:g} s = 训练侧 `upper_control_dt`）推理一次、"
             f"两次之间偏移与残差都不变；"
-            f"加载前硬校验 towing_contract：version=3 / frame_dim=58 / explicit_dim=6 / "
-            f"latent_dim=16，**旧 v2（帧 57 / actor 79 / 动作 12）与 56/63 维 checkpoint "
+            f"加载前硬校验 towing_contract：version=4 / frame_dim=58 / explicit_dim=6 / "
+            f"latent_dim=16，**旧 v3、旧 v2（帧 57 / actor 79 / 动作 12）与 56/63 维 checkpoint "
             f"会被拒绝**）")
     if args.compare_report is not None:
         lines.append(f"[plan] 同版本基线对照：{args.compare_report}"
@@ -2875,7 +2875,7 @@ def main(args):
                  "脚本指令的基线，**默认不加载**任何上层 checkpoint（可用 `--upper-checkpoint` "
                  "打开）"
                  if args.upper_checkpoint is None else
-                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：v3 双头动作 13 维"
+                 f"上层网络**开启**（checkpoint `{args.upper_checkpoint}`）：v4 双头动作 13 维"
                  f"（1 维 vx 偏移 + 12 维关节残差）；偏移经两层限幅"
                  f"（[{UPPER_OFFSET_RANGE_MPS[0]:g}, {UPPER_OFFSET_RANGE_MPS[1]:g}] m/s → "
                  f"clamp 进 [{UPPER_AMP_VX_RANGE_MPS[0]:g}, {UPPER_AMP_VX_RANGE_MPS[1]:g}]）"
@@ -3076,7 +3076,7 @@ def main(args):
         # ------------------------------------------------------------ 上层网络开关（默认关）
         # 关：`upper = None` ⇒ 主循环只走基线路径（残差与偏移都恒 0，与加开关之前逐位一致）。
         # 开：从 checkpoint 恢复 actor + decoder。网络超参从**注册的 agent cfg** 建，
-        # 加载前硬校验 `towing_contract`（v3：58/6/16；旧 v2 57/79 与 56/63 维 checkpoint 直接抛错）。
+        # 加载前硬校验 `towing_contract`（v4：58/6/16；旧 v2 57/79 与 56/63 维 checkpoint 直接抛错）。
         upper = None
         if args.upper_checkpoint is not None:
             upper = UpperPolicyRuntime(
@@ -3568,7 +3568,7 @@ def main(args):
               f"{len({case.length_m for case in cases})} 种连接长度、"
               f"{len(args.velocities) * len(args.cart_masses)} 个工作条件组合；"
               f"重力 {gravity}（世界竖直）；上层网络"
-              f"{'**开启**（v3 双头：帧 58 / 动作 13）' if upper is not None else '关闭（基线，残差与偏移恒 0）'}",
+              f"{'**开启**（v4 双头：帧 58 / 动作 13）' if upper is not None else '关闭（基线，残差与偏移恒 0）'}",
               flush=True)
         started = time.time()
         # 进度打印节拍：全程约 20 行，够看出在走又不刷屏（长跑的黑盒问题见循环内的注释）。
@@ -3594,7 +3594,7 @@ def main(args):
                     loco_joint_targets = policy_step(command_tensor)
                     joint_targets = loco_joint_targets
             else:
-                # ---- 上层 v3 双头接线（开关开）----
+                # ---- 上层 v4 双头接线（开关开）----
                 # 1) 上层一拍：训练侧 20 Hz（每 `upper_control_decimation` 个物理步），
                 #    **与冻结策略的 `decimation` 步刷新独立**（训练里 `process_actions` 由 env
                 #    step 驱动、`apply_actions` 由每个物理步驱动 ⇒ tick 会落在两次刷新之间）。
@@ -3960,7 +3960,7 @@ def main(args):
                                "reference_report": (str(args.compare_report)
                                                     if args.compare_report is not None else None),
                                "archived": ARCHIVED_BASELINE_2026_10_09,
-                               # 本轮开关状态 + 上层策略的动作/契约口径（v3 双头，TOW-26）：
+                               # 本轮开关状态 + 上层策略的动作/契约口径（v4 双头，TOW-26）：
                                # 13 = 1 维 vx 偏移 + 12 维关节残差；关时策略轮不存在。
                                "upper_policy_enabled": args.upper_checkpoint is not None,
                                "upper_contract_version": UPPER_CONTRACT_VERSION,

@@ -190,7 +190,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(dict(spec.terms)["last_action"], 13)
         self.assertEqual(logic.CMD_ACTION_DIM, 1)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 3", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
 
     def test_decoder_targets_are_physical_units(self):
         """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
@@ -745,7 +745,7 @@ class UpperLogicTests(unittest.TestCase):
         targets = torch.zeros(4, 3, 6)
         weights = torch.zeros(4, 3)
         weights[:, 1] = 1.0
-        loss = trainer.update(frames, targets, weights)
+        loss = trainer.update(frames, targets, weights, next_frames=torch.randn_like(frames))
         self.assertEqual(loss.ndim, 0)
         self.assertIsNone(frames.grad)
         self.assertFalse(decoder.training)
@@ -1563,10 +1563,10 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim + obs.latent_dim)
         self.assertEqual(obs.actor_dim, 80)
         # 训练侧 runner 的契约版本 = 运行时 = 3（v2 的 57/79 已失效）
-        self.assertIn("TOWING_CONTRACT_VERSION = 3", runner)
+        self.assertIn("TOWING_CONTRACT_VERSION = 4", runner)
         self.assertIn('"version": TOWING_CONTRACT_VERSION', runner)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 3", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 4", runtime_src)
 
     def test_towing_runner_zero_inits_actor_output_layer(self):
         """残差策略必须从 0 起步：只对 towing runner 零初始化 actor 末层。
