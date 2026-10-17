@@ -5,8 +5,8 @@
 训练侧配置 `IMGO2_CFG`（不改 locomotion 的任何参数），只把任务把它当冻结策略用。
 
 布局约定（与绳的物理一致）：机器人在前、小车在后，两者都朝 +x。
-`cart.urdf` 的挂点在车体 `+0.25 m`（前轴之前），小车在后时该点朝向机器人 ⇒ 绳从
-机器人的后挂点连到小车的前挂点，受力方向与拖曳一致。
+`cart.urdf` 的挂点在车体 `+0.30 m`（前缘；2026-10-17 新小车把挂点/前表面由 0.25 移到 0.30），
+小车在后时该点朝向机器人 ⇒ 绳从机器人的后挂点连到小车的前挂点，受力方向与拖曳一致。
 """
 
 import isaaclab.sim as sim_utils
@@ -56,8 +56,8 @@ class TowSceneCfg(InteractiveSceneCfg):
     cart: ArticulationCfg | None = None
     wheel_contacts = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Cart/wheel_.*", update_period=0.0, history_length=1)
-    # 车斗接触：`base_link` 的碰撞箱 z 区间是 0.10~0.20 m，**永远不会碰地**
-    # （小车静止高度 0.15 m、轮半径 0.08 m），所以它的接触力非零只可能是机器人压上来。
+    # 车斗接触：`base_link` 的碰撞箱是 0.60×0.45×0.02 m、底面离地 0.09 m，**永远不会碰地**
+    # （2026-10-17 新小车：车斗底面 0.09 m + Ø6 cm 轮），所以它的接触力非零只可能是机器人压上来。
     # 这是「小车是否追到机器人」的独立见证：不依赖 FK、不依赖挂点间距，直接测力。
     # 允许撞击发生是有意的设置（用户 2026-09-21 明确），这里只把它测出来、不阻止。
     deck_contacts = ContactSensorCfg(

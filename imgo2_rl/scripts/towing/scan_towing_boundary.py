@@ -23,7 +23,9 @@ LAUNCHER = RL_ROOT / "scripts/run_isaaclab.sh"
 TOW_DRAG = RL_ROOT / "scripts/towing/tow_drag.py"
 DEFAULT_VELOCITIES = (0.2, 0.4, 0.6, 0.8, 1.0)
 DEFAULT_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
-DEFAULT_DAMPINGS = (0.008, 0.032)
+#: 2026-10-17 新小车轮径 0.03 ⇒ 训练随机域 (0.001125, 0.0045)（旧 r=0.08 时是
+#: (0.008, 0.032)：b 与 r² 成正比，等效滚阻 4b/r² 都是 5–20 N·s/m）。
+DEFAULT_DAMPINGS = (0.001125, 0.0045)
 DEFAULT_FRICTIONS = (0.8,)
 
 

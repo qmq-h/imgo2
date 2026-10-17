@@ -69,16 +69,19 @@ def parse_args(argv=None):
     parser.add_argument("--stop-at", type=float, default=None,
                         help="阶跃停止：指令阶段走到第 T 秒时把指令归零并保持（计划 P6）。"
                              "缺省则整段保持指令")
-    parser.add_argument("--wheel-damping", type=float, nargs="+", default=[0.016],
-                        help="每个车轮的轴承阻力 b，N·m·s/rad（P2 的候选值之一）。"
+    parser.add_argument("--wheel-damping", type=float, nargs="+", default=[0.0045],
+                        help="每个车轮的轴承阻力 b，N·m·s/rad（2026-10-17 新小车轮径 0.03 的"
+                             "名义值 0.0045，训练随机域 0.001125–0.0045；旧 r=0.08 时的 "
+                             "0.008–0.032 已不适用——b 与 r² 成正比）。"
                              "**可一次给多个**，与 `--cart-mass` 做笛卡尔积，在同一进程内"
                              "逐 case 扫描（省掉每个组合重启一次 Isaac Sim）")
     parser.add_argument("--spawn-height", type=float, default=None,
                         help="机器人初始高度，m；默认用 towing_env_cfg.ROBOT_SPAWN_HEIGHT_M")
     parser.add_argument("--cart-mass", type=float, nargs="+", default=[None],
-                        help="小车的目标总质量，kg（缺省用 URDF 的名义 10 kg）。"
-                             "**质量与惯量按同一比例一起缩放**（AGENTS.md：只改质量不改惯量"
-                             "会造成模型不自洽）⇒ 几何与质心位置不变、轮半径不变。"
+                        help="小车的目标总质量，kg（缺省用 URDF 的名义 3.0 kg）。"
+                             "新小车口径：车斗 + 四轮质量固定，**只改重物块** ⇒ 质量、绕 CoM 的"
+                             "惯量与 CoM 高度一起重算（`assets/cart_mass.body_properties`，"
+                             "与训练侧同一套），几何与轮半径不变。"
                              "注意 m_eff 随质量线性增长，滑行距离也随之增长：默认 L0=0.8、"
                              "b=0.016 时 15 kg 只剩 +0.02 m 余量、20 kg 起会追到机器人")
     parser.add_argument("--ground-friction", type=float, default=0.8,
@@ -338,19 +341,46 @@ def case_label(case_index: int, mass_target, damping: float, nominal_total_kg: f
     return f"case_{case_index:02d}_{rope_model}_m{mass:g}_b{damping:g}"
 
 
-def mass_scale_factor(target_total_kg: float | None, nominal_total_kg: float) -> float:
-    """目标总质量相对名义值的缩放比例（质量与惯量按同一比例一起缩放）。
+_CART_MASS_MODULE = None
 
-    只缩质量不缩惯量会让模型不自洽（AGENTS.md 的模型约定），所以这里只给出**一个**比例，
-    由调用方同时乘到 masses 与 inertias 上；质心位置与轮半径都不变。
+
+def _cart_mass_module():
+    """按**文件路径**加载 `imgo2_rl/assets/cart_mass.py`（纯标准库，不拉 isaaclab 包）。
+
+    训练/仿真运行时 `import imgo2_rl.assets.cart_mass` 也可用，但离线测试是按路径加载本模块
+    的（不起 Isaac Lab），那条 import 会顺带加载 `imgo2_rl.tasks`（依赖 isaaclab_tasks）。
     """
-    if not math.isfinite(nominal_total_kg) or nominal_total_kg <= 0:
-        raise ValueError("名义总质量必须为有限正数")
+    global _CART_MASS_MODULE
+    if _CART_MASS_MODULE is None:
+        import importlib.util
+        # 本文件在 `imgo2_rl/scripts/towing/`，parents[2] = `imgo2_rl/`
+        path = (Path(__file__).resolve().parents[2]
+                / "source/imgo2_rl/imgo2_rl/assets/cart_mass.py")
+        spec = importlib.util.spec_from_file_location("towing_cart_mass_for_tow_drag", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CART_MASS_MODULE = module
+    return _CART_MASS_MODULE
+
+
+def cart_mass_properties(model: dict, target_total_kg: float | None) -> dict:
+    """目标**整车总重** → 合并 base_link 的质量 / 绕 CoM 惯量 / CoM 高度（新小车口径）。
+
+    2026-10-17 新小车：车斗（0.8 kg）与四轮（各 0.05 kg）质量固定，**只有车斗正中的重物块
+    可调**；重物块与 base_link 在导入时被 `merge_fixed_joints=True` 合并成一个刚体，所以
+    要同时改 base_link 的 mass、绕 CoM 的惯量与 CoM 高度（解析式见
+    `imgo2_rl/assets/cart_mass.py`，与训练侧 / `play_towing_test` 同一套）。
+
+    ⚠ 旧的实现是「目标/名义」一个比例同时乘 masses 与 inertias —— 那会把**轮子也放大**、
+    且 CoM 不动，与训练侧的新车语义不一致，已废弃（P1.1）。
+    """
+    body_properties = _cart_mass_module().body_properties
+
     if target_total_kg is None:
-        return 1.0
+        target_total_kg = float(model["total_mass_kg"])
     if not math.isfinite(target_total_kg) or target_total_kg <= 0:
-        raise ValueError("目标质量必须为有限正数")
-    return target_total_kg / nominal_total_kg
+        raise ValueError(f"目标质量必须为有限正数，收到 {target_total_kg!r}")
+    return body_properties(model, float(target_total_kg))
 
 
 def predicted_coast_distance(initial_speed: float, wheel_damping: float, *,
@@ -438,8 +468,7 @@ def main(args):
                             case_rope_models(args.rope_model, args.num_envs))
         # 计划期（plan-time）的标量都在这里一次算好，避免后面「先用后赋值」：
         # 之前 stop_steps 与 scale 各踩过一次（main() 只有跑仿真才执行，离线测试抓不到）。
-        scales = [mass_scale_factor(case.cart_mass, model["total_mass_kg"])
-                  for case in cases]
+        properties = [cart_mass_properties(model, case.cart_mass) for case in cases]
         cart_cfg.init_state.pos = (
             initial_cart_x(args.rope_length, args.slack, spawn_height=spawn_height,
                            cart_height=model["resting_height_m"],
@@ -450,11 +479,12 @@ def main(args):
         # 参数组合（L0 / 速度 / 轮阻 / 质量）必须一起看：v=1.0、b=0.016 时滑行 1.06 m，
         # L0=1.0 就已经会撞；质量越大滑得越远（m_eff 同比例）。只警告不拦——P6 本就想观察追尾。
         predictions = []
-        for case, case_scale in zip(cases, scales):
+        for case, props in zip(cases, properties):
             coast = predicted_coast_distance(
                 args.velocity, case.wheel_damping,
-                cart_mass_kg=model["total_mass_kg"] * case_scale,
-                wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1] * case_scale,
+                cart_mass_kg=props["total_mass_kg"],
+                # 轮子质量/惯量固定（新车只调重物块），不再随目标质量缩放
+                wheel_inertia_kgm2=model["inertias_kgm2"]["wheel_fl"][1],
                 wheel_radius_m=model["wheel_radius_m"])
             predictions.append(CoastPrediction(coast, args.rope_length - coast))
             print(f"[PLAN] {case.rope_model} "
@@ -499,9 +529,12 @@ def main(args):
         robot, cart, contacts = scene["robot"], scene["cart"], scene["wheel_contacts"]
         deck_contacts = scene["deck_contacts"]
         cart_env_idx = torch.arange(cart.num_instances, dtype=torch.int, device="cpu")
-        # 名义质量/惯量作为缩放基准（每 case 都从它算，保证可重复；不能读回上一次的结果）
+        # 名称基线（每 case 都从它算，保证可重复；不能读回上一次的结果）：
+        # 新车只改 base_link（车斗 + 重物块的合并体），轮子保持 URDF 名义质量/惯量。
+        cart_base_id = int(list(cart.body_names).index("base_link"))
         nominal_masses = cart.root_physx_view.get_masses().clone()
         nominal_inertias = cart.root_physx_view.get_inertias().clone()
+        nominal_coms = cart.root_physx_view.get_coms().clone()
         dt = sim.get_physics_dt()
         if not math.isclose(dt, args.dt, rel_tol=1e-6):
             raise RuntimeError("Simulator dt differs from requested dt")
@@ -646,7 +679,7 @@ def main(args):
         def cart_mass_effective_kg():
             """小车纵向等效质量 = 整车质量 + 四轮滚动惯量折算 `4I/r²`（逐 env）。
 
-            冲量要先把轮子带转，所以等效质量比总质量大（10 kg 车 → 10.8 kg），与滑行段
+            冲量要先把轮子带转，所以等效质量比总质量大（3 kg 车 → 3.1 kg），与滑行段
             解析式用的 `m_eff` 同一口径。轮子绕 y 轴（展平惯性张量的 index 4）。
             """
             masses = host_buffer(cart.root_physx_view.get_masses())        # (N, nb)
@@ -728,7 +761,7 @@ def main(args):
             robot.set_joint_position_target(out.joint_targets[:, asset_to_policy])
             return out
 
-        def case_config(case, mass_scale, coast, gap, rope_name=None, env_index=0):
+        def case_config(case, props, coast, gap, rope_name=None, env_index=0):
             return {
                 "policy": args.policy,
                 "model_sha256": hashlib.sha256(policy_cfg.model_path.read_bytes()).hexdigest(),
@@ -762,8 +795,12 @@ def main(args):
                                        "(NOT a large k); rigid = bilateral ball-jointed rod, d==L0, "
                                        "signed tension (negative = push/back-drive), always engaged"},
                 "wheel_damping_nms_per_rad": case.wheel_damping, "user_command_mps": args.velocity,
-                "cart_mass_target_kg": case.cart_mass, "cart_mass_scale": mass_scale,
-                "cart_mass_actual_kg": model["total_mass_kg"] * mass_scale,
+                "cart_mass_target_kg": case.cart_mass,
+                # 新小车：可调质量只在重物块；`actual` 由解析式给出，写入后还会与 PhysX 核对
+                "cart_ballast_mass_kg": props["ballast_mass_kg"],
+                "cart_mass_actual_kg": props["total_mass_kg"],
+                "cart_base_mass_kg": props["base_mass_kg"],
+                "cart_base_com_z_m": props["base_com_m"][2],
                 "ground_friction": args.ground_friction,
                 "predicted_coast_distance_m": coast, "predicted_min_gap_m": gap,
                 "prediction_note": "由 P2 验收过的黏性衰减解析式 D = v0*tau*(1-v_stop/v0)，"
@@ -788,15 +825,31 @@ def main(args):
                 "git": experiment_manifest["git"],
             }
 
-        def reset_case(mass_target, case_scale):
+        def reset_case(props):
             """把本 case 的初始状态写死，然后清缓冲。
 
             必需：`Articulation.reset()` **只清执行器与外力缓冲，不写位姿**（见 IsaacLab
             articulation.py:172），所以必须在每个 case 开始前显式重写两个刚体的位姿/速度/
             关节状态。与 P1/P2「每个 case 前重写小车状态」是同一约定。
+
+            质量按**新小车**口径写：车斗+轮固定，只改 base_link（车斗+重物块合并体）的
+            mass / 绕 CoM 惯量 / CoM 高度；四个轮子保持 URDF 名义值。
             """
-            cart.root_physx_view.set_masses(nominal_masses * case_scale, cart_env_idx)
-            cart.root_physx_view.set_inertias(nominal_inertias * case_scale, cart_env_idx)
+            masses = nominal_masses.clone()
+            inertias = nominal_inertias.clone()
+            coms = nominal_coms.clone()
+            for env_index in range(cart.num_instances):
+                masses[env_index, cart_base_id] = props["base_mass_kg"]
+                inertias[env_index, cart_base_id] = 0.0
+                ixx, iyy, izz = props["base_inertia_kgm2"]
+                inertias[env_index, cart_base_id, 0] = ixx
+                inertias[env_index, cart_base_id, 4] = iyy
+                inertias[env_index, cart_base_id, 8] = izz
+                coms[env_index, cart_base_id, :3] = torch.tensor(
+                    (0.0, 0.0, props["base_com_m"][2]), dtype=coms.dtype)
+            cart.root_physx_view.set_masses(masses, cart_env_idx)
+            cart.root_physx_view.set_inertias(inertias, cart_env_idx)
+            cart.root_physx_view.set_coms(coms, cart_env_idx)
             for asset in (robot, cart):
                 root = asset.data.default_root_state.clone()
                 root[:, :3] += scene.env_origins        # 初始位姿来自配置（robot 的 z、cart 的 x/z）
@@ -814,8 +867,8 @@ def main(args):
 
         results = []
         case_dirs = []
-        for case_index, (case, case_scale, prediction) in enumerate(
-                zip(cases, scales, predictions)):
+        for case_index, (case, props, prediction) in enumerate(
+                zip(cases, properties, predictions)):
             # 逐 env 的绳索模型：`--rope-model` 给两个就是 1:1 分配（训练时同一套逻辑）。
             # 每个 env 写**自己的**目录/config/summary ⇒ 离线判读工具不用改就能逐 env 用。
             env_names = env_rope_models(args.rope_model, args.num_envs)
@@ -825,15 +878,19 @@ def main(args):
                      else f"（inextensible: position_gain={args.position_gain:g}、"
                           f"max_correction_rate={args.max_correction_rate:g} m/s）"),
                   flush=True)
-            reset_case(case.cart_mass, case_scale)
+            reset_case(props)
             actual_mass = float(cart.root_physx_view.get_masses().sum())
+            if abs(actual_mass - props["total_mass_kg"]) > 1e-3 + 1e-3 * props["total_mass_kg"]:
+                raise RuntimeError(
+                    f"小车质量写入失败：目标 {props['total_mass_kg']:g} kg，"
+                    f"PhysX 里是 {actual_mass:g} kg")
             env_dirs, recorders, manifests, labels = [], [], [], []
             for env_index, env_name in enumerate(env_names):
                 case_dir = output / case_label(case_index * args.num_envs + env_index,
                                                case.cart_mass, case.wheel_damping,
                                                model["total_mass_kg"], env_name)
                 case_dir.mkdir(parents=True, exist_ok=False)
-                case_manifest = case_config(case, case_scale, prediction.coast_m,
+                case_manifest = case_config(case, props, prediction.coast_m,
                                            prediction.min_gap_m, env_name, env_index)
                 env_dirs.append(case_dir.name)
                 labels.append(f"env{env_index}:{env_name}")
@@ -919,7 +976,7 @@ def main(args):
                 summary["case"] = env_dir
                 summary["env_index"] = env_index
                 summary["rope_model"] = env_names[env_index]
-                summary["cart_mass_kg"] = model["total_mass_kg"] * case_scale
+                summary["cart_mass_kg"] = actual_mass
                 summary["wheel_damping"] = case.wheel_damping
                 json_file(output / env_dir / "summary.json", summary)
                 clearance = ("n/a" if summary["final_clearance_m"] is None

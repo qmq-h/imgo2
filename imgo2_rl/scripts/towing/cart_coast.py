@@ -25,7 +25,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("drop", "coast"), default="coast")
     parser.add_argument("--velocities", type=float, nargs="+", default=[0.5, 1.0], help="Initial forward velocities, m/s")
-    parser.add_argument("--damping", type=float, nargs="+", default=[0.0, 0.008, 0.016, 0.032], help="Per-wheel b, N m s/rad")
+    parser.add_argument("--damping", type=float, nargs="+", default=[0.0, 0.001125, 0.00225, 0.0045],
+                        help="Per-wheel b, N m s/rad（2026-10-17 轮径 0.03 的量级；训练随机域 0.001125–0.0045）")
     parser.add_argument("--duration", type=float, default=10.0, help="Measured simulation seconds per case")
     parser.add_argument("--settle-time", type=float, default=1.0, help="Coast warmup before applying initial velocity")
     parser.add_argument("--dt", type=float, default=0.005)

@@ -202,10 +202,10 @@ class ArgumentTests(unittest.TestCase):
         single = tow_drag.parse_args(["--cart-mass", "15", "--wheel-damping", "0.032"])
         self.assertEqual(single.cart_mass, [15.0])
         self.assertEqual(single.wheel_damping, [0.032])
-        # 缺省：名义质量 × 0.016
+        # 缺省：名义质量（None = URDF 名义 3.0 kg）× 新小车的名义轮阻 0.0045
         default = tow_drag.parse_args([])
         self.assertEqual(default.cart_mass, [None])
-        self.assertEqual(default.wheel_damping, [0.016])
+        self.assertEqual(default.wheel_damping, [0.0045])
 
     def test_case_list_is_a_cartesian_product_in_stable_order(self):
         """三维修扫：绳索模型 × 质量 × 轮阻，顺序固定（同一进程内逐 case 跑）。"""
@@ -360,7 +360,10 @@ class CoastPredictionTests(unittest.TestCase):
         (0.5, 0.008): 1.033949, (0.5, 0.016): 0.515817, (0.5, 0.032): 0.256703,
         (1.0, 0.008): 2.111118, (1.0, 0.016): 1.053125, (1.0, 0.032): 0.524179,
     }
+    # 旧小车（P2 验收夹具：10 kg、r=0.08、轮惯量 0.00128）——只用来核对解析式本身
     CART = dict(cart_mass_kg=10.0, wheel_inertia_kgm2=0.00128, wheel_radius_m=0.08)
+    # 2026-10-17 新小车：3.0 kg、r=0.03、轮惯量 m·r²/2 = 0.05·0.03²/2
+    CART_NEW = dict(cart_mass_kg=3.0, wheel_inertia_kgm2=2.25e-05, wheel_radius_m=0.03)
 
     def _predict(self, v, b):
         return tow_drag.predicted_coast_distance(v, b, **self.CART)
@@ -373,12 +376,15 @@ class CoastPredictionTests(unittest.TestCase):
                             f"v={speed} b={damping}: 预测 {got:.4f} 对实测 {measured:.4f}")
 
     def test_default_configuration_keeps_a_margin(self):
-        """默认组合（L0=0.8、slack=0.40、v=0.5、b=0.016）必须留出余量。"""
+        """默认组合（L0=0.8、slack=0.40、v=0.5、b=0.0045、新小车 3 kg）必须留出余量。"""
         args = tow_drag.parse_args([])
         self.assertEqual(args.rope_length, 0.8)
         self.assertEqual(args.slack, 0.40)
         self.assertEqual(args.velocity, 0.5)
-        gap_at_stop = args.rope_length - self._predict(args.velocity, args.wheel_damping[0])
+        self.assertEqual(args.wheel_damping, [0.0045])
+        coast = tow_drag.predicted_coast_distance(
+            args.velocity, args.wheel_damping[0], **self.CART_NEW)
+        gap_at_stop = args.rope_length - coast
         self.assertGreater(gap_at_stop, 0.2, f"停车后最小间距只有 {gap_at_stop:.3f} m")
 
     def test_rope_length_must_be_chosen_with_speed_and_damping(self):
@@ -391,15 +397,34 @@ class CoastPredictionTests(unittest.TestCase):
         self.assertLess(1.0 - self._predict(1.0, 0.016), 0.0)
         self.assertGreater(0.8 - self._predict(1.0, 0.032), 0.2)
 
-    def test_mass_scale_factor(self):
-        self.assertEqual(tow_drag.mass_scale_factor(None, 10.0), 1.0)
-        self.assertEqual(tow_drag.mass_scale_factor(20.0, 10.0), 2.0)
-        self.assertEqual(tow_drag.mass_scale_factor(5.0, 10.0), 0.5)
+    def test_cart_mass_properties_follow_the_ballast_model(self):
+        """2026-10-17 新小车：车斗+四轮固定，**只有重物块可调**；mass/惯量/CoM 一起重算。
+
+        旧实现是「目标/名义」一个比例同时乘 masses 与 inertias（轮子也被放大、CoM 不动），
+        与训练侧 `assets/cart_mass.body_properties` 不一致 ⇒ P1.1 已废弃。
+        """
+        model = read_cart_model(REPO / "imgo2_description/cart/cart.urdf")
+        nominal = tow_drag.cart_mass_properties(model, None)
+        self.assertAlmostEqual(nominal["total_mass_kg"], 3.0, places=6)
+        self.assertAlmostEqual(nominal["fixed_mass_kg"], 1.0, places=6)    # 0.8 车斗 + 4×0.05 轮
+        self.assertAlmostEqual(nominal["ballast_mass_kg"], 2.0, places=6)
+        self.assertAlmostEqual(nominal["base_mass_kg"], 2.8, places=6)
+        heavy = tow_drag.cart_mass_properties(model, 10.0)
+        self.assertAlmostEqual(heavy["ballast_mass_kg"], 9.0, places=6)
+        self.assertAlmostEqual(heavy["base_mass_kg"], 9.8, places=6)
+        # CoM 随重物块上移：z_com = m_ballast·h / (m_deck + m_ballast)，h 是重物块中心高度
+        height = model["ballast_center_m"][2]
+        self.assertAlmostEqual(heavy["base_com_m"][2], 9.0 * height / 9.8, places=9)
+        self.assertGreater(heavy["base_com_m"][2], nominal["base_com_m"][2])
+        # 轮子质量固定；绕 CoM 惯量随总重增大
+        self.assertEqual(nominal["wheel_mass_kg"], heavy["wheel_mass_kg"])
+        self.assertGreater(heavy["base_inertia_kgm2"][0], nominal["base_inertia_kgm2"][0])
+        # 总重必须大于固定部分（车斗 + 四轮），否则解析式无解
+        with self.assertRaises(ValueError):
+            tow_drag.cart_mass_properties(model, 0.5)
         for bad in (0.0, -1.0, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
-                tow_drag.mass_scale_factor(bad, 10.0)
-        with self.assertRaises(ValueError):
-            tow_drag.mass_scale_factor(None, 0.0)
+                tow_drag.cart_mass_properties(model, bad)
 
     def test_coast_distance_scales_with_mass(self):
         """质量与惯量同比例缩放 ⇒ m_eff 同比例 ⇒ 滑行距离也同比例。"""
@@ -920,7 +945,7 @@ class InterfaceContractTests(unittest.TestCase):
         self.assertIn("write_root_velocity_to_sim", self.source)
         self.assertIn("write_joint_state_to_sim", self.source)
         self.assertIn("root[:, 7:] = 0.0", self.source)          # 速度清零
-        self.assertIn("for case_index, (case, case_scale, prediction)", self.source)
+        self.assertIn("for case_index, (case, props, prediction)", self.source)
         # 每个 case 按逐 env 的分配重建模型：同一次扫描里可以混用两套绳索模型
         self.assertIn("rope_model = build_rope_model_for_envs(env_names)", self.source)
         self.assertIn('"sweep"', self.source)
@@ -966,7 +991,7 @@ class InterfaceContractTests(unittest.TestCase):
         """
         self.assertIn("output.mkdir(parents=True, exist_ok=False)", self.source)
         self.assertIn("recorders.append(TowRecorder(case_dir, case_manifest))", self.source)
-        self.assertIn("case_config(case, case_scale,", self.source)
+        self.assertIn("case_config(case, props,", self.source)
         recorder_source = (RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils/recording.py"
                            ).read_text(encoding="utf-8")
         calls = []
