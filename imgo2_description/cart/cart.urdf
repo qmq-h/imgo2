@@ -1,58 +1,98 @@
 <?xml version="1.0"?>
 <!-- P1 engineering model, not measured caster parameters.
-     SI units; x forward, y left, z up. Total mass: 8.4 + 4*0.4 = 10 kg.
-     Solid box/cylinder inertias. The attachment is a massless frame.
-     Wheel damping is supplied by the experiment, never duplicated here. -->
+     SI units; x forward, y left, z up.
+     Deck 0.60 x 0.45 x 0.02 m with its underside 9 cm above the ground.
+     Four 6 cm diameter caster-style wheels (r=0.03) mounted **under the deck,
+     fully inside its footprint** (cart/omni-wheel form). Then a 0.30 m ballast
+     cube fixed on the deck centre whose mass is the experiment's mass knob.
+     Nominal: deck 0.8 + 4 x 0.05 wheels + ballast 2.0 = 3.0 kg.
+     Solid box/cylinder inertias about each link origin (all CoMs at their box
+     centre). The attachment is a massless frame. Wheel damping is supplied by
+     the experiment, never duplicated here. -->
 <robot name="passive_cart">
   <material name="deck_blue"><color rgba="0.12 0.35 0.65 1"/></material>
   <material name="wheel_dark"><color rgba="0.07 0.07 0.07 1"/></material>
+  <material name="ballast_grey"><color rgba="0.45 0.45 0.48 1"/></material>
   <link name="base_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="8.4"/>
-      <inertia ixx="0.07868" ixy="0" ixz="0" iyy="0.182" iyz="0" izz="0.24668"/>
+      <mass value="0.8"/>
+      <inertia ixx="0.013526666666666666" ixy="0" ixz="0"
+               iyy="0.024026666666666666" iyz="0" izz="0.03749999999999999"/>
     </inertial>
-    <visual><geometry><box size="0.5 0.32 0.1"/></geometry><material name="deck_blue"/></visual>
-    <collision><geometry><box size="0.5 0.32 0.1"/></geometry></collision>
+    <visual><geometry><box size="0.6 0.45 0.02"/></geometry><material name="deck_blue"/></visual>
+    <collision><geometry><box size="0.6 0.45 0.02"/></geometry></collision>
+  </link>
+  <link name="ballast">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.03" ixy="0" ixz="0" iyy="0.03" iyz="0" izz="0.03"/>
+    </inertial>
+    <visual><geometry><box size="0.3 0.3 0.3"/></geometry><material name="ballast_grey"/></visual>
+    <collision><geometry><box size="0.3 0.3 0.3"/></geometry></collision>
   </link>
   <link name="wheel_fl">
-    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
-    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
-    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.7916666666666667e-05" ixy="0" ixz="0"
+               iyy="2.25e-05" iyz="0" izz="1.7916666666666667e-05"/>
+    </inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry></collision>
   </link>
   <link name="wheel_fr">
-    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
-    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
-    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.7916666666666667e-05" ixy="0" ixz="0"
+               iyy="2.25e-05" iyz="0" izz="1.7916666666666667e-05"/>
+    </inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry></collision>
   </link>
   <link name="wheel_rl">
-    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
-    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
-    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.7916666666666667e-05" ixy="0" ixz="0"
+               iyy="2.25e-05" iyz="0" izz="1.7916666666666667e-05"/>
+    </inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry></collision>
   </link>
   <link name="wheel_rr">
-    <inertial><mass value="0.4"/><inertia ixx="0.0006933333333333334" ixy="0" ixz="0" iyy="0.00128" iyz="0" izz="0.0006933333333333334"/></inertial>
-    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry><material name="wheel_dark"/></visual>
-    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.08" length="0.04"/></geometry></collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="1.7916666666666667e-05" ixy="0" ixz="0"
+               iyy="2.25e-05" iyz="0" izz="1.7916666666666667e-05"/>
+    </inertial>
+    <visual><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry><material name="wheel_dark"/></visual>
+    <collision><origin rpy="1.5707963267948966 0 0"/><geometry><cylinder radius="0.03" length="0.04"/></geometry></collision>
   </link>
+  <joint name="ballast_joint" type="fixed">
+    <parent link="base_link"/><child link="ballast"/><origin xyz="0 0 0.16"/>
+  </joint>
   <joint name="wheel_fl_joint" type="continuous">
-    <parent link="base_link"/><child link="wheel_fl"/><origin xyz="0.18 0.20 -0.07"/><axis xyz="0 1 0"/>
+    <parent link="base_link"/><child link="wheel_fl"/><origin xyz="0.26 0.20 -0.07"/><axis xyz="0 1 0"/>
     <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
   </joint>
   <joint name="wheel_fr_joint" type="continuous">
-    <parent link="base_link"/><child link="wheel_fr"/><origin xyz="0.18 -0.20 -0.07"/><axis xyz="0 1 0"/>
+    <parent link="base_link"/><child link="wheel_fr"/><origin xyz="0.26 -0.20 -0.07"/><axis xyz="0 1 0"/>
     <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
   </joint>
   <joint name="wheel_rl_joint" type="continuous">
-    <parent link="base_link"/><child link="wheel_rl"/><origin xyz="-0.18 0.20 -0.07"/><axis xyz="0 1 0"/>
+    <parent link="base_link"/><child link="wheel_rl"/><origin xyz="-0.26 0.20 -0.07"/><axis xyz="0 1 0"/>
     <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
   </joint>
   <joint name="wheel_rr_joint" type="continuous">
-    <parent link="base_link"/><child link="wheel_rr"/><origin xyz="-0.18 -0.20 -0.07"/><axis xyz="0 1 0"/>
+    <parent link="base_link"/><child link="wheel_rr"/><origin xyz="-0.26 -0.20 -0.07"/><axis xyz="0 1 0"/>
     <limit effort="20" velocity="100"/><dynamics damping="0" friction="0"/>
   </joint>
   <link name="rope_attachment"/>
   <joint name="rope_attachment_joint" type="fixed">
-    <parent link="base_link"/><child link="rope_attachment"/><origin xyz="0.25 0 0"/>
+    <parent link="base_link"/><child link="rope_attachment"/><origin xyz="0.30 0 0"/>
   </joint>
 </robot>

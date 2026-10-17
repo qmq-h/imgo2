@@ -232,8 +232,8 @@ summaries/<case>.json 单个 case 的全量指标（含 summarize_tow 全量输�
 ## 判读与限制
 
 - 结论只由「本网格 + 本阈值」给出，不能外推：未测训练侧的域随机化（质量档 **25 kg 超出**
-  训练域 5–20 kg，20 kg 仍在域内；摩擦固定 0.8 而训练随机 0.4–1.2、轮轴阻尼固定 0.032
-  而训练随机 0.008–0.032）、
+  训练域 5–20 kg，20 kg 仍在域内；摩擦固定 0.8 而训练随机 0.4–1.2、轮轴阻尼固定 0.0045
+  而训练随机 0.001125–0.0045）、
   未测 **12.5% 无小车锚点**（本测试台所有 env 都拖车）、未测跨环境隔离、未验真机。
 - 连接类型/长度/坡度量级**不能扫**：它们由网格决定，`--num-envs` 不是 800 的整数倍时
   只覆盖网格前缀（脚本会警告）。
@@ -310,7 +310,7 @@ CONNECTIONS = ("compliant", "inextensible", "rigid")
 FACTORY_FLOOR_FRICTION = 0.8
 #: 训练侧的轮轴黏性阻尼名义值（`HierarchicalVelocityActionCfg.initial_wheel_damping`）。
 #: 这里只是 CLI 默认值；实跑时会与训练 cfg 交叉核对，不一致直接报错。
-TRAINING_WHEEL_DAMPING = 0.032
+TRAINING_WHEEL_DAMPING = 0.0045   # 2026-10-17 轮径 0.03 后按 r² 重标定（保持 20·v N）
 #: 训练侧质量随机范围（`reset_work_condition.params["mass_range"]`）。
 #: 2026-10-09 由 (5, 15) 提到 (5, 30)；**2026-10-10 收紧为 (5, 20)**（用户确认工作域＝
 #: 质量 5–20 kg、速度 0.5–1.5 m/s）⇒ 默认质量档里的 25 kg **已超出训练分布**（外推检查），
@@ -523,6 +523,9 @@ wave_geometry = _load_module("wave_geometry", MDP_DIR / "wave_geometry.py")
 # `HierarchicalVelocityActionCfg.tow_start_s` 的默认值就是它，用来给偏移门控一个
 # **离线可打印**的期望阈值（实跑时仍以 `action_cfg.tow_start_s` 为准）。
 episode_geometry = _load_module("episode_geometry", MDP_DIR / "episode_geometry.py")
+# 小车质量旋钮（车斗 + 重物块合并体的质量/惯量/CoM，纯标准库）：与训练侧共用同一解析式。
+cart_mass = _load_module("cart_mass",
+                         RL_ROOT / "source/imgo2_rl/imgo2_rl/assets/cart_mass.py")
 
 #: 偏移门控的时刻（s）：`elapsed_s >= UPPER_GATE_AFTER_S` 之后偏移才叠加到任务指令上。
 #: 取自训练侧 `mdp/episode_geometry.SETTLE_TIME_S`（= `HierarchicalVelocityActionCfg` 的默认
@@ -944,33 +947,19 @@ def lane_keeping_command(*, kp_y: float, kd_y: float, kp_yaw: float, kd_yaw: flo
             max(-wz_limit, min(wz_limit, wz_command)))
 
 
-def scale_cart_mass_inertia(nominal_masses, nominal_inertias, mass_scales):
-    """按**逐 env**的比例同时缩放小车的质量与惯量（AGENTS.md：只改质量不改惯量会不自洽）。
+def cart_mass_tensors(cart_model, target_masses):
+    """逐 env 的**合并 base_link**（车斗 + 重物块）质量 / 惯量 / CoM / 重物块质量。
 
-    形状契约（PhysX tensor API，实测）：
-    - `get_masses()` → `(N, num_bodies)`（小车 `merge_fixed_joints=True`，无质量的挂点被并进
-      base_link ⇒ **5** 个刚体：base_link + 四轮）；
-    - `get_inertias()` → `(N, num_bodies, 9)`；
-    - `mass_scales` → `(N,)`。
+    2026-10-17 新小车：车斗与四轮质量固定，**只改重物块** ⇒ base_link 的 mass、绕 CoM 的
+    惯量与 CoM 高度一起重算（与训练侧 `assets/cart_mass.body_properties` 同一解析式）。
 
-    因此缩放系数要分别扩成 `(N, 1)` 与 `(N, 1, 1)`。**踩过的坑**：把已经是 `(N, nb)` 的
-    质量再 `.unsqueeze(0)` 会广播成 `(1, N, nb) × (N, 1)`，在 dim 2 上撞 `nb`(5) 与 `N`(45)，
-    报 `The size of tensor a (5) must match the size of tensor b (45) at non-singleton
-    dimension 2`（2026-10-09 默认 45 环境首跑实测）；N=1 时形状侥幸不报错，所以单环境冒烟
-    抓不到它。
+    返回 `(base_mass (N,), base_inertia (N,3), base_com_z (N,), ballast (N,))`。
     """
-    if nominal_masses.dim() != 2 or nominal_inertias.dim() != 3:
-        raise ValueError(
-            f"质量应为 (N, num_bodies)、惯量应为 (N, num_bodies, 9)，收到 "
-            f"{tuple(nominal_masses.shape)} / {tuple(nominal_inertias.shape)}")
-    if nominal_masses.shape[0] != nominal_inertias.shape[0] or \
-            nominal_masses.shape[1] != nominal_inertias.shape[1]:
-        raise ValueError("质量与惯量的前两维必须一致")
-    scales = mass_scales.reshape(-1, 1)
-    if scales.shape[0] != nominal_masses.shape[0]:
-        raise ValueError(
-            f"逐 env 缩放系数应为 {nominal_masses.shape[0]} 个，收到 {scales.shape[0]}")
-    return nominal_masses * scales, nominal_inertias * scales.unsqueeze(-1)
+    properties = [cart_mass.body_properties(cart_model, float(mass)) for mass in target_masses]
+    return ([p["base_mass_kg"] for p in properties],
+            [tuple(p["base_inertia_kgm2"]) for p in properties],
+            [float(p["base_com_m"][2]) for p in properties],
+            [p["ballast_mass_kg"] for p in properties])
 
 
 def attachment_along(initial_distance: float, normal_difference: float) -> float:
@@ -2386,7 +2375,7 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
              f"- 判据阈值里的质量档与训练随机范围 {list(TRAINING_MASS_RANGE_KG)} kg 不同："
              f"超出范围的档位属于外推检查",
              f"- 地面摩擦固定 {args_dict['ground_friction']:g}（训练随机 0.4–1.2）；轮轴阻尼 "
-             f"{args_dict['wheel_damping']:g} N·m·s/rad（训练随机 0.008–0.032）",
+             f"{args_dict['wheel_damping']:g} N·m·s/rad（训练随机 0.001125–0.0045）",
              f"- 指令整形：{args_dict['command_shaping']}"
              + (f"（ramp {args_dict['ramp_time_s']:g} s）" if args_dict["command_shaping"] == "ramp" else ""),
              "- 度量坐标系固定为 lane 系（出生在剖面平地段 ⇒ 切向 +x、法向 +z、重力竖直）："
@@ -2453,7 +2442,7 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
         lines += ["", *comparison]
     lines += ["", "## 限制", "",
               "- 只覆盖本网格与本阈值：连接类型/长度/坡度量级由训练网格决定，不能扫；"
-              "未测训练侧的域随机化（摩擦 0.4–1.2、轮轴阻尼 0.008–0.032、"
+              "未测训练侧的域随机化（摩擦 0.4–1.2、轮轴阻尼 0.001125–0.0045、"
               "12.5% 无小车锚点）、未测 breakaway/Coulomb 阻力、未验真机、未做跨环境隔离。",
               "- 质量档 20/25 kg 超出训练采样范围 [5, 15] kg：那两档是外推检查，"
               "不能当作「训练分布内基线够不够」的证据。",
@@ -2527,7 +2516,7 @@ def parse_args(argv=None):
     parser.add_argument("--ground-friction", type=float, default=FACTORY_FLOOR_FRICTION,
                         help="地面静/动摩擦系数（固定值；工厂地面常规 0.8，训练侧随机 0.4–1.2）")
     parser.add_argument("--wheel-damping", type=float, default=TRAINING_WHEEL_DAMPING,
-                        help="轮轴黏性阻尼 b（N·m·s/rad；训练名义值 0.032，训练随机 0.008–0.032）")
+                        help="轮轴黏性阻尼 b（N·m·s/rad；训练名义值 0.0045，训练随机 0.001125–0.0045）")
     parser.add_argument("--command-shaping", choices=("direct", "ramp"), default="direct",
                         help="速度指令整形：direct = 阶跃（默认）；ramp = 固定斜坡对照")
     parser.add_argument("--ramp-time-s", type=float, default=1.0, help="ramp 整形的上升时间（s）")
@@ -2966,7 +2955,7 @@ def main(args):
                 f"[{TRAINING_MASS_RANGE_KG[0]:g}, {TRAINING_MASS_RANGE_KG[1]:g}] kg，"
                 f"属于外推检查",
                 f"地面摩擦固定 {args.ground_friction:g}（训练随机 0.4–1.2）；轮轴阻尼固定 "
-                f"{args.wheel_damping:g} N·m·s/rad（训练随机 0.008–0.032）",
+                f"{args.wheel_damping:g} N·m·s/rad（训练随机 0.001125–0.0045）",
                 ("关节位置残差与 vx 偏移都为 0（`loco_command` ≡ 任务指令）：跑的是冻结策略 + "
                  "脚本指令的基线，**默认不加载**任何上层 checkpoint（可用 `--upper-checkpoint` "
                  "打开）"
@@ -3190,7 +3179,7 @@ def main(args):
                             rel_tol=1e-9):
             print(f"[warn] 轮轴阻尼 {args.wheel_damping:g} ≠ 训练名义值 "
                   f"{float(action_cfg.initial_wheel_damping):g} N·m·s/rad（训练侧随机 "
-                  f"0.008–0.032）：本轮的判读不再代表训练分布中心。", flush=True)
+                  f"0.001125–0.0045）：本轮的判读不再代表训练分布中心。", flush=True)
         if not math.isclose(args.ground_friction, float(action_cfg.initial_ground_friction),
                             rel_tol=1e-9):
             print(f"[warn] 地面摩擦 {args.ground_friction:g} ≠ 训练名义值 "
@@ -3322,22 +3311,26 @@ def main(args):
             [float(spec["damping"]) if spec["damping"] is not None else placeholder_c
              for spec in specs], dtype=torch.float32, device=args.device)
 
-        # ---- 逐 env 的小车质量/惯量（质量档轮转）
-        nominal_masses = cart.root_physx_view.get_masses().clone()
+        # ---- 逐 env 的小车质量（质量档轮转；只调重物块，车斗/轮子质量固定）
+        base_mass, base_inertia, base_com_z, ballast_mass = cart_mass_tensors(
+            cart_model, [case.cart_mass_kg for case in cases])
+        base_id = int(list(cart.body_names).index("base_link"))
+        nominal_masses = cart.root_physx_view.get_masses().clone()   # (N, nb)，CPU 缓冲
         nominal_inertias = cart.root_physx_view.get_inertias().clone()
-        nominal_total = nominal_masses.sum(dim=1)
-        if float(nominal_total.min()) <= 0.0:
-            raise RuntimeError("小车名义总质量非正，无法按档缩放")
-        mass_scales = torch.tensor([float(case.cart_mass_kg) / float(nominal_total[index])
-                                    for index, case in enumerate(cases)],
-                                   dtype=torch.float32, device=args.device)
+        nominal_coms = cart.root_physx_view.get_coms().clone()
+        for index in range(num_envs):
+            nominal_masses[index, base_id] = base_mass[index]
+            nominal_inertias[index, base_id] = 0.0
+            ixx, iyy, izz = base_inertia[index]
+            nominal_inertias[index, base_id, 0] = ixx
+            nominal_inertias[index, base_id, 4] = iyy
+            nominal_inertias[index, base_id, 8] = izz
+            nominal_coms[index, base_id, :3] = torch.tensor((0.0, 0.0, base_com_z[index]),
+                                                            dtype=nominal_coms.dtype)
         cart_env_idx = torch.arange(num_envs, dtype=torch.int, device="cpu")
-        # `get_masses()/get_inertias()` 是 **CPU** 缓冲（PhysX 视图约定），缩放系数必须同设备，
-        # 否则 CPU×CUDA 直接报 "Expected all tensors to be on the same device"。
-        scaled_masses, scaled_inertias = scale_cart_mass_inertia(
-            nominal_masses, nominal_inertias, mass_scales.detach().to("cpu"))
-        cart.root_physx_view.set_masses(scaled_masses, cart_env_idx)
-        cart.root_physx_view.set_inertias(scaled_inertias, cart_env_idx)
+        cart.root_physx_view.set_masses(nominal_masses, cart_env_idx)
+        cart.root_physx_view.set_inertias(nominal_inertias, cart_env_idx)
+        cart.root_physx_view.set_coms(nominal_coms, cart_env_idx)
         actual_masses = cart.root_physx_view.get_masses().sum(dim=1).tolist()
         for index, case in enumerate(cases):
             if abs(actual_masses[index] - case.cart_mass_kg) > 1e-3 + 1e-3 * case.cart_mass_kg:

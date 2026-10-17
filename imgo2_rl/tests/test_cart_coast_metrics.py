@@ -37,9 +37,9 @@ recording = module_at("cart_recording_test", "source/imgo2_rl/imgo2_rl/tasks/man
 
 def sample(t, v, x):
     row = dict.fromkeys(recording.FIELDS, 0.0)
-    row.update(time_s=t, vx_mps=v, x_m=x, z_m=0.15)
+    row.update(time_s=t, vx_mps=v, x_m=x, z_m=0.10)
     for leg in recording.LEGS:
-        row[f"{leg}_omega_radps"] = v / 0.08
+        row[f"{leg}_omega_radps"] = v / 0.03
         row[f"{leg}_normal_n"] = 24.525
     return row
 
@@ -54,11 +54,17 @@ class CartModelTests(unittest.TestCase):
             return read_cart_model(path)
 
     def test_nominal_mass_inertia_and_ground_clearance(self):
+        """2026-10-17 新小车：车斗 0.6×0.45×0.02（底离地 9 cm）+ 重物块 0.3³ + 4×6 cm 轮。"""
         model = read_cart_model(URDF)
-        self.assertAlmostEqual(model["total_mass_kg"], 10.0)
-        self.assertAlmostEqual(model["resting_height_m"], 0.15)
-        self.assertEqual(model["attachment_position_m"], (0.25, 0.0, 0.0))
-        self.assertEqual(len(model["masses_kg"]), 5)
+        self.assertAlmostEqual(model["total_mass_kg"], 3.0)
+        self.assertAlmostEqual(model["resting_height_m"], 0.10)
+        self.assertEqual(model["deck_size_m"], (0.6, 0.45, 0.02))
+        self.assertEqual(model["ballast_size_m"], (0.3, 0.3, 0.3))
+        self.assertAlmostEqual(model["wheel_radius_m"], 0.03)
+        self.assertEqual(model["attachment_position_m"], (0.30, 0.0, 0.0))
+        self.assertEqual(len(model["masses_kg"]), 6)
+        self.assertAlmostEqual(model["deck_mass_kg"] + 4 * model["wheel_mass_kg"]
+                               + model["ballast_mass_kg"], 3.0)
 
     def test_mass_edit_requires_consistent_inertia(self):
         with self.assertRaisesRegex(ValueError, "inertia mismatch"):
@@ -70,15 +76,15 @@ class CartModelTests(unittest.TestCase):
 
     def test_reversed_wheel_axis_rejected(self):
         with self.assertRaisesRegex(ValueError, "axis"):
-            self.changed_model(lambda r: r.find("joint/axis").set("xyz", "0 -1 0"))
+            self.changed_model(lambda r: r.find("joint[@name='wheel_fl_joint']/axis").set("xyz", "0 -1 0"))
 
     def test_hidden_resistance_rejected(self):
         with self.assertRaisesRegex(ValueError, "Hidden"):
-            self.changed_model(lambda r: r.find("joint/dynamics").set("damping", "0.1"))
+            self.changed_model(lambda r: r.find("joint[@name='wheel_fl_joint']/dynamics").set("damping", "0.1"))
 
     def test_finite_angle_joint_rejected(self):
         with self.assertRaisesRegex(ValueError, "continuously"):
-            self.changed_model(lambda r: r.find("joint").set("type", "revolute"))
+            self.changed_model(lambda r: r.find("joint[@name='wheel_fl_joint']").set("type", "revolute"))
 
     def test_visual_collision_mismatch_rejected(self):
         with self.assertRaisesRegex(ValueError, "dimensions"):
@@ -91,7 +97,7 @@ class CartModelTests(unittest.TestCase):
 
 class CoastMetricsTests(unittest.TestCase):
     def summarize(self, rows, **kwargs):
-        return summarize(rows, radius=0.08, resting_height=0.15, **kwargs)
+        return summarize(rows, radius=0.03, resting_height=0.10, **kwargs)
 
     def test_exponential_known_stop_time_and_distance(self):
         rows = [sample(i*0.01, math.exp(-i*0.01), 1-math.exp(-i*0.01)) for i in range(501)]

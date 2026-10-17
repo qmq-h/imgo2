@@ -41,7 +41,7 @@ DEFAULT_STANCE = [0.0, 0.87, -1.82] * 4
 def _row(time_s, phase, *, robot_x, load_x, joints=DEFAULT_STANCE):
     row = {"phase": phase, "time_s": time_s,
            "robot_x_m": robot_x, "robot_z_m": 0.2735,
-           "load_x_m": load_x, "load_z_m": 0.15,
+           "load_x_m": load_x, "load_z_m": 0.10,
            "robot_quat_x": 0.0, "robot_quat_y": 0.0, "robot_quat_z": 0.0, "robot_quat_w": 1.0,
            "load_quat_x": 0.0, "load_quat_y": 0.0, "load_quat_z": 0.0, "load_quat_w": 1.0,
            "rope_distance_m": (robot_x - 0.16) - (load_x + 0.25)}
@@ -83,10 +83,10 @@ class GeometryTests(unittest.TestCase):
 
 class ScanCaseTests(unittest.TestCase):
     def test_clearance_at_known_attachment_gap(self):
-        """挂点间距 0.80 m、默认站姿 ⇒ 车头到机器人后表面 0.5616 m。
+        """挂点间距 0.80 m、默认站姿 ⇒ 车头到机器人后表面 0.5437 m（2026-10-17 新小车实测）。
 
-        间隙 = 挂点间距 − (|后伸| − 0.16) = 0.80 − (0.3984 − 0.16) = 0.5616。
-        车斗前表面与小车挂点同在 base 前 0.25 m，两项相消。
+        旧车（车斗前缘 0.25、中心离地 0.15）是 0.5616；新车（前缘 0.30、离地 0.10）的
+        「面面对」点对随高度改变，实测 0.5437（≈ 旧值 − 0.05 + 0.032 的点对偏移）。
         """
         with tempfile.TemporaryDirectory() as tmp:
             case = Path(tmp) / "case_00"
@@ -94,18 +94,19 @@ class ScanCaseTests(unittest.TestCase):
                                _row(0.010, "tow", robot_x=1.21, load_x=0.0),
                                _row(1.000, "coast", robot_x=1.21, load_x=0.0)])
             result = tow_clearance.scan_case(case, REPO)
-            self.assertAlmostEqual(result["final_gap_x_m"], 0.5616, delta=0.005)
+            self.assertAlmostEqual(result["final_gap_x_m"], 0.5437, delta=0.005)
             self.assertAlmostEqual(result["final_rope_distance_m"], 0.80, delta=1e-9)
-            self.assertAlmostEqual(result["min_gap_x_coast_m"], 0.5616, delta=0.005)
+            self.assertAlmostEqual(result["min_gap_x_coast_m"], 0.5437, delta=0.005)
 
     def test_retracted_leg_gives_a_larger_clearance(self):
-        """收腿（thigh −0.06 / shank −1.50，后伸 0.2698 m）⇒ 间隙 0.80 − 0.1098 = 0.6902。"""
+        """收腿（thigh −0.06 / shank −1.50，后伸 0.2698 m）⇒ 间隙 0.80 − 0.1098 − 0.05 = 0.6402
+        （2026-10-17 新小车：车斗前缘由 0.25 → 0.30，整体少 0.05）。"""
         with tempfile.TemporaryDirectory() as tmp:
             case = Path(tmp) / "case_00"
             retracted = [0.0, -0.06, -1.50] * 4
             _write_case(case, [_row(0.005, "tow", robot_x=1.21, load_x=0.0, joints=retracted)])
             result = tow_clearance.scan_case(case, REPO)
-            self.assertAlmostEqual(result["final_gap_x_m"], 0.6902, delta=0.01)
+            self.assertAlmostEqual(result["final_gap_x_m"], 0.6455, delta=0.01)
 
     def test_same_gap_is_clearance_or_contact_depending_on_pose(self):
         """**同一个挂点间距**既可能「还差十几厘米」也可能是「已经压进去」——取决于腿的位形。
@@ -124,7 +125,7 @@ class ScanCaseTests(unittest.TestCase):
             _write_case(case2, [_row(0.005, "tow", robot_x=robot_x, load_x=0.0,
                                     joints=extended_leg)])
             extended = tow_clearance.scan_case(case2, REPO)["final_gap_x_m"]
-            self.assertAlmostEqual(default, 0.3639 + 0.16 - 0.3984, delta=0.005)   # +0.1255 未接触
+            self.assertAlmostEqual(default, 0.1076, delta=0.005)   # 2026-10-17 新小车实测，未接触
             self.assertLess(extended, 0.0)                                         # 已经压进去
             self.assertGreater(default - extended, 0.15)
 

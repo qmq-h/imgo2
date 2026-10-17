@@ -329,12 +329,13 @@ class CoastPhaseTests(unittest.TestCase):
         「往前几步」必须在多久之内把间隙重新拉开；`load_vx_at_contact_mps` 是撞击速度的实测值。
         """
         rows = add_witness_columns(_run(coast_s=1.0))
-        # 让负载在 coast 段持续靠近：位置从 x_R−x_L=1.0084（间隙 +0.36）线性收到 0.6084（间隙 −0.04）
+        # 让负载在 coast 段持续靠近：x_R−x_L 从 1.0584（间隙 +0.36）线性收到 0.6584（间隙 −0.04）。
+        # 2026-10-17 新小车车斗前缘 0.25 → 0.30 ⇒ 同样的 x 偏置下间隙少 0.05，故整体 +0.05 补偿。
         for index, row in enumerate(rows):
             if row["phase"] != "coast":
                 continue
             fraction = index / max(1, len(rows) - 1)
-            row["load_x_m"], row["robot_x_m"] = 0.0, 1.0084 - 0.40 * fraction
+            row["load_x_m"], row["robot_x_m"] = 0.0, 1.0584 - 0.40 * fraction
         summary = summarize_tow(rows, user_command=0.5, joint_names=JOINT_NAMES)
         self.assertGreater(summary["clearance_at_stop_m"], 0.0)         # 指令归零时还没接触
         self.assertIsNotNone(summary["time_to_contact_after_stop_s"])

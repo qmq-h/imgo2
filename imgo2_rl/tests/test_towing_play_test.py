@@ -1505,7 +1505,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("超出该范围的质量档 25 kg", text)
         self.assertIn("外推检查，判读要与分布内档位分开", text)
         self.assertNotIn("本网格的质量档全部落在训练分布内", text)
-        self.assertIn("轮轴阻尼 0.032", text)
+        self.assertIn("轮轴阻尼 0.0045", text)
         self.assertIn("「连接 × 质量」env 数", text)
 
     def test_impact_window_defaults_and_plan_lines(self):
@@ -2265,10 +2265,15 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertIn("per_env(gravity_world)", self.source)
 
     def test_mass_scaling_happens_on_host_buffer(self):
-        # PhysX 的 get_masses()/get_inertias() 是 CPU 缓冲 ⇒ 缩放前必须先搬到 CPU
-        self.assertIn("scale_cart_mass_inertia(", self.source)
-        self.assertIn('mass_scales.detach().to("cpu")', self.source)
-        # 回归守卫：不能再把已经是 (N, nb) 的缓冲 `.unsqueeze(0)` 去乘 (N,1)
+        """2026-10-17 新小车：只改重物块 ⇒ 直接在 CPU 缓冲上改写 base_link 的 mass/inertia/CoM。
+
+        `get_masses()/get_inertias()/get_coms()` 都是 CPU 缓冲；代码逐 env 改写后交回 `set_*`。
+        回归守卫：不能再把 (N, nb) 的缓冲 `.unsqueeze(0)` 去乘 (N,1)。
+        """
+        self.assertIn("cart_mass_tensors(", self.source)
+        self.assertIn("cart.root_physx_view.get_coms().clone()", self.source)
+        self.assertIn("cart.root_physx_view.set_coms(nominal_coms, cart_env_idx)", self.source)
+        self.assertIn('list(cart.body_names).index("base_link")', self.source)
         self.assertNotIn("nominal_masses.unsqueeze(0)", self.source)
         self.assertNotIn("nominal_inertias.unsqueeze(0)", self.source)
 
@@ -2865,63 +2870,39 @@ class ComparePlayRunsTests(unittest.TestCase):
 
 
 class MassScalingTests(unittest.TestCase):
-    """逐 env 质量/惯量缩放的形状契约。
+    """小车质量旋钮：只改重物块 ⇒ 合并 base_link 的质量/惯量/CoM（离线纯函数）。
 
-    这条测试是 2026-10-09 默认 45 环境首跑的回归守卫：
-    `nominal_masses.unsqueeze(0) * (N,1)` 会在 dim 2 上撞 `num_bodies`(小车 5) 与 `N`，
-    报 `size of tensor a (5) must match the size of tensor b (45)`；N=1 时侥幸通过，
-    所以必须按 N>1 的形状测。
+    2026-10-17 新小车（车斗 0.8 + 4×0.05 轮 + 重物块 2.0 = 3.0 kg）后，不再「按比例缩放所有
+    刚体」，而是把总重映射到重物块：`base_link` 的质量、绕 CoM 的惯量与 CoM 高度由
+    `assets/cart_mass.body_properties` 一起算（只改质量不改惯量会让模型不自洽）。
     """
 
     def setUp(self):
-        try:
-            import torch
-        except ImportError:
-            self.skipTest("需要 torch 才能做形状回归")
-        self.torch = torch
+        from pathlib import Path as _Path
+        self.model = play._load_module(
+            "cart_model_for_test",
+            play.RL_ROOT / "source/imgo2_rl/imgo2_rl/assets/cart_model.py"
+        ).read_cart_model(play.RL_ROOT.parent / "imgo2_description/cart/cart.urdf")
 
-    def test_shapes_for_several_env_counts(self):
-        torch = self.torch
-        for num_envs in (1, 8, 45):
-            bodies = 5                      # base_link + 四轮（fixed joint 已合并）
-            masses = torch.ones(num_envs, bodies)
-            inertias = torch.ones(num_envs, bodies, 9)
-            scales = torch.linspace(0.5, 2.5, num_envs)
-            scaled_masses, scaled_inertias = play.scale_cart_mass_inertia(masses, inertias, scales)
-            self.assertEqual(tuple(scaled_masses.shape), (num_envs, bodies))
-            self.assertEqual(tuple(scaled_inertias.shape), (num_envs, bodies, 9))
+    def test_shapes_and_total_mass(self):
+        base_mass, inertia, com_z, ballast = play.cart_mass_tensors(
+            self.model, [3.0, 5.0, 25.0])
+        self.assertEqual(len(base_mass), 3)
+        self.assertEqual(len(com_z), 3)
+        self.assertEqual([len(row) for row in inertia], [3, 3, 3])
+        self.assertEqual(base_mass, sorted(base_mass))
+        self.assertEqual(ballast, sorted(ballast))
+        wheel = 4 * self.model["wheel_mass_kg"]
+        for total, mass in zip((3.0, 5.0, 25.0), base_mass):
+            self.assertAlmostEqual(mass + wheel, total, places=9)
 
-    def test_scaling_is_applied_per_environment(self):
-        torch = self.torch
-        masses = torch.tensor([[10.0, 1.0, 1.0, 1.0, 1.0],
-                               [10.0, 1.0, 1.0, 1.0, 1.0]])
-        inertias = torch.ones(2, 5, 9)
-        scales = torch.tensor([0.5, 2.5])
-        scaled_masses, scaled_inertias = play.scale_cart_mass_inertia(masses, inertias, scales)
-        self.assertAlmostEqual(float(scaled_masses[0, 0]), 5.0, places=6)
-        self.assertAlmostEqual(float(scaled_masses[1, 0]), 25.0, places=6)
-        self.assertAlmostEqual(float(scaled_inertias[1, 3, 4]), 2.5, places=6)
-        # 惯量必须与质量同比例（AGENTS.md：只改质量不改惯量会让模型不自洽）
-        # 惯量与质量必须用**同一个**比例（AGENTS.md：只改质量不改惯量会让模型不自洽）
-        self.assertAlmostEqual(float(scaled_inertias[0, 0, 0] / inertias[0, 0, 0]),
-                               float(scales[0]), places=9)
-        self.assertAlmostEqual(float(scaled_inertias[1, 0, 8] / inertias[1, 0, 8]),
-                               float(scales[1]), places=9)
-    def test_the_old_unsqueeze_pattern_is_really_broken(self):
-        """把 bug 的形状写进测试：N>1 时它必须抛广播错误，防止再写回去。"""
-        torch = self.torch
-        num_envs, bodies = 45, 5
-        inertias = torch.ones(num_envs, bodies, 9)
-        scales = torch.linspace(0.5, 2.5, num_envs).unsqueeze(1)
-        with self.assertRaises(RuntimeError) as caught:
-            _ = inertias.unsqueeze(0) * scales
-        self.assertIn("dimension 2", str(caught.exception))
+    def test_com_and_inertia_follow_the_ballast(self):
+        _, inertia, com_z, _ = play.cart_mass_tensors(self.model, [5.0, 25.0])
+        self.assertLess(com_z[0], com_z[1])          # 块越重 ⇒ CoM 越靠上
+        self.assertLess(com_z[1], 0.16)              # 但不超过块中心
+        self.assertLess(inertia[0][0], inertia[1][0])
+        self.assertLess(inertia[0][2], inertia[1][2])
 
-    def test_bad_shapes_are_rejected(self):
-        torch = self.torch
+    def test_too_light_total_is_rejected(self):
         with self.assertRaises(ValueError):
-            play.scale_cart_mass_inertia(torch.ones(5), torch.ones(1, 5, 9), torch.ones(1))
-        with self.assertRaises(ValueError):
-            play.scale_cart_mass_inertia(torch.ones(2, 5), torch.ones(3, 5, 9), torch.ones(2))
-        with self.assertRaises(ValueError):
-            play.scale_cart_mass_inertia(torch.ones(2, 5), torch.ones(2, 5, 9), torch.ones(3))
+            play.cart_mass.body_properties(self.model, 0.5)

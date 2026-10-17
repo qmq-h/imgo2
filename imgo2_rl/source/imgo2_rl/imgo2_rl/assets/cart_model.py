@@ -1,7 +1,11 @@
 """Stdlib-only geometry reader and validator for the P1 cart URDF.
 
-The model deliberately supports one box and four equal solid cylinder wheels.
-Fail closed on unsupported edits rather than silently using stale geometry.
+The model deliberately supports **one deck box + one ballast box + four equal
+solid cylinder wheels**. The ballast cube (0.30 m, fixed on the deck centre) is
+the experiment's mass knob: its URDF mass is the nominal value, and the runtime
+replaces deck+ballast with a single merged base_link body whose mass/inertia/CoM
+are recomputed analytically (see `cart_mass.body_properties`). Fail closed on
+unsupported edits rather than silently using stale geometry.
 """
 
 import math
@@ -10,6 +14,8 @@ import xml.etree.ElementTree as ET
 
 WHEEL_NAMES = tuple(f"wheel_{leg}" for leg in ("fl", "fr", "rl", "rr"))
 JOINT_NAMES = tuple(f"{name}_joint" for name in WHEEL_NAMES)
+BALLAST_LINK = "ballast"
+BALLAST_JOINT = "ballast_joint"
 
 
 def _vector(element, attribute, default="0 0 0"):
@@ -30,15 +36,18 @@ def read_cart_model(path: Path) -> dict:
     _require(root.tag == "robot", "Expected a complete robot URDF")
     links = {e.get("name"): e for e in root.findall("link")}
     joints = {e.get("name"): e for e in root.findall("joint")}
-    _require(len(root.findall("link")) == len(links) == 6, "Expected six uniquely named links")
-    _require(set(links) == {"base_link", "rope_attachment", *WHEEL_NAMES}, "Unexpected links")
-    _require(len(root.findall("joint")) == len(joints) == 5, "Expected five unique joints")
-    _require(set(joints) == {*JOINT_NAMES, "rope_attachment_joint"}, "Unexpected joints")
+    _require(len(root.findall("link")) == len(links) == 7, "Expected seven uniquely named links")
+    _require(set(links) == {"base_link", "rope_attachment", BALLAST_LINK, *WHEEL_NAMES},
+             "Unexpected links")
+    _require(len(root.findall("joint")) == len(joints) == 6, "Expected six unique joints")
+    _require(set(joints) == {*JOINT_NAMES, "rope_attachment_joint", BALLAST_JOINT},
+             "Unexpected joints")
     _require(not root.findall("transmission"), "Passive cart must not contain transmissions")
     masses, inertias, origins, effort_limits, velocity_limits = {}, {}, {}, {}, {}
     radius = width = None
     size = None
-    for name in ("base_link", *WHEEL_NAMES):
+    ballast_size = None
+    for name in ("base_link", BALLAST_LINK, *WHEEL_NAMES):
         link = links[name]
         inertial = link.find("inertial")
         _require(inertial is not None, f"Missing inertia: {name}")
@@ -56,12 +65,17 @@ def read_cart_model(path: Path) -> dict:
             _require(_vector(e.find("origin"), "xyz") == (0, 0, 0), f"Offset geometry: {name}")
             geom = e.find("geometry")
             _require(geom is not None and len(geom) == 1, f"Invalid geometry: {name}")
-            if name == "base_link":
-                _require(geom[0].tag == "box", "Deck must be a box")
+            if name in ("base_link", BALLAST_LINK):
+                _require(geom[0].tag == "box", f"{name} must be a box")
                 dims = _vector(geom[0], "size")
                 _require(all(v > 0 for v in dims), "Invalid box dimensions")
-                _require(size is None or dims == size, "Visual and collision box differ")
-                size = dims
+                if name == "base_link":
+                    _require(size is None or dims == size, "Visual and collision box differ")
+                    size = dims
+                else:
+                    _require(ballast_size is None or dims == ballast_size,
+                             "Visual and collision box differ")
+                    ballast_size = dims
                 _require(_vector(e.find("origin"), "rpy") == (0, 0, 0), "Rotated box unsupported")
             else:
                 _require(geom[0].tag == "cylinder", "Wheel must be a cylinder")
@@ -71,8 +85,8 @@ def read_cart_model(path: Path) -> dict:
                 radius, width = r, w
                 angles = _vector(e.find("origin"), "rpy")
                 _require(all(math.isclose(a, b, abs_tol=1e-9) for a, b in zip(angles, (math.pi / 2, 0, 0))), "Cylinder must rotate onto y")
-        if name == "base_link":
-            x, y, z = size
+        if name in ("base_link", BALLAST_LINK):
+            x, y, z = size if name == "base_link" else ballast_size
             expected = (mass * (y*y + z*z) / 12, mass * (x*x + z*z) / 12, mass * (x*x + y*y) / 12)
         else:
             transverse = mass * (3 * radius**2 + width**2) / 12
@@ -99,11 +113,30 @@ def read_cart_model(path: Path) -> dict:
     fl, fr, rl, rr = (origins[n] for n in WHEEL_NAMES)
     _require(fl[0] > 0 and fl[1] > 0 and fl[2] < 0, "Invalid front-left wheel placement")
     _require(fr == (fl[0], -fl[1], fl[2]) and rl == (-fl[0], fl[1], fl[2]) and rr == (-fl[0], -fl[1], fl[2]), "Wheel layout must be symmetric")
-    _require(fl[1] - width / 2 > size[1] / 2, "Wheel intersects deck")
+    # 2026-10-17 起车轮**可以位于车斗正下方**（轮距 0.41 < 车斗宽 0.45），只要求轮顶不高于车斗底面。
+    _require(fl[2] + radius <= -size[2] / 2 + 1e-9, "Wheel top intersects deck")
+    _require(fl[0] + radius <= size[0] / 2 + 1e-9 and fl[1] + width / 2 <= size[1] / 2 + 1e-9,
+             "Wheel outside deck footprint")
     resting_height = radius - fl[2]
     _require(resting_height - size[2] / 2 > 0, "Deck touches ground before wheels")
+    # 重物块：fixed 在车斗正中，底面坐在车斗上表面
+    ballast_joint = joints[BALLAST_JOINT]
+    _require(ballast_joint.get("type") == "fixed"
+             and ballast_joint.find("parent").get("link") == "base_link"
+             and ballast_joint.find("child").get("link") == BALLAST_LINK, "Invalid ballast joint")
+    _require(_vector(ballast_joint.find("origin"), "rpy") == (0, 0, 0), "Rotated ballast unsupported")
+    ballast_center = _vector(ballast_joint.find("origin"), "xyz")
+    _require(abs(ballast_center[0]) < 1e-12 and abs(ballast_center[1]) < 1e-12,
+             "Ballast must sit on the deck centre (x=y=0)")
+    _require(ballast_center[2] > size[2] / 2, "Ballast must sit above the deck")
+    _require(abs((ballast_center[2] - ballast_size[2] / 2) - size[2] / 2) < 1e-9,
+             "Ballast bottom must touch the deck top")
     return dict(total_mass_kg=sum(masses.values()), masses_kg=masses, inertias_kgm2=inertias,
                 wheel_radius_m=radius, wheel_width_m=width, deck_size_m=size,
+                deck_mass_kg=masses["base_link"], base_inertia_kgm2=inertias["base_link"],
+                ballast_mass_kg=masses[BALLAST_LINK], ballast_size_m=ballast_size,
+                ballast_inertia_kgm2=inertias[BALLAST_LINK], ballast_center_m=ballast_center,
+                wheel_mass_kg=masses[WHEEL_NAMES[0]],
                 wheel_origins_m=origins, resting_height_m=resting_height,
                 attachment_position_m=_vector(attachment.find("origin"), "xyz"),
                 effort_limits_nm=effort_limits, velocity_limits_radps=velocity_limits,

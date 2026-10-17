@@ -35,6 +35,7 @@ from isaaclab.managers import ActionTerm, ActionTermCfg
 from isaaclab.utils import configclass
 from isaaclab.utils import math as math_utils
 
+from ....assets import cart_mass
 from .upper_logic import CMD_ACTION_DIM, UpperActionSpec
 from .mdp.connection_grid import (
     ELASTIC_KC, GRID_SIZE, SPEEDBUMP_TERRAIN, WAVE_TERRAIN, env_spec, is_full_grid)
@@ -153,6 +154,10 @@ class HierarchicalVelocityAction(ActionTerm):
         self._phys_prev_force_mag = torch.zeros(env.num_envs, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.cart_mass = torch.full((env.num_envs, 1), cfg.initial_cart_mass, device=env.device)
+        # 小车几何（车斗/重物块/轮子的质量与惯量）：只读 URDF，stdlib 解析，供质量施加用。
+        from ....assets.cart import resolve_cart_path
+        from ....assets.cart_model import read_cart_model
+        self._cart_model = read_cart_model(resolve_cart_path())
         self.ground_friction = torch.full((env.num_envs, 1), cfg.initial_ground_friction, device=env.device)
         self.wheel_damping = torch.full((env.num_envs, 1), cfg.initial_wheel_damping, device=env.device)
         # A subset of environments acts as a zero-load locomotion/stopping anchor. The cart
@@ -707,9 +712,12 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     # 否则指令出分布、下层跟踪会崩。
     lane_max_vy: float = 1.0
     lane_max_wz: float = 1.5708
-    initial_cart_mass: float = 10.0
+    #: 名义整车总重（2026-10-17 新小车：车斗 0.8 + 4×0.05 轮 + 重物块 2.0 = **3.0 kg**）。
+    initial_cart_mass: float = 3.0
     initial_ground_friction: float = 0.8
-    initial_wheel_damping: float = 0.032
+    #: 轮轴阻尼（N·m·s/rad）。2026-10-17 轮径 0.08 → **0.03** 后按 r² 重标定（0.032 → **0.0045**），
+    #: 保持等效滚阻 ≈ 4·damping/r²·v = 20·v N 不变（终端速度仍由总重与坡角决定）。
+    initial_wheel_damping: float = 0.0045
     robot_body_name: str = "base"
     # 足端接触传感器（场景里由 `upper_env_cfg` 注册，`{ENV_REGEX_NS}/Robot/.*_FOOT`）。
     # `mdp.feet_slide` 用它判着地；body 顺序按该传感器的 `body_names` 映射到资产 id。
@@ -727,7 +735,8 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     rope_max_correction_rate: float = 0.2
     rigid_position_gain: float = 0.2
     rigid_max_correction_rate: float = 0.2
-    wheel_radius: float = 0.08
+    #: 车轮半径（2026-10-17：6 cm 直径的推车式小轮，全部在车斗下方内侧）。
+    wheel_radius: float = 0.03
     collision_sensor_names: tuple[str, ...] = (
         "cart_deck_robot_contacts",
         "cart_wheel_fl_robot_contacts", "cart_wheel_fr_robot_contacts",
@@ -735,7 +744,8 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     )
     collision_force_threshold: float = 1.0
     robot_rear_surface_x: float = 0.1575
-    cart_front_surface_x: float = 0.25
+    #: 车斗前表面（2026-10-17：车斗长 0.60，前缘 +0.30）。
+    cart_front_surface_x: float = 0.30
 
 
 def reset_towing_episode(
@@ -829,18 +839,29 @@ def reset_towing_episode(
     cart.write_joint_state_to_sim(cart.data.default_joint_pos[env_ids],
                                   torch.zeros_like(cart.data.default_joint_vel[env_ids]), env_ids=env_ids)
 
-    # Scale every cart body's mass and inertia from immutable defaults, never from the prior reset.
+    # 2026-10-17 新小车：车斗与四轮质量固定，**只改重物块** ⇒ 合并后的 base_link 质量、绕 CoM
+    # 的惯量与 CoM 高度一起重算（`assets/cart_mass.body_properties`，与测试台同一套解析式）。
     ids_cpu = env_ids.cpu()
-    default_masses = cart.data.default_mass.detach().cpu()
-    default_inertias = cart.data.default_inertia.detach().cpu()
-    nominal_total = default_masses[ids_cpu].sum(dim=1)
-    scale = masses_kg.detach().cpu() / nominal_total
+    base_id = int(term._cart_body_id)
+    wheel_ids = [index for index in range(cart.num_bodies) if index != base_id]
+    properties = [cart_mass.body_properties(term._cart_model, float(mass))
+                  for mass in masses_kg.detach().cpu().tolist()]
     all_masses = cart.root_physx_view.get_masses().clone()
     all_inertias = cart.root_physx_view.get_inertias().clone()
-    all_masses[ids_cpu] = default_masses[ids_cpu] * scale[:, None]
-    all_inertias[ids_cpu] = default_inertias[ids_cpu] * scale[:, None, None]
+    all_coms = cart.root_physx_view.get_coms().clone()
+    for slot, (env_id, prop) in enumerate(zip(ids_cpu.tolist(), properties)):
+        all_masses[env_id, base_id] = prop["base_mass_kg"]
+        for wheel_id in wheel_ids:
+            all_masses[env_id, wheel_id] = prop["wheel_mass_kg"]
+        ixx, iyy, izz = prop["base_inertia_kgm2"]
+        all_inertias[env_id, base_id] = 0.0
+        all_inertias[env_id, base_id, 0] = ixx
+        all_inertias[env_id, base_id, 4] = iyy
+        all_inertias[env_id, base_id, 8] = izz
+        all_coms[env_id, base_id, :3] = torch.tensor(prop["base_com_m"], dtype=all_coms.dtype)
     cart.root_physx_view.set_masses(all_masses, ids_cpu)
     cart.root_physx_view.set_inertias(all_inertias, ids_cpu)
+    cart.root_physx_view.set_coms(all_coms, ids_cpu)
     # 质量／惯量刚被改写，必须让每步物理用的缓存失效；否则 `_apply_towing_physics` 会继续用
     # 上一回合的质量（缓存只在 None 时重建，不会自己发现 PhysX 侧的变化）。
     term._invalidate_mass_cache()
