@@ -30,17 +30,17 @@ class UpperActionSpec:
     **加性 + 有界，但限的两层是分开的**（2026-10-10 从源码核对后确定）：
 
     1. ``offset_min`` / ``offset_max`` 限的是**偏移量本身**（头权限，默认 −0.2 / +0.6）；
-    2. ``amp_vx_range`` 限的是**合成后的 vx**，取冻结 AMP 策略的**训练指令包络**
-       `lin_vel_x = (−1.0, 1.5)`（出处 `base_move/amp_env_cfg.py:123`）。超出该包络即
-       OOD，冻结策略的步态会退化。
+    2. ``amp_vx_range`` 限的是**合成后的 vx**。2026-10-17 起任务域收到 **0.5–1.0 m/s**
+       （`episode_geometry.SPEED_RANGE`），包络随之是 **(−1.0, 1.0)**：偏移头不得把指令
+       推到任务域之外（冻结低层 PPO 在 ≥1.5 会停滞）。
 
-    ⚠ **绝不能**把"和"裁到偏移头的 `[−0.2, +0.6]`：拖曳脚本速度是 0.5–1.5 m/s
-    （`episode_geometry.SPEED_RANGE`），牵引段本来就顶在 AMP 上界 1.5，那样会把正常牵引指令
-    压成 0.6 而奖励参考量（`task_command`）仍是 1.5 ⇒ 策略被要求跟一个它根本发不出的速度。
+    ⚠ **绝不能**把"和"裁到偏移头的 `[−0.2, +0.6]`：拖曳脚本速度是 0.5–1.0 m/s
+    （`episode_geometry.SPEED_RANGE`），那样会把正常牵引指令压成 0.6 而奖励参考量
+    （`task_command`）仍是 1.0 ⇒ 策略被要求跟一个它根本发不出的速度。
     反过来，`amp_vx_range` 必须**覆盖整个脚本速度范围**（`upper_env_cfg.__post_init__` 有断言），
     这样 `u_cmd = 0` 时 `clamp(task_vx, ...) == task_vx`，与旧口径**逐位一致**。
 
-    语义后果（写进文档与日志）：牵引段速度高时正半轴偏移会被包络钳掉（1.5 m/s 时 +0.5 无梯度），
+    语义后果（写进文档与日志）：牵引段速度高时正半轴偏移会被包络钳掉（1.0 m/s 时 +0.5 无梯度），
     偏移实际只能**减小** vx —— 正好用于「绷直前降速、少灌冲击能量」；STOP 之后 `task_vx = 0`，
     偏移头在同一包络内可正可负（可倒走制造松弛）。因此偏移量建议**按相位分开记日志**。
 
@@ -57,10 +57,10 @@ class UpperActionSpec:
     offset_min: float = -0.2
     #: 偏移上限（m/s）。scale 0.5 时正向最多 +0.5，本值 0.6 是留出的富余。
     offset_max: float = 0.6
-    #: **合成后 vx 的训练包络**（m/s）= 冻结 AMP 策略的 `commands.base_velocity.ranges.lin_vel_x`
-    #: = (−1.0, 1.5)，出处 `tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py`。
-    #: 它必须覆盖脚本速度范围 0.5–1.5，否则零偏移时脚本自己就被裁掉（破坏退化性）。
-    amp_vx_range: tuple[float, float] = (-1.0, 1.5)
+    #: **合成后 vx 的指令包络**（m/s）。2026-10-17 起任务域 0.5–1.0 ⇒ 包络 (−1.0, **1.0**)
+    #: （原 AMP `lin_vel_x = (−1.0, 1.5)` 已不再需要：偏移头不该把指令推出任务域）。
+    #: 它必须覆盖脚本速度范围 0.5–1.0，否则零偏移时脚本自己就被裁掉（破坏退化性）。
+    amp_vx_range: tuple[float, float] = (-1.0, 1.0)
 
     def validate(self):
         if not self.residual_scale:
@@ -131,7 +131,7 @@ class UpperActionSpec:
         2. **和**再限在冻结 AMP 策略的训练包络 ``amp_vx_range``（−1.0, 1.5），超出即 OOD。
 
         ``apply_offset=False`` 即出生段（`elapsed_s < tow_start_s`）：偏移不生效，返回值等于
-        ``clamp(scripted_vx, ...)``；由于 `amp_vx_range` 覆盖脚本速度范围（0.5–1.5），
+        ``clamp(scripted_vx, ...)``；由于 `amp_vx_range` 覆盖脚本速度范围（0.5–1.0），
         这就是脚本值本身，与旧口径**逐位一致**。
         """
         offset = self.bounded_command_offset(action) if apply_offset else 0.0
@@ -221,7 +221,7 @@ class DecoderSpec:
         return sum(dim for _, dim in self.terms)
 
     # 2026-10-16：`mass_range` 字段随质量头一起删除——质量不再是 decoder 的目标，把工作域
-    # 留在 decoder spec 里会误导。工作域（质量 5–20 kg / 速度 0.5–1.5 m/s）的权威位置是
+    # 留在 decoder spec 里会误导。工作域（质量 5–20 kg / 速度 0.5–1.0 m/s）的权威位置是
     # `upper_env_cfg.UpperEventsCfg.reset_work_condition`（环境）与
     # `episode_geometry.SPEED_RANGE`（速度），测量台用 `TRAINING_MASS_RANGE_KG` 对齐。
     velocity_scale: tuple[float, float] = (1.0, 0.5)

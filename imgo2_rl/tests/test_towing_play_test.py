@@ -1303,8 +1303,10 @@ class EnvCaseTests(unittest.TestCase):
         self.assertEqual(connections, {"compliant": 480, "inextensible": 240, "rigid": 480})
 
     def test_multiple_of_the_grid_repeats_cells_with_other_work_conditions(self):
-        # 轮转周期 = 3 速度 × 5 质量 = 15，1200 % 15 = 0 ⇒ 第二个网格从同一 slot 重开
-        cases = play.build_env_cases(2400, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        # 显式用 3 档速度（轮转周期 = 3 × 5 = 15）：1200 个 cell 后 slot 前进 20（= 行数），
+        # 20 % 15 = 5 ⇒ 第二个网格落在**另一个**工作条件上。
+        # 注意：默认两档速度时周期 = 10，20 % 10 = 0 ⇒ 第二个网格会落在同一条件（见下一条断言）。
+        cases = play.build_env_cases(2400, [0.5, 1.0, 1.5], play.DEFAULT_CART_MASSES)
         self.assertEqual(len(cases), 2400)
         self.assertEqual(cases[0].cell_index, cases[1200].cell_index)
         self.assertNotEqual((cases[0].velocity_mps, cases[0].cart_mass_kg),
@@ -1336,7 +1338,7 @@ class EnvCaseTests(unittest.TestCase):
                          {"0": 400, "5": 200, "10": 200, "15.6025": 200, "26.5651": 200})
         # 绳 0.5–1.5 与杆 0.5–1.0 的并集
         self.assertEqual(summary["length_m"], {"min": 0.5, "max": 1.5})
-        self.assertEqual(len(summary["work_condition_buckets"]), 15)
+        self.assertEqual(len(summary["work_condition_buckets"]), 10)
         self.assertLessEqual(max(summary["bucket_env_counts"]) -
                              min(summary["bucket_env_counts"]), 5)
         # 「连接 × 质量」计数用来核对 slot 轮转的均衡性：每个连接类型内各质量档相等
@@ -1346,7 +1348,7 @@ class EnvCaseTests(unittest.TestCase):
         self.assertEqual(sum(masses["compliant"].values()), 480)
         self.assertEqual(sum(masses["rigid"].values()), 480)
         self.assertEqual(sum(masses["inextensible"].values()), 240)
-        self.assertEqual(sum(len(counts) for counts in masses.values()), 15)
+        self.assertEqual(sum(len(counts) for counts in masses.values()), 15)   # 3 连接 × 5 质量
         self.assertEqual(sorted(masses["inextensible"]), ["10", "15", "20", "25", "5"])
         self.assertEqual({count for counts in masses.values() for count in counts.values()},
                          {48, 96})
@@ -2493,7 +2495,7 @@ class UpperV3WiringTests(unittest.TestCase):
                          (runtime.COMMAND_OFFSET_MIN, runtime.COMMAND_OFFSET_MAX))
         self.assertEqual(play.UPPER_AMP_VX_RANGE_MPS,
                          (runtime.AMP_VX_MIN, runtime.AMP_VX_MAX))
-        self.assertEqual(play.UPPER_AMP_VX_RANGE_MPS, (-1.0, 1.5))
+        self.assertEqual(play.UPPER_AMP_VX_RANGE_MPS, (-1.0, 1.0))
 
     def test_gate_threshold_is_the_training_cfg_default(self):
         """门控阈值 = `episode_geometry.SETTLE_TIME_S` = `HierarchicalVelocityActionCfg.tow_start_s`。"""
@@ -2522,10 +2524,10 @@ class UpperV3WiringTests(unittest.TestCase):
         """关开关（残差与偏移恒 0）：合成结果与任务指令**逐位相等**（`torch.equal`）。
 
         这是「关时与旧口径逐位一致」里偏移那一半的离线证据：`offset = 0` 时第 2 层包络裁剪
-        也是恒等的（脚本速度 0.5–1.5 全在 `amp_vx_range = (−1.0, 1.5)` 内）。
+        也是恒等的（脚本速度 0.5–1.0 全在 `amp_vx_range = (−1.0, 1.0)` 内）。
         """
         torch = self.torch
-        for values in ([0.0, 0.5, 1.0, 1.5], [-1.0, 0.0, 0.7, 1.3]):
+        for values in ([0.0, 0.5, 1.0], [-1.0, 0.0, 0.7]):
             task = torch.tensor(values, dtype=torch.float32).unsqueeze(1)
             zeros = torch.zeros_like(task)
             for active in (False, True):          # 门控开/关都必须逐位相等
@@ -2545,10 +2547,10 @@ class UpperV3WiringTests(unittest.TestCase):
     def test_two_layer_limits_clip_the_sum_into_the_amp_envelope(self):
         """第 1 层限偏移（runtime 的 `command_offset_vx`）、第 2 层把「和」裁进 AMP 包络。"""
         torch = self.torch
-        task = torch.tensor([[1.5], [0.0], [1.5]], dtype=torch.float32)
+        task = torch.tensor([[1.0], [0.0], [1.0]], dtype=torch.float32)
         offset = torch.tensor([[0.6], [0.6], [-0.2]], dtype=torch.float32)   # 已在头权限内
         got = play.compose_loco_vx_offset(task, offset, active=True)
-        self.assertTrue(torch.equal(got, torch.tensor([[1.5], [0.6], [1.3]],
+        self.assertTrue(torch.equal(got, torch.tensor([[1.0], [0.6], [0.8]],
                                                       dtype=torch.float32)))
         self.assertTrue(bool((got <= play.UPPER_AMP_VX_RANGE_MPS[1]).all()))
         self.assertTrue(bool((got >= play.UPPER_AMP_VX_RANGE_MPS[0]).all()))
@@ -2594,7 +2596,7 @@ class UpperV3WiringTests(unittest.TestCase):
         self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.5)
         self.assertEqual(off["offset"]["min_mps"], -0.2)
         self.assertEqual(off["offset"]["max_mps"], 0.6)
-        self.assertEqual(off["offset"]["amp_vx_range_mps"], [-1.0, 1.5])
+        self.assertEqual(off["offset"]["amp_vx_range_mps"], [-1.0, 1.0])
         self.assertEqual(off["offset"]["gate"], "elapsed_s >= tow_start_s")
         self.assertEqual(off["offset"]["gate_after_s"], play.UPPER_GATE_AFTER_S)
         self.assertIn("STOP 之后仍然生效", off["offset"]["gate_note"])

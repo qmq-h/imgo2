@@ -32,7 +32,11 @@ STOP 之后仍有约 `POST_STOP_WINDOW_S` 秒的步供 post_stop 奖励作用（
 
 import math
 
-SPEED_RANGE = (0.5, 1.5)
+# 2026-10-17 用户决定：上界 **1.5 → 1.0**。理由：冻结低层要换成 PPO 当基线（它的步态频率更好），
+# 而该 checkpoint 在 ≥1.5 m/s 会落进「站着不动」的不动点（平地实测 25/25，见
+# docs/towing/towing_ppo_lowlevel_swap_2026-10-17.md §6）；收束到 0.5–1.0 后两个低层都能用。
+# 超时只由**下界**驱动（`episode_timeout_s` 用 SPEED_RANGE[0]），所以这次改动**不影响** timeout。
+SPEED_RANGE = (0.5, 1.0)
 # 指令归零的沿 lane 水平距离（m）。必须 > FLAT_OUT_START_M（坡面出口 9.0 m）。
 # 2026-10-17 用户确认：训练侧**保持 10 m**（不再改动，凸条位置也不动）；测评侧的「按地形拆分 +
 # 按里程停车」是测试台的 `--columns` / `--stop-progress`，与训练口径互不影响。

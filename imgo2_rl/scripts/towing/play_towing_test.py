@@ -42,7 +42,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   2. 取动作**第 1 维 = vx 偏移**，两层限幅合成送冻结策略的指令：先限**偏移量本身**
      `[offset_min, offset_max] = [−0.2, +0.6] m/s`（`u_cmd` 先 clamp 到 ±1 再乘
      `cmd_offset_scale = 0.5`），再把**和**裁进冻结 AMP 策略的训练包络
-     `amp_vx_range = (−1.0, 1.5)`；**门控 `elapsed_s >= tow_start_s`**（出生段不叠加偏移；
+     `amp_vx_range = (−1.0, 1.0)`；**门控 `elapsed_s >= tow_start_s`**（出生段不叠加偏移；
      **STOP 之后偏移仍然生效** ⇒ `task_vx = 0` 时 `loco_vx = offset`，这是「停机续走」的
      表达口）；
   3. 合成后的 `loco_command`（含 PD 的 vy/wz）喂**冻结策略** ⇒ 冻结关节目标；
@@ -338,12 +338,12 @@ UPPER_TOWING_CONTRACT_EXPECTED = {
 #: 第 1 层限的是**偏移量本身**（不是「和」），第 2 层把「和」裁进冻结 AMP 策略的训练包络。
 UPPER_OFFSET_SCALE_MPS = 0.5
 UPPER_OFFSET_RANGE_MPS = (-0.2, 0.6)
-UPPER_AMP_VX_RANGE_MPS = (-1.0, 1.5)
+UPPER_AMP_VX_RANGE_MPS = (-1.0, 1.0)     # 与 `upper_mdp.HierarchicalVelocityActionCfg.amp_vx_range` 同值
 #: 上层控制周期（s）：训练侧 `HierarchicalVelocityActionCfg.upper_control_dt = 0.05`（20 Hz）。
 #: plan 行按它和 `--dt` 算出「每几个物理步推理一拍」；离线测试按 AST 交叉核对。
 UPPER_CONTROL_DT_S = 0.05
 
-DEFAULT_VELOCITIES = (0.5, 1.0, 1.5)
+DEFAULT_VELOCITIES = (0.5, 1.0)          # 2026-10-17 工作域上界 1.5 → 1.0（见 SPEED_RANGE）
 DEFAULT_CART_MASSES = (5.0, 10.0, 15.0, 20.0, 25.0)
 #: 800 环境 × 2200 步逐物理步记录 ≈ 176 万行（约 2 GB），默认改成每 5 步（25 ms，等于
 #: 冻结策略周期）记一行；接触的速度跃变阈值在 `contact_witness` 里按记录步长自动放大。
@@ -1096,7 +1096,7 @@ def compose_loco_vx_offset(task_vx, offset_vx, *, active: bool,
 
     1. 门控 `active = elapsed_s >= tow_start_s`：出生段偏移不生效；**STOP 之后门控仍打开**
        （`task_vx = 0` ⇒ `loco_vx = offset`，这是「停机续走」的表达口）；
-    2. 把「和」裁进冻结 AMP 策略的训练包络 `amp_vx_range = (−1.0, 1.5)`。
+    2. 把「和」裁进冻结低层的指令包络 `amp_vx_range = (−1.0, 1.0)`。
 
     **纯逻辑、不 import torch**（参数是 1 维张量或 float），所以「关开关时逐位一致」可以离线钉住：
     `offset = 0`（或 `active = False`）时结果与包络内的 `task_vx` **逐位相等**。
@@ -2877,7 +2877,7 @@ def planned_grid_lines(args) -> list:
             f"vx 偏移 = clamp(clamp(u_cmd,±1)·{UPPER_OFFSET_SCALE_MPS:g}, "
             f"{UPPER_OFFSET_RANGE_MPS[0]:g}, {UPPER_OFFSET_RANGE_MPS[1]:g}) m/s（**有界**）"
             f" ⇒ loco_vx = clamp(task_vx + offset, {UPPER_AMP_VX_RANGE_MPS[0]:g}, "
-            f"{UPPER_AMP_VX_RANGE_MPS[1]:g})（AMP 训练包络，**两层限幅**）；"
+            f"{UPPER_AMP_VX_RANGE_MPS[1]:g})（冻结低层包络，**两层限幅**）；"
             f"偏移**门控**在 elapsed_s ≥ tow_start_s = {UPPER_GATE_AFTER_S:g} s"
             f"（训练侧 SETTLE_TIME_S；出生段不叠加、**STOP 之后仍生效**）；"
             f"合成后的 loco_command 送**冻结策略** ⇒ 冻结关节目标，再加残差 "

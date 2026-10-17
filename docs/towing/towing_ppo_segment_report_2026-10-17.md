@@ -54,6 +54,17 @@
 指令粘住），所以同一轮里 0.5–2.0 m/s 各档都在**同一个里程**停，不需要按速度分轮；
 `--tow-duration` 只作为「最慢档走不到就该报错」的上限（校验 `tow × min(v) ≥ stop`）。
 
+**过滤列之后「env i」不再等于「网格第 i 条 lane」**，所以有两处映射必须按 case 取，否则机器人会
+站到别的 lane 上（坡度量级/连接/长度全错，训练机实跑会报 `case 的坡度量级与 env_spec 不一致`）：
+
+- 逐 env 参数（连接长度/刚度/阻尼/初始距离/坡度/地形族掩码）用
+  `case_specs(cases)` = `connection_grid.env_spec(case.cell_index)`；
+- 出生原点用 `case_tile_origins(terrain_origins, cases)` = 该 case 的 `(row, column)` 地砖原点，
+  **覆盖** Isaac Lab 默认按 env 序号的 `scene.env_origins`：地形是整张网格、每块地砖位置固定，
+  所以只需把机器人放到正确的那块上。
+
+不带 `--columns` 时这两者与原来的 `i//COLUMNS, i%COLUMNS` 逐位一致（有回归测试）。
+
 出生点到障碍的距离（**不改**，仅记录）：5°/10°/波浪 **2.25 m**（0.5 m/s 4.5 s）；减速带 **5.475 m**
 （0.5 m/s 11 s，因为凸条放在剖面窗口中心 5.625 m）。用户 2026-10-17 明确**不前移凸条**。
 

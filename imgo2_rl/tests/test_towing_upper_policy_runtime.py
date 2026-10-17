@@ -356,8 +356,9 @@ class RuntimeActTests(unittest.TestCase):
 
         运行时常量必须与 `upper_mdp.HierarchicalVelocityActionCfg` 的默认值逐项一致
         （训练侧是唯一事实来源，这里只是运行时的镜像 + 交叉守卫）。
-        包络 `lin_vel_x = (−1.0, 1.5)` 出处 `amp_env_cfg`：牵引速度 0.5–1.5 本来就顶在
-        上界，把"和"裁到偏移头的 [−0.2, 0.6] 会把牵引指令砍成 0.6。
+        包络 2026-10-17 起是 **(−1.0, 1.0)**（任务域 0.5–1.0 的上界；原 AMP `lin_vel_x`
+        上界 1.5 不再需要，因为偏移头不该把指令推出任务域）。把"和"裁到偏移头的
+        [−0.2, 0.6] 会把牵引指令砍成 0.6，所以必须保留第 2 层包络。
         """
         instance, actor, _, _ = make_runtime(self._tmp.name, num_envs=4)
         u_cmd = torch.tensor([[-5.0], [-1.0], [0.0], [1.0]], dtype=torch.float32)
@@ -370,15 +371,15 @@ class RuntimeActTests(unittest.TestCase):
         self.assertTrue(bool((offset[:, 0] >= runtime.COMMAND_OFFSET_MIN - 1e-7).all()))
         self.assertTrue(bool((offset[:, 0] <= runtime.COMMAND_OFFSET_MAX + 1e-7).all()))
         # 合成：`clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`；1.5 时正半轴被包络裁回
-        task = torch.full((4,), 1.5)
+        task = torch.full((4,), 1.0)
         composed = instance.compose_loco_vx(task, processed)
         self.assertTrue(torch.allclose(
-            composed[:, 0], torch.tensor([1.3, 1.3, 1.5, 1.5], dtype=torch.float32)))
+            composed[:, 0], torch.tensor([0.8, 0.8, 1.0, 1.0], dtype=torch.float32)))
         self.assertTrue(bool((composed[:, 0] <= runtime.AMP_VX_MAX + 1e-7).all()))
         self.assertTrue(bool((composed[:, 0] >= runtime.AMP_VX_MIN - 1e-7).all()))
         # 退化性：偏移为 0（或出生段）时合成值逐位等于脚本值（脚本速度在包络内）
         zero_cmd = torch.zeros(4, 13)
-        for scripted in (0.0, 0.4, 0.7, 1.5):
+        for scripted in (0.0, 0.4, 0.7, 1.0):
             composed = instance.compose_loco_vx(torch.full((4,), scripted), zero_cmd)
             self.assertTrue(torch.allclose(composed[:, 0], torch.full((4,), scripted)))
         # 常量 == cfg 默认值（AST 解析，不 import isaaclab）
@@ -388,7 +389,7 @@ class RuntimeActTests(unittest.TestCase):
         self.assertEqual(scalars["offset_min"], runtime.COMMAND_OFFSET_MIN)
         self.assertEqual(scalars["offset_max"], runtime.COMMAND_OFFSET_MAX)
         self.assertEqual(tuple(scalars["amp_vx_range"]), (runtime.AMP_VX_MIN, runtime.AMP_VX_MAX))
-        self.assertEqual((runtime.AMP_VX_MIN, runtime.AMP_VX_MAX), (-1.0, 1.5))
+        self.assertEqual((runtime.AMP_VX_MIN, runtime.AMP_VX_MAX), (-1.0, 1.0))
         # 「停机之后」的脚本 ramp 默认关闭（本轮不得改默认值；allowance 在 reward params 里，
         # 由 test_towing_upper_rl_contract 的退化性用例守着）
         self.assertEqual(scalars["stop_command_ramp_s"], 0.0)

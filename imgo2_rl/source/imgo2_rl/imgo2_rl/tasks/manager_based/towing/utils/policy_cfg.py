@@ -207,7 +207,7 @@ AMP_POLICY = LowLevelPolicyCfg(
 #   decimation 4 × dt 0.005 = 0.02 s（= control_dt）、actuator stiffness 25 / damping 0.5
 #   （= `assets/imgo2.py` 的 IMGO2_CFG，**与 AMP 相同**）、action scale (0.125, 0.25, 0.25)、
 #   clip ±3、默认姿态 (0, 0.87, -1.82)、joint 逐腿顺序、命令范围 lin_vel_x (−1.5, 3.0)
-#   ⊃ 拖曳任务速度 0.5–1.5 m/s、lin_vel_y ±1.5 ⊃ PD 的 ±1.0、ang_vel_z ±1.5。
+#   ⊃ 拖曳任务速度 0.5–1.0 m/s、lin_vel_y ±1.5 ⊃ PD 的 ±1.0、ang_vel_z ±1.5。
 # 也就是说：**接口与 AMP 逐项相同，只有权重不同**；PPO 训练用的是 base_lin_vel/height_scan
 # 置空后的 45 维 actor（rsl_rl ActorCritic，无 recurrent），所以同样可以直接当冻结策略。
 PPO_POLICY = LowLevelPolicyCfg(

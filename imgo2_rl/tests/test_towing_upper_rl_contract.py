@@ -156,7 +156,7 @@ class UpperLogicTests(unittest.TestCase):
         self.assertEqual(logic.CMD_ACTION_DIM, 1)
 
     def test_work_domain_ranges_do_not_touch_the_contract(self):
-        """工作域常量（质量 5–20 kg、速度 0.5–1.5 m/s）**不得**改动契约。
+        """工作域常量（质量 5–20 kg、速度 0.5–1.0 m/s）**不得**改动契约。
 
         2026-10-10 用户收紧工作域：`reset_work_condition.mass_range` 上限 30 → 20 kg、
         `episode_geometry.SPEED_RANGE` 下界 0.4 → 0.5 m/s（回合超时随之由 29.231 s 缩短到
@@ -173,7 +173,7 @@ class UpperLogicTests(unittest.TestCase):
         play = (RL / "scripts/towing/play_towing_test.py").read_text("utf-8")
 
         # 工作域：环境 cfg 与测量台两处常量逐项对齐（少改一处就会漂移）
-        self.assertEqual(geometry.SPEED_RANGE, (0.5, 1.5))
+        self.assertEqual(geometry.SPEED_RANGE, (0.5, 1.0))
         self.assertIn('"speed_range": SPEED_RANGE', cfg)
         self.assertIn('"mass_range": (5.0, 20.0)', cfg)
         match = re.search(r"TRAINING_MASS_RANGE_KG = \(([0-9.]+), ([0-9.]+)\)", play)
@@ -319,26 +319,23 @@ class UpperLogicTests(unittest.TestCase):
             logic.UpperActionSpec(residual_scale=(0.25,) * 12,
                                   amp_vx_range=(1.5, -1.0)).validate()  # 反序
 
-    def test_amp_vx_range_matches_the_frozen_policy_command_distribution(self):
-        """`amp_vx_range` 必须逐字等于冻结 AMP 策略的指令范围（源码是唯一事实来源）。
+    def test_amp_vx_range_covers_the_task_domain(self):
+        """`amp_vx_range` 必须**覆盖任务速度域**，且上界 = 任务域上界（2026-10-17 起 0.5–1.0）。
 
-        出处：`base_move/amp_env_cfg.py::__post_init__` 的
-        `self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)`。
-        它是**分布约束**而不是权限：牵引速度 0.5–1.5 本来就顶在上界，超出即 OOD。
+        历史：2026-10-17 之前任务域是 0.5–1.5、包络逐字取冻结 AMP 策略的
+        `lin_vel_x = (−1.0, 1.5)`。用户当天把工作域收到 **0.5–1.0**（冻结低层换成 PPO，
+        它在 ≥1.5 会停滞），包络随之收束到 **(−1.0, 1.0)**：偏移头不得把合成指令推出任务域。
         """
-        amp_cfg = (PKG.parent / "locomotion/velocity/base_move/amp_env_cfg.py").read_text("utf-8")
-        match = re.search(r"ranges\.lin_vel_x\s*=\s*\(([-0-9.]+),\s*([-0-9.]+)\)", amp_cfg)
-        self.assertIsNotNone(match, "amp_env_cfg 里找不到 lin_vel_x 范围")
-        amp_range = (float(match.group(1)), float(match.group(2)))
-        self.assertEqual(amp_range, (-1.0, 1.5))
-        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("amp_vx_range: tuple[float, float] = (-1.0, 1.5)", mdp)
-        self.assertEqual(logic.UpperActionSpec(residual_scale=(0.25,) * 12).amp_vx_range, amp_range)
-        # 包络必须覆盖脚本速度范围（SPEED_RANGE 0.5–1.5），否则零偏移时脚本被裁
         geometry = load("towing_episode_geometry_amp_test", PKG / "mdp/episode_geometry.py")
-        self.assertGreaterEqual(amp_range[0], -1.0)
-        self.assertGreaterEqual(amp_range[1], geometry.SPEED_RANGE[1])
-        self.assertLessEqual(geometry.SPEED_RANGE[0], amp_range[1])
+        self.assertEqual(geometry.SPEED_RANGE, (0.5, 1.0))
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("amp_vx_range: tuple[float, float] = (-1.0, 1.0)", mdp)
+        spec = logic.UpperActionSpec(residual_scale=(0.25,) * 12)
+        self.assertEqual(spec.amp_vx_range, (-1.0, 1.0))
+        # 包络覆盖任务域（否则零偏移时脚本自己就被裁，退化性失效）
+        self.assertLessEqual(spec.amp_vx_range[0], -1.0)
+        self.assertGreaterEqual(spec.amp_vx_range[1], geometry.SPEED_RANGE[1])
+        self.assertEqual(spec.amp_vx_range[1], geometry.SPEED_RANGE[1])
 
     def test_scheduled_vx_matches_the_old_schedule_when_ramp_is_off(self):
         """`scripted_vx` 纯函数镜像：ramp 关闭（默认 0.0）时 == 旧口径；打开时线性降到 0。"""

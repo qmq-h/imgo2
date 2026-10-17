@@ -89,17 +89,16 @@ ACTION_DIM = CMD_ACTION_DIM + JOINT_ACTION_DIM
 ACTION_CLIP = 1.0
 #: 偏移头的尺度与限幅（m/s）。与 `upper_mdp.HierarchicalVelocityActionCfg` 的默认值**逐项
 #: 一致**，由离线测试 AST 交叉核对；`offset_min/max` 限的是**偏移量本身**（加性 + 有界），
-#: 不是 `task + offset` 的绝对值（脚本速度 0.5–1.5 m/s，裁和会把牵引指令砍到 0.6）。
+#: 不是 `task + offset` 的绝对值（脚本速度 0.5–1.0 m/s，裁和会把牵引指令砍到 0.6）。
 COMMAND_OFFSET_SCALE = 0.5
 COMMAND_OFFSET_MIN = -0.2
 COMMAND_OFFSET_MAX = 0.6
-#: **合成后 vx 的训练包络**（m/s）：冻结 AMP 策略的指令范围 `lin_vel_x = (−1.0, 1.5)`，
-#: 出处 `tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py` 的
-#: `commands.base_velocity.ranges.lin_vel_x`。超出即 OOD、步态退化，因此
-#: `loco_vx = clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`。它覆盖脚本速度 0.5–1.5 ⇒
+#: **合成后 vx 的指令包络**（m/s）。2026-10-17 起任务域收到 0.5–1.0，包络同步收束到
+#: (−1.0, **1.0**)：偏移头不得把指令推到任务域之外（冻结低层 PPO 在 ≥1.5 会停滞）。
+#: `loco_vx = clamp(task_vx + offset, AMP_VX_MIN, AMP_VX_MAX)`；覆盖脚本速度 0.5–1.0 ⇒
 #: 偏移为 0 时是恒等裁剪（退化性）。与 `HierarchicalVelocityActionCfg.amp_vx_range` 同值。
 AMP_VX_MIN = -1.0
-AMP_VX_MAX = 1.5
+AMP_VX_MAX = 1.0
 #: checkpoint 契约版本：**v4**（frame 58 / explicit **5** / latent 16；2026-10-16 去掉
 #: decoder 显式质量）。v3（explicit 6）、v2（57/79）与更早的都必须被拒。
 CHECKPOINT_CONTRACT_VERSION = 4
@@ -498,7 +497,8 @@ class UpperPolicyRuntime:
         """``loco_vx = clamp(task_vx + 有界偏移, AMP_VX_MIN, AMP_VX_MAX)``（m/s）。
 
         **顺序与训练侧一致**：先限偏移头，再把**和**裁进冻结 AMP 策略的训练包络
-        `lin_vel_x = (−1.0, 1.5)`。包络覆盖脚本速度 0.5–1.5 ⇒ 偏移为 0 时逐位恒等。
+        `lin_vel_x = (−1.0, 1.5)`（2026-10-17 起任务域 0.5–1.0 ⇒ 包络取 (−1.0, 1.0)）。
+        包络覆盖脚本速度 0.5–1.0 ⇒ 偏移为 0 时逐位恒等。
         部署侧注意：偏移必须加在**底层策略推理之前**（它进的是底层观测），
         与关节残差（加在底层输出之后）方向相反 —— 见 `docs/towing/towing_upper_two_head_impl_2026-10-10.md`。
         """

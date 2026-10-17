@@ -24,7 +24,7 @@
         [--profile hill|rolling] [--out DIR] [--csv /tmp/seg.csv] [--min-cases 3]
 
 多给几个 run 时按 `--velocities` 的**速度档**分组（每个速度档一张表），因为它们必须用不同
-的 `--tow-duration` 才能都走到障碍段（0.5 m/s 要 ~20 s、1.5 m/s 只要 ~7 s，见 §速度与时长）。
+的 `--tow-duration` 才能都走到障碍段（0.5 m/s 要 ~20 s；按里程停车后不需要分速度档）。
 
 约定（与训练侧/测试台同源，不复制魔数）：
 
