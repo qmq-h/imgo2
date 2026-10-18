@@ -2512,7 +2512,11 @@ def parse_args(argv=None):
     parser.add_argument("--velocities", type=float, nargs="+", default=list(DEFAULT_VELOCITIES),
                         help="速度档（m/s，体系 x 指令）；按 slot = row + column 轮转分配")
     parser.add_argument("--cart-masses", type=float, nargs="+", default=list(DEFAULT_CART_MASSES),
-                        help="小车目标总质量档（kg，质量与惯量同比例缩放）；按 slot = row + column 轮转分配")
+                        help="小车**目标总质量**档（kg）。2026-10-17 新小车口径：车斗 0.8 + 4×0.05 轮固定，"
+                             "只改车斗正中的重物块 ⇒ base_link 的质量 / 绕 CoM 惯量 / CoM 高度一起重算"
+                             "（`assets/cart_mass.body_properties`，与训练侧同一套；**不是**整车等比缩放）。"
+                             "总重必须 > 1.0 kg（车斗+四轮）。> 20 kg 属训练域外，plan 与 experiment.json 会标出。"
+                             "按 slot = row + column 轮转分配")
     parser.add_argument("--ground-friction", type=float, default=FACTORY_FLOOR_FRICTION,
                         help="地面静/动摩擦系数（固定值；工厂地面常规 0.8，训练侧随机 0.4–1.2）")
     parser.add_argument("--wheel-damping", type=float, default=TRAINING_WHEEL_DAMPING,
