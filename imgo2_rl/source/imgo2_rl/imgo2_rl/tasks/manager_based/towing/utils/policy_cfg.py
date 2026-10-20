@@ -60,6 +60,12 @@ class LowLevelPolicyCfg:
     joint_mapping: tuple[int, ...]
     control_dt: float
     reset_settle_s: float
+    #: **冻结低层训练时的 vx 指令包络**（m/s）。与「任务包络」是两件事：任务包络是上层可以
+    #: 下的指令范围，训练包络是这条策略真正见过的范围；超出训练包络的指令会被低层当成分布外
+    #: 输入（2026-10-17 实测 PPO 在 ≥1.5 m/s 会退化成「站着不动」的不动点）。来源：
+    #: AMP = `locomotion/velocity/base_move/amp_env_cfg.py` 的 `ranges.lin_vel_x = (−1.0, 1.5)`；
+    #: PPO = `logs/rsl_rl/base_move_rough/<run>/params/env.yaml` 的 `(−1.5, 3.0)`。
+    vx_envelope_mps: tuple[float, float] = (-1.0, 1.5)
 
     # ------------------------------------------------------------------ 派生量
     @property
@@ -146,6 +152,8 @@ class LowLevelPolicyCfg:
             problems.append("control_dt 必须为正")
         if self.reset_settle_s < 0:
             problems.append("reset_settle_s 不能为负")
+        if len(self.vx_envelope_mps) != 2 or not self.vx_envelope_mps[0] < self.vx_envelope_mps[1]:
+            problems.append("vx_envelope_mps 必须是 (lo, hi) 且 lo < hi")
         if any(lo >= hi for lo, hi in zip(self.clip_actions_lower, self.clip_actions_upper)):
             problems.append("clip_actions_lower 必须逐项小于 upper")
         if any(scale <= 0 for scale in self.action_scale):
@@ -198,6 +206,8 @@ AMP_POLICY = LowLevelPolicyCfg(
     # reset 契约：策略在置位后需要先站定再接管。具体时长在 P4 仿真里确认，
     # 这里给一个显式的初值而不是隐式默认，避免「reset 后立刻按速度指令」。
     reset_settle_s=1.0,
+    # AMP 任务的 `ranges.lin_vel_x`（amp_env_cfg.py:146）
+    vx_envelope_mps=(-1.0, 1.5),
 )
 
 # --------------------------------------------------------------------- PPO
@@ -231,6 +241,9 @@ PPO_POLICY = LowLevelPolicyCfg(
     joint_mapping=tuple(range(12)),
     control_dt=0.02,
     reset_settle_s=1.0,
+    # PPO 的 `base_move_rough` run 是 `lin_vel_x (−1.5, 3.0)`，**比 AMP 宽**；旧代码把它写成
+    # AMP 的 (−1.0, 1.5)，于是拖曳侧一接 PPO 就只能到 1.5（2.0 被静默裁成 1.5）。
+    vx_envelope_mps=(-1.5, 3.0),
 )
 
 POLICIES = {policy.name: policy for policy in (AMP_POLICY, PPO_POLICY)}

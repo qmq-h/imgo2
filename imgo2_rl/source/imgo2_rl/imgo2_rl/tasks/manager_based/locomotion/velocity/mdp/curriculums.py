@@ -136,4 +136,3 @@ def lin_vel_cmd_levels(
             ).tolist()
 
     return torch.tensor(ranges.lin_vel_x[1], device=env.device)
-

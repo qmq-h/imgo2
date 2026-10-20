@@ -9,6 +9,26 @@ import math
 CMD_ACTION_DIM = 1
 
 
+def effective_vx_clip(task_range, policy_range):
+    """把「任务包络」裁进「冻结低层训练包络」，越界**直接报错**而不是静默放宽。
+
+    2026-10-17 的教训：拖曳侧原先把 `amp_vx_range` 硬编码成 AMP 的 (−1.0, 1.5)，换了 PPO 之后
+    仍用它当上限 ⇒ 2.0 m/s 的指令被静默裁成 1.5，跑出来「1.5 与 2.0 一模一样」其实是**同一个
+    输入**。包络必须按 `policy_name` 取（`policy_cfg.LowLevelPolicyCfg.vx_envelope_mps`），任务
+    包络只允许比它更窄。
+    """
+    task_lo, task_hi = (float(task_range[0]), float(task_range[1]))
+    policy_lo, policy_hi = (float(policy_range[0]), float(policy_range[1]))
+    if task_lo > task_hi or policy_lo > policy_hi:
+        raise ValueError(f"包络上下界颠倒：task={task_range}, policy={policy_range}")
+    if task_lo < policy_lo - 1e-9 or task_hi > policy_hi + 1e-9:
+        raise ValueError(
+            f"任务包络 {tuple(task_range)} 超出冻结低层的训练包络 {tuple(policy_range)}："
+            f"超出部分会被低层当成分布外输入（实测会退化成站着不动），"
+            f"请改 `amp_vx_range` 或换一条训练域更宽的冻结策略")
+    return (task_lo, task_hi)
+
+
 @dataclass(frozen=True)
 class UpperActionSpec:
     """双头动作：**1 维 vx 偏移** + **12 维归一化关节残差**。
@@ -128,7 +148,9 @@ class UpperActionSpec:
         两层限幅（顺序不能反）：
 
         1. 偏移先限在头权限 ``[offset_min, offset_max]``；
-        2. **和**再限在冻结 AMP 策略的训练包络 ``amp_vx_range``（−1.0, 1.5），超出即 OOD。
+        2. **和**再限在任务包络 ``amp_vx_range``（默认 −1.0…1.0）；它由
+           `effective_vx_clip` 校验必须落在冻结低层的训练包络内（AMP −1.0…1.5 /
+           PPO −1.5…3.0），越界在构造时直接报错。
 
         ``apply_offset=False`` 即出生段（`elapsed_s < tow_start_s`）：偏移不生效，返回值等于
         ``clamp(scripted_vx, ...)``；由于 `amp_vx_range` 覆盖脚本速度范围（0.5–1.0），
@@ -164,7 +186,8 @@ class UpperObservationSpec:
 
     2026-10-16：decoder 去掉显式质量预测（准则「只建模与四足机器人直接相关的量」，质量交给
     latent）⇒ explicit 6 → **5**、actor 80 → **79**、契约 v3 → **v4**。旧 checkpoint 必须被拒，
-    按仓库惯例新建 run。
+    按仓库惯例新建 run。2026-10-17 合并 CE Net 后契约再升 **v5**（显式 5 + 重建下一帧，
+    42 维重建掩码）；v2/v3/v4 checkpoint 一律失效。
 
     **防作弊红线**：奖励**只能**读 ``task_command``（脚本调度、到点归零），绝不能读
     ``loco_command``（含策略自己的偏移），否则策略只要把偏移开大就能自己给自己发目标。
@@ -226,14 +249,14 @@ class UpperObservationSpec:
 
 @dataclass(frozen=True)
 class DecoderSpec:
-    """GRU decoder targets used only during training（**5 维**，2026-10-16 契约 v4）。
+    """GRU decoder targets used only during training（**5 维**，2026-10-17 契约 v5）。
 
     准则（用户 2026-10-16）：「decoder 只建模与四足机器人直接相关的量，质量用 latent 假定」
     ⇒ 只留**机器人自身速度**（机体系 x/y）与**作用在机器人上的牵引力**（机体系 x/y/z），
     **不再显式预测小车质量**（质量是负载的属性；actor 通过 latent 间接使用它）。
 
-    - **牵引力 3 维**（2026-10-08 用户决定）：竖直分力不是小量——两挂点高差 0.17 m，绷紧时
-      方向向量 z 分量 = 0.17/L0，在 L0 = 0.4…0.8 m 上就是张力的 21–43%，且 Fz 在 0.16 m
+    - **牵引力 3 维**（2026-10-08 用户决定）：竖直分力不是小量——两挂点高差 Δz=0.22 m，绷紧时
+      方向向量 z 分量 = Δz/L0，在 L0 = 0.5…1.5 m 上就是张力的 15–44%，且 Fz 在 0.16 m
       挂点后臂上产生俯仰力矩。
     - **速度 2 维**：`root_lin_vel_b[:, 2]` 在 trot 步态下按步频大幅振荡，不是负载量，
       而上层也没有垂直控制通道。
@@ -249,7 +272,7 @@ class DecoderSpec:
         return sum(dim for _, dim in self.terms)
 
     # 2026-10-16：`mass_range` 字段随质量头一起删除——质量不再是 decoder 的目标，把工作域
-    # 留在 decoder spec 里会误导。工作域（质量 5–20 kg / 速度 0.5–1.0 m/s）的权威位置是
+    # 留在 decoder spec 里会误导。工作域（质量 5–30 kg / 速度 0.5–1.0 m/s）的权威位置是
     # `upper_env_cfg.UpperEventsCfg.reset_work_condition`（环境）与
     # `episode_geometry.SPEED_RANGE`（速度），测量台用 `TRAINING_MASS_RANGE_KG` 对齐。
     velocity_scale: tuple[float, float] = (1.0, 0.5)

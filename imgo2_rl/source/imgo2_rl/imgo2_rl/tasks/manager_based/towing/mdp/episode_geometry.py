@@ -25,6 +25,10 @@
 ② 契约升到 **v4**（帧 58 / explicit 5 / actor **79** / critic 73 / 动作 13，decoder 去掉显式
 质量）。`episode_timeout_s` 本身与这两项无关，只是被上面的数字驱动。
 
+**2026-10-18**：`reset_work_condition.mass_range` 上限 **20 → 30 kg**（用户要求）。本模块的
+`SPEED_RANGE` 与 timeout **不受质量影响**（timeout 只由最慢速度驱动），所以
+`episode_length_s = 24.232088 s` / `max_episode_length = 485` 步都**不变**。
+
 `POST_STOP_WINDOW_S` 是 STOP 之后的评分窗口，作为 `episode_timeout_s` 的 margin：
 timeout = settle + 到 STOP 点的坡面弧长 / 最小速度 + 窗口，所以**最慢速度下**
 STOP 之后仍有约 `POST_STOP_WINDOW_S` 秒的步供 post_stop 奖励作用（速度越快窗口越长）。

@@ -63,6 +63,9 @@ def metric_of(case: dict) -> dict:
     return {
         "code": m["verdict"]["code"],
         "reasons": list(m["verdict"]["reasons"]),
+        # 2026-10-19 任务口径（验收以此为准；旧 code 只作追溯）
+        "task_code": (m.get("task") or {}).get("code"),
+        "task_reasons": list((m.get("task") or {}).get("reasons") or []),
         "fell": bool(m["stability"]["fell"]),
         "fall_phase": m["stability"].get("fell_phase"),
         "min_base_z": m["stability"].get("min_robot_surface_height_m"),
@@ -337,6 +340,11 @@ def code_summary(codes: Counter, n: int) -> str:
     for code in CODE_ORDER:
         if codes.get(code):
             parts.append(f"{code} {codes[code]}（{100.0 * codes[code] / max(n, 1):.0f}%）")
+    # 2026-10-19 任务口径的码不在旧 CODE_ORDER 里（PASS/SPEED_UNSTABLE/JOINT_ERROR/...），
+    # 单独补在后面；否则任务行会错误显示「（无）」。
+    for code, count in codes.most_common():
+        if code not in CODE_ORDER and count:
+            parts.append(f"{code} {count}（{100.0 * count / max(n, 1):.0f}%）")
     return "，".join(parts) if parts else "（无）"
 
 
@@ -500,12 +508,22 @@ def main(argv=None) -> int:
     n = len(records)
     codes = Counter(r["code"] for r in records)
     reasons = Counter(reason for r in records for reason in r["reasons"])
+    task_codes = Counter(r["task_code"] for r in records if r.get("task_code"))
+    task_reasons = Counter(reason for r in records for reason in r.get("task_reasons") or [])
     falls = sum(1 for r in records if r["fell"])
 
     print(f"# {run}")
     print(f"- 状态：{experiment.get('state')}；已判读 **{n}/{expected or '?'}** 个 case"
           f"{'（run 还没跑完）' if expected and n < expected else ''}")
-    print(f"- 判定码：{code_summary(codes, n)}")
+    print(f"- 判定码：{code_summary(codes, n)}（旧口径，仅追溯）")
+    if task_codes:
+        print(f"- **任务口径（2026-10-19，验收以此为准）**：{code_summary(task_codes, n)}")
+        if task_reasons:
+            print(f"- 任务失败原因（可叠加）：" + "，".join(
+                f"{k} {v}" for k, v in task_reasons.most_common()))
+    else:
+        print("- 任务口径：本 run 没有 `metrics.task` 字段（旧版本产物）；"
+              "用 `towing_task_criteria.py <report.json>` 复判")
     print(f"- 跌倒（base 高 < 0.15 m 或 |pitch| > 0.8 rad 占比超限）：**{falls}** 个"
           + (f"；相位分布 {dict(Counter(r['fall_phase'] for r in records if r['fell']))}" if falls else ""))
     print(f"- 失败原因（可叠加）：" + "，".join(f"{k} {v}" for k, v in reasons.most_common()))

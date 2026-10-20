@@ -42,7 +42,37 @@
    （导出发生在回放循环之前，`timeout 90` 兜住不退出的循环即可）。
 4. 测试台一律写 `--policy ppo --policy-checkpoint <导出的 policy.pt>`；不要传 `model_*.pt`。
 
-## 4. 待验证
+## 4. 训练侧用法（2026-10-18 接线）
+
+训练入口新增 `--policy amp|ppo` 与 `--policy_checkpoint`（默认仍 AMP，不传参数时行为不变）。
+用 2500 导出件训练上层：
+
+```bash
+# 1) 导出 2500 并拷到独立路径（exported/ 每个 run 只有一份，重导会覆盖）
+timeout 120 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/ppo/play.py \
+    --task=Imgo2-basemove-rough-ppo --num_envs 16 --headless \
+    --checkpoint=logs/rsl_rl/base_move_rough/2026-10-17_19-11-01_cart_v2_curriculum/model_2500.pt || true
+mkdir -p logs/towing_rl_lab/policies/ppo_2500
+cp logs/rsl_rl/base_move_rough/2026-10-17_19-11-01_cart_v2_curriculum/exported/policy.pt \
+   logs/towing_rl_lab/policies/ppo_2500/policy.pt
+
+# 2) 训练（先 60 环境 × 10 轮冒烟，再跑正式）
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
+    --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
+    --num_envs 60 --max_iterations 10 --headless --compact-log \
+    --policy=ppo --policy_checkpoint=logs/towing_rl_lab/policies/ppo_2500/policy.pt \
+    --run_name=smoke_ppo2500
+```
+
+注意：
+
+- `--policy_checkpoint` 只接受 `play.py` 导出的 TorchScript，不能直接传 `model_2500.pt`；
+- 启动行必须是 `[towing] frozen low-level: ppo -> .../ppo_2500/policy.pt`；只给
+  `--policy=ppo` 会退回部署目录里的旧参考权重（脚本会打 WARNING），不是 2500；
+- 正式训练（默认 1200 环境 × 3000 轮）与完整命令见根 README 的
+  「冻结低层换成 PPO@2500」一节。
+
+## 5. 待验证
 
 - **towing 口径的实跑**：平坦（`--columns 0-19 --stop-progress 4.5`）先把 0.5/1.0 的跟速比测出来，
   与归档 PPO@4000 的 0.058/0.905、0.196/0.804 对照（那版 4000 已崩，只作历史参照）。

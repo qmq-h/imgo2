@@ -1,5 +1,14 @@
 # 拖曳「上层任务必要性」基线测试台（2026-10-09）
 
+> **2026-10-19 验收口径变更（重要）**：用户把问题收束为「拉小车速度跟随稳定性 / 启停只看冲击 /
+> 拉重车不翻车」，随后明确「**横向保持和关节静差也还是要作为失败**」。
+> `play_towing_test.py` 的 `report.md`/`report.json` 现在以**任务口径**
+> （`PASS / SPEED_UNSTABLE / JOINT_ERROR / LANE_DEVIATION / IMPACT_HIGH / FALL /
+> INVALID / NA`）为验收结论；本文写的「五项指标 + OK/SPD/COL/LOW/LAT/JNT」保留为
+> **观测/追溯**，旧 `verdict` 不再作为验收。**横向保持（`LAT`）与关节静差（`JNT`）
+> 仍是任务失败项**；只有停车接触/间隙、停车后往前走改为只作诊断。新口径的定义、代码落点、
+> 阈值与限制见 [验收口径收束记录](towing_eval_criteria_2026-10-19.md)。
+>
 > **2026-10-16 变更（混合网格：减速带 + 波浪）**：训练网格已变为 **60 列 × 20 行 = 1200 环境** —— 在原 40 列后追加了 10 列**减速带块**（列 40–49，一条 300/100/50 mm 等腰梯形凸条）与 10 列**波浪块**（列 50–59，3 周期正弦、振幅 10 cm，占与平坡相同的 2.25–9.0 m 窗口）。本文里的「40 列 × 20 行 = 800 / `GRID_SIZE` = 800 / 默认 `--num-envs 800`」等写法是变更前的事实；当前默认环境数是 **1200**（timeout 485 步，`STOP_DISTANCE_M = 9.5`）、`--terrain-profile` 只有 `hill|rolling`。详见 [混合地形记录](towing_mixed_terrain_2026-10-16.md)。
 
 ## 目的
@@ -79,7 +88,11 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 - **每个 cell 仍然只落到一种 (速度, 质量) 组合**（800 env = 800 cell）⇒ 判读要按分档聚合，
   不能当逐 cell 的完整响应面。
 
-## 五项指标的定义
+## 五项指标的定义（**旧口径，2026-10-19 起只作观测/追溯**）
+
+> 验收已改为「小车速度稳定性 / 启停冲击 / 重车不翻车」任务口径，见
+> [验收口径收束记录](towing_eval_criteria_2026-10-19.md)。下表与下面的判定码保留，
+> 用来读旧归档、做诊断；**不要再拿 `COL/LOW/LAT/JNT` 当验收结论**。
 
 | 指标 | summary 字段 | 定义（口径写进产物，不做口头约定） |
 |---|---|---|
@@ -91,7 +104,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 
 | 横向/朝向保持（`--lane-keeping pd` 时） | `metrics.lane.y_rms_m` / `y_max_abs_m` / `heading_rms_rad` / `heading_max_abs_rad` / `vy_saturated_frac` / `wz_saturated_frac` / `tow_y_*` | lane 系横向偏移（目标 0 = 中线）与朝向误差（目标 0 = 超前），全回合与牵引段各一份；再报 PD 指令是否顶到限幅 |
 
-判定码（阈值可用 CLI 覆盖，全部进产物）：`OK` / `LOW` 停车余量低 / `LAT` 横向或朝向保持超限 /
+旧判定码（阈值可用 CLI 覆盖，全部进产物；**2026-10-19 起只作追溯**）：`OK` / `LOW` 停车余量低 / `LAT` 横向或朝向保持超限 /
 `JNT` 关节响应超限 / `SPD` 跟速超限 / `COL` 追尾接触 / `FALL` 跌倒 / `INV` 记录不可用；
 一个 env 可命中多条，`code` 取最严重的一条，`reasons` 保留全部。
 

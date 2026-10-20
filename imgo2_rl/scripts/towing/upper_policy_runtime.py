@@ -16,7 +16,7 @@
 2. **decoder**：`TowingDynamicsDecoder(frame_dim=58, feature_dim=128, hidden_dim=128,
    num_layers=1, latent_dim=16, force_scale=10.0)`，用 `forward_with_latent(frame, hidden)`
    且**必须 `.eval()`**（`sample=None` 会取 `self.training=False` ⇒ latent 取均值，与训练
-   rollout 一致）⇒ 返回 `(estimate(5), latent(16), hidden)`（契约 v4 起 explicit=5，
+   rollout 一致）⇒ 返回 `(estimate(5), latent(16), hidden)`（v4 起 explicit=5、v5 起为 CE Net，
    不再含质量）。
 3. **actor**：`ActorCriticRecurrent`（hidden `[256,128,64]`、GRU 256×1、elu），输入 =
    `cat(frame, estimate, latent)` = **79** 维（`towing_decoder.augment_actor_observation`）。
@@ -99,8 +99,8 @@ COMMAND_OFFSET_MAX = 0.6
 #: 偏移为 0 时是恒等裁剪（退化性）。与 `HierarchicalVelocityActionCfg.amp_vx_range` 同值。
 AMP_VX_MIN = -1.0
 AMP_VX_MAX = 1.0
-#: checkpoint 契约版本：**v4**（frame 58 / explicit **5** / latent 16；2026-10-16 去掉
-#: decoder 显式质量）。v3（explicit 6）、v2（57/79）与更早的都必须被拒。
+#: checkpoint 契约版本：**v5**（frame 58 / explicit **5** / latent 16；2026-10-17 CE Net
+#: 重建下一帧）。v4（58/5/16 但无重建）、v3（explicit 6）、v2（57/79）与更早的都必须被拒。
 CHECKPOINT_CONTRACT_VERSION = 5
 
 #: critic 观测维数（actor 里附带 critic 网络，`load_state_dict(strict=True)` 需要它）。
@@ -304,7 +304,7 @@ def validate_towing_contract(contract: Any, spec: UpperNetworkSpec) -> dict:
             f"**v3 的 explicit 6 / actor 80 checkpoint 已随 2026-10-16 的『decoder 去质量』"
             f"（explicit 6 → 5、actor 80 → 79）失效**；旧 v2 的 57 维帧 / 79 维 actor / 12 维动作"
             f"（双头迁移前）与更早的 51/56/63 维 checkpoint 同样不兼容；"
-            f"必须用 v4 契约重训（不要用改元数据的方式绕过）")
+            f"必须用 v5 契约重训（不要用改元数据的方式绕过）")
     return expected
 
 

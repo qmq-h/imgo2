@@ -103,3 +103,28 @@ mass / 绕 CoM 惯量 / CoM 高度，四个轮子保持 URDF 名义值；写后�
 
 **未验证**：本机无 Isaac Lab / CUDA ⇒ 三个工具的实跑（`tow_drag` 的质量/惯量/CoM 写入是否被
 PhysX 接受、多 case 质量扫描的读数）与 §2 的全部标定都待训练机。
+
+## 5. 2026-10-18 P3 清理（已完成）
+
+用户「3 操作一下，其他不重要」⇒ 按 §3 逐条落地，**只动文字/注释与部署目录说明，不改逻辑**：
+
+| # | 改动 | 位置 |
+|---|---|---|
+| 1 | Δz 0.17 → **0.22**；`min_clearance` 阈值重算为 **0.3166–1.1622 m**（= 0.633–0.775·L；0.941×/0.983× 出生间隙）；杆行 Δz* **0.2568/0.2950 m**，余量 **3.68/7.50 cm**（原 4.75/9.06 cm） | `upper_logic.py`（Fz 占比 15–44%）、`upper_mdp.py`（推导/阈值表/Δz*）、`upper_env_cfg.py`（注册注释）、`connection_grid.py`（出生间隙示例 206/429 mm @L=0.6） |
+| 2 | 包络注释由「裁进 AMP (−1.0,1.5)」改为「裁进**任务包络** (−1.0,1.0)；它必须落在冻结低层训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0），`effective_vx_clip` 越界报错」 | `upper_mdp.py`（模块/`process_actions`/cfg 字段）、`upper_env_cfg.py`（`__post_init__` 注释）、`upper_logic.py`（`loco_command_vx`） |
+| 3 | 出生间距 **0.3366/0.4515 m**、func **0.063/0.0065**、每步 **−0.0315/−0.0033**、`min_clearance` 表阈值 **0.3166**（0.10 m ⇒ −0.054、0 ⇒ −0.079）；同日同步 `towing_reward_retune_2026-10-10.md` §2.4/§2.5 的新几何数字 | [奖励权重记录](towing_reward_weights_2026-10-17.md)、[阈值推导记录](towing_reward_retune_2026-10-10.md) |
+| 4 | 速度域 0.5–1.5 → **0.5–1.0**（docstring/常量/`--velocities` 说明 3 处）；`tow_drag` 的旧 `b=0.016` 与滑行示例改为新小车（默认 0.0045、20 kg 约 0.50 m、出生间隙约 0.60 m） | `play_towing_test.py`、`tow_drag.py` |
+| 5 | `upper_env_cfg.py` 模块 docstring 按 **v5/CE Net** 补回（58/5/16/79/73/13 + 42 维重建掩码；双头架构/防作弊红线保留） | `upper_env_cfg.py` |
+| 6 | 部署目录新增 [README](../../imgo2_deploy/policy/imgo2/towing/README.md)：`policy.pt` 是旧契约训练态 checkpoint、v5 拒载、towing `play.py` 尚无导出分支、不要接线；**二进制保留**（历史权重） | `imgo2_deploy/policy/imgo2/towing/` |
+
+**同时纠正一条旧结论**：§3 原文与 `upper_mdp` 都写「停车段天然生效」。按新几何重算后：
+
+- 长绳行（L≥1.0）停车间隙 ≈0.64–0.70·L 低于阈值（0.752–0.775·L）⇒ **会触发**；
+- 最短绳行 L=0.5 的停车间隙 ≈0.32 m 与阈值 0.3166 m 只差约 **3.4 mm** ⇒ **是否触发必须实测**，
+  不能假定；已把 docstring 改成「待 TOW-CAL-01 #1 在训练机读 `Episode_Reward/min_clearance`」。
+
+**验证**：`pytest imgo2_rl/tests -q` ⇒ **683 passed, 4 skipped, 1336 subtests passed**；
+`py_compile` 改动文件通过；grep `0.3446|1.1704|0\.17 m|(-1\.0, 1\.5)` 在 towing 源码/脚本无命中
+（`policy_cfg.py` 的 AMP 训练包络除外）。**未验证**：P2 四项（`min_clearance` 停车段、
+`clearance −10` 量级、`towing_force_rate` 200/600、rolling 下坡 mask）仍需训练机
+64 env × ~20 轮冒烟；见 §2 与 TOW-CAL-01。

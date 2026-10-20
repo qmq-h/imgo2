@@ -425,12 +425,12 @@ class RewardCfgContractTests(unittest.TestCase):
             self.assertEqual(offenders, [], f"{name} 不得读 loco_command")
 
     def test_existing_stop_and_clearance_terms_are_untouched(self):
-        """用户明确要求：不动 `stop_towing_force`（−1.0）与 `min_clearance`（−5.0 / deadband_m 0.02）。"""
+        """`stop_towing_force` 保持 −1.0；`min_clearance` 按 2026-10-19 用户要求置 0.0（params 不变）。"""
         stop = _reward_term(self.rewards, "stop_towing_force")
         self.assertEqual((stop["func"], stop["weight"]), ("post_stop_towing_force", -1.0))
         clearance = _reward_term(self.rewards, "min_clearance")
         self.assertEqual((clearance["func"], clearance["weight"]),
-                         ("min_clearance_violation", -5.0))
+                         ("min_clearance_violation", 0.0))
         self.assertEqual(clearance["params"], {"deadband_m": 0.02, "softness": 0.02})
         self.assertNotIn("extra_distance = RewTerm", CFG_SOURCE)
 

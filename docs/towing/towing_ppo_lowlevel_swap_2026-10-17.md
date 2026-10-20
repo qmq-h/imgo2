@@ -284,3 +284,132 @@ inextensible 25 kg@1.0，末速 0.05–0.36 m/s）——机器人停在出口平
 **停车之后**（coast）：0.5 档的 10 kg compliant 组**接触持续 209–213/240 行（87%）**，但机器人残余
 速度只有 0.038–0.066 m/s（最终 ≈0.000–0.004）⇒ 小车**一直顶在机器人后面轻推**，机器人缓慢挪动
 而不是被撞飞；1.0 档 20 kg 组只在 coast 开头碰 5–12 行就分开（|vx| 0.04）。
+
+## 11. 「PPO 只接受 1.5 以内的速度」——不是策略，是拖曳侧的包络（2026-10-17）
+
+### 11.1 训练侧参数（`logs/rsl_rl/base_move_rough/2026-10-16_21-26-48/params/env.yaml`）
+
+| 项 | 值 | 结论 |
+|---|---|---|
+| `commands.base_velocity.ranges.lin_vel_x` | **(−1.5, 3.0)** | 训练**见过** 3.0，不是 1.5 上限 |
+| `ranges.lin_vel_y` / `ang_vel_z` | ±1.5 / ±1.5 | — |
+| `heading_command` / `rel_standing_envs` | true / 0.02 | 2% 站立环境 |
+| `observations.policy.velocity_commands` | clip **(−100, 100)**、scale 1.0 | **指令没有被裁** |
+| `observations.policy.base_lin_vel` | **null** | 策略**看不到自己的线速度**（结构缺陷） |
+| `clip_actions`（agent.yaml） | **3** | 等于不裁（动作再乘 0.125/0.25/0.25） |
+| `max_iterations` / 实际 | 10000 / **4000** | 训练只跑了 40% |
+
+⇒ 训练参数里**没有** 1.5 的裁剪；「≤1.5」来自别处。
+
+### 11.2 先排除「被裁/被清零」：命令是原样送进去的
+
+逐行读 `ppo_flat_d2` 的 CSV（脚本基线，**没有**上层网络 ⇒ 不走 `compose_loco_vx_offset` 的包络裁剪）：
+
+| 档 | 记录里的 `loco_cmd_vx_mps` | vx 中位 | 10 s 位移 | \|τ\| 中位 | 基底 z 中位 |
+|---|---|---|---|---|
+| 1.0 | **1.0** | +0.910 | **+4.46 m** | 2.76 N·m | — |
+| 1.5 | **1.5** | +0.001 | **+0.00 m** | 2.46 N·m | 0.258 m |
+| 2.0 | **2.0** | +0.001 | **+0.01 m** | 2.33 N·m | — |
+
+⇒ **命令没有被清零、也没有被裁**（1.5 / 2.0 是逐位的原值）。同时机器人**不是瘫着**：1.5 档的
+大腿目标在 0.761–0.959 rad 之间摆动（默认 0.87）、|τ| 2.46 N·m、vx 以 ±0.03 振荡、基底压在
+0.258 m —— 这是**原地踏步**（in-place gait / 极限环），不是静态站立、更不是输入被置 0。
+
+### 11.3 真正的原因：跟踪奖励在 err ≳ 0.75 m/s 之后没有梯度
+
+训练用的是 `track_lin_vel_xy_exp`（`std=0.5`、权重 1.5，见 run 的 `params/env.yaml`）：
+
+| 跟踪误差 | 奖励 | ×权重 1.5 |
+|---|---|---|
+| 0.20 m/s | 0.852 | **1.278** |
+| 0.50 | 0.368 | 0.552 |
+| 0.75 | 0.105 | 0.158 |
+| 1.00 | 0.018 | 0.027 |
+| **1.50** | **0.0001** | **0.0002** |
+| 2.00 | 0.0000 | 0.0000 |
+
+也就是说：**在 1.5 m/s 上「不动」和「努力跑」的奖励差只有 0.0002** —— 策略把腿用来最大化其余各项
+（直立、高度、腾空时间、动作平滑）反而更划算，于是收敛到「原地踏步」。这解释了为什么阈值看起来
+像 1.0–1.5：0.75 m/s 之后梯度就掉到噪声量级。
+
+再叠加两个训练侧因素：`base_lin_vel` **不在观测里**（策略感觉不到自己没在走）、只训了
+**4000/10000** 轮。离线探针也一致：`policy.pt` 在 cmd 1.5/2.0 输出 \|action\| 1.0/0.89（网络没死，
+是闭环里的踏步不动点）。
+
+**要真的打开 1.5–2.0**：把跟踪奖励换成非饱和形式（线性 `−|err|` 或 `std≈1.0`）、把 `base_lin_vel`
+加回观测、并训满 10000 轮 —— 这是重训低层，不是拖曳侧的接口问题。
+
+### 11.4 已修：包络按策略区分，越界报错
+
+- `policy_cfg.LowLevelPolicyCfg.vx_envelope_mps`：AMP **(−1.0, 1.5)**、PPO **(−1.5, 3.0)**
+  （分别注明来源 run / 配置文件）；
+- `upper_logic.effective_vx_clip(task_range, policy_range)`：任务包络必须落在训练包络内，
+  **越界直接 `ValueError`**，不再静默 clamp；
+- `upper_mdp` 的 `__init__` 里算出 `self._vx_clip` 并用于裁剪；
+- 测试 `VxEnvelopeTests` 4 项（两个包络的值、包络求交、越界报错、默认任务包络在两套策略内），
+  并更新了「裁剪顺序」的源码级断言；全量 **676 passed**。
+
+### 11.5 如果要真的测 PPO 的上限
+
+临时把 `amp_vx_range` 放到 (−1.5, 3.0)（现在会通过 PPO 的包络校验；用 AMP 会直接报错，因为
+AMP 只见过 1.5），再用测试台跑 1.5 / 2.0。但要注意：当前任务是 **0.5–1.0 m/s** 的域（§7），
+这两档属于域外外推，只能当能力探针，不能当基线。
+
+## 12. 速度课程：把仓库里「一直存在但被关掉」的那个重新打开（2026-10-17）
+
+**先纠正一个过程错误**：第一版实现里我自造了一套 `velocity_range_curriculum` + 固定
+`steps_per_stage=4000` 的「按步数升级」。那是多余的——仓库本来就有课程：
+
+- `locomotion/velocity/mdp/curriculums.py` 里的 **`command_levels_lin_vel` /
+  `command_levels_ang_vel`**（upstream Isaac Lab 的实现，另有 himloco 用的
+  `lin_vel_cmd_levels`）；
+- 它们**一直在**，只是 `base_move/rough_env_cfg.py` 的 `__post_init__` 里被
+  `self.curriculum.command_levels_lin_vel = None` 关掉了（旁边还留着注释掉的
+  `range_multiplier = (0.2, 1.0)`）。
+
+所以本轮的正确做法是**重新启用它们**，参数就是那行注释里的值：
+
+```python
+# base_move/rough_env_cfg.py（__post_init__）
+self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
+self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
+```
+
+### 12.1 它实际怎么工作（读源码）
+
+1. **首步**（`common_step_counter == 0`）把静态域记进 `env._original_vel_*`，并把范围设成
+   `range_multiplier[0] × 静态域`：`lin_vel_x (−1.5, 3.0) × 0.2 ⇒ (−0.3, 0.6)`、
+   `lin_vel_y ±0.3`、`ang_vel_z ±0.3`；
+2. **每个 episode 边界**（`common_step_counter % max_episode_length == 0`）检查
+   `episode_sums[track_*] / max_episode_length_s`，**超过 `0.8 × weight`** 才把四条边界各
+   **±0.1** 地放大一次；
+3. 放大结果用 `range_multiplier[1]`（=1.0）× 静态域夹住 ⇒ 最终停在 `(−1.5, 3.0)` / `±1.5`。
+
+即：**自适应（看跟踪奖励）**、**慢速渐进（每次 0.1）**、**到顶即停**。比固定步数合理得多：
+按步数推进会在策略还没学会当前档时就继续放大，等于把「没有梯度」的问题复制到每一档。
+
+### 12.2 与 §11 的关系
+
+- 起点 `(−0.3, 0.6)` 完全落在「有梯度」的区间（err ≤ 0.6 → 奖励 ≥ 0.24、梯度 ≥ −1.1）；
+- 只有当策略在该档真的把跟速做好了（奖励 > 1.2/1.5 = 80%），范围才扩大 0.1；
+- 于是高速档是一步步「喂」出来的，而不是一次性丢给它。
+
+### 12.3 怎么用
+
+无需额外开关，`Imgo2-basemove-rough-ppo` 的 cfg 已启用；训练命令不变：
+
+```bash
+bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/ppo/train.py \
+    --task=Imgo2-basemove-rough-ppo --num_envs 4096 --headless
+```
+
+TensorBoard 里 `Curriculum/command_levels_lin_vel` 记录当前上界（课程项返回它）；
+`params/env.yaml` 会带上 `range_multiplier`，事后能确认这一轮用的哪套。
+
+### 12.4 限制
+
+- 课程只放大**采样范围**，不改奖励形状；若 `std=0.5` 的核在 1.5 m/s 以上仍然没有梯度，
+  最后几档仍可能学不上去（那时要同时改奖励，见 §11.3）。
+- 本机没有 CUDA，**没有实跑**：离线只验证了课程函数本身的行为（起点 = 0.2×静态域、
+  边界+达标才 ±0.1、低奖励不动、到顶夹住、lin/ang 两个课程互不干扰）与 cfg 已启用的守卫
+  （`imgo2_rl/tests/test_velocity_curriculum.py`，7 项）。

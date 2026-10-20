@@ -1,11 +1,16 @@
 """Class-based configuration for the hierarchical towing RL environment.
 
-架构（2026-10-10 起，**双头**）：送给冻结 AMP 底层策略的速度指令 = 脚本调度 + 上层
+架构（2026-10-10 起，**双头**）：送给冻结低层策略的速度指令 = 脚本调度 + 上层
 **1 维 vx 偏移**（``loco_command``）；上层网络另有 **12 维关节位置残差**叠加在冻结策略的
 关节目标上。两个命令量**解耦**（防作弊红线）：
 
     task_command —— 脚本调度、到点归零 —— **只给奖励**（`tracking_velocity` 等）；
     loco_command —— task_command + 有界偏移 —— **给冻结策略 + 进 actor 帧**。
+
+偏移先被限在头权限 `[offset_min, offset_max]`，再与脚本 vx 相加后裁进**任务包络**
+`amp_vx_range`（默认 −1.0…1.0）。任务包络必须落在冻结低层的**训练包络**内
+（AMP (−1.0, 1.5) / PPO (−1.5, 3.0)，见 `utils/policy_cfg.py`），由
+`upper_logic.effective_vx_clip` 在构造时校验——越界直接报错，不静默放宽。
 
 回合结构（2026-10-09 恢复三段制）：settle（指令 0，静止稳定）→ tow（指令 = tow_speed）
 → **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
@@ -13,9 +18,12 @@
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 
-契约 v4（2026-10-16）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、explicit **5**
-（机器人速度 2 + 牵引力 3，**去掉显式质量预测**）、latent **16**、actor **79**、critic **73**、
-decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
+契约 v5（2026-10-17，CE Net）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、
+explicit **5**（机器人速度 2 + 牵引力 3，**去掉显式质量预测**）、latent **16**、
+actor **79**、critic **73**、decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
+decoder 走 CE Net（并列显式头 + latent → 重建下一帧），重建目标按
+`UpperObservationSpec.reconstruction_mask()` 取 **42 维**（排除策略下一拍自决的
+`loco_command` 3 + `last_action` 13）。
 """
 
 from dataclasses import MISSING
@@ -177,7 +185,7 @@ class UpperObservationsCfg:
 
     @configclass
     class DecoderCfg(ObsGroup):
-        #: 回归目标（**5 维**：机器人速度 2 + 牵引力 3，契约 v4 起不含质量）。
+        #: 回归目标（**5 维**：机器人速度 2 + 牵引力 3，契约 v4 起不含质量，现 v5）。
         targets = ObsTerm(func=mdp.decoder_targets)
 
         def __post_init__(self):
@@ -224,6 +232,13 @@ class UpperRewardsCfg:
     x ∈ (6.0, 9.0] m，仅平滑列）按 `downhill_scale=0.2` 缩放到有效 **−1.0**，
     其他路段不变。相位掩码见 `mdp.downhill_segment`，记录见
     docs/towing/towing_reward_weights_2026-10-17.md。
+
+    **2026-10-19 用户要求（随验收口径收束）**：`clearance` 与 `min_clearance` 权重
+    **−10.0 / −5.0 → 0.0**（新口径下停车接触/间隙不是失败判据，这两项会驱动“停车后往前走”）；
+    `collision` **全域 −5.0 → −1.0**（不再按坡度缩放，只保留安全底线）。
+    **没有新增奖励项**；`tracking_velocity`、`action_rate`、`feet_slide`、`low_level_pos_error`、
+    `towing_force_y`、`towing_force_rate`、`stop_towing_force`、`fall` 全部保持原值。
+    记录见 docs/towing/towing_reward_2026-10-19.md。
     """
 
     # ============================ 跟踪（任务主目标）============================
@@ -245,57 +260,39 @@ class UpperRewardsCfg:
 
     # ============================ 终止级（稀疏、致命）============================
 
-    # 【撞车】车斗／四轮与机器人任一刚体的过滤接触力 > 1 N 时置 1，同时是终止条件。
-    # 权重虽大（−50 ⇒ 每步 −2.5），但只在真撞上时才给，属稀疏信号。
-    # 背景：修复 filter 通配前该判据恒假（碰撞完全不生效），详见 docs/towing/towing_observability_2026-09-22.md。
-    # 【碰撞】小车（车斗/四轮）与机器人 17 个 link 的接触力 > 1 N 即触发（判据见 `update_safety_state`）。
-    # 2026-10-09 用户要求：**不再作为终止条件**，只保留惩罚，且幅度调小。
-    # 标定逻辑：以前 −50 是"一次性"的（触发即终止、回合重置），每步 −2.5 只作用一步；
-    # 现在碰撞可以持续整个回合 ⇒ 它是**持续惩罚**，必须小一个量级：
-    # 每步 r = −5.0×0.05 = −0.25，约为 `tracking_velocity` 满额（+0.05/步）的 5 倍；
-    # 顶住 1 s（20 步）约 −5，与一个回合的正奖励（≈+6）同量级 ⇒ 有动机脱离但不至于
-    # 让早期学习被"一碰就废"支配。若日志里该项长期压过跟踪项再下调。
-    # **2026-10-17 用户要求：只在下坡段把碰撞惩罚降到 −1.0，其他路段不变（仍 −5.0）。**
-    # 实现：`mdp.cart_collision_cost(env, downhill_scale=…)` 在 `mdp.downhill_segment(env)`
-    # 为真的 env 上把 0/1 代价乘 `downhill_scale` ⇒ `−5.0 × 0.2 = **−1.0**`
-    # （下坡每步 −0.05 = `tracking_velocity` 满额的 1 倍；其他路段仍是 −0.25）。
-    # 为什么缩放 func 而不是再注册一条 RewTerm：这样 `Episode_Reward/collision` 仍是**一条**
-    # 曲线（与既有 run 的读数口径不变）；拆成两条会让同一语义在 TB/`--compact-log` 里分裂，
-    # 且历史对照全部作废。相位由 mask 承担，权重仍是字面的 −5.0（契约测试钉住这一行）。
-    # 「下坡段」的判定（用户 2026-10-17 选的"只算坡面剖面的下坡段"）：`slope_geometry` 的
-    # lane 局部 x ∈ (`DOWN_START_M`=6.0, `FLAT_OUT_START_M`=9.0] m，**只对平滑列生效**；
-    # 减速带列（`terrain_speedbump`）与波浪列（`terrain_wave`）恒不生效、全程 −5.0。
-    # ⚠ rolling 档（`Imgo2-towing-upper-rolling-rl-lab`）在同一个 x 窗口里**不是纯下坡**
-    # （`rolling_geometry` 的 4 座 raised-cosine 山在 5.75–7.0 与 7.0–9.0 各含一个上坡半周期）
-    # ⇒ 该档下这条 mask ≠ "真的在下坡"；要按真实坡度判定需改成局部坡度符号。见
-    # docs/towing/towing_reward_weights_2026-10-17.md 与 README TOW-REW-01。
-    collision = RewTerm(func=mdp.cart_collision_cost, weight=-5.0,
-                        params={"downhill_scale": 0.2})
+    # 【碰撞】小车（车斗/四轮）与机器人 17 个 link 的接触力 > 1 N 即触发（判据见
+    # `update_safety_state`）。**不再是终止条件**（2026-10-09），只保留持续惩罚。
+    # **2026-10-19 用户要求：全域降到 −1.0（不再按坡度缩放）**。每步
+    # r = −1.0 × 0.05 = **−0.05**，约等于 `tracking_velocity` 满额（+0.05/步）的 1 倍；
+    # 目的只是保留安全底线，不再把「避免停车追尾」当成主目标（新口径下接触本身不算失败，
+    # 停车撞击只看 `impact.stop_contact` 的冲击量）。
+    # 函数 `mdp.cart_collision_cost(env, downhill_scale=1.0)` 仍保留 `downhill_scale`
+    # 形参供诊断/复用；配置**不传**该参数，因此默认 1.0 ⇒ 全域同权。
+    collision = RewTerm(func=mdp.cart_collision_cost, weight=-1.0)
 
-    # 【跌倒】base 高度 < 0.18 m 时置 1，同时是终止条件。实测从未触发。
+    # 【跌倒】离局部地面高度 < 0.18 m，**或** |pitch|/|roll| > 0.8 rad 时置 1，
+    # 同时是终止条件（2026-10-19 用户要求把 pitch/roll 也算上）。
+    # 0.8 rad 对当前最陡的 26.565° 减速带侧坡仍有 0.336 rad 余量；波浪 15.6° 更远。
     fall = RewTerm(func=mdp.robot_fall_cost, weight=-50.0,
-                   params={"minimum_height": 0.18})
+                   params={"minimum_height": 0.18,
+                           "pitch_limit_rad": 0.8, "roll_limit_rad": 0.8})
 
     # ============================ 几何／安全约束 ============================
 
     # 【软间隙障碍】softplus((0.20 − 间隙)/0.05)，间隙趋向 0 时加大。
     # 0.20 m 是**绝对**警戒线，线性区在警戒线**下方**。
     # 无小车环境用 cart_present 屏蔽。
-    # **2026-10-17 用户要求：权重 −1.0 → −10.0**。`RewardManager` 每步 = weight × func × 0.05 s
-    # （旧注释把"函数值 0.693/4.02"写成了"每步 −0.69/−0.2"，这里按每步重列）：
-    #   间隙 0.20 m（func 0.693）⇒ 每步 **−0.347**（原 −0.035）
-    #   间隙 0.10 m（func 2.127）⇒ 每步 **−1.064**
-    #   间隙 0     （func 4.018）⇒ 每步 **−2.009**（原 −0.201）
-    # 出生时几乎不生效：训练侧 `rope_state` 间距在最短绳行（L=0.5）是 0.365 m ⇒ func 0.037
-    # ⇒ −0.019/步；最短杆行 0.473 m ⇒ func 0.004 ⇒ ≈0。所以提权不会在出生那一拍就扣分；
-    # 但**近距（间隙 < 0.18 m）它会压过 `min_clearance`（缺口 0.2 m 才 −0.05/步）与
-    # `tracking_velocity` 满额（+0.05/步）** —— 这是用户要的"贴近就重罚"取向，
-    # 实际工作点上的量级待训练机读数（README TOW-REW-01）。
-    clearance = RewTerm(func=mdp.clearance_barrier, weight=-10.0,
+    # **2026-10-19 用户要求：权重置 0**（旧值 −10.0）。理由：新验收口径下停车接触/间隙
+    # 不再是失败判据，这项的「贴近就重罚」梯度会把机器人往「停车后往前走几步」推。
+    # `RewardManager` 对 weight == 0.0 的项直接跳过 ⇒ 不产生 TensorBoard 曲线；
+    # 函数与 params 保留，便于以后恢复或离线诊断。
+    clearance = RewTerm(func=mdp.clearance_barrier, weight=0.0,
                         params={"warning_distance": 0.20, "scale": 0.05})
     # 【硬最小间距】间隙低于 `出生间隙 − deadband_m` 时**与缺口成正比**地惩罚，高于则**精确为 0**。
-    # 与上面 clearance 的分工：clearance 是"近了要缓"的软障碍；本项是"**不许比出生时更近**"的
-    # 硬约束，且按**出生几何**给出阈值（不是绝对警戒线、也不再是"连接长度的固定比例"）。
+    # **2026-10-19 用户要求：权重置 0**（旧值 −5.0）。理由同 `clearance`：新验收口径下
+    # 停车接触/间隙不再是失败判据，这项是「不许比出生时更近 / 停车后继续走几步」的主要梯度，
+    # 保留会继续把机器人往前推。`RewardManager` 对 weight == 0.0 跳过 ⇒ 无 TB 曲线；
+    # 函数与 params 保留，便于恢复/诊断。以下为 2026-10-10 的历史口径说明（已被本次置 0 覆盖）。
     # **2026-10-10 口径变更（用户批准，当天两次）**：`ratio=0.25 × 连接长度` →
     # `spawn_margin=0.85 × 出生间隙` → 当天再微调为**绝对死区** `出生间隙 − deadband_m`（默认 0.02 m）。
     # （出生间隙 = sqrt((spawn_ratio·L)² − Δz²) + base_offset，逐 env 由
@@ -306,15 +303,16 @@ class UpperRewardsCfg:
     # 有动机但不压倒；旧的 −2 只有 −0.02/步（满额的 40%），停车段太弱。
     # **为什么用绝对死区而不是相对余量**：①语义就是"不许比出生时更近"，`出生间隙 − 死区` 直接
     # 表达；②解析出生间隙与仿真实际间隙差几毫米（落地/穿透/沉降），2 cm 绝对值正好吸收，而相对
-    # 余量对长绳行会浪费几十厘米（L=1.5 时 0.15×1.1904 = 0.179 m）；③出生点在 lane 的**后向平段**
+    # 余量对长绳行会浪费几十厘米（L=1.5 时 0.15×1.1822 = 0.177 m）；③出生点在 lane 的**后向平段**
     # （剖面从 +2.25 m 才起坡）⇒ 出生/停车都在平地、无重力驱动 ⇒ 间隙只受机器人动作影响、
     # **没有被动的间隙漂移**，所以小死区就够（旧顾虑"坡上会溜车所以要大余量"不成立）。
-    # 语义：绳行阈值 0.3446–1.1704 m（= 0.689–0.780·L），牵引段绳绷直时间隙 > 出生间隙 不触发，
+    # 语义：绳行阈值 0.3166–1.1622 m（= 0.633–0.775·L），牵引段绳绷直时间隙 > 出生间隙 不触发，
     # 绳一松/车斗逼近穿过阈值才开始出力（＝"不许比出生时更近"+"停车后继续走几步"的梯度）；
     # 杆行由连杆固定挂点距 ⇒ 在出生高差上间隙恒等于出生间隙 > 阈值 ⇒ **永不触发**（物理正确），
-    # 但余量只剩 deadband_m=0.02 m（旧相对口径是 0.15×间隙）⇒ Δz 比出生值大 4.75 cm（最短杆）即触发。
-    # 停车段天然生效（实测停车间隙 ≈0.64–0.70·L < 阈值 ≈0.69·L）⇒ 不需要单独的"停车参考间隙"方案。
-    min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=-5.0,
+    # 但余量只剩 deadband_m=0.02 m（旧相对口径是 0.15×间隙）⇒ Δz 比出生值大 3.68 cm（最短杆）即触发。
+    # 停车段：长绳行（L≥1.0）实测间隙 ≈0.64–0.70·L 低于阈值 ⇒ 会出力；最短绳行 L=0.5 只剩约
+    # 3.4 mm 裕度，是否触发**待训练机实测**（TOW-CAL-01 #1），不能假定"天然生效"。
+    min_clearance = RewTerm(func=mdp.min_clearance_violation, weight=0.0,
                             params={"deadband_m": 0.02, "softness": 0.02})
 
     # 【朝向惩罚：2026-10-09 已关闭】横向与朝向改由 **PD 外环**负责（`upper_mdp` 的
@@ -475,14 +473,16 @@ class UpperTerminationsCfg:
     到达 `stop_distance_m` 只把指令置零、进入 STOP 段，**不终止**（否则两条停车奖励没有相位）。
     因此没有 `goal_reached`／`stop_reached`／`post_stop_timeout` 终止项；"有没有走到 STOP 点"
     由诊断量 `obs_stop_reached` 回答。剩下的**只剩两条失败退出 + 超时**：
-    `robot_fall`（离局部坡面高度 < 0.18 m ⇒ 倒地退出）、`terrain_exit`，以及 `time_out`。
+    `robot_fall`（离局部坡面高度 < 0.18 m，或 |pitch|/|roll| > 0.8 rad ⇒ 倒地退出）、`terrain_exit`，以及 `time_out`。
     **`cart_collision` 自 2026-10-09 起不再是终止项**（用户要求改成惩罚），碰撞只由奖励项
-    `collision`（−5.0）表达；`mdp.cart_collision` 函数保留（奖励与日志在用）。
+    `collision`（2026-10-19 起全域 −1.0）表达；`mdp.cart_collision` 函数保留（奖励与日志在用）。
     实测这样机器人**基本不避讳碰撞**（接触占用 0.39%/步、约 2.25 步/回合，而旧终止配置的
     危险率只有 0.082%/步、威慑力约 18 倍）——见 README TOW-19。
     """
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    robot_fall = DoneTerm(func=mdp.robot_fall, params={"minimum_height": 0.18})
+    robot_fall = DoneTerm(func=mdp.robot_fall,
+                          params={"minimum_height": 0.18,
+                                  "pitch_limit_rad": 0.8, "roll_limit_rad": 0.8})
     terrain_exit = DoneTerm(func=mdp.terrain_out_of_bounds)
 
 
@@ -493,13 +493,13 @@ class UpperEventsCfg:
         mode="reset",
         params={
             "speed_range": SPEED_RANGE,
-            # 2026-10-09 用户要求上限提到 30 kg（原 5–15）；**2026-10-10 收紧为 (5, 20) kg**
-            # （用户确认工作域＝质量 5–20 kg、速度 0.5–1.0 m/s；2026-10-17 上界 1.5 → 1.0）：原 30 kg 档不再采样，
-            # 测量台的 25 kg 默认档从「分布内」变成「域外外推检查」。
+            # 2026-10-09 用户要求上限提到 30 kg（原 5–15）；2026-10-10 收紧为 (5, 20)；
+            # **2026-10-18 用户要求整体质量上限回到 30 kg** ⇒ (5, 30)（速度仍 0.5–1.0 m/s）。
+            # 测量台默认档 5/10/15/20/25/30 kg 全部落在训练分布内（30 kg 是新的上限档）。
             # 质量的**惯量按同一比例**缩放（见 `reset_towing_episode`），所以转动惯量自洽；
-            # 注意轮轴阻尼范围 (0.001125, 0.0045) 未随质量缩放 ⇒ 20 kg 时"单位质量的滚动阻力"
+            # 注意轮轴阻尼范围 (0.001125, 0.0045) 未随质量缩放 ⇒ 30 kg 时"单位质量的滚动阻力"
             # 比 5 kg 小，这是刻意保留的建模选择（与测量台同一套参数）。
-            "mass_range": (5.0, 20.0),
+            "mass_range": (5.0, 30.0),
             "friction_range": (0.4, 1.2),
             # 2026-10-17 轮径 0.08 → 0.03：阻尼按 r² 重标定（×0.140625），保持等效滚阻 ≈ 20·v N。
             "wheel_damping_range": (0.001125, 0.0045),
@@ -628,8 +628,9 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
                 f"STOP 触发点 {action.stop_distance_m} m 必须越过坡面出口 "
                 f"{FLAT_OUT_START_M} m，否则停车段落在坡上/坡中")
         minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
-        # 速度头把 `task_vx + 有界偏移` 裁进冻结 AMP 策略的**训练包络**（−1.0, 1.5，
-        # 出处 `amp_env_cfg` 的 `commands.base_velocity.ranges.lin_vel_x`）。该包络必须
+        # 速度头把 `task_vx + 有界偏移` 裁进任务包络 `amp_vx_range`（默认 −1.0…1.0）。
+        # 该包络必须落在冻结低层的训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0，见
+        # `utils/policy_cfg.py`；`effective_vx_clip` 在构造时报错），并且必须
         # **覆盖整个脚本速度范围**：否则零偏移时脚本自己就被裁掉，退化性（偏移=0 时与旧口径
         # 逐位一致）直接失效，而且奖励参考量 `task_command` 与实际送策略的指令会分叉。
         amp_vx_min, amp_vx_max = action.amp_vx_range

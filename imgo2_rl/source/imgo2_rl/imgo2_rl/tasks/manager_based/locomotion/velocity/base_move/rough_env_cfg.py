@@ -177,10 +177,16 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # ------------------------------Curriculums------------------------------
-        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
-        # self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
-        self.curriculum.command_levels_lin_vel = None
-        self.curriculum.command_levels_ang_vel = None
+        # 2026-10-17 **启用仓库里一直存在、但被置 None 关掉的速度课程**（upstream Isaac Lab 的
+        # `command_levels_lin_vel` / `command_levels_ang_vel`，实现见 `velocity/mdp/curriculums.py`）：
+        # 起始 = `range_multiplier[0]` × 静态域、上限 = `range_multiplier[1]` × 静态域；每个
+        # episode 边界检查 `track_*` 奖励，超过 0.8×权重才把范围各 ±0.1 地放大一次。
+        # 动机：跟踪奖励 `exp(-err²/std²)`（std=0.5、权重 1.5）在 err ≳ 1.0 m/s 后梯度掉到
+        # 1e-3，一次性把采样域开到 (−1.5, 3.0) 时策略在高速档学不动（收敛成原地踏步），
+        # 见 `docs/towing/towing_ppo_lowlevel_swap_2026-10-17.md` §11。
+        # 起点 lin_vel_x (−0.3, 0.6) / lin_vel_y ±0.3 / ang_vel_z ±0.3 ⇒ 逐级放大到静态域。
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
+        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
 
         # ------------------------------Commands------------------------------
         self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 3.0)

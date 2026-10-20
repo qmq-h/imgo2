@@ -432,6 +432,10 @@ def build_report(per_case, *, profile, skipped=()):
     lines += [f"- 地形剖面：`{profile}`；case 数：{len(per_case)}；"
               f"地形族：{'、'.join(families)}；速度档：{', '.join(f'{s:g}' for s in speeds) or '—'}",
               f"- 连接归类：绳 = compliant + inextensible；刚体 = rigid",
+              "- **2026-10-19 收束口径**：本报表是**诊断**，不是 pass/fail；验收看 "
+              "`play_towing_test.py` 的任务口径（小车速度稳定性 / 启停冲击 / 重车不翻车）。"
+              "停车接触、几何间隙、机器人停车后是否往前走**都不是失败判据**；"
+              "停车撞击只看冲击量（关节/力矩），本报表的接触列仅作诊断。",
               "- 每格 = 跨 case 的中位数 [p10, p90]（先按 case 在段内取平均，再跨 case 取分位）"]
     if skipped:
         lines.append(f"- ⚠ 跳过 {len(skipped)} 个 case（缺列/空文件），原因见 JSON `skipped`")

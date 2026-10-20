@@ -3,9 +3,9 @@
 架构（2026-10-10 起，**双头**）。链路顺序是**两层串联**，偏移进的是底层的**输入**，
 残差加的是底层的**输出**：
 
-    task_command ──(速度头: +有界偏移, 裁进 AMP 包络 −1.0…1.5)──→ loco_command
+    task_command ──(速度头: +有界偏移, 裁进任务包络 −1.0…1.0)──→ loco_command
                                                                       │
-                                                          （冻结 AMP 策略推理）
+                                                    （冻结低层策略推理；默认 AMP）
                                                                       ↓
                                                              冻结关节目标
                                                                       │
@@ -14,7 +14,7 @@
                                                               set_joint_position_target
 
 - ``task_command``：脚本调度（+ 可选 STOP ramp），**只给奖励**（`velocity_tracking_exp` 等）；
-- ``loco_command``：``task_command + 有界偏移``，裁进冻结策略训练包络后**送策略 + 进 actor 帧**。
+- ``loco_command``：``task_command + 有界偏移``，裁进任务包络（必须落在冻结低层训练包络内）后**送策略 + 进 actor 帧**。
 
 **防作弊红线**：奖励只能读 ``task_command``，**绝不能**读 ``loco_command``（含策略自己的偏移），
 否则策略只要把偏移开大就能自己给自己发目标。
@@ -22,7 +22,7 @@
 **两头不独立（动作空间存在别名/冗余）**：上层同时影响底层输入与输出，同一个关节目标变化
 既可由偏移（改变步态）也可由残差（改变关节角）达成 ⇒ credit assignment 更难、两头可能互相打架。
 缓解：偏移是"步态级"旋钮（秒级、建议低通/限速率），残差是"单步级"（20 Hz）；必要时只在特定相位
-放开偏移。当前 v3 默认两条脚本开关全关，偏移在 `elapsed >= tow_start_s` 后全程可用。
+放开偏移。当前默认两条脚本开关全关，偏移在 `elapsed >= tow_start_s` 后全程可用。
 
 观测／奖励函数对特权数据的取舍是刻意显式的。本文件是**目标函数与动作适配器**的唯一定义处；
 任务注册见同目录 ``__init__.py``，运行验收清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
@@ -36,7 +36,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils import math as math_utils
 
 from ....assets import cart_mass
-from .upper_logic import CMD_ACTION_DIM, UpperActionSpec
+from .upper_logic import CMD_ACTION_DIM, UpperActionSpec, effective_vx_clip
 from .mdp.connection_grid import (
     ELASTIC_KC, GRID_SIZE, SPEEDBUMP_TERRAIN, WAVE_TERRAIN, env_spec, is_full_grid)
 from .mdp.episode_geometry import SETTLE_TIME_S, STOP_DISTANCE_M
@@ -54,7 +54,7 @@ from .mdp.rope_model import (
     world_inverse_inertia,
 )
 from .utils.low_level_policy import FrozenLowLevelPolicy, parts_from_robot_state
-from .utils.policy_cfg import get_policy
+from .utils.policy_cfg import get_policy, with_model_path
 
 
 def _term(env):
@@ -84,8 +84,17 @@ class HierarchicalVelocityAction(ActionTerm):
         self._cart = env.scene[cfg.cart_asset_name]
         self._collision_sensors = tuple(env.scene.sensors[name] for name in cfg.collision_sensor_names)
         # 冻结策略契约先加载：残差尺度直接取它的 `action_scale`（与底层动作同量纲），
-        # 动作维数取它的关节数（AMP 为 12）。见 `UpperActionSpec` 的说明。
+        # 动作维数取它的关节数（AMP/PPO 均为 12）。见 `UpperActionSpec` 的说明。
         self._policy_cfg = get_policy(cfg.policy_name)
+        # 训练入口 `--policy-checkpoint` 指向 play.py 导出的 TorchScript；只换权重、不换契约
+        # （观测布局/动作缩放/裁剪仍按 `policy_name`）。测试台有自己的同名参数，最终也走这里。
+        if cfg.policy_checkpoint:
+            self._policy_cfg = with_model_path(self._policy_cfg, cfg.policy_checkpoint)
+        # 任务包络必须落在冻结低层的**训练包络**之内：越界指令会被低层当成分布外输入
+        # （2026-10-17 实测 PPO 在 ≥1.5 m/s 退化成站着不动）。越界在这里直接报错，
+        # 而不是静默 clamp —— 旧代码把 AMP 的 (−1.0, 1.5) 复制给 PPO，2.0 的指令被裁成 1.5
+        # 后，两档在报表里看起来「一模一样」，掩盖了真实原因。
+        self._vx_clip = effective_vx_clip(cfg.amp_vx_range, self._policy_cfg.vx_envelope_mps)
         self._joint_action_dim = len(self._policy_cfg.joint_names)
         if len(self._policy_cfg.action_scale) != self._joint_action_dim:
             raise ValueError(
@@ -132,8 +141,8 @@ class HierarchicalVelocityAction(ActionTerm):
         # a rope state and must never double as a contact flag.
         self.rope_state = torch.zeros(env.num_envs, 4, device=env.device)
         # 绳子对机器人的力，**base 机体系 3 维**（x 前后 / y 左右 / z 竖直）。
-        # 2026-10-08 由 2 维改为 3 维：两挂点高差 Δz=0.17 m，绷紧时 |Fz| 占张力的
-        # 0.17/L = 8.5%（绳 L=1.5）… 34%（杆 L=0.5），且 Fz 在 -0.16 m 挂点上产生俯仰力矩，丢掉它对 actor／惩罚都不可见。
+        # 2026-10-08 由 2 维改为 3 维：两挂点高差 Δz=0.22 m，绷紧时 |Fz| 占张力的
+        # Δz/L = 15%（L=1.5）… 44%（L=0.5），且 Fz 在 -0.16 m 挂点上产生俯仰力矩，丢掉它对 actor／惩罚都不可见。
         self.towing_force_b = torch.zeros(env.num_envs, 3, device=env.device)
         # 【拉力变化率惩罚的状态（2026-10-10，TOW-25；物理理由见 `towing_force_rate_penalty`）】
         # `prev_force_mag` = **上一个控制步**结束时的 ‖F‖（N）。只在 `process_actions`
@@ -374,12 +383,13 @@ class HierarchicalVelocityAction(ActionTerm):
         **两个命令解耦（2026-10-10，防作弊红线）**：
 
         - ``task_command`` = 脚本调度（+ 可选 ramp）：**只给奖励**当参考量；
-        - ``loco_command`` = ``clamp(task_command + 有界偏移, AMP 包络)``：给冻结策略、进 actor 帧。
+        - ``loco_command`` = ``clamp(task_command + 有界偏移, 任务包络)``：给冻结策略、进 actor 帧。
 
         偏移只在 ``elapsed_s >= tow_start_s`` 后生效（出生段不许推机器人）；STOP 之后
         ``task_command`` 归零，但偏移头**仍然生效** —— 这正是「停机后继续走两步」的表达口。
-        合成后的 vx 一律裁进冻结 AMP 策略的训练包络 ``amp_vx_range = (−1.0, 1.5)``
-        （`amp_env_cfg` 的 `lin_vel_x`）：牵引段本来就顶在上界 1.5，超出即 OOD。
+        合成后的 vx 一律裁进任务包络 ``amp_vx_range = (−1.0, 1.0)``（2026-10-17 工作域
+        0.5–1.0 m/s）；它必须落在冻结低层的训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0），
+        由 `effective_vx_clip` 校验，越界直接报错而不是静默放宽。
         """
         elapsed_s = self._env.episode_length_buf * self._env.step_dt
         progress = ((self._asset.data.root_pos_w - self._env.scene.env_origins)
@@ -427,12 +437,12 @@ class HierarchicalVelocityAction(ActionTerm):
         if self.cfg.lane_keeping:
             self.task_command[:, 1] = self._lane_keeping_vy()
             self.task_command[:, 2] = self._lane_keeping_wz()
-        # ---- 3) 送冻结策略的指令 = 任务指令 + 有界偏移，再裁进 AMP 训练包络 ----
+        # ---- 3) 送冻结策略的指令 = 任务指令 + 有界偏移，再裁进任务包络 ----
         # 两层限幅，顺序不能反：
         #   a) 偏移本身限在头权限 [offset_min, offset_max]（**不是**把和裁到这个区间：
         #      脚本速度 0.5–1.0，裁和会把牵引段砍到 0.6 而奖励参考仍是 1.0）；
-        #   b) **和**再限在冻结 AMP 策略的训练包络 amp_vx_range = (−1.0, 1.5)
-        #      （`amp_env_cfg` 的 lin_vel_x）。超出即 OOD，步态会退化。
+        #   b) **和**再限在任务包络 amp_vx_range = (−1.0, 1.0)；它已由
+        #      effective_vx_clip 校验落在冻结低层训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0）。
         # 因为包络覆盖整个脚本速度范围，u_cmd = 0 时 clamp 是恒等的 ⇒ 与旧口径逐位一致。
         self.loco_command.copy_(self.task_command)
         offset = self._processed[:, :CMD_ACTION_DIM] * self.cfg.cmd_offset_scale
@@ -440,9 +450,9 @@ class HierarchicalVelocityAction(ActionTerm):
         offset_active = (elapsed_s >= self.tow_start_s).unsqueeze(1)
         self.loco_command[:, :CMD_ACTION_DIM] += torch.where(
             offset_active, offset, torch.zeros_like(offset))
-        amp_vx_min, amp_vx_max = self.cfg.amp_vx_range
+        vx_min, vx_max = self._vx_clip
         self.loco_command[:, :CMD_ACTION_DIM] = self.loco_command[:, :CMD_ACTION_DIM].clamp(
-            amp_vx_min, amp_vx_max)
+            vx_min, vx_max)
 
     def _lane_keeping_vy(self):
         """横向 PD → `vy` 指令：把机器人压在 lane 中线（lane 系 `y = 0`）。
@@ -668,6 +678,9 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     asset_name: str = "robot"
     cart_asset_name: str = "cart"
     policy_name: str = "amp"
+    #: 冻结低层权重覆盖（`play.py` 导出的 TorchScript `policy.pt`）；空串 = 用
+    #: `policy_name` 对应部署目录里的默认权重。训练入口 `--policy-checkpoint` 写这里。
+    policy_checkpoint: str = ""
     upper_control_dt: float = 0.05
     low_level_control_dt: float = 0.02
     physics_dt: float = 0.005
@@ -680,8 +693,9 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     #: `upper_logic.UpperActionSpec`：脚本速度 0.5–1.0 m/s，裁和会把牵引指令砍到 0.6。
     offset_min: float = -0.2
     offset_max: float = 0.6
-    #: **合成后 vx 的训练包络**（m/s），逐字取自冻结 AMP 策略的指令范围
-    #: `amp_env_cfg.__post_init__`：`commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.5)`。
+    #: **合成后 vx 的任务包络**（m/s），不是低层训练包络；默认 (−1.0, 1.0)。
+    #: 低层训练包络在 `utils/policy_cfg.py`：AMP (−1.0, 1.5) / PPO (−1.5, 3.0)，
+    #: 构造时由 `effective_vx_clip` 校验本包络必须落在其中，越界直接报错。
     #: 这不是"权限"，是**分布约束**：超出即 OOD，冻结策略的步态会退化。
     #: 它必须覆盖脚本速度范围（2026-10-17 起 `SPEED_RANGE = 0.5–1.0`），
     #: `upper_env_cfg.__post_init__` 有断言守着这条 —— 否则零偏移时脚本自己就被裁掉。
@@ -973,7 +987,7 @@ def cart_privileged_parameters(env):
     return torch.cat((term.cart_mass, term.ground_friction, term.wheel_damping,
                       term.cart_present.float()), 1)
 def decoder_targets(env):
-    """decoder 的回归目标：**物理量**（m/s、N），不归一化、不 clamp（**5 维**，契约 v4）。
+    """decoder 的回归目标：**物理量**（m/s、N），不归一化、不 clamp（**5 维**，契约 v5）。
 
     2026-09-23 改为物理量：原先归一化到 [-1,1] 配合 head 的 tanh，但归一化尺度会按 s²
     压低 loss 的物理权重（力 s=10 ⇒ 0.01），使该项几乎训不动；而且 `v/(1.0,0.5)` 的 clamp
@@ -1026,11 +1040,10 @@ def downhill_segment(env):
 def cart_collision_cost(env, downhill_scale=1.0):
     """碰撞代价（0/1），可选按"下坡段"缩放。
 
-    `downhill_scale` 是**代价缩放**（不是权重）：`UpperRewardsCfg.collision` 的权重固定
-    −5.0，下坡段传 0.2 ⇒ `−5.0 × 0.2 = −1.0` 的有效权重（每步 −0.05 vs 其他路段 −0.25）。
-    默认 1.0 ⇒ 与旧行为**逐位一致**（不做下坡判断、没有额外张量运算）。
-    为什么把相位放在 func 而不是再注册一条 RewTerm：`Episode_Reward/collision` 保持**一条**
-    曲线，历史 run 的读数口径不变；也避免对同一判据算两遍。
+    `downhill_scale` 是**代价缩放**（不是权重）。**2026-10-19 起 `UpperRewardsCfg.collision`
+    不再传该参数**：权重全域 −1.0，`downhill_scale` 默认 1.0 ⇒ 与“全区同权”逐位一致。
+    形参/`downhill_segment` 保留供诊断或未来复用（旧 2026-10-17 口径是下坡传 0.2 ⇒ 有效
+    −1.0、其他路段 −5.0）。默认路径不做下坡判断、没有额外张量运算。
     """
     cost = cart_collision(env).float()
     if downhill_scale == 1.0:
@@ -1093,7 +1106,7 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
 
     - `spawn_ratio` = 绳 `connection_grid.SLACK_RATIO`（现 0.8）/ 杆 **1.0**（连杆出生即全长）
       —— 已经体现在 `term.initial_distance`（= `connection_grid.initial_attachment_distance`）里；
-    - `Δz` = 两挂点高差 = 机器人/小车 `default_root_state` 的高度差（现 0.17 m）；
+    - `Δz` = 两挂点高差 = 机器人/小车 `default_root_state` 的高度差（现 0.22 m，由 init_state 自动派生）；
     - `base_offset = −robot_rear_surface_x − robot_attachment_x + cart_attachment_x
       − cart_front_surface_x`（现 0.0025 m）——即「后表面↔车斗前表面」比挂点距多出来的固定量；
     - `spawn_clearance` 在 `HierarchicalVelocityAction.__init__` 里一次算好并缓存。
@@ -1104,7 +1117,7 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
        `0.85 × 出生间隙` 表达的是"比出生近 15%"，是个没有物理含义的相对量。
     2. **量级正确**：`spawn_clearance` 是**解析**出生间隙（勾股解 + 四个表面常量），与仿真里的
        实际间隙差**几毫米**（落地/穿透/初始沉降）⇒ 绝对 2 cm 死区正好吸收这个量级。相对余量却
-       随 L 放大：L=1.5 的绳行余量 `0.15 × 1.1904 = 0.179 m`，比需要的量大一个数量级，等于给
+       随 L 放大：L=1.5 的绳行余量 `0.15 × 1.1822 = 0.177 m`，比需要的量大一个数量级，等于给
        长绳行白开几十厘米的"可以靠近"口子。
     3. **不需要大余量（纠正旧顾虑）**：出生点在 lane 的**后向平段**上——`slope_geometry` 的剖面
        从 **+2.25 m** 才起坡（平地 2.25 m → 上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m）。
@@ -1114,9 +1127,9 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
 
     **逐行语义**（L = 连接长度，网格见 `mdp/connection_grid.py`）：
 
-    - 绳行（L = 0.5–1.5 m，spawn_ratio 0.8）：阈值 **0.3446–1.1704 m**（= 0.689–0.780 · L；
-      L=0.5 → 0.3446 = **0.945 × 出生间隙** = 0.689 · L，L=1.5 → 1.1704 = 0.983 × 出生间隙
-      = 0.780 · L）。牵引段绳绷直 ⇒ 3D 挂点距 = L > 0.8·L ⇒ 间隙 > 出生间隙 > 阈值，**不触发**；
+    - 绳行（L = 0.5–1.5 m，spawn_ratio 0.8）：阈值 **0.3166–1.1622 m**（= 0.633–0.775 · L；
+      L=0.5 → 0.3166 = **0.941 × 出生间隙** = 0.633 · L，L=1.5 → 1.1622 = 0.983 × 出生间隙
+      = 0.775 · L）。牵引段绳绷直 ⇒ 3D 挂点距 = L > 0.8·L ⇒ 间隙 > 出生间隙 > 阈值，**不触发**；
       绳一松、车斗逼近穿过阈值时才开始线性出力 —— 这正是用户要的「不许比出生时更近」+「停车后
       继续走几步」的梯度（走得越近，缺口越大、惩罚越大）；
     - 杆行（L = 0.5–1.0 m，spawn_ratio 1.0）：连杆把三维挂点距固定在 L ⇒ 间隙恒等于出生间隙
@@ -1124,22 +1137,21 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
       不存在"被拉太近"）。**注意余量比旧的相对口径小得多**：旧口径下间隙恒比阈值大
       `0.15 × 间隙`（最短杆 +0.071 m），新口径只大 `deadband_m = 0.02 m`；而间隙随 Δz 增大
       而变小（`sqrt(L²−Δz²)`）——解 `sqrt(L²−Δz²) + base_offset = 出生间隙 − 0.02` 得
-      Δz* = **0.218 m（L=0.5）** … **0.261 m（L=1.0）**，即最短杆只要 Δz 比出生值 0.17 m
-      再大 **4.75 cm** 就会触发（旧口径是 13.1 cm）。这是本次口径变更**换来的代价**，
+      Δz* = **0.2568 m（L=0.5）** … **0.2950 m（L=1.0）**，即最短杆只要 Δz 比出生值 0.22 m
+      再大 **3.68 cm** 就会触发（旧相对口径约 13 cm）。这是绝对死区口径**换来的代价**，
       逐行数值见 `docs/towing/towing_reward_retune_2026-10-10.md` §2.5。
 
-    **停车段天然生效 ⇒ 不需要再单独做"停车参考间隙"**：停车瞬间的实测间隙 ≈ **0.64 · L**
-    （用户给的标定值；离线用归档 `docs/towing/data/2026-10-09_necessity_800{,_noload}/report.json`
-    复算 `stop.clearance_at_stop_m / L` 的中位数是 **0.700**（compliant 0.702）——两者同量级），
-    而新阈值 ≈ **0.945 × 出生间隙 ≈ 0.69 · L**（最短绳行）⇒ 停车段间隙**天然落在阈值之下约
-    `0.05 · L`**：L=1.0 时缺口约 0.05 m ⇒ 每步 `−5 × 0.05 × 0.05 ≈ −0.0125`（线性铰链值；
-    `softness = 0.02` 的截断 softplus 会把它压掉一些——缺口 0.05 m 时实际 ≈ 0.038 ⇒ 每步
-    ≈ **−0.0094**，缺口 ≥0.3 m 时 ≈0.96×线性值。量级结论不变），与 `tracking_velocity`
-    满额 +0.05/步 **同量级**。这正是用户要的「停车期间也保持间隙」，
-    因此**不需要**再单独做"用停车瞬间间隙当参考"的方案。**备选（本轮不实现）**：若训练机实测
-    停车段间隙反而**高于**阈值、本项不生效，再在 `process_actions`（20 Hz）里记录停车那一拍的
-    `gap_at_stop`（并识别"停下"时刻），把阈值改成 `gap_at_stop − deadband_m`；本机无 Isaac Lab，
-    实测未做。
+    **停车段：长绳行会生效，最短绳行只剩毫米级裕度（待实测）**：停车瞬间的实测间隙
+    ≈ **0.64–0.70 · L**（用户标定 0.64；离线用归档 `docs/towing/data/2026-10-09_necessity_800{,_noload}/report.json`
+    复算 `stop.clearance_at_stop_m / L` 的中位数是 **0.700**（compliant 0.702）），而新阈值
+    = **0.633 · L（L=0.5）… 0.775 · L（L=1.5）**。⇒ 长绳行（L≥1.0）停车间隙低于阈值
+    0.05–0.20 m，本项确实出力（L=1.0、0.64·L 时缺口 ≈0.112 m ⇒ 每步约 −0.028；0.70·L 时
+    缺口 ≈0.052 m ⇒ 约 −0.012，与 `tracking_velocity` 满额 +0.05/步 同量级）；
+    **但最短绳行 L=0.5 的停车间隙 ≈0.32 m 与阈值 0.3166 m 只差约 3.4 mm**，是否触发取决于
+    实测间隙与解析值的几毫米差 ⇒ **不能写「天然生效」**，必须按 TOW-CAL-01 #1 在训练机读
+    `Episode_Reward/min_clearance`。**备选（若最短行实测不触发）**：在 `process_actions`
+    （20 Hz）里记录停车那一拍的 `gap_at_stop`，把阈值改成 `gap_at_stop − deadband_m`。
+    本机无 Isaac Lab，实测未做。
 
     **权重的标定依据**：`RewardManager` 每步代价 = `weight × func × step_dt`（`step_dt = 0.05 s`）
     ⇒ `w = −5` 时超出阈值 0.2 m 的违规 ≈ **−0.05/步**，恰等于 `tracking_velocity` 满额
@@ -1216,12 +1228,21 @@ def yaw_heading_l2(env):
 
 def action_rate_l2(env):
     term = _term(env); return (term.processed_actions - term._previous).square().sum(1)
-def robot_fall(env, minimum_height):
-    """离**局部地面**的高度低于阈值 ⇒ 判定为跌倒（坡上/减速带/波浪上不能用绝对 z）。
+def robot_fall(env, minimum_height, pitch_limit_rad=0.8, roll_limit_rad=0.8):
+    """跌倒判据：离**局部地面**高度不足，**或** |pitch| / |roll| 超限。
 
-    混合网格（2026-10-16）按列分派三族：平滑列用 `profile_torch`（或 rolling 的二维版）、
+    高度部分（2026-10-16 混合网格）：平滑列用 `profile_torch`（或 rolling 的二维版）、
     减速带列（40–49）用 `speedbump_torch` 的梯形高度、波浪列（50–59）用 `wave_torch` 的正弦
-    高度（后两者都与档位无关，但仍要传 y 做横向收零）。
+    高度（后两者都与档位无关，但仍要传 y 做横向收零）。**高度相对局部面**，所以波浪/坡道
+    本身不会造成误判。
+
+    **2026-10-19 用户要求：把 pitch 和 roll 也算进跌倒判据**。姿态用世界系
+    `euler_xyz_from_quat` 的 (roll, pitch, yaw)，阈值默认 0.8 rad：
+    - 当前地形最大纵向坡度是减速带侧坡 26.565° = 0.464 rad、波浪 15.6° = 0.272 rad、
+      10° 坡 = 0.175 rad，全部低于 0.8 rad，正常爬坡/过带/过波不会误触发；
+    - 只统计**世界系**姿态，不再额外加局部坡度；0.8 rad 对 26.565° 侧坡仍有 0.336 rad
+      余量，若以后把地形加到 30°（0.524 rad）仍有余量；
+    - 这是**瞬时**判据（与旧高度判据一致），不是评估侧的 20% 窗口占比。
     """
     term = _term(env)
     local = term._asset.data.root_pos_w - env.scene.env_origins
@@ -1237,8 +1258,15 @@ def robot_fall(env, minimum_height):
                     wave_profile_height(term.hill_grade_deg, local[:, 0], local[:, 1]),
                     smooth_height))
     height = local[:, 2] - surface_height
-    return height < minimum_height
-def robot_fall_cost(env, minimum_height): return robot_fall(env, minimum_height).float()
+    roll, pitch, _yaw = math_utils.euler_xyz_from_quat(term._asset.data.root_quat_w)
+    tipped = (pitch.abs() > pitch_limit_rad) | (roll.abs() > roll_limit_rad)
+    return (height < minimum_height) | tipped
+
+
+def robot_fall_cost(env, minimum_height, pitch_limit_rad=0.8, roll_limit_rad=0.8):
+    return robot_fall(env, minimum_height,
+                      pitch_limit_rad=pitch_limit_rad,
+                      roll_limit_rad=roll_limit_rad).float()
 
 
 def stop_reached(env):

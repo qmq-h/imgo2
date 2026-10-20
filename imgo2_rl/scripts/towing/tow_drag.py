@@ -40,10 +40,11 @@ def parse_args(argv=None):
     parser.add_argument("--settle-time", type=float, default=1.0,
                         help="复位后站定时长，s（此阶段指令为 0，再交给速度指令）")
     parser.add_argument("--rope-length", type=float, default=0.8,
-                        help="绳长 L0，m。默认 0.8：0.5 m/s 下停车后小车滑行约 0.52 m，"
-                             "留 0.28 m 余量不会追到机器人（L0=1.0 时间距更大但看不出追尾趋势）。"
-                             "注意 L0 必须与速度和轮阻一起定：v=1.0 m/s、b=0.016 时滑行 1.06 m，"
-                             "L0=1.0 就已经会撞（启动时会打印预测）")
+                        help="绳长 L0，m。默认 0.8：0.5 m/s、默认 b=0.0045（等效 20 N/(m/s)）时"
+                             "3 kg 名义车滑行约 0.08 m、20 kg 约 0.50 m，而出生表面间隙约 0.60 m"
+                             "⇒ 20 kg 仍有约 0.10 m 余量；把 b 降到 0.001125（等效 5）时 10 kg"
+                             "就会滑 1.0 m 追尾。注意 L0 必须与速度、质量、轮阻一起定"
+                             "（启动时会打印预测）")
     parser.add_argument("--rope-model", nargs="+",
                         choices=("compliant", "inextensible", "rigid"),
                         default=["compliant"],
@@ -83,7 +84,8 @@ def parse_args(argv=None):
                              "惯量与 CoM 高度一起重算（`assets/cart_mass.body_properties`，"
                              "与训练侧同一套），几何与轮半径不变。"
                              "注意 m_eff 随质量线性增长，滑行距离也随之增长：默认 L0=0.8、"
-                             "b=0.016 时 15 kg 只剩 +0.02 m 余量、20 kg 起会追到机器人")
+                             "b=0.0045 时 20 kg 滑行约 0.50 m（出生间隙约 0.60 m，余量约 0.10 m）；"
+                             "b 降到 0.001125 时 10 kg 起就会追到机器人")
     parser.add_argument("--ground-friction", type=float, default=0.8,
                         help="地面静/动摩擦系数（两者取同值），默认 0.8 与 P1/P2 一致。"
                              "注意：**轮子滚动时摩擦不耗散能量**，停车距离由轮轴阻力 b 决定，"

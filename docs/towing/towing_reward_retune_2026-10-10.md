@@ -1,5 +1,7 @@
 # 奖励改动记录：删除 `extra_distance` + `min_clearance` 改出生几何阈值（绝对死区）并提权（2026-10-10）
 
+> **2026-10-19 已覆盖**：`min_clearance` 权重改为 **0.0**（函数与 deadband 语义保留）；当前口径见 [towing_reward_2026-10-19.md](towing_reward_2026-10-19.md)。下文的 −5.0 是历史记录。
+
 用户 2026-10-10 批准的奖励改动，落地在
 [`upper_env_cfg.py`](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_env_cfg.py) 与
 [`upper_mdp.py`](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py)。
@@ -15,6 +17,10 @@
 > 本文两项改动的**结论与数值仍然有效**（`min_clearance` 仍是 −5.0 / `deadband_m` 0.02、
 > `extra_distance` 仍为删除状态）；当前完整权重表与量级见
 > [奖励权重记录](towing_reward_weights_2026-10-17.md)、README **TOW-REW-01**。
+
+> **2026-10-18 几何更新**：新小车 Δz 0.17 → **0.22**；§2.2 阈值表、§2.4 停车段结论、§2.5 杆行余量
+> 已同步为 **0.3166–1.1622 m**（0.633–0.775·L）/ Δz* **0.2568–0.2950 m**。文中仍出现的
+> 0.3446 / 1.1704 / 0.2175 / 0.2606 / 4.75 cm 只作**旧车历史对照**，不是当前值。
 
 ---
 
@@ -52,8 +58,8 @@ spawn_clearance = sqrt(initial_attachment_distance(类型, L)² − Δz²) + bas
 | `softness` | 0.02（不变） | 同上 |
 | `weight` | **−5.0**（原 −2.0） | 同上 |
 | `initial_attachment_distance` | 绳 = `SLACK_RATIO(0.8) × L`；杆 = `L` | `mdp/connection_grid.py`；逐 env 已落在 `term.initial_distance`（`__init__` 里由 `env_spec` 算出） |
-| `Δz` | **0.17 m** | 机器人 `init_state.pos[2] = 0.35` − cart `init_state.pos[2] = 0.18`（两个挂点的 z 偏移都是 0） |
-| `base_offset` | **0.0025 m** | `−robot_rear_surface_x(0.1575) − robot_attachment_x(−0.16) + cart_attachment_x(0.25) − cart_front_surface_x(0.25)` |
+| `Δz` | **0.22 m** | 机器人 `init_state.pos[2] = 0.35` − cart `init_state.pos[2] = 0.13`（两个挂点的 z 偏移都是 0） |
+| `base_offset` | **0.0025 m** | `−robot_rear_surface_x(0.1575) − robot_attachment_x(−0.16) + cart_attachment_x(0.30) − cart_front_surface_x(0.30)` |
 
 实现：`HierarchicalVelocityAction.__init__` 里一次算好并缓存 `self.spawn_clearance`
 （出生位姿固定 ⇒ 逐回合不变），奖励函数里只做 `threshold = term.spawn_clearance - deadband_m`。
@@ -144,7 +150,7 @@ L=0.5 → 0.3166 m，L=1.5 → 1.1622 m；旧车分别是 0.3446 / 1.1704）。
 | 19 | 1.0000 | 0.9780 | 0.9580 | 0.9580 |
 
 **40 行全部满足**：阈值 = 出生间隙 − 0.02（4 位小数逐项）、阈值严格小于出生间隙（spawn 处精确为 0，
-余量恰为 `deadband_m`）、阈值随 L 单调递增、阈值恒 > 0（最小 = 最短绳行 0.3646 − 0.02 = **0.3446 m**）。
+余量恰为 `deadband_m`）、阈值随 L 单调递增、阈值恒 > 0（最小 = 最短绳行 0.3366 − 0.02 = **0.3166 m**）。
 以上四条都有契约测试（§5）。
 
 ### 2.3 语义
@@ -156,20 +162,26 @@ L=0.5 → 0.3166 m，L=1.5 → 1.1622 m；旧车分别是 0.3446 / 1.1704）。
   − 0.02 < 间隙 ⇒ **永不触发**（物理正确：杆不会缩短，不存在「被拉太近」）。但与旧相对余量相比，
   对 Δz 漂移的稳健性明显变弱，见 §2.5。
 
-### 2.4 停车段为什么**天然生效**（新事实，本轮最重要的一条）
+### 2.4 停车段是否生效：长绳行会，最短绳行只剩毫米级裕度（待实测）
 
-用户给的标定：**停车瞬间的实测间隙 ≈ 0.64 · L**，而新阈值 ≈ **0.945 × 出生间隙 ≈ 0.69 · L**
-⇒ **停车段的间隙天然落在阈值之下约 `0.05 · L`**，所以该项**在停车段自动生效**：
+用户给的标定：**停车瞬间的实测间隙 ≈ 0.64 · L**。新几何（Δz=0.22）下阈值是
+**0.633·L（L=0.5）… 0.775·L（L=1.5）**（旧几何才近似 0.69·L，不能再沿用）：
 
-- L=1.0 时缺口约 0.05 m ⇒ 每步 `−5 × 0.05 × 0.05 ≈ −0.0125`（线性铰链值），
-  与 `tracking_velocity` 满额 `+1.0 × 0.05 = +0.05/步` **同量级**；
-- 因此**不需要**再单独做「用停车瞬间间隙当参考」的方案——「停车期间也保持间隙」已经由本项给出梯度。
+- 长绳行（L≥1.0）：停车间隙 ≈0.64–0.70·L 低于阈值 0.752–0.775·L ⇒ 本项**会出力**；
+  L=1.0、0.64·L 时缺口约 0.112 m ⇒ 每步约 `−5 × 0.112 × 0.05 ≈ −0.028`（线性），
+  与 `tracking_velocity` 满额 `+0.05/步` **同量级**；
+- **最短绳行（L=0.5）**：停车间隙 ≈0.32 m 与阈值 0.3166 m 只差约 **3.4 mm** ⇒ 是否触发取决于
+  实测间隙与解析值的几毫米差，**不能写「天然生效」**；必须按 TOW-CAL-01 #1 在训练机读
+  `Episode_Reward/min_clearance`；
+- 因此「不需要再单独做停车参考间隙」只在长绳行成立；最短行若实测不触发，按本节末的**备选**
+  改成 `gap_at_stop − deadband_m`。
 
-**离线佐证（比用户给的标定更细，用归档实测数据复算）**：把
+**离线佐证（注意：下表是 2026-10-10 旧几何 Δz=0.17 的归档复算，不是新小车当前值；
+当前阈值见 §2.2，同一 L 下比表内数值低约 0.02 m）**：把
 `docs/towing/data/2026-10-09_necessity_800{,_noload}/report.json` 的 `cases[].metrics.stop` 按
-compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用新阈值逐行比对：
+compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用旧阈值逐行比对：
 
-| L (m) | 新阈值 (m) | 停车瞬间间隙中位 (m) | 缺口 (m) | 每步代价（线性铰链） | 滑行段最小间隙中位 (m) | 缺口 (m) | 每步代价 |
+| L (m) | 旧几何阈值 (m) | 停车瞬间间隙中位 (m) | 缺口 (m) | 每步代价（线性铰链） | 滑行段最小间隙中位 (m) | 缺口 (m) | 每步代价 |
 |---|---|---|---|---|---|---|---|
 | 0.6000 | 0.4314 | 0.3273 | +0.1040 | −0.0260 | 0.1200 | +0.3113 | −0.0778 |
 | 0.6947 | 0.5116 | 0.4228 | +0.0888 | −0.0222 | 0.1773 | +0.3343 | −0.0836 |
@@ -196,7 +208,7 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
    本项阈值复算。
 
 **备选方案（本轮不实现，只在训练机实测本项在停车段不生效时才启用）**：若训练机实测停车段间隙
-反而**高于**阈值（例如最短绳行 L=0.5：阈值 0.3446 m，而 0.70 · L = 0.35 m 就高于阈值——归档里
+反而**高于**阈值（例如最短绳行 L=0.5：阈值 0.3166 m，而 0.70 · L = 0.35 m 就高于阈值——归档里
 最长两行已经出现这种"擦边不触发"），则改为在 `HierarchicalVelocityAction.process_actions`
 （20 Hz）里记录**停车那一拍的间隙** `gap_at_stop`（需识别"停下"的时刻，例如 `obs_stop_reached`
 或指令归零那一拍），把阈值改成 `gap_at_stop − deadband_m`。本机无 Isaac Lab，实测未做。
@@ -205,15 +217,15 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
 
 | 量 | 旧口径（0.85 相对余量） | **新口径（绝对死区 0.02）** |
 |---|---|---|
-| 出生高差 `Δz` | 0.170 m | 0.170 m |
-| 杆行间隙恒比阈值大 | `0.15 × 间隙`（最短杆 **+0.071 m**） | **`deadband_m` = +0.02 m** |
-| 触发所需 `Δz*`：L=0.5 / L=1.0 | 0.301 m / 0.547 m | **0.2175 m / 0.2606 m** |
-| 即最短杆只需 Δz 再大 | +0.131 m | **+0.0475 m** |
-| Δz 扫描（出生 ±0.04 m，即 0.13–0.21 m）最小余量 | +0.034 m（扫描到 0.25） | **+0.0036 m**（最短杆 L=0.5、Δz=0.21） |
+| 出生高差 `Δz` | 0.22 m | 0.22 m |
+| 杆行间隙恒比阈值大 | `0.15 × 间隙`（最短杆 **+0.0677 m**） | **`deadband_m` = +0.02 m** |
+| 触发所需 `Δz*`：L=0.5 / L=1.0 | 0.3234 m / 0.5595 m | **0.2568 m / 0.2950 m** |
+| 即最短杆只需 Δz 再大 | +0.1034 m | **+0.0368 m** |
+| Δz 扫描（出生 ±0.04 m，即 0.18–0.26 m）最小余量 | +0.0458 m（Δz=0.26） | **−0.0019 m**（最短杆 L=0.5、Δz=0.26，已越过触发点） |
 
 结论不变但**稳健性变弱**：「杆行永不触发」在物理上仍成立（Δz 由两体的地面接触与腿长决定，
 刚性连杆自身还会通过压小水平间隙来抵抗 Δz 增大），但新口径下最短杆只要 Δz 比出生值再大
-**4.75 cm** 就会触发（旧口径是 13.1 cm）。**训练机若看到最短杆行 `min_clearance` 非 0，先查 Δz。**
+**3.68 cm** 就会触发（旧相对口径是 10.3 cm）。**训练机若看到最短杆行 `min_clearance` 非 0，先查 Δz。**
 
 ### 2.6 权重的标定依据
 
@@ -233,7 +245,7 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
 `imgo2_rl/scripts/towing/play_towing_test.py` 的 `DEFAULT_THRESHOLDS["gap_margin_limit_m"] = 0.10`
 是测试台**自己的判据**（`classify_case` 里「停车段最小几何间隙落在 `(0, 0.10] m` ⇒ `stop_margin_low`」），
 量的是**绝对** 0.10 m，与训练侧新的「出生间隙 − 0.02」阈值**不同口径**。
-两者都不应互相代入：训练侧阈值逐 env 不同（绳 0.3446–1.1704 m、杆 0.4527–0.9679 m），
+两者都不应互相代入：训练侧阈值逐 env 不同（绳 0.3166–1.1622 m、杆 0.4315–0.9580 m），
 测试台仍是单值 0.10 m。用户明确本轮**不改**测试台侧判据。
 
 ---
@@ -243,7 +255,7 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
 | 文件 | 改了什么 |
 |---|---|
 | `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_env_cfg.py` | 删 `extra_distance` 注册；`min_clearance` → `weight=-5.0, params={"deadband_m": 0.02, "softness": 0.02}`（`spawn_margin` 删除）；相关注释/理由 |
-| `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py` | `min_clearance_violation(env, deadband_m, softness=0.02)`，函数内 `threshold = term.spawn_clearance - deadband_m`（其余实现未动）；`__init__` 的 `self.spawn_clearance` 缓存与注释；完整推导 docstring（含语义/几毫米解析差/后向平段无被动漂移/停车段天然生效 + `gap_at_stop` 备选） |
+| `imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py` | `min_clearance_violation(env, deadband_m, softness=0.02)`，函数内 `threshold = term.spawn_clearance - deadband_m`（其余实现未动）；`__init__` 的 `self.spawn_clearance` 缓存与注释；完整推导 docstring（含语义/几毫米解析差/后向平段无被动漂移/停车段是否生效（长绳会、最短行待测）+ `gap_at_stop` 备选） |
 | `imgo2_rl/scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py` | `--compact-log` 分项 picks：`extra_distance` → `min_clearance`（**本轮未改**） |
 | `imgo2_rl/tests/test_towing_upper_rl_contract.py` | 改写 6 条 `min_clearance` 契约测试（新增 1 条：真函数实跑 + `deadband_m > 0`），见 §5 |
 | `imgo2_rl/tests/test_towing_force_rate.py` | 「既有项未动」断言跟随新 params（`deadband_m` 0.02） |
@@ -266,14 +278,14 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
      **3 类型 × 20 行**断言 `出生间隙 − 阈值 == deadband_m`；
   3. **逐行逐类型阈值 = 出生间隙 − 0.02** —— `test_min_clearance_threshold_formula_matches_the_grid_row_by_row`
      对绳/杆/`inextensible` 各 20 行断言 `threshold == spawn_gap − 0.02`（`places=12`）、
-     阈值/L 落在 0.68–0.79（绳）/0.90–0.97（杆），端点 0.3446 / 1.1704 / 0.4527 / 0.9679 m；
+     阈值/L 落在 0.633–0.775（绳）/0.863–0.958（杆），端点 0.3166 / 1.1622 / 0.4315 / 0.9580 m；
   4. **单调递增** —— `test_min_clearance_threshold_increases_with_length`（20 档 + 端点）；
   5. **杆行永不触发** —— `test_min_clearance_never_fires_for_rigid_rows`（恒等式 + Δz ±0.04 扫描 +
-     `Δz*` 二分：0.2175–0.2606 m，余量 +0.0475 … +0.0906 m 都断言在 0.045–0.10 之间）；
-  6. **阈值恒 > 0** —— 第 3 条里逐行 `assertGreater(threshold, 0.0)`（最小 = 0.3446 m）。
+     `Δz*` 二分：0.2568–0.2950 m，余量 +0.0368 … +0.0750 m 都断言在 0.030–0.10 之间）；
+  6. **阈值恒 > 0** —— 第 3 条里逐行 `assertGreater(threshold, 0.0)`（最小 = 0.3166 m）。
 - **文档表格与源码逐项一致（自动化）**：`test_min_clearance_doc_table_matches_the_source_constants`
   解析本文 §2.2 的两张表并逐项复算（L / 出生间隙 / 阈值 / 阈值÷L）到 4 位小数；
-  离线脚本另核对 `deadband_m=0.02, Δz=0.1700, base_offset=0.0025, 绳 spawn_ratio=0.8, 杆=1.0`，
+  离线脚本另核对 `deadband_m=0.02, Δz=0.2200, base_offset=0.0025, 绳 spawn_ratio=0.8, 杆=1.0`，
   40 行数值与表**逐项一致**。
 - 源码守卫：`def min_clearance_violation(env, deadband_m, softness=0.02):`、
   `threshold = term.spawn_clearance - deadband_m`、`params={"deadband_m": 0.02, "softness": 0.02})`、
@@ -298,11 +310,11 @@ compliant 行聚合（每行 n≈14–16，共 316 / 277 个有效 case），用
    会不会在牵引段误触发（绳绷直时理论间隙 > 出生间隙），只有 rollout / TensorBoard 能回答。
    要看的量：`Episode_Reward/min_clearance`（按相位分开更好）、`obs_stop_reached`、
    `stop_towing_force`、`tracking_velocity`。
-3. **停车段「天然生效」待实测确认**：§2.4 的结论由**旧归档（L 0.6–1.2 m 网格、旧口径训练）**
+3. **停车段是否生效待实测确认**：§2.4 的结论由**旧归档（L 0.6–1.2 m 网格、旧口径训练）**
    离线复算 + 用户给的 0.64·L 标定得出，不是新口径下的实跑读数。训练机要专门核对
-   **最短绳行（L≈0.5–0.6）停车瞬间**是否落在阈值之上（归档里 0.70·L 已经高于 0.689·L）；
+   **最短绳行（L≈0.5–0.6）停车瞬间**是否落在阈值之上（归档里 0.70·L 已经高于 0.633·L）；
    若该项在停车段整体不生效，再按 §2.4 的**备选**改成记录 `gap_at_stop` 作参考（本轮不实现）。
-4. **杆行余量变小**：Δz 从出生值漂 4.75 cm（最短杆）就会触发，只有实跑能给出真实 Δz 波动；
+4. **杆行余量变小**：Δz 从出生值漂 3.68 cm（最短杆）就会触发，只有实跑能给出真实 Δz 波动；
    若最短杆行 `min_clearance` 长期非 0，要么确认 Δz 真实漂移、要么把 `deadband_m` 调大。
 5. **旧读数不可比（口径变更两次）**：`docs/towing/data/2026-10-09_*` 归档里的 LOW 计数
    （`stop_margin_low`）用的是测试台**绝对 0.10 m** 判据，且当时的训练侧 `min_clearance`

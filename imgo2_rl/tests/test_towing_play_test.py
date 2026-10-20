@@ -1029,11 +1029,12 @@ class ReportTests(unittest.TestCase):
                                         coast_duration=5.0, dt=0.005),
             grades=[0.0], git={"commit": "deadbeef", "working_tree": None},
             comparison=comparison)
-        # 失败原因以 `reason×count` 形式出现；`startup_joint_error` 只应出现在口径说明句里
-        self.assertNotIn("startup_joint_error×", report)
-        self.assertNotIn("stop_joint_error×", report)
+        # 旧 verdict 仍默认不计 JNT；但新任务口径把关节静差恢复为失败项 ⇒
+        # `startup_joint_error×` 会出现在「任务口径」的失败原因里。
+        self.assertIn("startup_joint_error×", report)
         self.assertIn("判定口径：**JNT 不计入**", report)
-        self.assertIn("**JNT 已按用户决定（2026-10-10）移出判定统计量**", report)
+        self.assertIn("**JNT 在旧 `verdict` 里移到观测（2026-10-10），但在新任务口径里恢复为失败**",
+                      report)
         self.assertIn("PD 静差", report)
         # 观测行仍在（五项指标中位数里两个关节项）
         self.assertIn("起步关节响应 RMS", report)
@@ -1318,7 +1319,7 @@ class EnvCaseTests(unittest.TestCase):
         self.assertEqual(len(set(slugs)), 800)
         for slug in slugs:
             self.assertNotIn("/", slug)
-        self.assertEqual(cases[0].slug, "env0000_c00r00_g0_v0.5_compliant_m5kg")
+        self.assertEqual(cases[0].slug, "env0000_c00r00_g0_v0.5_compliant_m10kg")
 
     def test_to_dict_is_json_friendly(self):
         import json as _json
@@ -1349,7 +1350,7 @@ class EnvCaseTests(unittest.TestCase):
         self.assertEqual(sum(masses["rigid"].values()), 480)
         self.assertEqual(sum(masses["inextensible"].values()), 240)
         self.assertEqual(sum(len(counts) for counts in masses.values()), 15)   # 3 连接 × 5 质量
-        self.assertEqual(sorted(masses["inextensible"]), ["10", "15", "20", "25", "5"])
+        self.assertEqual(sorted(masses["inextensible"]), ["10", "15", "20", "25", "30"])
         self.assertEqual({count for counts in masses.values() for count in counts.values()},
                          {48, 96})
 
@@ -1500,11 +1501,10 @@ class CliTests(unittest.TestCase):
         self.assertIn("26.5651° 200", text)
         self.assertIn("15.6025° 200", text)
         self.assertIn("env0000", text)
-        # 训练上限 2026-10-10 收紧为 20 kg ⇒ 默认档里的 25 kg 是域外外推检查
-        self.assertEqual(play.TRAINING_MASS_RANGE_KG, (5.0, 20.0))
-        self.assertIn("超出该范围的质量档 25 kg", text)
-        self.assertIn("外推检查，判读要与分布内档位分开", text)
-        self.assertNotIn("本网格的质量档全部落在训练分布内", text)
+        # 2026-10-18：质量上限 20 → 30 kg；默认 5 档（5/10/15/20/30）全部在域内
+        self.assertEqual(play.TRAINING_MASS_RANGE_KG, (5.0, 30.0))
+        self.assertIn("本网格的质量档全部落在训练分布内", text)
+        self.assertNotIn("超出该范围的质量档", text)
         self.assertIn("轮轴阻尼 0.0045", text)
         self.assertIn("「连接 × 质量」env 数", text)
 
@@ -1546,7 +1546,8 @@ class CliTests(unittest.TestCase):
 
     def test_bad_values_rejected(self):
         for argv in (["--num-envs", "0"], ["--num-envs", "-5"],
-                     ["--cart-masses", "1"], ["--cart-masses", "60"],
+                     # 2026-10-18：上限 50 → 100 kg（质量上限扫描用），所以 60 现在合法、改测 101
+                     ["--cart-masses", "1"], ["--cart-masses", "101"],
                      ["--velocities", "0"], ["--velocities", "3"],
                      ["--ground-friction", "0"], ["--ground-friction", "3"],
                      ["--record-every", "0"], ["--wheel-damping", "0"],
@@ -1578,8 +1579,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**关闭**", text)
         self.assertIn("残差恒 0", text)
         self.assertIn("vx 偏移恒 0", text)
-        # 关时也要打印打开后的**契约口径**（v4 双头：帧 58 / explicit 5 / 动作 13）
-        self.assertIn("v4 双头", text)
+        # 关时也要打印打开后的**契约口径**（v5 CE Net：帧 58 / explicit 5 / 动作 13）
+        self.assertIn("v5 CE Net", text)
         self.assertIn("帧 58", text)
         self.assertIn("动作 13", text)
         self.assertIn("offset 有界且门控", text)
@@ -1595,13 +1596,13 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**开启**", opened)
         self.assertIn("确定性均值", opened)
         self.assertIn("towing_contract", opened)
-        # TOW-26：期望契约是 v4 双头（帧 58 / explicit 5 / 动作 13），不是 v3（explicit 6）/ v2
-        self.assertIn("契约 **v4 双头**", opened)
+        # TOW-26：期望契约是 v5 CE Net（帧 58 / explicit 5 / 动作 13），不是 v4/v3（explicit 6）/ v2
+        self.assertIn("契约 **v5 CE Net**", opened)
         self.assertIn("帧 58", opened)
         self.assertIn("frame_dim=58", opened)
         self.assertIn("explicit_dim=5", opened)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", opened)
-        self.assertIn("旧 v2（帧 57 / actor 79 / 动作 12）", opened)
+        self.assertIn("v2（57/79）", opened)
         self.assertNotIn("frame_dim=57", opened)
         self.assertNotIn("explicit_dim=6", opened)
         # 偏移头：有界（两层限幅）+ 门控（出生段不叠加、STOP 之后仍生效）都要在 plan 里
@@ -1720,7 +1721,8 @@ class BaselineComparisonTests(unittest.TestCase):
         self.assertIn("不可逐格硬比", text)
         # 默认口径：JNT 移出统计量 + 归档旧口径不可比 + 新口径重判读数
         self.assertIn("判定口径：**JNT 不计入**", text)
-        self.assertIn("`JNT` 已移出判定统计量", text)
+        self.assertIn("旧 `verdict` 的 JNT 已移出", text)
+        self.assertIn("任务口径把关节静差恢复为失败项", text)
         self.assertIn("PD 静差", text)
         self.assertIn("不是同一个量", text)
         self.assertIn("口径不可比（JNT）", text)
@@ -2146,9 +2148,9 @@ class DryRunTests(unittest.TestCase):
         # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
         self.assertIn("判定口径：**JNT 不计入**", result.stdout)
         self.assertIn("--count-jnt", result.stdout)
-        # ⑤ 上层开关状态与 v4 双头口径（帧 58 / explicit 5 / 动作 13 / offset 有界 + 门控）也在 plan 里
+        # ⑤ 上层开关状态与 v5 CE Net 口径（帧 58 / explicit 5 / 动作 13 / offset 有界 + 门控）也在 plan 里
         self.assertIn("上层网络：**关闭**", result.stdout)
-        self.assertIn("v4 双头", result.stdout)
+        self.assertIn("v5 CE Net", result.stdout)
         self.assertIn("帧 58", result.stdout)
         self.assertIn("动作 13", result.stdout)
         self.assertIn("offset 有界且门控", result.stdout)
@@ -2178,13 +2180,13 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)
         self.assertIn("上层网络：**开启**", result.stdout)
-        self.assertIn("契约 **v4 双头**", result.stdout)
+        self.assertIn("契约 **v5 CE Net**", result.stdout)
         self.assertIn("frame_dim=58", result.stdout)
         self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", result.stdout)
         self.assertIn("两层限幅", result.stdout)
         self.assertIn("门控", result.stdout)
         self.assertIn("STOP 之后仍生效", result.stdout)
-        self.assertIn("旧 v2（帧 57 / actor 79 / 动作 12）", result.stdout)
+        self.assertIn("v2（57/79）", result.stdout)
         self.assertIn("56/63 维 checkpoint 会被拒绝", result.stdout)
 
 
@@ -2906,3 +2908,168 @@ class MassScalingTests(unittest.TestCase):
     def test_too_light_total_is_rejected(self):
         with self.assertRaises(ValueError):
             play.cart_mass.body_properties(self.model, 0.5)
+
+
+class TaskCriteriaIntegrationTests(unittest.TestCase):
+    """2026-10-19 收束口径在 `play_towing_test` 里的接线（离线，不跑仿真）。"""
+
+    def _metrics(self, *, mass, robot_vx_b=None):
+        rows = build_episode(robot_vx_b=robot_vx_b)
+        return play.compute_case_metrics(
+            rows, case=synthetic_case(grade_deg=0.0, connection="compliant",
+                                      cart_mass_kg=mass),
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+
+    def test_metrics_carry_task_and_legacy_verdict(self):
+        metrics = self._metrics(mass=10.0)
+        self.assertIn("task", metrics)
+        self.assertIn("verdict", metrics)
+        self.assertEqual(metrics["task"]["version"], play.TASK_VERSION)
+        self.assertEqual(metrics["task"]["band"], "light")
+
+    def test_light_cart_speed_instability_is_a_task_failure(self):
+        metrics = self._metrics(mass=10.0, robot_vx_b=[0.5] * 100)
+        self.assertEqual(metrics["task"]["code"], "SPEED_UNSTABLE")
+        self.assertIn("speed_mae_high", metrics["task"]["reasons"])
+        self.assertTrue(metrics["task"]["checks"]["start_stop_impact"]["ok"])
+        self.assertTrue(metrics["task"]["checks"]["no_fall"]["ok"])
+
+    def test_heavy_cart_speed_is_not_judged(self):
+        metrics = self._metrics(mass=30.0, robot_vx_b=[0.5] * 100)
+        self.assertEqual(metrics["task"]["band"], "heavy")
+        self.assertFalse(metrics["task"]["checks"]["speed_tracking"]["applicable"])
+        # 旧口径仍会报 SPD，但任务口径不因速度判重车失败
+        self.assertIn("speed_track_error", metrics["verdict"]["reasons"])
+        self.assertTrue(metrics["task"]["ok"])
+
+    def test_joint_static_error_is_a_task_failure(self):
+        rows = build_episode(startup_error=0.4)
+        metrics = play.compute_case_metrics(
+            rows, case=synthetic_case(grade_deg=0.0, connection="compliant",
+                                      cart_mass_kg=10.0),
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05)
+        self.assertEqual(metrics["task"]["code"], "JOINT_ERROR")
+        self.assertIn("startup_joint_error", metrics["task"]["reasons"])
+        # 旧 verdict 默认仍不计 JNT，两者并存
+        self.assertNotIn("startup_joint_error", metrics["verdict"]["reasons"])
+
+    def test_task_thresholds_are_forwarded(self):
+        metrics = self._metrics(mass=10.0)
+        self.assertEqual(metrics["task"]["thresholds"]["task_light_max_kg"],
+                         play.DEFAULT_TASK_THRESHOLDS["task_light_max_kg"])
+        strict = play.compute_case_metrics(
+            build_episode(), case=synthetic_case(grade_deg=0.0, cart_mass_kg=30.0),
+            schedule=schedules(), record_dt=0.005,
+            tow_summary={"valid": True, "failures": [], "min_clearance_coast_m": 0.3},
+            thresholds=play.DEFAULT_THRESHOLDS, transition_window_s=0.05,
+            task_thresholds={"task_light_max_kg": 40.0})
+        self.assertEqual(strict["task"]["band"], "light")
+
+    def test_case_report_row_adds_task_columns(self):
+        metrics = self._metrics(mass=10.0, robot_vx_b=[0.5] * 100)
+        row = play.case_report_row(metrics)
+        for key in ("task_code", "task_reasons", "task_band", "task_ok",
+                    "task_speed_ok", "task_lane_ok", "task_joint_ok",
+                    "task_impact_ok", "task_fall_ok",
+                    "speed_steady_speed_std_mps", "speed_steady_abs_err_p95_mps",
+                    "max_abs_roll_rad"):
+            self.assertIn(key, row)
+        self.assertEqual(row["task_code"], "SPEED_UNSTABLE")
+        self.assertEqual(row["task_band"], "light")
+        self.assertEqual(row["task_ok"], False)
+
+    def test_report_headlines_task_criteria(self):
+        metrics = self._metrics(mass=10.0, robot_vx_b=[0.5] * 100)
+        summary = {"case": metrics["case"], "metrics": metrics,
+                   "verdict": metrics["verdict"], "task": metrics["task"]}
+        groups = play.group_statistics([summary])
+        conclusion = play.necessity_conclusion(groups, play.DEFAULT_THRESHOLDS)
+        report = play.build_markdown_report(
+            case_summaries=[summary], groups=groups, conclusion=conclusion,
+            args_dict={"num_envs": 1, "velocities": [1.0], "cart_masses": [10.0],
+                       "ground_friction": 0.8, "wheel_damping": 0.0045,
+                       "command_shaping": "direct", "ramp_time_s": 1.0,
+                       "record_every": 5, "write_csv": "failed",
+                       "lane_keeping": "pd", "lane_kp_y": 1.0, "lane_kd_y": 0.3,
+                       "lane_kp_yaw": 1.5, "lane_kd_yaw": 0.3,
+                       "lane_vy_limit": 0.4, "lane_wz_limit": 0.8,
+                       "count_jnt": False},
+            thresholds=play.DEFAULT_THRESHOLDS,
+            schedule=schedules(), grades=[0.0],
+            git={"commit": "deadbeef", "working_tree": None},
+            task_thresholds=play.DEFAULT_TASK_THRESHOLDS)
+        self.assertIn("## 任务口径（2026-10-19 收束，验收以此为准）", report)
+        self.assertIn("### 任务判定矩阵", report)
+        self.assertIn("| 档 | 速度跟随稳定性 | 横向/朝向保持 | 关节静差 | 启停冲击 | "
+                      "不翻车 | 任务通过 |", report)
+        self.assertIn("小车档", report)
+        self.assertIn("SPD×1", report)
+        self.assertIn("旧口径（仅追溯", report)
+        self.assertIn("## 逐坡度量级判定矩阵（旧口径，仅追溯）", report)
+
+    def test_group_statistics_carry_task_counts(self):
+        metrics = self._metrics(mass=10.0, robot_vx_b=[0.5] * 100)
+        summary = {"case": metrics["case"], "metrics": metrics,
+                   "verdict": metrics["verdict"], "task": metrics["task"]}
+        groups = play.group_statistics([summary])
+        entry = groups["grade0"]
+        self.assertEqual(entry["task_cases"], 1)
+        self.assertEqual(entry["task_applicable"], 1)
+        self.assertEqual(entry["task_cases_ok"], 0)
+        self.assertEqual(entry["task_codes"]["SPEED_UNSTABLE"], 1)
+        self.assertIn("speed_mae_high", entry["task_reasons"])
+
+
+class RollExtractionTests(unittest.TestCase):
+    """2026-10-19「拉重车不翻车」的侧倾通道：从 base 四元数解 roll。"""
+
+    def _stats(self, rows):
+        return play.stability_stats(
+            rows, transition_window_s=0.05, record_dt=0.005,
+            fall_height_limit_m=0.15, pitch_limit_rad=0.8,
+            pitch_fraction_limit=0.2)
+
+    def _row(self, *, roll=0.0, quat=True, height=0.27):
+        if quat:
+            half = roll / 2.0
+            quat_fields = {"robot_quat_x": math.sin(half), "robot_quat_y": 0.0,
+                           "robot_quat_z": 0.0, "robot_quat_w": math.cos(half)}
+        else:
+            quat_fields = {"robot_quat_x": 0.0, "robot_quat_y": 0.0,
+                           "robot_quat_z": 0.0, "robot_quat_w": 0.0}
+        return base_row(robot_surface_height_m=height, robot_z_m=height,
+                        body_pitch_rel_rad=0.0, body_pitch_rad=0.0,
+                        **quat_fields)
+
+    def test_pure_roll_from_quaternion(self):
+        stats = self._stats([self._row(roll=0.5), self._row(roll=-0.2)])
+        self.assertAlmostEqual(stats["max_abs_roll_rad"], 0.5, places=9)
+        self.assertAlmostEqual(stats["final_abs_roll_rad"], 0.2, places=9)
+        self.assertEqual(stats["roll_samples"], 2)
+
+    def test_roll_above_limit_sets_fell(self):
+        stats = self._stats([self._row(roll=0.95)])
+        self.assertGreater(stats["max_abs_roll_rad"], 0.8)
+        self.assertGreater(stats["roll_over_limit_frac"], 0.2)
+        self.assertTrue(stats["fell"])
+        self.assertEqual(stats["fell_phase"], "tow")
+
+    def test_roll_at_limit_does_not_set_fell(self):
+        stats = self._stats([self._row(roll=0.79)])
+        self.assertFalse(stats["fell"])
+
+    def test_pitch_above_limit_sets_fell(self):
+        row = self._row(roll=0.0)
+        row["body_pitch_rel_rad"] = 0.95
+        stats = self._stats([row])
+        self.assertTrue(stats["fell"])
+
+    def test_degenerate_quaternion_gives_none(self):
+        stats = self._stats([self._row(quat=False)])
+        self.assertIsNone(stats["max_abs_roll_rad"])
+        self.assertIsNone(stats["final_abs_roll_rad"])
+        self.assertEqual(stats["roll_samples"], 0)

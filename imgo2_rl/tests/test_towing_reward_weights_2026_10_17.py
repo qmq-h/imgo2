@@ -1,4 +1,9 @@
-"""离线契约测试：2026-10-17 的三处奖励权重改动。
+"""离线契约测试：2026-10-17 的三处奖励权重改动（**2026-10-19 已部分覆盖**）。
+
+2026-10-19 用户随验收口径收束又改了三条：`clearance` 与 `min_clearance` 权重 **→ 0.0**、
+`collision` **全域 → −1.0**（不再按下坡缩放）。本文件保留原 10-17 的 `action_rate` 与
+`cart_collision_cost` 函数级测试，并把已覆盖的注册行断言更新到 10-19 口径。
+
 
 用户 2026-10-17 要求（原文）：
 
@@ -164,13 +169,15 @@ def _reward_term_names():
 # ---------------------------------------------------------------------------
 
 class ClearanceWeightTests(unittest.TestCase):
-    def test_weight_is_minus_ten(self):
+    def test_weight_is_zero_since_2026_10_19(self):
         term = _reward_term("clearance")
         self.assertEqual(term["func"], "clearance_barrier")
-        self.assertEqual(term["weight"], -10.0)
+        self.assertEqual(term["weight"], 0.0)      # 2026-10-19: −10.0 → 0.0
         self.assertEqual(term["params"], {"warning_distance": 0.20, "scale": 0.05})
 
-    def test_old_weight_does_not_come_back(self):
+    def test_old_weights_do_not_come_back(self):
+        self.assertNotIn("clearance = RewTerm(func=mdp.clearance_barrier, weight=-10.0",
+                         CFG_SOURCE)
         self.assertNotIn("clearance = RewTerm(func=mdp.clearance_barrier, weight=-1.0",
                          CFG_SOURCE)
 
@@ -224,23 +231,19 @@ class ActionRateWeightTests(unittest.TestCase):
 # ③ collision 只在下坡段 −1.0
 # ---------------------------------------------------------------------------
 
-class DownhillCollisionTests(unittest.TestCase):
-    def test_registered_weight_and_scale(self):
+class RegisteredCollisionTests(unittest.TestCase):
+    def test_registered_weight_is_globally_minus_one(self):
         term = _reward_term("collision")
         self.assertEqual(term["func"], "cart_collision_cost")
-        self.assertEqual(term["weight"], -5.0)                  # 其他路段不变
-        self.assertEqual(term["params"], {"downhill_scale": 0.2})
-        # 有效权重：−5.0 × 0.2 = −1.0（每步 −0.05）
-        self.assertAlmostEqual(term["weight"] * term["params"]["downhill_scale"], -1.0,
-                               places=12)
-        self.assertAlmostEqual(term["weight"] * term["params"]["downhill_scale"] * STEP_DT,
-                               -0.05, places=12)
+        self.assertEqual(term["weight"], -1.0)       # 2026-10-19: 全域 −1.0
+        self.assertEqual(term["params"], {})          # 不再传 downhill_scale
+        self.assertAlmostEqual(term["weight"] * STEP_DT, -0.05, places=12)
 
     def test_single_collision_curve(self):
         """不得拆成第二条 RewTerm：`Episode_Reward/collision` 必须仍是一条曲线。"""
         names = _reward_term_names()
         self.assertEqual([n for n in names if "collision" in n], ["collision"])
-        self.assertNotIn("RewTerm(func=mdp.cart_collision_cost, weight=-1.0", CFG_SOURCE)
+        self.assertNotIn("RewTerm(func=mdp.cart_collision_cost, weight=-5.0", CFG_SOURCE)
 
     def test_downhill_section_uses_the_profile_constants(self):
         body, _node = _function_source(MDP_SOURCE, "downhill_segment")
