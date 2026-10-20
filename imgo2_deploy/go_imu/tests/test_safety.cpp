@@ -243,6 +243,7 @@ static void testLimitsValid()
 static go::RobotConfig makeConfig()
 {
     go::RobotConfig config;
+    config.limits.clear();
     config.buses = {{"fake0", {0, 1, 2}, {}}};
     config.period = Ms(2);
     config.command_timeout_ms = 500;
@@ -335,11 +336,38 @@ static void testArrayRejectsBadLimits()
     std::cout << "    " << error << "\n";
 }
 
+// 默认限位必须覆盖完整硬件顺序，且实际裁剪目标、允许站立姿态。
+static void testDefaultConfigLimits()
+{
+    const auto config = go::makeDefaultConfig();
+    CHECK(config.buses.size() == 4);
+    CHECK(config.limits.size() == 12);
+    std::string error;
+    CHECK(go::Safety::limitsValid(config.limits, 12, error));
+    const float lower[] = {-0.523f, -0.9f, -3.0f};
+    const float upper[] = {0.523f, 2.87f, -0.733f};
+    auto targets = makeTargets(12, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f);
+    CHECK(go::Safety::clamp(targets, config.limits) == go::ClampResult::Clamped);
+    for (size_t i = 0; i < 12; ++i) {
+        CHECK(targets.q[i] == upper[i % 3]);
+        CHECK(targets.dq[i] == 30.1f && targets.tau[i] == 23.7f);
+        CHECK(targets.kp[i] == 70.0f && targets.kd[i] == 10.0f);
+    }
+    targets = makeTargets(12, -100.0f);
+    CHECK(go::Safety::clamp(targets, config.limits) == go::ClampResult::Clamped);
+    for (size_t i = 0; i < 12; ++i) CHECK(targets.q[i] == lower[i % 3]);
+    targets = makeTargets(12, 0.0f);
+    const float stand[] = {0.0f, 0.87f, -1.82f};
+    for (size_t i = 0; i < 12; ++i) targets.q[i] = stand[i % 3];
+    CHECK(go::Safety::clamp(targets, config.limits) == go::ClampResult::Unchanged);
+}
+
 int main()
 {
     std::cout << "test_safety: Safety 限幅层\n";
     try
     {
+        testDefaultConfigLimits();
         testClampByLimits();
         testClampPassThrough();
         testClampRejectsNonFinite();

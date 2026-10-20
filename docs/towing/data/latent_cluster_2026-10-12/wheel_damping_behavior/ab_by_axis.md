@@ -17,7 +17,7 @@
 | 质量 15 kg | 175 | 3.4% | 26.9% | +23.4pt | 41% / 45% | 0.31 / 0.55 | 1.56 / 4.10 | 0.533 / 0.333 | 0.0 / 314.1 |
 | 质量 20 kg | 175 | 5.1% | 30.3% | +25.1pt | 20% / 35% | 0.33 / 0.58 | 1.61 / 4.51 | 0.505 / 0.331 | 6.9 / 470.7 |
 
-读法：硬证据 = `stop.deck_contact_peak_n > 0` 或 `stop.min_clearance_coast_m ≤ 0`（与 [compare_play_runs.py](imgo2_rl/scripts/tools/compare_play_runs.py) 同口径，全体行须复现它的 3.1% / 20.1%）；代理通道 = `stop.contact` 布尔（含 `load_velocity_jump` 等软通道，**不能当结论**）；滑移 = `stop.cart_coast_distance_m`。
+读法：硬证据 = `stop.deck_contact_peak_n > 0` 或 `stop.min_clearance_coast_m ≤ 0`（与 [compare_play_runs.py](../../../../../imgo2_rl/scripts/tools/compare_play_runs.py) 同口径，全体行须复现它的 3.1% / 20.1%）；代理通道 = `stop.contact` 布尔（含 `load_velocity_jump` 等软通道，**不能当结论**）；滑移 = `stop.cart_coast_distance_m`。
 
 ## 与 `compare_play_runs.py` 对账
 

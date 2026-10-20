@@ -53,6 +53,7 @@ static std::unique_ptr<go::GoMotorArray> makeArray(std::chrono::milliseconds wat
 {
     fake_serial::clear();
     go::RobotConfig config;
+    config.limits.clear();
     config.buses = {{"fake0", {0, 1, 2}, {}}};
     config.command_timeout_ms = command_timeout_ms;
     config.period = std::chrono::milliseconds(2);
@@ -177,6 +178,7 @@ static void testValidation()
 
     // 同一个设备路径出现在两条总线：会变成“两条线程抢一个串口”，必须在 start() 就拦住
     go::RobotConfig dup_config;
+    dup_config.limits.clear();
     dup_config.buses = {{"fake0", {0, 1, 2}, {}}, {"fake0", {0, 1, 2}, {}}};
     go::GoMotorArray dup(dup_config);
     std::string error;
@@ -189,6 +191,7 @@ static void testValidation()
     try
     {
         go::RobotConfig bad_config;
+        bad_config.limits.clear();
         bad_config.buses = {{"fake0", {0}, {}}};
         bad_config.command_timeout_ms = 100;
         bad_config.watchdog = std::chrono::milliseconds(100); // >= 命令有效期，必须被拒绝
@@ -205,6 +208,7 @@ static void testValidation()
     try
     {
         go::RobotConfig off_config;
+        off_config.limits.clear();
         off_config.buses = {{"fake0", {0}, {}}};
         off_config.command_timeout_ms = 100;
         off_config.watchdog = std::chrono::milliseconds(0); // 0 = 关闭看门狗，允许

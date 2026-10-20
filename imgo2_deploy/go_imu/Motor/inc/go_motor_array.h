@@ -62,6 +62,18 @@ struct LoopStats
 };
 
 /**
+ * 一条总线最近一轮的三段耗时（微秒）。只用于诊断，不参与任何判决。
+ * 三段之和 + 少量代码开销 ≈ total_us（该轮 cycle() 的实际耗时）。
+ */
+struct BusTiming
+{
+    std::uint32_t total_us = 0; // 该轮 cycle() 总耗时
+    std::uint32_t flush_us = 0; // 每次写之前的 tcflush 累计
+    std::uint32_t write_us = 0; // 把命令写进驱动的累计
+    std::uint32_t reply_us = 0; // 等应答 + 收字节 + 解析的累计
+};
+
+/**
  * 把若干条总线上的电机当成一组统一控制。
  *
  * 线程模型（B 方向）：每条总线一个定周期线程（go::Loop）自己跑，上层不驱动它。
@@ -102,11 +114,6 @@ public:
      * 返回全部总线展开后的电机总数。
      */
     size_t motorCount() const { return motor_count_; }
-
-    /**
-     * 返回总线条数。
-     */
-    size_t busCount() const { return workers_.size(); }
 
     /**
      * 返回每条总线的目标节拍。
@@ -173,31 +180,27 @@ public:
     std::vector<float> positions() const;
 
     /**
-     * 启动自动归零时每台的修正量（按展开顺序）：`本机启动时的 qL − start_pose_rad`。
-     * 也就是"这次上电和上次标定差了多少"——用来核对启动姿态的重复性；没开时全是 0。
-     */
-    std::vector<float> zeroShifts() const;
-
-    /**
-     * 上面那组修正量的绝对值最大值（rad）；0 表示没开自动归零或与期望完全一致。
-     */
-    float maxZeroShift() const;
-
-    /**
-     * 全部电机所在设备路径，按展开顺序，便于打印或核对接线。
-     */
-    std::vector<std::string> motorDevices() const;
-
-    /**
-     * 每台电机一行标签 "<设备>/ID<n>"，按展开顺序。
-     * 打印、写日志表头、核对“第几个关节是哪个口上的哪台”时用。
-     */
-    std::vector<std::string> motorLabels() const;
-
-    /**
      * 返回第 bus_index 条总线最近一轮 cycle() 的耗时（毫秒）；越界返回 0。
      */
     double busMs(size_t bus_index) const;
+
+    /**
+     * 每条总线的设备路径，按总线顺序 —— 长度 = 总线数（不是电机数）。
+     * 与 busMs() 同序，用来打印"哪条总线的一轮花了多久"。
+     */
+    std::vector<std::string> busDevices() const;
+
+    /**
+     * 最近一轮的三段耗时（µs，含该轮卸载重试）。只用于诊断/日志，不参与判决。
+     * 三个分量的和 ≈ total_us 减去少量代码开销；用它定位"2 ms 到底花在哪一段"。
+     */
+    BusTiming busTiming(size_t bus_index) const;
+
+    /**
+     * 逐事务诊断埋点（只读）。每次 exchange() 一条，环形缓冲 16384 条。
+     * 用来说清"某段没有新反馈的时间里，是没发、发了没回、还是回了但是坏帧"。
+     */
+    const TransactionTrace& transactionTrace() const { return trace_; }
 
     /**
      * 是否有任一条总线失败（真故障）。
@@ -251,7 +254,7 @@ private:
      * 内部：worker 的初始化：构造 GoBus、注册电机、open、启动探测。
      * 成功返回 true；失败或抛异常都会转成该总线的错误状态（不会让线程 terminate）。
      */
-    bool initWorker(Worker &worker);
+    bool initWorker(Worker &worker, std::size_t bus_index);
 
     /**
      * 内部：跑一轮 = 有新区号就提交目标 → bus.cycle() → 发布反馈与本轮结果。
@@ -277,6 +280,7 @@ private:
     std::chrono::microseconds period_;
     std::chrono::milliseconds watchdog_;
     std::chrono::milliseconds start_timeout_{5000}; // start() 等启动探测的上限
+    TransactionTrace trace_; // 诊断埋点：各总线线程写入，停机/故障时读
 
     // ---- 以下由 mutex_ 保护，跨线程访问 ----
     mutable std::mutex mutex_;

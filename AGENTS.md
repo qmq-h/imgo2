@@ -16,7 +16,7 @@
 ## 文档结构
 
 - 仓库是**单一项目**，文档只放三处：根 `README.md`（总览、流程、问题表、维护记录）、`AGENTS.md`（维护约定）、`docs/`（单项排查记录与离线结果）。**不保留子项目 `README.md`**；「哪个目录属于哪条链路」由根 README 的目录职责表说明，不要再为子目录另建入口文档。
-- `docs/` 按主题归档：`amp/`、`cmoe/`、`towing/`、`deployment/`、`training/`、`research/`、`maintenance/`；机器可读结果放对应 `data/`。新增记录放对应主题，根 README 是统一入口；移动文档时同步修正相对引用和脚本路径。
+- `docs/` 按现存主题归档：`amp/`、`cmoe/`、`towing/`、`deployment/`、`training/`、`research/`、`maintenance/`；`xiaoji_cmd/` 放用户维护的命令文档。**除非用户另有明确要求，后续新增文档直接放入现存对应子文件夹，不放在 `docs/` 根目录，不新建文件夹。** 机器可读结果优先放主题内已有的 `data/`；主题没有 `data/` 时直接放该主题目录。根 README 是统一入口；移动文档时同步修正相对引用和脚本路径。
 - 顶层目录命名统一为小写下划线：`imgo2_description/`、`imgo2_dataset/`、`imgo2_rl/`、`imgo2_deploy/`（`imgo2_model/` 已于 2026-09-17 并入 `imgo2_description/` 后删除）。新增顶层目录沿用该风格。
 - 同一结论只在一处展开，避免两处各自漂移。
 - 忽略规则只放在根 `.gitignore`。只对某个子树成立的规则必须带路径前缀（例如 `/imgo2_deploy/**/mujoco/`），否则会在整仓范围内过度匹配；改动后跑一遍 `git ls-files -i -c --exclude-standard`，它必须为空（没有「已跟踪却被忽略」的文件）。

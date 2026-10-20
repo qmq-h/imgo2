@@ -1,4 +1,5 @@
 #include "display/motor_panel.h"
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 namespace go_display {
@@ -31,23 +32,31 @@ void printBusLine(std::string& screen, const PortState &state)
     {
         if (!motor.feedback.valid)
         {
-            append(screen, " | ID%d 无应答", motor.id);
+            if (motor.timeoutCount)
+                append(screen, " | ID%d 无应答×%llu(%s)", motor.id,
+                       (unsigned long long)motor.timeoutCount, motor.error.c_str());
+            else
+                append(screen, " | ID%d 无应答", motor.id);
             continue;
         }
-        // q  = 原始输出侧角度（与 go_probe 一致，不受 offset/direction 影响）
+        // q  = 原始输出侧角度（不受 offset/direction 影响）
         // qL = 逻辑角度 = direction × (q − offset) —— 姿态、轨迹、日志用的就是这个
         append(screen, " | ID%d qOut=%+5.2f qL=%+5.2f", motor.id, double(motor.feedback.q),
                     toLogical(motor, double(motor.feedback.q)));
         append(screen, " err=%u", unsigned(motor.feedback.error));
         if (motor.feedback.error)
             append(screen, "(%s)", go::motorErrorText(motor.feedback.error));
+        if (motor.timeoutCount)
+            append(screen, " TO%llu", (unsigned long long)motor.timeoutCount);
     }
-    append(screen, "  [轮 %.1fms]\n", state.sweepMs);
+    append(screen, "  [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
+           (unsigned long long)state.timeoutTotal);
 }
 
 void RenderMonitor(const std::vector<PortState> &states, long long refresh,
             const imu_sensor::TerminalDisplay& display,
-            const imu_sensor::MonitorSnapshot& imu, const real_config::ImuConfig& config)
+            const imu_sensor::MonitorSnapshot& imu, const real_config::ImuConfig& config,
+            size_t timeout_us)
 {
     std::string screen;
     if (display.Columns() < 200 || display.Rows() < 24) {
@@ -62,9 +71,20 @@ void RenderMonitor(const std::vector<PortState> &states, long long refresh,
                     append(screen, " ID%d %+.2f/%+.2f e%u", motor.id,
                            double(motor.feedback.q), toLogical(motor, motor.feedback.q),
                            unsigned(motor.feedback.error));
-                else append(screen, " ID%d --", motor.id);
+                else append(screen, " ID%d --x%llu", motor.id, (unsigned long long)motor.timeoutCount);
             }
-            append(screen, "\n");
+            append(screen, " [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
+                   (unsigned long long)state.timeoutTotal);
+        }
+        {
+            uint64_t timeouts = 0; size_t bad = 0; double worst = 0;
+            for (const auto& state : states) {
+                timeouts += state.timeoutTotal;
+                bad += state.badFrames;
+                worst = std::max(worst, state.sweepMaxMs);
+            }
+            append(screen, "合计 超时=%llu 次, 坏帧=%zu, 最坏单轮=%.2fms, 单次预算=%.1fms\n",
+                   (unsigned long long)timeouts, bad, worst, timeout_us / 1000.0);
         }
         display.Show(screen + imu_sensor::MonitorPanel(imu, config));
         return;
@@ -74,22 +94,26 @@ void RenderMonitor(const std::vector<PortState> &states, long long refresh,
                 refresh);
     append(screen, "  核对正方向：机械架空后用手慢慢搬动关节，看该台的 qL 往哪边变；\n");
     append(screen, "  方向据此填 config/real_config.cpp 的 motor_directions（+1 原样 / -1 取反）。\n");
-    append(screen, "  qOut = 输出端角度（协议层已经除以减速比 6.33；未减 offset，与 go_probe 的 q 一致）\n");
+    append(screen, "  qOut = 输出端角度（协议层已经除以减速比 6.33；未减 offset）\n");
     append(screen, "  qL   = 逻辑角度 = direction × (qOut − offset) —— 姿态/轨迹/日志用的都是它\n");
-    append(screen, "  两者都是**输出端**角度；转子角度只出现在线上帧、offset 和 go_probe 的 off= 里。\n");
+    append(screen, "  qOut 与 qL 都是输出端 rad；控制目标与反馈采用逻辑角度 qL。\n");
     append(screen, "  范围在退出时按 qL 汇总，可直接填 config.limits 的 q_min/q_max。Ctrl+C 退出。\n\n");
 
     for (const PortState &state : states)
         printBusLine(screen, state);
 
-    size_t bytes = 0, bad = 0, stray = 0;
+    size_t bytes = 0, bad = 0, stray = 0; uint64_t timeouts = 0; double worst = 0;
     for (const PortState &state : states)
     {
         bytes += state.bytesIn;
         bad += state.badFrames;
         stray += state.strayFrames;
+        timeouts += state.timeoutTotal;
+        worst = std::max(worst, state.sweepMaxMs);
     }
-    append(screen, "\n  合计: 收到 %zu 字节，坏帧 %zu，非请求 ID 帧 %zu\n", bytes, bad, stray);
+    append(screen, "\n  合计: 收到 %zu 字节，坏帧 %zu，非请求 ID 帧 %zu | 超时 %llu 次"
+                   "（单次预算 %.1f ms，最坏单轮 %.2f ms）\n",
+           bytes, bad, stray, (unsigned long long)timeouts, timeout_us / 1000.0, worst);
     display.Show(screen + imu_sensor::MonitorPanel(imu, config));
 }
 

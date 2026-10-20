@@ -1,3 +1,4 @@
+#include "function/my_myth.h"
 #include "imu_sensor/yesense_parser.hpp"
 
 #include <chrono>
@@ -7,7 +8,7 @@
 namespace imu_sensor {
 namespace {
 constexpr float kScale = 1e-6f;
-constexpr float kDegreesToRadians = 0.017453292519943295f;
+constexpr float kDegreesToRadians = my_myth::degrees_to_radians_f;
 
 float ReadScaledI32(const std::uint8_t* p) {
     const std::uint32_t bits = static_cast<std::uint32_t>(p[0]) |

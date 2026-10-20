@@ -17,7 +17,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_helpers import (MOTOR_IDS, START_Q, KP_WIRE, KD_WIRE,  # noqa: E402
-                         crc16, reply, control_is_zero, target_q, read_log)
+                         crc16, reply, control_is_zero, target_q)
 
 EXE = sys.argv.pop(1)
 BUS_COUNT = 4
@@ -44,16 +44,16 @@ class StandTest(unittest.TestCase):
         # 设成标准坐标系（offset 0、direction +1）：假电机回的是固定原始角度，
         # 不中和的话"逻辑角度"会随 config/real_config.cpp 里用户的标定与镜像方向变化。
         env['GO_TEST_IDENTITY_FRAME'] = '1'
-        log_dir = tempfile.mkdtemp(prefix='go_stand_log_')
-        env['GO_STAND_LOG_DIR'] = log_dir
 
+
+        work_dir = tempfile.mkdtemp(prefix='go_no_log_')
         frames = [[] for _ in range(BUS_COUNT)]
         bufs = [bytearray() for _ in range(BUS_COUNT)]
         proc = None
         try:
             with tempfile.TemporaryFile() as output:
                 # 站起程序有"起跑门"：必须在 stdin 上输入 0 才开始运动
-                proc = subprocess.Popen([EXE], env=env, stdout=output, stderr=subprocess.PIPE,
+                proc = subprocess.Popen([EXE], env=env, cwd=work_dir, stdout=output, stderr=subprocess.PIPE,
                                         stdin=subprocess.PIPE)
                 # 轨迹 DURATION_S 秒；多留一段时间确保它走完并且又保持了一会儿
                 deadline = time.monotonic() + DURATION_S * 2.0 + 0.6
@@ -90,14 +90,15 @@ class StandTest(unittest.TestCase):
             self.assertEqual(err, b'')
             self.assertIn(b'\xe5\xb7\xb2\xe5\x88\xb0\xe8\xbe\xbe\xe7\xab\x99\xe7\xab\x8b\xe5\xa7\xbf\xe6\x80\x81',
                           out)  # "已到达站立姿态"
-            self.assertIn(b'progress=1.000', out)
+            self.assertLessEqual(len(out.splitlines()), 4, out)
+            self.assertEqual(os.listdir(work_dir), [], '运行不应创建日志文件')
 
             for bus in range(BUS_COUNT):
                 self.checkBus(bus, frames[bus], expect_pose)
-            self.checkLog(log_dir, expect_pose)
+
             return out
         finally:
-            shutil.rmtree(log_dir, ignore_errors=True)
+            shutil.rmtree(work_dir, ignore_errors=True)
             if proc is not None and proc.poll() is None:
                 proc.kill()
                 proc.communicate()
@@ -161,24 +162,6 @@ class StandTest(unittest.TestCase):
             frame = [f for f in motion if (f[2] & 0x0f) == mid][0]
             self.assertEqual(int.from_bytes(frame[11:13], 'little'), KP_WIRE)
             self.assertEqual(int.from_bytes(frame[13:15], 'little'), KD_WIRE)
-
-    def checkLog(self, log_dir, expect_pose):
-        """日志同时记目标与反馈：t_s,q_des0..q_des11,q0..q11。"""
-        comments, header, rows = read_log(log_dir)
-        self.assertTrue(any(line.startswith('# 关节对应关系:') for line in comments), comments)
-        expect = ['t_s'] + ['q_des%d' % i for i in range(12)] + ['q%d' % i for i in range(12)]
-        self.assertEqual(header, expect)
-        self.assertGreater(len(rows), 2, rows[:3])
-        for row in rows:
-            self.assertEqual(len(row), 25, row)
-        times = [float(row[0]) for row in rows]
-        self.assertEqual(times, sorted(times), times[:5])
-        # 目标列应该走到站立姿态；反馈列（假电机）始终是 START_Q
-        last = [float(x) for x in rows[-1]]
-        for leg, mid in enumerate(MOTOR_IDS):
-            self.assertAlmostEqual(last[1 + mid], expect_pose[leg], delta=0.02)
-            # 自动归零后，反馈的**逻辑**位置在启动姿态处是 0（假电机回的是固定 START_Q）
-            self.assertAlmostEqual(last[13 + mid], 0.0, delta=0.02)
 
     def test_stand_up(self):
         self.scenario()

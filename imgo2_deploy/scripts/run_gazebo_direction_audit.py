@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(description="Short fresh-world Gazebo direction
 parser.add_argument("--output-root", required=True, type=Path)
 parser.add_argument("--summary-json", type=Path)
 parser.add_argument("--cases", default="forward_04,backward_04,turn_left,turn_right")
+parser.add_argument("--contact-tracer", type=Path, help="Optional compiled read-only Gazebo contact tracer.")
 args = parser.parse_args()
 REPO = Path(__file__).resolve().parents[2]
 LABEL = "direction_audit"
@@ -50,6 +51,13 @@ for name, vx, wz in cases:
             processes.append(process)
             if title == 'gazebo':
                 time.sleep(5)
+        if args.contact_tracer:
+            handle = (folder / 'contacts.csv').open('w')
+            files.append(handle)
+            errors = (folder / 'contacts.log').open('w')
+            files.append(errors)
+            processes.append(subprocess.Popen([str(args.contact_tracer.resolve())], cwd=REPO, env=env,
+                stdout=handle, stderr=errors, start_new_session=True))
         deadline = time.monotonic() + 65
         while time.monotonic() < deadline:
             text = (folder / 'rl_sim.log').read_text(errors='replace')

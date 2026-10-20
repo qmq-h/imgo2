@@ -1,0 +1,592 @@
+{
+  "date": "2026-10-14",
+  "moved_count": 106,
+  "by_destination": {
+    "docs/amp/data": 39,
+    "docs/amp": 15,
+    "docs/maintenance": 10,
+    "docs/deployment": 37,
+    "docs/training": 5
+  },
+  "moves": {
+    "docs/amp_25000_export_contract_2026-10-11.json": "docs/amp/data/amp_25000_export_contract_2026-10-11.json",
+    "docs/amp_25000_gait_spectrum_2026-10-11.json": "docs/amp/data/amp_25000_gait_spectrum_2026-10-11.json",
+    "docs/amp_25000_gait_spectrum_repeat_2026-10-11.json": "docs/amp/data/amp_25000_gait_spectrum_repeat_2026-10-11.json",
+    "docs/amp_25000_loss_and_standing_review_2026-10-13.md": "docs/amp/amp_25000_loss_and_standing_review_2026-10-13.md",
+    "docs/amp_29000_export_contract_2026-10-10.json": "docs/amp/data/amp_29000_export_contract_2026-10-10.json",
+    "docs/amp_4000_deploy_2026-10-12.md": "docs/amp/amp_4000_deploy_2026-10-12.md",
+    "docs/amp_4000_export_contract_2026-10-12.json": "docs/amp/data/amp_4000_export_contract_2026-10-12.json",
+    "docs/amp_air_time_reward_2026-10-10.md": "docs/amp/amp_air_time_reward_2026-10-10.md",
+    "docs/amp_air_time_style_2026-10-10.md": "docs/amp/amp_air_time_style_2026-10-10.md",
+    "docs/amp_collection_dataset_real_fk_2026-10-11.json": "docs/amp/data/amp_collection_dataset_real_fk_2026-10-11.json",
+    "docs/amp_collection_dataset_summary_2026-10-11.json": "docs/amp/data/amp_collection_dataset_summary_2026-10-11.json",
+    "docs/amp_collection_review_2026-10-11.md": "docs/amp/amp_collection_review_2026-10-11.md",
+    "docs/amp_current_policy_identity_2026-10-13.json": "docs/amp/data/amp_current_policy_identity_2026-10-13.json",
+    "docs/amp_foot_clearance_comparison_2026-10-13.png": "docs/amp/data/amp_foot_clearance_comparison_2026-10-13.png",
+    "docs/amp_foot_lift_review_2026-10-13.md": "docs/amp/amp_foot_lift_review_2026-10-13.md",
+    "docs/amp_gazebo_isaac_direction_comparison_2026-10-13.json": "docs/amp/data/amp_gazebo_isaac_direction_comparison_2026-10-13.json",
+    "docs/amp_low_speed_finetune_plan_2026-10-13.md": "docs/amp/amp_low_speed_finetune_plan_2026-10-13.md",
+    "docs/amp_low_speed_motion_inventory_2026-10-13.json": "docs/amp/data/amp_low_speed_motion_inventory_2026-10-13.json",
+    "docs/amp_motion_new_25000_contract_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_contract_2026-10-13.json",
+    "docs/amp_motion_new_25000_foot_clearance_04_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_foot_clearance_04_2026-10-13.json",
+    "docs/amp_motion_new_25000_foot_clearance_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_foot_clearance_2026-10-13.json",
+    "docs/amp_motion_new_25000_foot_clearance_target_clip_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_foot_clearance_target_clip_2026-10-13.json",
+    "docs/amp_motion_new_25000_spectrum_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_spectrum_2026-10-13.json",
+    "docs/amp_motion_new_25000_training_windows_2026-10-13.json": "docs/amp/data/amp_motion_new_25000_training_windows_2026-10-13.json",
+    "docs/amp_motion_new_direction_data_2026-10-13.json": "docs/amp/data/amp_motion_new_direction_data_2026-10-13.json",
+    "docs/amp_motion_new_fk_2026-10-12.json": "docs/amp/data/amp_motion_new_fk_2026-10-12.json",
+    "docs/amp_motion_new_reference_clearance_2026-10-13.json": "docs/amp/data/amp_motion_new_reference_clearance_2026-10-13.json",
+    "docs/amp_motion_new_summary_2026-10-12.json": "docs/amp/data/amp_motion_new_summary_2026-10-12.json",
+    "docs/amp_motion_new_training_2026-10-12.json": "docs/amp/data/amp_motion_new_training_2026-10-12.json",
+    "docs/amp_motion_new_training_2026-10-12.md": "docs/amp/amp_motion_new_training_2026-10-12.md",
+    "docs/amp_new_collection_directions_2026-10-13.json": "docs/amp/data/amp_new_collection_directions_2026-10-13.json",
+    "docs/amp_new_collection_fk_2026-10-13.json": "docs/amp/data/amp_new_collection_fk_2026-10-13.json",
+    "docs/amp_new_collection_manifest_2026-10-13.json": "docs/amp/data/amp_new_collection_manifest_2026-10-13.json",
+    "docs/amp_new_collection_model_physics_2026-10-13.json": "docs/amp/data/amp_new_collection_model_physics_2026-10-13.json",
+    "docs/amp_new_collection_preflight_2026-10-13.md": "docs/amp/amp_new_collection_preflight_2026-10-13.md",
+    "docs/amp_new_collection_timing_2026-10-13.json": "docs/amp/data/amp_new_collection_timing_2026-10-13.json",
+    "docs/amp_original24000_gait_spectrum_2026-10-11.json": "docs/amp/data/amp_original24000_gait_spectrum_2026-10-11.json",
+    "docs/amp_reference_swing_proxy_2026-10-10.json": "docs/amp/data/amp_reference_swing_proxy_2026-10-10.json",
+    "docs/amp_settings_review_2026-10-12.md": "docs/amp/amp_settings_review_2026-10-12.md",
+    "docs/amp_slow_gait_resume_review_2026-10-13.md": "docs/amp/amp_slow_gait_resume_review_2026-10-13.md",
+    "docs/amp_standing_response_comparison_2026-10-13.json": "docs/amp/data/amp_standing_response_comparison_2026-10-13.json",
+    "docs/amp_timing_audit_2026-10-10.json": "docs/amp/data/amp_timing_audit_2026-10-10.json",
+    "docs/amp_timing_audit_2026-10-10.md": "docs/amp/amp_timing_audit_2026-10-10.md",
+    "docs/amp_training_plateau_2026-10-10.json": "docs/amp/data/amp_training_plateau_2026-10-10.json",
+    "docs/amp_training_plateau_2026-10-10.md": "docs/amp/amp_training_plateau_2026-10-10.md",
+    "docs/amp_training_plateau_2026-10-10.png": "docs/amp/data/amp_training_plateau_2026-10-10.png",
+    "docs/amp_velocity_range_2026-10-12.md": "docs/amp/amp_velocity_range_2026-10-12.md",
+    "docs/amp_viewing_2026-09-24.md": "docs/amp/amp_viewing_2026-09-24.md",
+    "docs/command_guide_2026-10-11.md": "docs/maintenance/command_guide_2026-10-11.md",
+    "docs/gazebo_amp_25000_2026-10-11.md": "docs/deployment/gazebo_amp_25000_2026-10-11.md",
+    "docs/gazebo_amp_25000_compare_2026-10-11.json": "docs/deployment/gazebo_amp_25000_compare_2026-10-11.json",
+    "docs/gazebo_amp_29000_2026-10-10.md": "docs/deployment/gazebo_amp_29000_2026-10-10.md",
+    "docs/gazebo_amp_29000_vx05_2026-10-10.json": "docs/deployment/gazebo_amp_29000_vx05_2026-10-10.json",
+    "docs/gazebo_amp_29000_vx05_repeat_2026-10-10.json": "docs/deployment/gazebo_amp_29000_vx05_repeat_2026-10-10.json",
+    "docs/gazebo_amp_clip_fix_comparison_2026-10-13.md": "docs/deployment/gazebo_amp_clip_fix_comparison_2026-10-13.md",
+    "docs/gazebo_amp_motion_new_25000_2026-10-13.md": "docs/deployment/gazebo_amp_motion_new_25000_2026-10-13.md",
+    "docs/gazebo_amp_motion_new_25000_baseline_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_baseline_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_baseline_high_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_baseline_high_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_default_disabled_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_default_disabled_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_foot_04_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_foot_04_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_target_clip_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_target_clip_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_target_only_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_target_only_2026-10-13.json",
+    "docs/gazebo_amp_motion_new_25000_transition_2026-10-13.json": "docs/deployment/gazebo_amp_motion_new_25000_transition_2026-10-13.json",
+    "docs/gazebo_amp_original24000_2026-10-11.json": "docs/deployment/gazebo_amp_original24000_2026-10-11.json",
+    "docs/gazebo_amp_standing_contract_postclip_2026-10-13.json": "docs/deployment/gazebo_amp_standing_contract_postclip_2026-10-13.json",
+    "docs/gazebo_amp_standing_postclip_2026-10-13.json": "docs/deployment/gazebo_amp_standing_postclip_2026-10-13.json",
+    "docs/gazebo_amp_standing_transition_postclip_2026-10-13.json": "docs/deployment/gazebo_amp_standing_transition_postclip_2026-10-13.json",
+    "docs/gazebo_amp_target_clip_contract_2026-10-13.json": "docs/deployment/gazebo_amp_target_clip_contract_2026-10-13.json",
+    "docs/gazebo_amp_transition_baseline_2026-10-13.json": "docs/deployment/gazebo_amp_transition_baseline_2026-10-13.json",
+    "docs/gazebo_amp_transition_baseline_high_2026-10-13.json": "docs/deployment/gazebo_amp_transition_baseline_high_2026-10-13.json",
+    "docs/gazebo_amp_transition_default_disabled_2026-10-13.json": "docs/deployment/gazebo_amp_transition_default_disabled_2026-10-13.json",
+    "docs/gazebo_amp_transition_target_only_2026-10-13.json": "docs/deployment/gazebo_amp_transition_target_only_2026-10-13.json",
+    "docs/gazebo_amp_transition_transition_2026-10-13.json": "docs/deployment/gazebo_amp_transition_transition_2026-10-13.json",
+    "docs/gazebo_conversion_review_2026-10-13.md": "docs/deployment/gazebo_conversion_review_2026-10-13.md",
+    "docs/gazebo_gait_frequency_2026-10-09.md": "docs/deployment/gazebo_gait_frequency_2026-10-09.md",
+    "docs/gazebo_model_physics_2026-10-13.json": "docs/deployment/gazebo_model_physics_2026-10-13.json",
+    "docs/gazebo_startup_posture_2026-10-12.md": "docs/deployment/gazebo_startup_posture_2026-10-12.md",
+    "docs/gazebo_startup_repair_2026-10-13.json": "docs/deployment/gazebo_startup_repair_2026-10-13.json",
+    "docs/gazebo_startup_repair_2026-10-13.md": "docs/deployment/gazebo_startup_repair_2026-10-13.md",
+    "docs/gazebo_startup_repair_control_2026-10-13.log": "docs/deployment/gazebo_startup_repair_control_2026-10-13.log",
+    "docs/gazebo_startup_repair_default_2026-10-13.log": "docs/deployment/gazebo_startup_repair_default_2026-10-13.log",
+    "docs/git_fetch_proxy_2026-10-07.md": "docs/maintenance/git_fetch_proxy_2026-10-07.md",
+    "docs/go_imu_integration_2026-10-10.md": "docs/deployment/go_imu_integration_2026-10-10.md",
+    "docs/go_imu_refactor_2026-10-11.md": "docs/deployment/go_imu_refactor_2026-10-11.md",
+    "docs/go_imu_usage_2026-10-11.md": "docs/deployment/go_imu_usage_2026-10-11.md",
+    "docs/imu_terminal_2026-10-10.md": "docs/deployment/imu_terminal_2026-10-10.md",
+    "docs/isaac_amp_motion_new_25000_directions_2026-10-13.json": "docs/amp/data/isaac_amp_motion_new_25000_directions_2026-10-13.json",
+    "docs/isaac_amp_motion_new_25000_feet_2026-10-13.json": "docs/amp/data/isaac_amp_motion_new_25000_feet_2026-10-13.json",
+    "docs/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json": "docs/amp/data/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json",
+    "docs/isaac_motion_new_standing_targets_2026-10-13.json": "docs/amp/data/isaac_motion_new_standing_targets_2026-10-13.json",
+    "docs/isaac_xiaoji_real1_24000_direction_feet_2026-10-13.json": "docs/amp/data/isaac_xiaoji_real1_24000_direction_feet_2026-10-13.json",
+    "docs/isaac_xiaoji_real1_standing_targets_2026-10-13.json": "docs/amp/data/isaac_xiaoji_real1_standing_targets_2026-10-13.json",
+    "docs/isaaclab_basics_2026-09-24.md": "docs/training/isaaclab_basics_2026-09-24.md",
+    "docs/isaaclab_rsl5_install_2026-10-10.md": "docs/training/isaaclab_rsl5_install_2026-10-10.md",
+    "docs/project_architecture_2026-10-12.md": "docs/maintenance/project_architecture_2026-10-12.md",
+    "docs/rebase_amp_air_time_resolution_2026-10-14.md": "docs/maintenance/rebase_amp_air_time_resolution_2026-10-14.md",
+    "docs/rebase_latest_policy_identity_2026-10-14.json": "docs/maintenance/rebase_latest_policy_identity_2026-10-14.json",
+    "docs/rebase_main_2026-10-07.md": "docs/maintenance/rebase_main_2026-10-07.md",
+    "docs/rl_structure_guide_2026-10-10.md": "docs/training/rl_structure_guide_2026-10-10.md",
+    "docs/server_amp_train_2026-10-12.md": "docs/training/server_amp_train_2026-10-12.md",
+    "docs/sim2sim_gazebo_code_guide_2026-10-12.md": "docs/deployment/sim2sim_gazebo_code_guide_2026-10-12.md",
+    "docs/ubuntu_amp_install_2026-10-10.md": "docs/training/ubuntu_amp_install_2026-10-10.md",
+    "docs/urdf_real_regeneration_2026-10-13.md": "docs/maintenance/urdf_real_regeneration_2026-10-13.md",
+    "docs/urdf_real_regeneration_checks_2026-10-13.json": "docs/maintenance/urdf_real_regeneration_checks_2026-10-13.json",
+    "docs/urdf_real_regeneration_fk_2026-10-13.json": "docs/maintenance/urdf_real_regeneration_fk_2026-10-13.json",
+    "docs/urdf_real_regeneration_physics_2026-10-13.json": "docs/maintenance/urdf_real_regeneration_physics_2026-10-13.json"
+  },
+  "existing_user_moves": {
+    "docs/服务器训练.md": "docs/xiaoji_cmd/服务器训练.md",
+    "docs/策略导出与ROS2仿真.md": "docs/xiaoji_cmd/策略导出与ROS2仿真.md"
+  },
+  "updated_text_files": [
+    "README.md",
+    "command.md",
+    "docs/amp/amp_25000_loss_and_standing_review_2026-10-13.md",
+    "docs/amp/amp_4000_deploy_2026-10-12.md",
+    "docs/amp/amp_air_time_reward_2026-10-10.md",
+    "docs/amp/amp_air_time_style_2026-10-10.md",
+    "docs/amp/amp_collection_review_2026-10-11.md",
+    "docs/amp/amp_foot_lift_review_2026-10-13.md",
+    "docs/amp/amp_low_speed_finetune_plan_2026-10-13.md",
+    "docs/amp/amp_motion_new_training_2026-10-12.md",
+    "docs/amp/amp_new_collection_preflight_2026-10-13.md",
+    "docs/amp/amp_settings_review_2026-10-12.md",
+    "docs/amp/amp_slow_gait_resume_review_2026-10-13.md",
+    "docs/amp/amp_timing_audit_2026-10-10.md",
+    "docs/amp/amp_training_plateau_2026-10-10.md",
+    "docs/deployment/gazebo_amp_25000_2026-10-11.md",
+    "docs/deployment/gazebo_amp_29000_2026-10-10.md",
+    "docs/deployment/gazebo_amp_clip_fix_comparison_2026-10-13.md",
+    "docs/deployment/gazebo_amp_motion_new_25000_2026-10-13.md",
+    "docs/deployment/gazebo_conversion_review_2026-10-13.md",
+    "docs/deployment/sim2sim_gazebo_code_guide_2026-10-12.md",
+    "docs/maintenance/project_architecture_2026-10-12.md",
+    "docs/training/server_amp_train_2026-10-12.md",
+    "docs/training/ubuntu_amp_install_2026-10-10.md",
+    "imgo2_deploy/policy/imgo2/amp/config.yaml"
+  ],
+  "binary_and_machine_artifacts_byte_unchanged": [
+    "docs/amp/data/amp_25000_export_contract_2026-10-11.json",
+    "docs/amp/data/amp_25000_gait_spectrum_2026-10-11.json",
+    "docs/amp/data/amp_25000_gait_spectrum_repeat_2026-10-11.json",
+    "docs/amp/data/amp_29000_export_contract_2026-10-10.json",
+    "docs/amp/data/amp_4000_export_contract_2026-10-12.json",
+    "docs/amp/data/amp_collection_dataset_real_fk_2026-10-11.json",
+    "docs/amp/data/amp_collection_dataset_summary_2026-10-11.json",
+    "docs/amp/data/amp_current_policy_identity_2026-10-13.json",
+    "docs/amp/data/amp_foot_clearance_comparison_2026-10-13.png",
+    "docs/amp/data/amp_gazebo_isaac_direction_comparison_2026-10-13.json",
+    "docs/amp/data/amp_low_speed_motion_inventory_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_contract_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_foot_clearance_04_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_foot_clearance_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_foot_clearance_target_clip_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_spectrum_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_25000_training_windows_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_direction_data_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_fk_2026-10-12.json",
+    "docs/amp/data/amp_motion_new_reference_clearance_2026-10-13.json",
+    "docs/amp/data/amp_motion_new_summary_2026-10-12.json",
+    "docs/amp/data/amp_motion_new_training_2026-10-12.json",
+    "docs/amp/data/amp_new_collection_directions_2026-10-13.json",
+    "docs/amp/data/amp_new_collection_fk_2026-10-13.json",
+    "docs/amp/data/amp_new_collection_manifest_2026-10-13.json",
+    "docs/amp/data/amp_new_collection_model_physics_2026-10-13.json",
+    "docs/amp/data/amp_new_collection_timing_2026-10-13.json",
+    "docs/amp/data/amp_original24000_gait_spectrum_2026-10-11.json",
+    "docs/amp/data/amp_reference_swing_proxy_2026-10-10.json",
+    "docs/amp/data/amp_standing_response_comparison_2026-10-13.json",
+    "docs/amp/data/amp_timing_audit_2026-10-10.json",
+    "docs/amp/data/amp_training_plateau_2026-10-10.json",
+    "docs/amp/data/amp_training_plateau_2026-10-10.png",
+    "docs/deployment/gazebo_amp_25000_compare_2026-10-11.json",
+    "docs/deployment/gazebo_amp_29000_vx05_2026-10-10.json",
+    "docs/deployment/gazebo_amp_29000_vx05_repeat_2026-10-10.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_baseline_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_baseline_high_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_default_disabled_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_foot_04_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_target_clip_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_target_only_2026-10-13.json",
+    "docs/deployment/gazebo_amp_motion_new_25000_transition_2026-10-13.json",
+    "docs/deployment/gazebo_amp_original24000_2026-10-11.json",
+    "docs/deployment/gazebo_amp_standing_contract_postclip_2026-10-13.json",
+    "docs/deployment/gazebo_amp_standing_postclip_2026-10-13.json",
+    "docs/deployment/gazebo_amp_standing_transition_postclip_2026-10-13.json",
+    "docs/deployment/gazebo_amp_target_clip_contract_2026-10-13.json",
+    "docs/deployment/gazebo_amp_transition_baseline_2026-10-13.json",
+    "docs/deployment/gazebo_amp_transition_baseline_high_2026-10-13.json",
+    "docs/deployment/gazebo_amp_transition_default_disabled_2026-10-13.json",
+    "docs/deployment/gazebo_amp_transition_target_only_2026-10-13.json",
+    "docs/deployment/gazebo_amp_transition_transition_2026-10-13.json",
+    "docs/deployment/gazebo_model_physics_2026-10-13.json",
+    "docs/deployment/gazebo_startup_repair_2026-10-13.json",
+    "docs/deployment/gazebo_startup_repair_control_2026-10-13.log",
+    "docs/deployment/gazebo_startup_repair_default_2026-10-13.log",
+    "docs/amp/data/isaac_amp_motion_new_25000_directions_2026-10-13.json",
+    "docs/amp/data/isaac_amp_motion_new_25000_feet_2026-10-13.json",
+    "docs/amp/data/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json",
+    "docs/amp/data/isaac_motion_new_standing_targets_2026-10-13.json",
+    "docs/amp/data/isaac_xiaoji_real1_24000_direction_feet_2026-10-13.json",
+    "docs/amp/data/isaac_xiaoji_real1_standing_targets_2026-10-13.json",
+    "docs/maintenance/rebase_latest_policy_identity_2026-10-14.json",
+    "docs/maintenance/urdf_real_regeneration_checks_2026-10-13.json",
+    "docs/maintenance/urdf_real_regeneration_fk_2026-10-13.json",
+    "docs/maintenance/urdf_real_regeneration_physics_2026-10-13.json"
+  ],
+  "baseline_missing_links": [
+    [
+      "docs/amp_air_time_reward_2026-10-10.md",
+      "amp_gait_adjust_plan_2026-09-18.md"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/scripts/tools/analyze_latent_clusters.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/scripts/towing/play_towing_test.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/logs/towing/play_test/v3_800_policy/report.json"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/scripts/tools/compare_play_runs.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/towing_play_test_2700_2026-10-11.md"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/station/pca_labels.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/coast/"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/scripts/tools/analyze_latent.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "imgo2_rl/scripts/tools/analyze_latent_tsne.py"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/towing_latent_tsne_2026-10-11.md"
+    ],
+    [
+      "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "docs/towing/towing_latent_tsne_2026-10-11.md"
+    ],
+    [
+      "command.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "command.md",
+      "docs/服务器训练.md"
+    ],
+    [
+      "docs/amp/amp_gait_adjust_plan_2026-09-18.md",
+      "amp_air_time_style_2026-10-10.md"
+    ],
+    [
+      "docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/ab_by_axis.md",
+      "imgo2_rl/scripts/tools/compare_play_runs.py"
+    ],
+    [
+      "docs/gazebo_amp_29000_2026-10-10.md",
+      "amp_gait_adjust_plan_2026-09-18.md"
+    ],
+    [
+      "docs/server_amp_train_2026-10-12.md",
+      "服务器训练.md"
+    ],
+    [
+      "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "docs/towing/data/latent_cluster_2026-10-12/"
+    ],
+    [
+      "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "docs/towing/towing_latent_cluster_2026-10-12.md"
+    ],
+    [
+      "docs/amp_slow_gait_resume_review_2026-10-13.md",
+      "服务器训练.md#续训练从已有-checkpoint-接着训练"
+    ],
+    [
+      "docs/sim2sim_gazebo_code_guide_2026-10-12.md",
+      "sim2sim_mujoco_vs_gazebo_2026-09-19.md"
+    ],
+    [
+      "README.md",
+      "docs/服务器训练.md"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "README.md",
+      "docs/服务器训练.md#续训练从已有-checkpoint-接着训练"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md#2026-10-13已激活env_isaaclab仍提示找不到解释器"
+    ],
+    [
+      "README.md",
+      "docs/服务器训练.md#续训练从已有-checkpoint-接着训练"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md#为什么第一个launch就出现机器人"
+    ],
+    [
+      "README.md",
+      "docs/策略导出与ROS2仿真.md"
+    ],
+    [
+      "README.md",
+      "docs/服务器训练.md"
+    ],
+    [
+      "README.md",
+      "docs/服务器训练.md"
+    ],
+    [
+      "docs/ubuntu_amp_install_2026-10-10.md",
+      "服务器训练.md"
+    ]
+  ],
+  "remaining_missing_links": [
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "target": "imgo2_rl/logs/towing/play_test/v3_800_policy_c008/report.json"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "target": "imgo2_rl/logs/towing/play_test/v3_800_policy/report.json"
+    }
+  ],
+  "new_missing_links": [],
+  "directories_before": [
+    "docs/amp",
+    "docs/amp/data",
+    "docs/cmoe",
+    "docs/deployment",
+    "docs/maintenance",
+    "docs/research",
+    "docs/towing",
+    "docs/towing/data",
+    "docs/towing/data/2026-10-09_necessity_800",
+    "docs/towing/data/2026-10-09_necessity_800_noload",
+    "docs/towing/data/2026-10-10_amp_envelope_800",
+    "docs/towing/data/experiment_review_2026-10-11",
+    "docs/towing/data/latent_cluster_2026-10-12",
+    "docs/towing/data/latent_cluster_2026-10-12/coast",
+    "docs/towing/data/latent_cluster_2026-10-12/coast_flat_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/station",
+    "docs/towing/data/latent_cluster_2026-10-12/station_flat_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/station_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/tow",
+    "docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0",
+    "docs/towing/data/latent_cluster_2026-10-12/tow_v1_rows0-9",
+    "docs/towing/data/latent_cluster_2026-10-12/tsne_station",
+    "docs/towing/data/latent_cluster_2026-10-12/tsne_tow",
+    "docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior",
+    "docs/training",
+    "docs/xiaoji_cmd"
+  ],
+  "no_new_directories": true,
+  "preexisting_link_repairs": [
+    {
+      "source": "docs/deployment/gazebo_amp_29000_2026-10-10.md",
+      "old": "../amp_gait_adjust_plan_2026-09-18.md",
+      "new": "../amp/amp_gait_adjust_plan_2026-09-18.md"
+    },
+    {
+      "source": "docs/deployment/sim2sim_gazebo_code_guide_2026-10-12.md",
+      "old": "../sim2sim_mujoco_vs_gazebo_2026-09-19.md",
+      "new": "sim2sim_mujoco_vs_gazebo_2026-09-19.md"
+    },
+    {
+      "source": "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/",
+      "new": "data/latent_cluster_2026-10-12"
+    },
+    {
+      "source": "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "old": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "new": "towing_latent_cluster_2026-10-12.md"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py",
+      "new": "../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py",
+      "new": "../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/scripts/tools/analyze_latent_clusters.py",
+      "new": "../../imgo2_rl/scripts/tools/analyze_latent_clusters.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/scripts/towing/play_towing_test.py",
+      "new": "../../imgo2_rl/scripts/towing/play_towing_test.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/scripts/tools/compare_play_runs.py",
+      "new": "../../imgo2_rl/scripts/tools/compare_play_runs.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/towing_play_test_2700_2026-10-11.md",
+      "new": "towing_play_test_2700_2026-10-11.md"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/",
+      "new": "data/latent_cluster_2026-10-12/wheel_damping_behavior"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/station/pca_labels.png",
+      "new": "data/latent_cluster_2026-10-12/station/pca_labels.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png",
+      "new": "data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png",
+      "new": "data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png",
+      "new": "data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/",
+      "new": "data/latent_cluster_2026-10-12/station_rows0-9"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/",
+      "new": "data/latent_cluster_2026-10-12/tow_rows0-9_grade0"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/coast/",
+      "new": "data/latent_cluster_2026-10-12/coast"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/",
+      "new": "data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png",
+      "new": "data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png",
+      "new": "data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/scripts/tools/analyze_latent.py",
+      "new": "../../imgo2_rl/scripts/tools/analyze_latent.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "imgo2_rl/scripts/tools/analyze_latent_tsne.py",
+      "new": "../../imgo2_rl/scripts/tools/analyze_latent_tsne.py"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "new": "towing_latent_tsne_2026-10-11.md"
+    },
+    {
+      "source": "docs/towing/towing_latent_cluster_2026-10-12.md",
+      "old": "docs/towing/towing_latent_tsne_2026-10-11.md",
+      "new": "towing_latent_tsne_2026-10-11.md"
+    },
+    {
+      "source": "docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/ab_by_axis.md",
+      "old": "imgo2_rl/scripts/tools/compare_play_runs.py",
+      "new": "../../../../../imgo2_rl/scripts/tools/compare_play_runs.py"
+    },
+    {
+      "source": "docs/amp/amp_air_time_reward_2026-10-10.md",
+      "old": "../amp_gait_adjust_plan_2026-09-18.md",
+      "new": "amp_gait_adjust_plan_2026-09-18.md"
+    }
+  ],
+  "verification_interpreter": "/usr/bin/python3 (standard library)",
+  "runtime_validation": "Not run: documentation and references only.",
+  "tracked_machine_artifacts_also_match_HEAD": 65,
+  "git_diff_check": "passed"
+}

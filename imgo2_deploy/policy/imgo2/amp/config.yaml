@@ -6,7 +6,7 @@
 # Current training recipe additionally enables feet_air_time_deficit; this
 # checkpoint was trained with six base task terms, so its behavior is unchanged.
 # Gazebo target clipping follows Isaac; transition remains disabled by default.
-# Historical policy identities are in docs/rebase_amp_air_time_resolution_2026-10-14.md.
+# Historical policy identities are in docs/maintenance/rebase_amp_air_time_resolution_2026-10-14.md.
 imgo2/amp:
   model_name: "policy.pt"
   # Gazebo adapter: optional stand-to-policy target handover (control-loop seconds).
@@ -35,18 +35,18 @@ imgo2/amp:
                        3.0, 3.0, 3.0,
                        3.0, 3.0, 3.0]
   # Training model's actuator gains (assets/imgo2.py DCMotorCfg 25.0 / 0.5).
-#   rl_kp: [25.0, 25.0, 25.0,
-#           25.0, 25.0, 25.0,
-#           25.0, 25.0, 25.0,
-#           25.0, 25.0, 25.0]
-  rl_kp: [24.0, 24.0, 24.0,
-          24.0, 24.0, 24.0,
-          24.0, 24.0, 24.0,
-          24.0, 24.0, 24.0]
-  rl_kd: [0.6, 0.6, 0.6,
-          0.6, 0.6, 0.6,
-          0.6, 0.6, 0.6,
-          0.6, 0.6, 0.6]
+  rl_kp: [25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0,
+          25.0, 25.0, 25.0]
+#   rl_kp: [24.0, 24.0, 24.0,
+#           24.0, 24.0, 24.0,
+#           24.0, 24.0, 24.0,
+#           24.0, 24.0, 24.0]
+  rl_kd: [0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5,
+          0.5, 0.5, 0.5]
   # Fixed-gain phase (get up / stand) uses the reference deployment's values.
   fixed_kp: [60.0, 60.0, 60.0,
              60.0, 60.0, 60.0,

@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-14",
+  "verification": "source/XML only; no simulation or hardware started",
+  "gazebo": {
+    "model": "imgo2_description/urdf/imgo2_real.gazebo.urdf",
+    "sha256": "e8021e5f94108ccc2e441c605420f5dcb87d84e7aaaafe5db4484452aee1086f",
+    "parent": "base",
+    "xyz": [
+      0,
+      0,
+      0
+    ],
+    "rpy": [
+      0,
+      0,
+      0
+    ],
+    "sensor_pose": "default identity",
+    "orientation_reference": "world",
+    "rate_hz": 100
+  },
+  "mujoco": {
+    "site": "base/imu",
+    "pos": [
+      0,
+      0,
+      0
+    ],
+    "orientation": "identity",
+    "runtime_verified": false
+  },
+  "real": {
+    "axes": "X forward, Y left, Z up",
+    "evidence": "user confirmation",
+    "mount_rotation": "identity",
+    "mount_rotation_code": "metadata only, not applied",
+    "quaternion_reference_and_direction": "pending device documentation/static tilt checks",
+    "gyro_unit": "parser converts degrees/s to rad/s"
+  },
+  "limitations": [
+    "IMU location equals base frame origin, not exact inertial COM",
+    "/tmp resolved URDF is prior launch artifact, not evidence of live process",
+    "physical mounting and firmware conventions not measured by agent"
+  ],
+  "policy": {
+    "algorithm": "PPO (user confirmed)",
+    "config": "imgo2_deploy/policy/imgo2/ppo/config.yaml",
+    "num_observations": 45,
+    "observations": [
+      "ang_vel",
+      "gravity_vec",
+      "commands",
+      "dof_pos",
+      "dof_vel",
+      "actions"
+    ],
+    "imu_inputs": [
+      "body angular velocity rad/s, scaled once by .25",
+      "projected gravity computed from wxyz orientation"
+    ],
+    "accelerometer_direct_input": false,
+    "verified": "configuration/source only; not runtime"
+  }
+}

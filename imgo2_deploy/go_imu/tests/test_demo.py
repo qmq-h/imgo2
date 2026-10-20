@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pty_helpers import (MOTOR_IDS, START_Q, GEAR_RATIO, KP_WIRE, KD_WIRE,  # noqa: E402
-                         crc16, reply, control_is_zero, target_q, target_dq, read_log)
+                         crc16, reply, control_is_zero, target_q, target_dq)
 
 EXE = sys.argv.pop(1)
 BUS_COUNT = 4
@@ -31,20 +31,18 @@ class DemoTest(unittest.TestCase):
             slaves.append(slave)
         env = os.environ.copy()
         env['GO_DEMO_TEST_DEVICES'] = ','.join(os.ttyname(s) for s in slaves)
-        # 每次运行都该新建一个日志文件；指到临时目录，别污染 build/
-        log_dir = tempfile.mkdtemp(prefix='go_demo_log_')
-        env['GO_DEMO_LOG_DIR'] = log_dir
         # 设成标准坐标系（offset 0、direction +1），让"线上角度 == 逻辑角度"
         # （见 tests/pty_devices.h）。不受用户的标定与镜像方向影响。
         env['GO_TEST_IDENTITY_FRAME'] = '1'
 
+        work_dir = tempfile.mkdtemp(prefix='go_no_log_')
         frames = [[] for _ in range(BUS_COUNT)]
         bufs = [bytearray() for _ in range(BUS_COUNT)]
         silent = [False] * BUS_COUNT
         signalled = False
 
         with tempfile.TemporaryFile() as output:
-            proc = subprocess.Popen([EXE], env=env, stdout=output, stderr=subprocess.PIPE)
+            proc = subprocess.Popen([EXE], env=env, cwd=work_dir, stdout=output, stderr=subprocess.PIPE)
             try:
                 deadline = time.monotonic() + 20.0
                 while time.monotonic() < deadline:
@@ -86,41 +84,8 @@ class DemoTest(unittest.TestCase):
                 if kind == 'normal':
                     self.assertEqual(proc.returncode, 0, (out[-400:], err))
                     self.assertEqual(err, b'')
-                    # 上下层双频率：上层每 1 ms 确认一次目标（1 kHz），每条总线每 5 ms
-                    # 跑一轮（200 Hz）。若上层是阻塞驱动总线的（旧 control() 那种），
-                    # 这两个数会几乎相等。demo 退出时把这两个计数打在 stdout 上。
-                    summary = re.search(rb'upper ticks=(\d+) bus rounds=(\d+)', out)
-                    self.assertIsNotNone(summary, out[-400:])
-                    ticks, rounds = int(summary.group(1)), int(summary.group(2))
-                    self.assertGreaterEqual(rounds, ROUNDS_TO_COLLECT, out[-400:])
-                    # 下界才是关键：阻塞驱动总线时这个比例会退化成约 1，所以 >2 就能区分。
-                    # 上界只是兜"明显算错"，给足余量（机器忙时伪终端应答变慢，比例会变大）。
-                    ratio = ticks / rounds
-                    self.assertGreater(ratio, 2.0,
-                                       f'上层没有明显快于总线：ticks={ticks} rounds={rounds}')
-                    self.assertLess(ratio, 20.0,
-                                    f'双频率比例异常：ticks={ticks} rounds={rounds}')
-                    hz = re.search(rb'upper_hz=(\d+) bus_hz=(\d+)', out)
-                    self.assertIsNotNone(hz, out[-400:])
-                    upper_hz, bus_hz = int(hz.group(1)), int(hz.group(2))
-                    # 同上：下界证明"上层远快于总线"，上界/下界都留足余量
-                    self.assertGreater(upper_hz, 200, out[-400:])
-                    self.assertGreater(bus_hz, 80, out[-400:])
-                    self.assertLess(bus_hz, 400, out[-400:])
-                    # 循环质量统计量。必须真的采到：如果读得太晚（比如 stop() 之后
-                    # 才读，那时 Loop 已经销毁）会全是 0 —— 这个坑踩过一次。
-                    stats = re.search(
-                        rb'interval_min_us=(\d+) interval_max_us=(\d+) '
-                        rb'body_max_us=(\d+) gap_max_us=(\d+)', out)
-                    self.assertIsNotNone(stats, out[-400:])
-                    i_min, i_max, body_max, gap_max = (int(x) for x in stats.groups())
-                    self.assertGreater(i_min, 0, out[-400:])
-                    self.assertGreater(body_max, 0, out[-400:])
-                    self.assertGreaterEqual(gap_max, 0, out[-400:])
-                    self.assertLessEqual(i_min, i_max, out[-400:])
-                    # 5 ms 节拍：间隔贴着 5000us，而且不该出现几十毫秒的卡顿
-                    self.assertGreater(i_min, 4000, out[-400:])
-                    self.assertLess(i_max, 200000, out[-400:])
+                    self.assertLessEqual(len(out.splitlines()), 2, out)
+                    self.assertEqual(os.listdir(work_dir), [], '运行不应创建日志文件')
                     for bus in range(BUS_COUNT):
                         own = frames[bus]
                         # 启动探测：前 3 帧是全零控制量，ID 依次为 0、1、2
@@ -139,7 +104,7 @@ class DemoTest(unittest.TestCase):
                                 self.assertAlmostEqual(target_dq(frame), 0.0, delta=0.001)
                                 self.assertEqual(int.from_bytes(frame[11:13], 'little'), KP_WIRE)
                                 self.assertEqual(int.from_bytes(frame[13:15], 'little'), KD_WIRE)
-                    self.checkLog(log_dir)
+
                 else:
                     self.assertEqual(proc.returncode, 2, (out[-400:], err))
                     self.assertIn(b'control failed', err)
@@ -149,7 +114,7 @@ class DemoTest(unittest.TestCase):
                     self.assertGreater(len(own), 4)
                     self.assertTrue(all(control_is_zero(f) for f in own[4:]))
             finally:
-                shutil.rmtree(log_dir, ignore_errors=True)
+                shutil.rmtree(work_dir, ignore_errors=True)
                 if proc.poll() is None:
                     proc.kill()
                 proc.communicate()
@@ -157,18 +122,6 @@ class DemoTest(unittest.TestCase):
                     os.close(master)
                 for slave in slaves:
                     os.close(slave)
-
-    def checkLog(self, log_dir):
-        """每次运行一个日志文件：表头说明列含义，每行 t_s + 12 个目标 + 12 个反馈。"""
-        comments, header, rows = read_log(log_dir)
-        self.assertTrue(any(line.startswith('# 关节对应关系:') for line in comments), comments)
-        expect = (['t_s'] + ['q_des%d' % i for i in range(12)] + ['q%d' % i for i in range(12)])
-        self.assertEqual(header, expect)
-        self.assertGreater(len(rows), 2, rows[:3])
-        for row in rows:
-            self.assertEqual(len(row), 25, row)
-        times = [float(row[0]) for row in rows]
-        self.assertEqual(times, sorted(times), times[:5])
 
     def test_hold_all_buses(self):
         self.scenario()

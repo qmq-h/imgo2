@@ -69,6 +69,9 @@ inline bool applyTestDevices(go::RobotConfig &config, const char *env_name, std:
  */
 inline void useIdentityFrame(go::RobotConfig &config)
 {
+    // 人工零姿态（含小腿0）不在真机URDF范围；此夹具仅回归控制轨迹。
+    // 真机默认限位及站姿由 test_safety::testDefaultConfigLimits 验证。
+    config.limits.clear();
     for (go::BusConfig &bus : config.buses)
     {
         bus.motor_directions.assign(bus.motor_ids.size(), 1.0f);

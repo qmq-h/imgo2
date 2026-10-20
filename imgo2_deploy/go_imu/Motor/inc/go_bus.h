@@ -1,5 +1,6 @@
 #pragma once
 #include "go_motor.h"
+#include "go_trace.h"
 #include "motor_transport.h"
 #include <atomic>
 #include "serial_port.h"
@@ -35,6 +36,18 @@ public:
     GoBus& operator=(const GoBus&) = delete;
     void bindStopFlag(const std::atomic<bool>* flag) { external_stop_ = flag; }
     TransportStats transportStats() const { return stats_; }
+    /**
+     * 诊断埋点（只记录，不改变控制与超时行为）：每次 exchange() 记一条 TraceRecord。
+     * 必须在 open() / 本总线线程启动之前调用；trace 的生命周期要长于本对象。
+     */
+    void attachTrace(TransactionTrace* trace, std::size_t bus_index) { trace_ = trace; trace_bus_ = static_cast<unsigned>(bus_index); }
+    /**
+     * 最近一轮 cycle() 的三段耗时累计（µs，含该轮的卸载重试）。只在诊断/日志里用，
+     * 不参与任何判决；每次 cycle() 开头清零。
+     */
+    std::uint32_t roundFlushUs() const { return round_flush_us_; }
+    std::uint32_t roundWriteUs() const { return round_write_us_; }
+    std::uint32_t roundReplyUs() const { return round_reply_us_; }
     // Throws invalid_argument for invalid/duplicate ID or offset; logic_error if open.
     // Reference remains stable until the bus is destroyed. Different buses may reuse IDs.
     /**
@@ -123,5 +136,8 @@ private:
     std::vector<std::unique_ptr<GoMotor>> motors_;
     TransportStats stats_;
     const std::atomic<bool>* external_stop_ = nullptr;
+    TransactionTrace* trace_ = nullptr; // 诊断埋点，可为空
+    unsigned trace_bus_ = 0;
+    std::uint32_t round_flush_us_ = 0, round_write_us_ = 0, round_reply_us_ = 0;
 };
 }

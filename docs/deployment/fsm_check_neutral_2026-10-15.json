@@ -1,0 +1,171 @@
+{
+  "date": "2026-10-15",
+  "kind": "offline fixed feedback; no hardware, no dynamics",
+  "sources": {
+    "imgo2_deploy/go_imu/policy/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "imgo2_deploy/go_imu/policy/ppo/config.yaml": "ef541d072e1d8003a2cb8312e77b5a3de506ef351725386efc26c6793c462edb",
+    "imgo2_deploy/go_imu/config/deployment.yaml": "0e2c98a4df75f781567891ee805490286017d5964765f8b7f673b8bb4dd0d29f"
+  },
+  "inputs": {
+    "joint_position_hardware_rad": [
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82
+    ],
+    "joint_velocity_rad_s": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "imu_rpy_deg": [
+      0,
+      0,
+      0
+    ],
+    "imu_quaternion_wxyz": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "gyro_rad_s": [
+      0,
+      0,
+      0
+    ],
+    "velocity_command": [
+      0,
+      0,
+      0
+    ],
+    "projected_gravity": [
+      0,
+      0,
+      -1
+    ],
+    "last_action": "zero at entry; updated each inference"
+  },
+  "measurement": {
+    "entry": "ppo_check, duration 3 seconds; fsm_check via real keyboard 0 + Enter then 1 + Enter, PPO three seconds",
+    "display_sample_sequences": [
+      10,
+      20,
+      30,
+      41,
+      51,
+      61,
+      71,
+      81,
+      91,
+      102,
+      112,
+      122,
+      132,
+      142
+    ],
+    "last_sequence": 142,
+    "final_target_rad": [
+      -0.015275,
+      0.885598,
+      -1.694935,
+      0.049779,
+      0.866868,
+      -1.628996,
+      -0.062978,
+      0.947935,
+      -1.470064,
+      0.044912,
+      0.905614,
+      -1.652761
+    ],
+    "final_delta_rad": [
+      -0.015275,
+      0.015598,
+      0.12506499999999998,
+      0.049779,
+      -0.0031320000000000237,
+      0.19100399999999995,
+      -0.062978,
+      0.07793499999999998,
+      0.349936,
+      0.044912,
+      0.035614000000000035,
+      0.16723900000000014
+    ],
+    "final_delta_deg": [
+      -0.8751930320623325,
+      0.8936995688450581,
+      7.165696664803639,
+      2.8521266083817247,
+      -0.1794503814349752,
+      10.943723070116773,
+      -3.6083736021748987,
+      4.465346576352069,
+      20.049855899689977,
+      2.573268049491553,
+      2.0405318915789157,
+      9.582088869988382
+    ],
+    "max_abs_delta_rad": 0.349936,
+    "max_abs_delta_deg": 20.049855899689977,
+    "largest_joint": "BL_shank",
+    "mean_abs_delta_rad": 0.09487225,
+    "rms_delta_rad": 0.13504252058796148,
+    "late_sample_peak_to_peak_rad": [
+      0.0,
+      0.0,
+      9.999999999177334e-07,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "motor_clamp": false,
+    "python_torch_reference_max_abs_error_rad": 5.602264403492541e-07,
+    "actual_fsm_final_target_rad": [
+      -0.015275,
+      0.885598,
+      -1.694936,
+      0.049779,
+      0.866868,
+      -1.628996,
+      -0.062978,
+      0.947935,
+      -1.470064,
+      0.044912,
+      0.905614,
+      -1.652761
+    ],
+    "actual_fsm_vs_ppo_check_max_abs_error_rad": 9.999999999177334e-07
+  },
+  "interpretation": "Hip/thigh offsets are smaller; shanks differ 0.125..0.350rad. Zero-command policy is not exactly the configured stand pose. Fixed feedback cannot establish real standing stability. No policy or configuration changed.",
+  "pending": [
+    "real closed-loop standing",
+    "physical joint mapping",
+    "IMU tilt convention",
+    "real frequencies and safety margins"
+  ]
+}

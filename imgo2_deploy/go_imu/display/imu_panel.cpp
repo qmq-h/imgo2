@@ -1,3 +1,4 @@
+#include "function/my_myth.h"
 #include "display/imu_panel.h"
 #include <chrono>
 #include <sstream>
@@ -30,7 +31,7 @@ std::string MonitorPanel(const MonitorSnapshot& snapshot,
         }
         out << '\n';
     };
-    row("RPY (deg)", snapshot.data.euler, EulerAngles, 57.295779513f);
+    row("RPY (deg)", snapshot.data.euler, EulerAngles, my_myth::radians_to_degrees_f);
     row("Gyro (rad/s)", snapshot.data.gyroscope, AngularVelocity, 1.f);
     row("Accel (m/s^2)", snapshot.data.accelerometer, Acceleration, 1.f);
     out << "---------------------------------------------------\n";

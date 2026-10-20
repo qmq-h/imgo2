@@ -14,11 +14,11 @@ cd "$IMGO2_REPO/imgo2_rl"
 
 新数据默认目录现为 `imgo2_rl/datasets/imgo2_motion_new`；若曾设置 `IMGO2_AMP_MOTION_DIR`，需确认该变量没有仍指向旧数据。
 
-本机的最新运行已位于 `logs/amp_rsl_rl/base_move_amp_height/` 下。切换到其他运行时，修改 `IMGO2_RUN_NAME` 并重新设置 `IMGO2_RUN_DIR`；切换 checkpoint 时修改命令中的 `model_25000.pt`。安装配置见 [Ubuntu 安装流程](docs/ubuntu_amp_install_2026-10-10.md)。
+本机的最新运行已位于 `logs/amp_rsl_rl/base_move_amp_height/` 下。切换到其他运行时，修改 `IMGO2_RUN_NAME` 并重新设置 `IMGO2_RUN_DIR`；切换 checkpoint 时修改命令中的 `model_25000.pt`。安装配置见 [Ubuntu 安装流程](docs/training/ubuntu_amp_install_2026-10-10.md)。
 
 # 本机：从 checkpoint 导出到 ROS 2 仿真
 
-完整顺序命令见 [策略导出与ROS2仿真](docs/策略导出与ROS2仿真.md)，采用当前存在的2026-10-14_00-20-45_motion_new_model_new/model_25000.pt作为路径示例：导出 → 备份/替换AMP policy → Gazebo real模型 → rl_sim → 按0/3。这是sim2sim；下面旧25000段落保留为其它checkpoint的模板。
+完整顺序命令见 [策略导出与ROS2仿真](docs/xiaoji_cmd/策略导出与ROS2仿真.md)，采用当前存在的2026-10-14_00-20-45_motion_new_model_new/model_25000.pt作为路径示例：导出 → 备份/替换AMP policy → Gazebo real模型 → rl_sim → 按0/3。这是sim2sim；下面旧25000段落保留为其它checkpoint的模板。
 
 # 导出 pt 文件为 policy
 
@@ -86,7 +86,7 @@ source install/setup.bash
 python3 scripts/eval_gazebo_policy.py   --key 3 --vx 0.5 --duration 30 --skip 4 --sim-time   --json /tmp/imgo2_amp_vx05.json   --raw-json /tmp/imgo2_amp_vx05_raw.json
 ```
 
-所有终端须使用相同的 `ROS_DOMAIN_ID` 与 `GAZEBO_MASTER_URI`（如自行设置）。测量输出包含身体速度、姿态、偏航和关节周期；不直接测量接触滞空。两次真实对比结果见 [25000 sim2sim 记录](docs/gazebo_amp_25000_2026-10-11.md)。
+所有终端须使用相同的 `ROS_DOMAIN_ID` 与 `GAZEBO_MASTER_URI`（如自行设置）。测量输出包含身体速度、姿态、偏航和关节周期；不直接测量接触滞空。两次真实对比结果见 [25000 sim2sim 记录](docs/deployment/gazebo_amp_25000_2026-10-11.md)。
 
 # 开始训练命令
 
@@ -130,8 +130,8 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/amp/play.py   --task=Imgo2-basemove-
 
 play任务默认横向速度与偏航命令为0，关闭参考状态初始化和相关域随机化。省略最后一行覆盖时，当前默认前进速度为1.0 m/s。此入口也会重新导出到 `exported/`。
 
-需要可用的本地图形显示；服务器无桌面时可加 `--headless` 做无界面回放。GUI尚未在本轮运行验证。奖励及速度配置位置见 [AMP 调参入口](docs/amp_air_time_style_2026-10-10.md#5-amp-height-调参入口复核)。
+需要可用的本地图形显示；服务器无桌面时可加 `--headless` 做无界面回放。GUI尚未在本轮运行验证。奖励及速度配置位置见 [AMP 调参入口](docs/amp/amp_air_time_style_2026-10-10.md#5-amp-height-调参入口复核)。
 
 # 服务器从安装 imgo2 到重新训练
 
-现在统一阅读 [服务器训练.md](docs/服务器训练.md)，按“系统Python已装Sim/Lab”与“空白环境新建Conda”两种情况执行，项目固定在/root/Desktop/imgo2。当前AMP使用工程算法，不要求RSL-RL5；标准Lab2.3.2仍需配套外部包装依赖。旧服务器步骤保留作历史记录，不作为当前操作入口。
+现在统一阅读 [服务器训练.md](docs/xiaoji_cmd/服务器训练.md)，按“系统Python已装Sim/Lab”与“空白环境新建Conda”两种情况执行，项目固定在/root/Desktop/imgo2。当前AMP使用工程算法，不要求RSL-RL5；标准Lab2.3.2仍需配套外部包装依赖。旧服务器步骤保留作历史记录，不作为当前操作入口。

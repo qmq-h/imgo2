@@ -1,4 +1,5 @@
 #include "go_safety.h"
+#include "function/my_myth.h"
 
 #include <cmath>
 
@@ -15,10 +16,7 @@ ClampResult clampOne(float &value, float low, float high)
     if (!std::isfinite(value))
         return ClampResult::Rejected;
     const float before = value;
-    if (value < low)
-        value = low;
-    if (value > high)
-        value = high;
+    value = my_myth::clamp(value, low, high);
     return value != before ? ClampResult::Clamped : ClampResult::Unchanged;
 }
 
@@ -32,6 +30,25 @@ void merge(ClampResult &total, ClampResult one)
 }
 
 } // namespace
+
+bool Safety::trajectoryValid(const Targets& start,const Targets& goal,double duration,
+                             const std::vector<JointLimits>& limits,std::string& error) {
+    if(!std::isfinite(duration) || duration<=0 || start.q.empty() || start.q.size()!=goal.q.size()) {
+        error="invalid trajectory duration/shape";return false;
+    }
+    if(!limitsValid(limits,start.q.size(),error)) return false;
+    Targets a=start,b=goal;
+    if(clamp(a,limits)!=ClampResult::Unchanged || clamp(b,limits)!=ClampResult::Unchanged) {
+        error="trajectory start/goal or gains exceed configured limits";return false;
+    }
+    for(size_t i=0;i<start.q.size();++i) {
+        const double peak=my_myth::quintic_peak_rate*std::abs(double(goal.q[i])-start.q[i])/duration;
+        if(peak>limitsAt(limits,i).dq_max) {
+            error="trajectory joint "+std::to_string(i)+": peak speed exceeds dq_max";return false;
+        }
+    }
+    error.clear();return true;
+}
 
 JointLimits Safety::limitsAt(const std::vector<JointLimits> &limits, size_t index)
 {

@@ -15,6 +15,8 @@ int main(int argc,char** argv) {
         auto config=real_config::makeHardwareConfig();
         config.motors.buses={{argv[2],{0,1,2},{1,1,1},{0.1f,0.2f,0.3f}},
                             {argv[3],{0,1,2},{1,1,1},{0.1f,0.2f,0.3f}}};
+        // 本客户端使用两条总线、正角度人工关节；不复用真机12关节限位。
+        config.motors.limits.assign(6, go::JointLimits{});
         config.motors.period=milliseconds(5);
         config.motors.io_timeout_us=15000;
         config.imu.device=argv[4]; config.imu.read_timeout_ms=20;

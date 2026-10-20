@@ -1,0 +1,53 @@
+deployment:
+  # 控制环周期(ms)：FSM + 安全限幅 + 下发指令的主循环节拍。5 = 200Hz。
+  control_ms: 5
+  # 策略推理周期(ms)：InferenceWorker 调 runner.infer() 的节拍。20 = 50Hz
+  # （本机实测单次推理约 0.2ms，这个节拍能稳定满足）。
+  policy_ms: 20
+  # 一次推理结果最多允许有多旧(ms)：超过即判为过期并进 Fault。必须 >= policy_ms。
+  result_timeout_ms: 100
+  # LibTorch 线程数：1 = 单线程推理，够用且省 CPU。
+  torch_threads: 1
+  # 首次站起（含卸力后重新站起）的轨迹时长(s)。
+  stand_s: 4.0
+  return_stand_s: 2.0  # 仅PPO返回Stand；首次/卸力后站起仍使用stand_s
+  # 趴下(9)的轨迹时长(s)。
+  crouch_s: 4.0
+  # 阶段切换的平滑时间(s)：切换时用五阶曲线把命令从上一状态插值到新状态。
+  #   站立/趴下：只插值 kp/kd；进入 PPO：位置 + kp/kd 一起插值。
+  #   必须是 >0 的有限数（0 会瞬间跳变，validate() 直接拒绝）。
+  blend_s: 0.5
+  # 站立稳定判据的“持续时间”(s)：实测位置与速度都落进下面两个容差后，还要连续保持
+  #   这么久 FSM 才认为站稳——这是按 1 进 PPO 的前置条件（ready()）。趴下用的是
+  #   另一组 crouch_* 参数，与此无关。
+  settle_s: 0.5
+  # 站立稳定判据的位置容差(rad)：12 个关节的实测 q 与 stand_pose 之差都要 <= 该值。
+  #   0.1 rad ≈ 5.7°；放宽 = 更容易进 PPO，收紧 = 要求站得更准。
+  position_tolerance: 0.1
+  # 站立稳定判据的速度容差(rad/s)：12 个关节实测 dq 的绝对值都要 <= 该值（0.5 ≈ 28.6°/s）。
+  velocity_tolerance: 0.5
+  # WASDQE 速度指令上限 [vx, vy, yaw]（m/s, m/s, rad/s）：每按一次键 ±0.1，空格清零。
+  velocity_limits: [0.5, 0.2, 0.5]
+  # IMU轴已由用户确认；无安装旋转。仅关节物理对应待确认。
+  mapping_confirmed: true
+  policy_to_hardware: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+  # 两个目标独立设置，单位rad；每行一条腿，顺序FL/FR/BL/BR，每腿髋/大腿/小腿。
+  # 不额外加offset、方向或减速比，不改变policy中的default_dof_pos。
+  stand_pose: [0.0, 0.87, -1.82,  # FL
+               0.0, 0.87, -1.82,  # FR
+               0.0, 0.87, -1.82,  # BL
+               0.0, 0.87, -1.82]  # BR
+  # 趴下(9)的终点姿态：特意比“上电姿态”浅一点。上电姿态 = real_config.h 的
+  # HIP/THIGH/SHANK_START_OFFSET 宏（也是 DeploymentConfig 的 C++ 默认 crouch_pose）。
+  # 目的：卸力发生在完全趴下之前，这样即使编码器零点有偏差，也不会把关节硬顶到机械
+  # 限位、产生过大的夹紧电流。卸力后腿部靠重力继续折到静止姿态（那时无力矩）。
+  # 改这里的数值必须同步 tests/test_robot_fsm.cpp 里的期望字面量。
+  crouch_pose: [0.0609119907, 1.16687547, -2.77996769,  # FL
+                -0.0609119907, 1.16687547, -2.77996769,  # FR
+                0.0609119907, 1.16687547, -2.77996769,  # BL
+                -0.0609119907, 1.16687547, -2.77996769]  # BR
+  # 轨迹结束后，实际角度与速度连续达标才正常卸力；超时进入Fault卸力。
+  crouch_position_tolerance: 0.05  # rad
+  crouch_velocity_tolerance: 0.5   # rad/s
+  crouch_settle_s: 0.2
+  crouch_arrival_timeout_s: 2.0    # 从 crouch_s 轨迹结束开始计时

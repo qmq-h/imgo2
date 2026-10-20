@@ -36,16 +36,15 @@ def numbers(text):
         try:
             out.append(float(token))
         except ValueError:
-            return None  # 例如 "2.24824f + HIP_START_OFFSET"
+            return None  # 例如 "hip,thigh,shank"
     return out
 
 
 def parseConfig():
     """从 go_config.cpp 抽出每条总线的 device / ids / directions。
 
-    offsets 只在全是纯数字时才解析；写成 "2.24824f + HIP_START_OFFSET" 这种符号形式时
-    返回 None —— 那种情况下本测试跳过（符号规则由 README 1.2/7.9 与 go_probe -a 负责，
-    不是一个只做字符串比对的测试该管的事）。
+    offsets 只在全是纯数字时才解析；写成 "hip,thigh,shank" 这种符号形式时
+    返回 None —— 那种情况下本测试跳过（姿态数值由math_config测试覆盖）。
     """
     with open(CONFIG, encoding='utf-8') as handle:
         text = handle.read()

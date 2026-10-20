@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import sys
+import time
 
 PROJECT = Path(__file__).resolve().parents[2]
 REPO = PROJECT.parent
@@ -25,6 +26,12 @@ parser.add_argument("--feet", action="store_true", help="Record actual foot cont
 parser.add_argument("--linear_speed", type=float, default=0.5)
 parser.add_argument("--foot_raw_json", type=Path)
 parser.add_argument("--cases", help="Comma-separated subset, e.g. stand; uses one environment per selected command.")
+parser.add_argument("--diagnostics", action="store_true", help="Record actual materials, contact forces, torques and policy inputs.")
+parser.add_argument("--physics_dt", type=float, help="Audit a different physics step while preserving the policy interval.")
+parser.add_argument("--restitution", type=float, help="Audit a ground/default material restitution override, without changing training.")
+parser.add_argument("--disable_obs_noise", action="store_true", help="Audit without actor observation corruption.")
+parser.add_argument("--robot_friction", type=float, help="Audit an override of robot shape static/dynamic friction, keeping the ground unchanged.")
+parser.add_argument("--real-time", action="store_true", help="Pace playback to simulation time for viewing in the GUI.")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if not 0 <= args.warmup < args.steps:
@@ -50,6 +57,21 @@ cfg = load_cfg_from_registry(args.task, "env_cfg_entry_point")
 cfg.scene.num_envs = len(names)
 cfg.sim.device = args.device
 cfg.seed = 42
+if args.disable_obs_noise:
+    cfg.observations.policy.enable_corruption = False
+if args.restitution is not None:
+    if not 0 <= args.restitution <= 1:
+        parser.error("restitution must be between zero and one")
+    cfg.scene.terrain.physics_material.restitution = args.restitution
+    cfg.sim.physics_material.restitution = args.restitution
+if args.physics_dt is not None:
+    control_dt = cfg.sim.dt * cfg.decimation
+    decimation = round(control_dt / args.physics_dt) if args.physics_dt > 0 else 0
+    if decimation < 1 or not math.isclose(decimation * args.physics_dt, control_dt):
+        parser.error("physics_dt must divide the existing policy interval")
+    cfg.sim.dt = args.physics_dt
+    cfg.decimation = decimation
+    cfg.sim.render_interval = decimation
 cfg.scene.robot.spawn.force_usd_conversion = True
 disabled = []
 for name, value in vars(cfg.events).items():
@@ -62,6 +84,26 @@ try:
     env = gym.make(args.task, cfg=cfg)
     wrapped = AmpVecEnvWrapper(env)
     robot = env.unwrapped.scene["robot"]
+    if args.robot_friction is not None:
+        if not math.isfinite(args.robot_friction) or args.robot_friction < 0:
+            parser.error("robot_friction must be finite and nonnegative")
+        material = robot.root_physx_view.get_material_properties()
+        material[..., :2] = args.robot_friction
+        robot.root_physx_view.set_material_properties(material, torch.arange(len(names), device="cpu"))
+    physics = {"physics_dt": cfg.sim.dt, "decimation": cfg.decimation,
+               "actor_observation_noise_enabled": cfg.observations.policy.enable_corruption}
+    if args.diagnostics:
+        physics["body_names"] = list(robot.body_names)
+        physics["joint_names"] = list(robot.joint_names)
+        physics["physx_joint_stiffness"] = robot.data.joint_stiffness[0].cpu().tolist()
+        physics["physx_joint_damping"] = robot.data.joint_damping[0].cpu().tolist()
+        physics["actuators"] = {name: {"class": type(actuator).__name__,
+            "stiffness": actuator.stiffness[0].cpu().tolist(),
+            "damping": actuator.damping[0].cpu().tolist()}
+            for name, actuator in robot.actuators.items()}
+        for label, method in (("materials_static_dynamic_restitution", "get_material_properties"),
+                              ("masses", "get_masses")):
+            physics[label] = getattr(robot.root_physx_view, method)()[0].cpu().tolist()
     # Pin bytes and record identity: another terminal may replace deploy/policy.pt.
     policy_bytes = args.policy_path.read_bytes()
     policy_sha256 = hashlib.sha256(policy_bytes).hexdigest()
@@ -93,8 +135,12 @@ try:
                     "joint_names": ordered_joint_names, "joint_positions": [], "raw_actions": [], "joint_targets": [],
                     "landings": [[] for _ in foot_names], "air_times": [[] for _ in foot_names],
                     "raw_landing_count": [0]*4} for _ in names]
+        if args.diagnostics:
+            for record in records:
+                record.update(policy_inputs=[], joint_velocities=[], applied_torques=[], contact_forces_w=[])
     with torch.inference_mode():
         for step in range(args.steps):
+            step_started = time.perf_counter()
             env.unwrapped.command_manager.get_command("base_velocity").copy_(commands)
             obs = env.unwrapped.observation_manager.compute()["policy"]
             actions = policy(obs)
@@ -117,6 +163,11 @@ try:
                     ordered_positions = robot.data.joint_pos[:,joint_ids].cpu().tolist()
                     raw_actions = actions.cpu().tolist()
                     joint_targets = env.unwrapped.action_manager.get_term("joint_pos").processed_actions.cpu().tolist()
+                    if args.diagnostics:
+                        policy_inputs = obs.cpu().tolist()
+                        joint_velocities = robot.data.joint_vel[:,joint_ids].cpu().tolist()
+                        torques = robot.data.applied_torque[:,joint_ids].cpu().tolist()
+                        forces = sensor.data.net_forces_w.cpu().tolist()
                     for i in range(len(names)):
                         heights=[]
                         for foot in range(4):
@@ -134,11 +185,19 @@ try:
                         records[i]["joint_positions"].append(ordered_positions[i])
                         records[i]["raw_actions"].append(raw_actions[i])
                         records[i]["joint_targets"].append(joint_targets[i])
+                        if args.diagnostics:
+                            records[i]["policy_inputs"].append(policy_inputs[i])
+                            records[i]["joint_velocities"].append(joint_velocities[i])
+                            records[i]["applied_torques"].append(torques[i])
+                            records[i]["contact_forces_w"].append(forces[i])
             if step in (0, args.warmup, args.steps - 1):
                 print("Native Isaac evaluation step", step, flush=True)
+            if args.real_time:
+                time.sleep(max(0.0, wrapped.dt - (time.perf_counter() - step_started)))
     output = {"task": args.task, "policy": str(args.policy_path.resolve()), "policy_sha256": policy_sha256, "control_dt": wrapped.dt,
               "steps": args.steps, "warmup_steps": args.warmup,
               "domain_randomization_disabled": disabled, "cases": [],
+              "physics": physics,
               "limits": "One environment per command; current local URDF and nominal startup physics. Not an exact engine A/B. No training/export."}
     for i, name in enumerate(names):
         seq = metrics[i]
@@ -147,7 +206,8 @@ try:
                                 "mean_vy": sum(r[1] for r in seq) / len(seq),
                                 "mean_wz": sum(r[2] for r in seq) / len(seq),
                                 "mean_z": sum(r[3] for r in seq) / len(seq),
-                                "min_z": min(r[3] for r in seq), "episode_resets": resets[i]})
+                                "min_z": min(r[3] for r in seq), "episode_resets": resets[i],
+                                "steady_window_valid": resets[i] == 0})
         if args.feet:
             detail={}
             for foot,foot_name in enumerate(foot_names):

@@ -43,12 +43,15 @@ void GoMotorMonitor::run(size_t index) {
                 { std::lock_guard<std::mutex> lock(mutex_); if (stopping_) break; }
                 Command command; command.reset(); command.id=static_cast<uint8_t>(motor.id);
                 Feedback raw;
+                const TransportStats before=stats;
                 const auto start=SerialPort::Clock::now();
                 motor.request_ok=MotorTransport::exchange(port,command,
                     start+std::chrono::microseconds(timeout_us_),raw,stats,motor.error);
                 motor.feedback.valid=motor.request_ok;
                 motor.rttMs=std::chrono::duration<double,std::milli>(SerialPort::Clock::now()-start).count();
                 if (motor.request_ok) {
+                    ++motor.okCount;
+                    motor.rttMaxMs=std::max(motor.rttMaxMs,motor.rttMs);
                     motor.feedback=raw;
                     motor.receive_time_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
                         SerialPort::Clock::now().time_since_epoch()).count();
@@ -60,10 +63,25 @@ void GoMotorMonitor::run(size_t index) {
                         motor.qMin=std::min(motor.qMin,motor.qL);
                         motor.qMax=std::max(motor.qMax,motor.qL);
                     }
-                } else state.error=motor.error;
+                } else {
+                    // 累计超时次数，并把"等了多久 / 预算 / 本次收到了什么"写进 error：
+                    //   bytesIn=0   → 一个字节都没回来（没应答/链路断了）
+                    //   badFrames>0 → 字节回来了但 CRC 不过（多为电机换向噪声/EMI）
+                    //   strayFrames>0 → 收到的是别的 ID 的回复（接线串了/回显）
+                    ++motor.timeoutCount; ++state.timeoutTotal;
+                    const auto waited=std::chrono::duration_cast<std::chrono::microseconds>(
+                        SerialPort::Clock::now()-start).count();
+                    motor.error += " [waited=" + std::to_string(waited) + "us budget=" +
+                                   std::to_string(timeout_us_) + "us bytesIn=" +
+                                   std::to_string(stats.bytesIn-before.bytesIn) + " badFrames=" +
+                                   std::to_string(stats.badFrames-before.badFrames) + " strayFrames=" +
+                                   std::to_string(stats.strayFrames-before.strayFrames) + "]";
+                    state.error=motor.error;
+                }
             }
             state.bytesIn=stats.bytesIn; state.badFrames=stats.badFrames; state.strayFrames=stats.strayFrames;
             state.sweepMs=std::chrono::duration<double,std::milli>(SerialPort::Clock::now()-begin).count();
+            state.sweepMaxMs=std::max(state.sweepMaxMs,state.sweepMs);
             ++state.sweeps;
             std::unique_lock<std::mutex> lock(mutex_);
             states_[index]=state;

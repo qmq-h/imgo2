@@ -14,14 +14,18 @@ struct DiagnosticMotor {
     Feedback feedback; // Last successful raw output-side measurement; valid = current request.
     double qFirst=0, qMin=0, qMax=0, qL=0, rttMs=0;
     uint64_t receive_time_ns=0;
+    // 累计通信计数：用来判断"卸力（不使能）状态下会不会偶发超时"。
+    uint64_t okCount=0, timeoutCount=0;
+    double rttMaxMs=0;
     std::string error;
 };
 struct DiagnosticBus {
     std::string device, error;
     bool opened=false;
     std::vector<DiagnosticMotor> motors;
-    double sweepMs=0;
+    double sweepMs=0, sweepMaxMs=0;
     long long sweeps=0;
+    uint64_t timeoutTotal=0;
     size_t bytesIn=0, badFrames=0, strayFrames=0;
 };
 // Diagnostic-only: deliberately has no method accepting a motion command.

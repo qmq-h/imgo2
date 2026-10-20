@@ -1,4 +1,5 @@
 #pragma once
+#include "function/my_myth.h"
 
 namespace go
 {
@@ -58,7 +59,7 @@ public:
      * 归一化速度的峰值（= 1.875），用来估算某个关节的最大速度：
      *     peak_dq = 1.875 * |q_goal - q_start| / T
      */
-    static double peakRate() { return 1.875; }
+    static double peakRate() { return my_myth::quintic_peak_rate; }
 
 private:
     double duration_;

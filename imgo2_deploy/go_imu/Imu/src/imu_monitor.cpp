@@ -8,6 +8,7 @@ ImuMonitor::ImuMonitor(real_config::ImuConfig config) : config_(std::move(config
 ImuMonitor::~ImuMonitor() { Stop(); }
 void ImuMonitor::Start() {
     if (worker_.joinable()) return;
+    config_.validate();
     stop_ = false;
     worker_ = std::thread(&ImuMonitor::Run, this);
 }

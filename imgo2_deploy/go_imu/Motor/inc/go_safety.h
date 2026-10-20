@@ -38,6 +38,8 @@ enum class ClampResult
 class Safety
 {
 public:
+    static bool trajectoryValid(const Targets& start, const Targets& goal, double duration_s,
+                                const std::vector<JointLimits>& limits, std::string& error);
     /**
      * 夹紧一份多关节目标（原地修改）。
      * limits 留空表示全部不限；否则长度必须等于 targets 的长度。

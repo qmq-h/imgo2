@@ -1,4 +1,5 @@
 #include "go_protocol.h"
+#include "function/my_myth.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -6,8 +7,8 @@ namespace go
 {
     namespace
     {
-        constexpr double r = static_cast<double>(kGearRatio), twoPi = 6.2831853071795864769;
-        double clip(double v, double lo, double hi) { return std::max(lo, std::min(v, hi)); }
+        constexpr double r = static_cast<double>(kGearRatio), twoPi = my_myth::two_pi;
+        using my_myth::clamp;
         void put16(uint8_t *p, uint16_t v)
         {
             p[0] = uint8_t(v);
@@ -60,16 +61,16 @@ namespace go
         out[2] = uint8_t(c.id | (uint8_t(c.mode) << 4));
         // 对外统一输出轴语义：输出端力矩 = 转子力矩 × 6.33（理想减速器）。
         // 所以前馈力矩发送时除以 6.33；输出端角速度发送时乘以 6.33。
-        auto tau = int16_t(clip(double(c.tau) / r, -127.99, 127.99) * 256);
-        auto vel = int16_t(clip(clip(double(c.dq) * r, -804, 804) / twoPi * 256, -32768, 32767));
-        auto pos = int32_t(clip(clip(double(c.q) * r, -411774, 411774) / twoPi * 32768, -2147483648.0, 2147483647.0));
+        auto tau = int16_t(clamp<double>(double(c.tau) / r, -127.99, 127.99) * 256);
+        auto vel = int16_t(clamp<double>(clamp<double>(double(c.dq) * r, -804, 804) / twoPi * 256, -32768, 32767));
+        auto pos = int32_t(clamp<double>(clamp<double>(double(c.q) * r, -411774, 411774) / twoPi * 32768, -2147483648.0, 2147483647.0));
         put16(out + 3, uint16_t(tau));
         put16(out + 5, uint16_t(vel));
         put32(out + 7, uint32_t(pos));
         // 位置/速度误差在转子侧扩大 6.33 倍，力矩换回转子侧缩小 6.33 倍，
         // 因此输出端 PD 增益转换为转子增益时都要除以 6.33²。
-        put16(out + 11, uint16_t(clip(double(c.kp) / (r * r), 0, 25.599) * 1280));
-        put16(out + 13, uint16_t(clip(double(c.kd) / (r * r), 0, 25.599) * 1280));
+        put16(out + 11, uint16_t(clamp<double>(double(c.kp) / (r * r), 0, 25.599) * 1280));
+        put16(out + 13, uint16_t(clamp<double>(double(c.kd) / (r * r), 0, 25.599) * 1280));
         put16(out + 15, crc16(out, 15));
         return true;
     }

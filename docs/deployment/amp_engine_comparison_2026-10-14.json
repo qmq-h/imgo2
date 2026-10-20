@@ -1,0 +1,4833 @@
+{
+  "date": "2026-10-14",
+  "raw_archive": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/engine_audit_2026-10-14",
+  "native_stages": [
+    {
+      "stage": "isaac_diagnostics",
+      "policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+      "physics": {
+        "physics_dt": 0.005,
+        "decimation": 4,
+        "body_names": [
+          "base",
+          "FL_HIP",
+          "FR_HIP",
+          "RL_HIP",
+          "RR_HIP",
+          "FL_THIGH",
+          "FR_THIGH",
+          "RL_THIGH",
+          "RR_THIGH",
+          "FL_SHANK",
+          "FR_SHANK",
+          "RL_SHANK",
+          "RR_SHANK",
+          "FL_FOOT",
+          "FR_FOOT",
+          "RL_FOOT",
+          "RR_FOOT"
+        ],
+        "joint_names": [
+          "FL_hip_joint",
+          "FR_hip_joint",
+          "RL_hip_joint",
+          "RR_hip_joint",
+          "FL_thigh_joint",
+          "FR_thigh_joint",
+          "RL_thigh_joint",
+          "RR_thigh_joint",
+          "FL_shank_joint",
+          "FR_shank_joint",
+          "RL_shank_joint",
+          "RR_shank_joint"
+        ],
+        "materials_static_dynamic_restitution": [
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ]
+        ],
+        "masses": [
+          5.533940315246582,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825
+        ],
+        "physx_joint_stiffness": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physx_joint_damping": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "actor_observation_noise_enabled": true
+      },
+      "control_dt": 0.02,
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.003574798792833462,
+          "mean_vy": -0.004225728620409167,
+          "mean_wz": -0.09604465432082569,
+          "mean_z": 0.2936083149909973,
+          "min_z": 0.28868338465690613,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.010369207616065686,
+              "p95_m": 1.0251160613653097e-05,
+              "p99_m": 0.0014174270634649603,
+              "max_m": 0.007010130776446969,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9771428571428571,
+              "raw_landing_count": 80,
+              "qualified_landings_air_at_least_20ms": 10,
+              "completed_air_time_mean_s": 0.027498435974121094,
+              "landing_median_period_s": 1.08,
+              "landing_frequency_hz": 0.9259259259259258
+            },
+            "FR_FOOT": {
+              "min_m": -0.010804491644089899,
+              "p95_m": 0.0001695650521608958,
+              "p99_m": 0.00614427495999022,
+              "max_m": 0.012339003033307448,
+              "above_1cm_fraction": 0.0014285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 3,
+              "height_bout_mean_peak_m": 0.009120150381330324,
+              "height_bout_mean_duration_s": 0.040000000000000334,
+              "height_bout_median_period_s": 3.11,
+              "contact_fraction": 0.9442857142857143,
+              "raw_landing_count": 64,
+              "qualified_landings_air_at_least_20ms": 9,
+              "completed_air_time_mean_s": 0.04444260067409939,
+              "landing_median_period_s": 0.9199999999999999,
+              "landing_frequency_hz": 1.0869565217391306
+            },
+            "RL_FOOT": {
+              "min_m": -0.014246482123365434,
+              "p95_m": 1.684172723885924e-05,
+              "p99_m": 0.0029925420105490373,
+              "max_m": 0.01383596587309762,
+              "above_1cm_fraction": 0.0014285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9742857142857143,
+              "raw_landing_count": 49,
+              "qualified_landings_air_at_least_20ms": 7,
+              "completed_air_time_mean_s": 0.03357083456856864,
+              "landing_median_period_s": 2.2300000000000004,
+              "landing_frequency_hz": 0.4484304932735425
+            },
+            "RR_FOOT": {
+              "min_m": -0.018716880703455133,
+              "p95_m": 2.999300306912028e-06,
+              "p99_m": 4.422282305953268e-05,
+              "max_m": 0.00030932168665765564,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 46,
+              "qualified_landings_air_at_least_20ms": 2,
+              "completed_air_time_mean_s": 0.020000457763671875,
+              "landing_median_period_s": 1.4799999999999995,
+              "landing_frequency_hz": 0.6756756756756759
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.4841756820678711,
+            "rms_target_step_rad": 0.07311074468521847,
+            "target_ranges_rad": [
+              0.2704443298280239,
+              0.3179776668548584,
+              0.5903846025466919,
+              0.18238285183906555,
+              0.19901424646377563,
+              0.5092731714248657,
+              0.1761639416217804,
+              0.28852009773254395,
+              0.50323486328125,
+              0.24500110745429993,
+              0.3522266745567322,
+              0.4677468538284302
+            ],
+            "observed_joint_ranges_rad": [
+              0.1286996379494667,
+              0.13768374919891357,
+              0.08458709716796875,
+              0.13040244579315186,
+              0.12081140279769897,
+              0.10387158393859863,
+              0.13740959763526917,
+              0.21517807245254517,
+              0.15979456901550293,
+              0.10632118582725525,
+              0.19013625383377075,
+              0.12469482421875
+            ],
+            "sampled_joint_velocity_rms_rad_s": 0.5440050391316068,
+            "actual_joint_velocity_rms_rad_s": 2.440943339744185
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "FR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RL": {
+              "period_s": 1.0,
+              "score": 0.1738344190926387,
+              "hz": 1.0
+            },
+            "RR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            }
+          },
+          "mean_net_contact_fz_N": 125.4818600715484
+        },
+        {
+          "case": "forward",
+          "command": [
+            0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.31536753164870396,
+          "mean_vy": -0.00013308378892751144,
+          "mean_wz": -0.01735308590648596,
+          "mean_z": 0.2948437822290829,
+          "min_z": 0.28678658604621887,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.011770421034740585,
+              "p95_m": 0.015961447615162883,
+              "p99_m": 0.021788300964079108,
+              "max_m": 0.029744305961330965,
+              "above_1cm_fraction": 0.12142857142857143,
+              "above_2cm_fraction": 0.015714285714285715,
+              "height_bouts_over_5mm": 44,
+              "height_bout_mean_peak_m": 0.01538196727935983,
+              "height_bout_mean_duration_s": 0.06181818181818191,
+              "height_bout_median_period_s": 0.27999999999999936,
+              "contact_fraction": 0.7,
+              "raw_landing_count": 75,
+              "qualified_landings_air_at_least_20ms": 45,
+              "completed_air_time_mean_s": 0.07144315507676867,
+              "landing_median_period_s": 0.2599999999999998,
+              "landing_frequency_hz": 3.8461538461538494
+            },
+            "FR_FOOT": {
+              "min_m": -0.013833667655171026,
+              "p95_m": 0.014445450378608653,
+              "p99_m": 0.01971693590119802,
+              "max_m": 0.025391342179387565,
+              "above_1cm_fraction": 0.10285714285714286,
+              "above_2cm_fraction": 0.008571428571428572,
+              "height_bouts_over_5mm": 32,
+              "height_bout_mean_peak_m": 0.016310719581860575,
+              "height_bout_mean_duration_s": 0.05562500000000006,
+              "height_bout_median_period_s": 0.3800000000000008,
+              "contact_fraction": 0.7714285714285715,
+              "raw_landing_count": 65,
+              "qualified_landings_air_at_least_20ms": 39,
+              "completed_air_time_mean_s": 0.06025487948686649,
+              "landing_median_period_s": 0.23999999999999888,
+              "landing_frequency_hz": 4.1666666666666865
+            },
+            "RL_FOOT": {
+              "min_m": -0.008708948298918731,
+              "p95_m": 0.017872412085591798,
+              "p99_m": 0.02579897616909285,
+              "max_m": 0.03536698136487713,
+              "above_1cm_fraction": 0.12428571428571429,
+              "above_2cm_fraction": 0.03571428571428571,
+              "height_bouts_over_5mm": 34,
+              "height_bout_mean_peak_m": 0.020189479474113713,
+              "height_bout_mean_duration_s": 0.05882352941176478,
+              "height_bout_median_period_s": 0.3200000000000003,
+              "contact_fraction": 0.7442857142857143,
+              "raw_landing_count": 53,
+              "qualified_landings_air_at_least_20ms": 37,
+              "completed_air_time_mean_s": 0.06891737757502375,
+              "landing_median_period_s": 0.2899999999999996,
+              "landing_frequency_hz": 3.44827586206897
+            },
+            "RR_FOOT": {
+              "min_m": -0.008829825899927538,
+              "p95_m": 0.016330693142256558,
+              "p99_m": 0.022023917835878624,
+              "max_m": 0.03326020923944625,
+              "above_1cm_fraction": 0.12428571428571429,
+              "above_2cm_fraction": 0.018571428571428572,
+              "height_bouts_over_5mm": 38,
+              "height_bout_mean_peak_m": 0.016764847173443648,
+              "height_bout_mean_duration_s": 0.05842105263157917,
+              "height_bout_median_period_s": 0.2600000000000007,
+              "contact_fraction": 0.7071428571428572,
+              "raw_landing_count": 86,
+              "qualified_landings_air_at_least_20ms": 52,
+              "completed_air_time_mean_s": 0.0663452515235314,
+              "landing_median_period_s": 0.21999999999999886,
+              "landing_frequency_hz": 4.545454545454569
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.557864785194397,
+            "rms_target_step_rad": 0.09436150593330253,
+            "target_ranges_rad": [
+              0.2698920667171478,
+              0.33833855390548706,
+              0.7554880380630493,
+              0.3542192727327347,
+              0.464944064617157,
+              0.8908183574676514,
+              0.300871305167675,
+              0.49722933769226074,
+              0.8343702554702759,
+              0.2489386349916458,
+              0.5318032503128052,
+              0.7992463111877441
+            ],
+            "observed_joint_ranges_rad": [
+              0.11073313653469086,
+              0.4023932218551636,
+              0.27742016315460205,
+              0.11791275441646576,
+              0.31465500593185425,
+              0.2675313949584961,
+              0.11942636966705322,
+              0.39645057916641235,
+              0.32429981231689453,
+              0.15260197222232819,
+              0.42568308115005493,
+              0.2713620662689209
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.4843027162919933,
+            "actual_joint_velocity_rms_rad_s": 3.0735518509929336
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.26,
+              "score": 0.1636967630627269,
+              "hz": 3.846153846153846
+            },
+            "FR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RR": {
+              "period_s": 0.68,
+              "score": 0.16960904071368244,
+              "hz": 1.4705882352941175
+            }
+          },
+          "mean_net_contact_fz_N": 124.92044097687517
+        },
+        {
+          "case": "backward",
+          "command": [
+            -0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.1870256458881444,
+          "mean_vy": -0.0024264750467513554,
+          "mean_wz": -0.03321983692685275,
+          "mean_z": 0.28979944275958197,
+          "min_z": 0.2745484411716461,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.014721948244662674,
+              "p95_m": 0.0019247226034854875,
+              "p99_m": 0.005795110675700475,
+              "max_m": 0.01236486547714103,
+              "above_1cm_fraction": 0.002857142857142857,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9214285714285714,
+              "raw_landing_count": 82,
+              "qualified_landings_air_at_least_20ms": 16,
+              "completed_air_time_mean_s": 0.03249913454055786,
+              "landing_median_period_s": 0.5999999999999996,
+              "landing_frequency_hz": 1.6666666666666676
+            },
+            "FR_FOOT": {
+              "min_m": -0.013354255540786265,
+              "p95_m": 0.003221431678183298,
+              "p99_m": 0.007537616758075534,
+              "max_m": 0.016959658764911588,
+              "above_1cm_fraction": 0.004285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 3,
+              "height_bout_mean_peak_m": 0.013909815982719773,
+              "height_bout_mean_duration_s": 0.040000000000000625,
+              "height_bout_median_period_s": 3.13,
+              "contact_fraction": 0.8957142857142857,
+              "raw_landing_count": 79,
+              "qualified_landings_air_at_least_20ms": 30,
+              "completed_air_time_mean_s": 0.035165627797444664,
+              "landing_median_period_s": 0.40000000000000036,
+              "landing_frequency_hz": 2.499999999999998
+            },
+            "RL_FOOT": {
+              "min_m": -0.028622264224043417,
+              "p95_m": -2.5010757911390663e-05,
+              "p99_m": 0.0017037541711834713,
+              "max_m": 0.006386534235394148,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9757142857142858,
+              "raw_landing_count": 81,
+              "qualified_landings_air_at_least_20ms": 7,
+              "completed_air_time_mean_s": 0.027142252240862166,
+              "landing_median_period_s": 0.9900000000000002,
+              "landing_frequency_hz": 1.01010101010101
+            },
+            "RR_FOOT": {
+              "min_m": -0.0188603998065865,
+              "p95_m": 8.49009192702758e-06,
+              "p99_m": 0.0022366809555203915,
+              "max_m": 0.005586007552084979,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9742857142857143,
+              "raw_landing_count": 84,
+              "qualified_landings_air_at_least_20ms": 15,
+              "completed_air_time_mean_s": 0.026332600911458334,
+              "landing_median_period_s": 0.94,
+              "landing_frequency_hz": 1.0638297872340425
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.5328471660614014,
+            "rms_target_step_rad": 0.08592152423305563,
+            "target_ranges_rad": [
+              0.27017591893672943,
+              0.42550086975097656,
+              0.6313198804855347,
+              0.305685356259346,
+              0.4160449504852295,
+              0.569769024848938,
+              0.2846310883760452,
+              0.5261438488960266,
+              0.7315714359283447,
+              0.35636813938617706,
+              0.5436673164367676,
+              0.8111757040023804
+            ],
+            "observed_joint_ranges_rad": [
+              0.0956975668668747,
+              0.3134545087814331,
+              0.1519221067428589,
+              0.1169101893901825,
+              0.33990126848220825,
+              0.17494261264801025,
+              0.11151936650276184,
+              0.3519124984741211,
+              0.19877445697784424,
+              0.07841411232948303,
+              0.373110294342041,
+              0.19193267822265625
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.1329675862227533,
+            "actual_joint_velocity_rms_rad_s": 2.8912049833295104
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.6,
+              "score": 0.1935252606117152,
+              "hz": 1.6666666666666667
+            },
+            "FR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RL": {
+              "period_s": 0.18,
+              "score": 0.16919163812751098,
+              "hz": 5.555555555555555
+            },
+            "RR": {
+              "period_s": 0.18,
+              "score": 0.20232432681148252,
+              "hz": 5.555555555555555
+            }
+          },
+          "mean_net_contact_fz_N": 122.58195818413581
+        }
+      ]
+    },
+    {
+      "stage": "isaac_restitution0",
+      "policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+      "physics": {
+        "physics_dt": 0.005,
+        "decimation": 4,
+        "body_names": [
+          "base",
+          "FL_HIP",
+          "FR_HIP",
+          "RL_HIP",
+          "RR_HIP",
+          "FL_THIGH",
+          "FR_THIGH",
+          "RL_THIGH",
+          "RR_THIGH",
+          "FL_SHANK",
+          "FR_SHANK",
+          "RL_SHANK",
+          "RR_SHANK",
+          "FL_FOOT",
+          "FR_FOOT",
+          "RL_FOOT",
+          "RR_FOOT"
+        ],
+        "joint_names": [
+          "FL_hip_joint",
+          "FR_hip_joint",
+          "RL_hip_joint",
+          "RR_hip_joint",
+          "FL_thigh_joint",
+          "FR_thigh_joint",
+          "RL_thigh_joint",
+          "RR_thigh_joint",
+          "FL_shank_joint",
+          "FR_shank_joint",
+          "RL_shank_joint",
+          "RR_shank_joint"
+        ],
+        "physx_joint_stiffness": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physx_joint_damping": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "actuators": {
+          "legs": {
+            "class": "DCMotor",
+            "stiffness": [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            "damping": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          }
+        },
+        "materials_static_dynamic_restitution": [
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ]
+        ],
+        "masses": [
+          5.533940315246582,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825
+        ],
+        "actor_observation_noise_enabled": true
+      },
+      "control_dt": 0.02,
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.01955967088446154,
+          "mean_vy": 0.001439015509356198,
+          "mean_wz": -0.08308468474690536,
+          "mean_z": 0.27908084916216985,
+          "min_z": 0.27439379692077637,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -5.154943291761985e-05,
+              "p95_m": 3.378832443120763e-05,
+              "p99_m": 0.0007663612980150213,
+              "max_m": 0.007233384884338927,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9842857142857143,
+              "raw_landing_count": 13,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.03399982452392578,
+              "landing_median_period_s": 2.4500000000000006,
+              "landing_frequency_hz": 0.40816326530612235
+            },
+            "FR_FOOT": {
+              "min_m": -5.904138106341619e-05,
+              "p95_m": 1.927826186553325e-05,
+              "p99_m": 0.0036851595041390668,
+              "max_m": 0.0071071763270506225,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.97,
+              "raw_landing_count": 9,
+              "qualified_landings_air_at_least_20ms": 8,
+              "completed_air_time_mean_s": 0.04062497615814209,
+              "landing_median_period_s": 0.9199999999999999,
+              "landing_frequency_hz": 1.0869565217391306
+            },
+            "RL_FOOT": {
+              "min_m": -4.1607811972751985e-05,
+              "p95_m": 2.9265858484496512e-05,
+              "p99_m": 0.00382502450825634,
+              "max_m": 0.010694324922888625,
+              "above_1cm_fraction": 0.0014285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9714285714285714,
+              "raw_landing_count": 7,
+              "qualified_landings_air_at_least_20ms": 7,
+              "completed_air_time_mean_s": 0.036427906581333706,
+              "landing_median_period_s": 1.38,
+              "landing_frequency_hz": 0.7246376811594204
+            },
+            "RR_FOOT": {
+              "min_m": -5.697761471981297e-05,
+              "p95_m": 2.26097942957885e-05,
+              "p99_m": 0.0018802962942078341,
+              "max_m": 0.0046475802643948655,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9685714285714285,
+              "raw_landing_count": 14,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.033998870849609376,
+              "landing_median_period_s": 0.7900000000000009,
+              "landing_frequency_hz": 1.2658227848101251
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.49356722831726074,
+            "rms_target_step_rad": 0.07205896541326963,
+            "target_ranges_rad": [
+              0.23238229751586914,
+              0.2940911650657654,
+              0.6940176486968994,
+              0.24821099638938904,
+              0.2647938132286072,
+              0.6637263298034668,
+              0.25994524359703064,
+              0.3002927899360657,
+              0.6688843965530396,
+              0.24953770637512207,
+              0.2732616066932678,
+              0.6125826835632324
+            ],
+            "observed_joint_ranges_rad": [
+              0.10207654535770416,
+              0.18233293294906616,
+              0.08261632919311523,
+              0.12401679158210754,
+              0.18484622240066528,
+              0.09380316734313965,
+              0.14404065907001495,
+              0.21498972177505493,
+              0.11212801933288574,
+              0.12900908291339874,
+              0.187019944190979,
+              0.08948206901550293
+            ],
+            "sampled_joint_velocity_rms_rad_s": 0.3467699430793224,
+            "actual_joint_velocity_rms_rad_s": 0.3791870219464649
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.9,
+              "score": 0.30252235546879225,
+              "hz": 1.1111111111111112
+            },
+            "FR": {
+              "period_s": 0.86,
+              "score": 0.43513007009971616,
+              "hz": 1.1627906976744187
+            },
+            "RL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            }
+          },
+          "mean_net_contact_fz_N": 127.17974623407636
+        },
+        {
+          "case": "forward",
+          "command": [
+            0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.40990899490458627,
+          "mean_vy": 0.0021837645385780237,
+          "mean_wz": -0.013120325809899702,
+          "mean_z": 0.2795674436007227,
+          "min_z": 0.2732223868370056,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.0003428423463502431,
+              "p95_m": 0.012931022451035064,
+              "p99_m": 0.017562053659079233,
+              "max_m": 0.020724019567910368,
+              "above_1cm_fraction": 0.10714285714285714,
+              "above_2cm_fraction": 0.002857142857142857,
+              "height_bouts_over_5mm": 41,
+              "height_bout_mean_peak_m": 0.01337214365700531,
+              "height_bout_mean_duration_s": 0.06439024390243904,
+              "height_bout_median_period_s": 0.27000000000000046,
+              "contact_fraction": 0.6957142857142857,
+              "raw_landing_count": 29,
+              "qualified_landings_air_at_least_20ms": 29,
+              "completed_air_time_mean_s": 0.0793078192349138,
+              "landing_median_period_s": 0.2900000000000005,
+              "landing_frequency_hz": 3.44827586206896
+            },
+            "FR_FOOT": {
+              "min_m": -0.00034483131047501406,
+              "p95_m": 0.015914973573803712,
+              "p99_m": 0.020285302072090103,
+              "max_m": 0.02359873747659077,
+              "above_1cm_fraction": 0.14142857142857143,
+              "above_2cm_fraction": 0.012857142857142857,
+              "height_bouts_over_5mm": 47,
+              "height_bout_mean_peak_m": 0.015697156083113378,
+              "height_bout_mean_duration_s": 0.06170212765957459,
+              "height_bout_median_period_s": 0.2599999999999998,
+              "contact_fraction": 0.7357142857142858,
+              "raw_landing_count": 44,
+              "qualified_landings_air_at_least_20ms": 43,
+              "completed_air_time_mean_s": 0.0729059563126675,
+              "landing_median_period_s": 0.2599999999999998,
+              "landing_frequency_hz": 3.8461538461538494
+            },
+            "RL_FOOT": {
+              "min_m": -0.0003815628458353204,
+              "p95_m": 0.019958418766292466,
+              "p99_m": 0.03000506024423186,
+              "max_m": 0.039878438896070616,
+              "above_1cm_fraction": 0.15857142857142856,
+              "above_2cm_fraction": 0.05,
+              "height_bouts_over_5mm": 43,
+              "height_bout_mean_peak_m": 0.020824306127262854,
+              "height_bout_mean_duration_s": 0.0632558139534885,
+              "height_bout_median_period_s": 0.2600000000000007,
+              "contact_fraction": 0.75,
+              "raw_landing_count": 40,
+              "qualified_landings_air_at_least_20ms": 37,
+              "completed_air_time_mean_s": 0.0728366181657121,
+              "landing_median_period_s": 0.28999999999999915,
+              "landing_frequency_hz": 3.4482758620689755
+            },
+            "RR_FOOT": {
+              "min_m": -0.0002666636960797254,
+              "p95_m": 0.014294287647005641,
+              "p99_m": 0.023230898432374303,
+              "max_m": 0.033429222610924805,
+              "above_1cm_fraction": 0.11714285714285715,
+              "above_2cm_fraction": 0.02142857142857143,
+              "height_bouts_over_5mm": 38,
+              "height_bout_mean_peak_m": 0.015887140704078425,
+              "height_bout_mean_duration_s": 0.06473684210526334,
+              "height_bout_median_period_s": 0.28000000000000114,
+              "contact_fraction": 0.7185714285714285,
+              "raw_landing_count": 41,
+              "qualified_landings_air_at_least_20ms": 39,
+              "completed_air_time_mean_s": 0.07192227779290615,
+              "landing_median_period_s": 0.27999999999999936,
+              "landing_frequency_hz": 3.5714285714285796
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.6314358711242676,
+            "rms_target_step_rad": 0.1042454690098853,
+            "target_ranges_rad": [
+              0.2323235273361206,
+              0.43237096071243286,
+              0.9663914442062378,
+              0.43066001683473587,
+              0.42128849029541016,
+              0.9549182653427124,
+              0.3194146305322647,
+              0.5650255680084229,
+              0.9812166690826416,
+              0.301654577255249,
+              0.455718994140625,
+              0.9732505083084106
+            ],
+            "observed_joint_ranges_rad": [
+              0.0892358124256134,
+              0.42116016149520874,
+              0.21667635440826416,
+              0.09898237884044647,
+              0.3685169816017151,
+              0.24598145484924316,
+              0.11808827519416809,
+              0.49463164806365967,
+              0.35134387016296387,
+              0.12334728240966797,
+              0.42706429958343506,
+              0.2280186414718628
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.5980582104945014,
+            "actual_joint_velocity_rms_rad_s": 1.477535559668137
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.24,
+              "score": 0.5452551747999403,
+              "hz": 4.166666666666667
+            },
+            "FR": {
+              "period_s": 0.24,
+              "score": 0.5673786591553587,
+              "hz": 4.166666666666667
+            },
+            "RL": {
+              "period_s": 0.24,
+              "score": 0.3346405431148336,
+              "hz": 4.166666666666667
+            },
+            "RR": {
+              "period_s": 0.24,
+              "score": 0.41203519530408655,
+              "hz": 4.166666666666667
+            }
+          },
+          "mean_net_contact_fz_N": 129.22552912450263
+        },
+        {
+          "case": "backward",
+          "command": [
+            -0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.2506277302120413,
+          "mean_vy": -0.006353359616062205,
+          "mean_wz": -0.03661273955375821,
+          "mean_z": 0.27662484909806934,
+          "min_z": 0.2691784203052521,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.0002504287535905446,
+              "p95_m": 9.433611194497057e-05,
+              "p99_m": 0.002988187898944767,
+              "max_m": 0.008575916860113213,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 1,
+              "height_bout_mean_peak_m": 0.008575916860113213,
+              "height_bout_mean_duration_s": 0.040000000000000924,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9557142857142857,
+              "raw_landing_count": 23,
+              "qualified_landings_air_at_least_20ms": 13,
+              "completed_air_time_mean_s": 0.03038443051851713,
+              "landing_median_period_s": 1.0700000000000003,
+              "landing_frequency_hz": 0.9345794392523362
+            },
+            "FR_FOOT": {
+              "min_m": -0.000324778538942444,
+              "p95_m": 5.195831780159115e-05,
+              "p99_m": 0.007503657327618539,
+              "max_m": 0.01273299800306582,
+              "above_1cm_fraction": 0.004285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 4,
+              "height_bout_mean_peak_m": 0.009571462477792083,
+              "height_bout_mean_duration_s": 0.045000000000000595,
+              "height_bout_median_period_s": 1.0,
+              "contact_fraction": 0.9571428571428572,
+              "raw_landing_count": 38,
+              "qualified_landings_air_at_least_20ms": 16,
+              "completed_air_time_mean_s": 0.037811994552612305,
+              "landing_median_period_s": 0.6799999999999997,
+              "landing_frequency_hz": 1.4705882352941182
+            },
+            "RL_FOOT": {
+              "min_m": -0.00039242564966007754,
+              "p95_m": 0.0009097601720911316,
+              "p99_m": 0.0072120012919945214,
+              "max_m": 0.011340580261602576,
+              "above_1cm_fraction": 0.004285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 4,
+              "height_bout_mean_peak_m": 0.008734849747024473,
+              "height_bout_mean_duration_s": 0.040000000000001146,
+              "height_bout_median_period_s": 2.4000000000000004,
+              "contact_fraction": 0.94,
+              "raw_landing_count": 40,
+              "qualified_landings_air_at_least_20ms": 20,
+              "completed_air_time_mean_s": 0.035999393463134764,
+              "landing_median_period_s": 0.5999999999999979,
+              "landing_frequency_hz": 1.6666666666666725
+            },
+            "RR_FOOT": {
+              "min_m": -0.000284259818115494,
+              "p95_m": 5.629552541179663e-05,
+              "p99_m": 0.002565180372081658,
+              "max_m": 0.005706001388586814,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9657142857142857,
+              "raw_landing_count": 34,
+              "qualified_landings_air_at_least_20ms": 8,
+              "completed_air_time_mean_s": 0.040000200271606445,
+              "landing_median_period_s": 0.3000000000000007,
+              "landing_frequency_hz": 3.3333333333333255
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.5539195537567139,
+            "rms_target_step_rad": 0.08897352160750133,
+            "target_ranges_rad": [
+              0.25449688732624054,
+              0.49368929862976074,
+              0.7107832431793213,
+              0.3207230195403099,
+              0.48971080780029297,
+              0.7400681972503662,
+              0.3419457972049713,
+              0.5780596733093262,
+              0.9321877956390381,
+              0.29624779522418976,
+              0.5320351719856262,
+              0.8649101257324219
+            ],
+            "observed_joint_ranges_rad": [
+              0.09069396555423737,
+              0.34919804334640503,
+              0.10701131820678711,
+              0.09090201556682587,
+              0.44074785709381104,
+              0.16099917888641357,
+              0.09464806318283081,
+              0.4396255612373352,
+              0.16531431674957275,
+              0.11122778058052063,
+              0.39102160930633545,
+              0.10497474670410156
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.1481372131493264,
+            "actual_joint_velocity_rms_rad_s": 1.1555210667847788
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 1.18,
+              "score": 0.1786544881942586,
+              "hz": 0.8474576271186441
+            },
+            "FR": {
+              "period_s": 0.28,
+              "score": 0.2800320474344406,
+              "hz": 3.571428571428571
+            },
+            "RL": {
+              "period_s": 0.28,
+              "score": 0.39763248258343464,
+              "hz": 3.571428571428571
+            },
+            "RR": {
+              "period_s": 0.28,
+              "score": 0.27895322595982713,
+              "hz": 3.571428571428571
+            }
+          },
+          "mean_net_contact_fz_N": 126.18633380389373
+        }
+      ]
+    },
+    {
+      "stage": "isaac_clean",
+      "policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+      "physics": {
+        "physics_dt": 0.005,
+        "decimation": 4,
+        "actor_observation_noise_enabled": false,
+        "body_names": [
+          "base",
+          "FL_HIP",
+          "FR_HIP",
+          "RL_HIP",
+          "RR_HIP",
+          "FL_THIGH",
+          "FR_THIGH",
+          "RL_THIGH",
+          "RR_THIGH",
+          "FL_SHANK",
+          "FR_SHANK",
+          "RL_SHANK",
+          "RR_SHANK",
+          "FL_FOOT",
+          "FR_FOOT",
+          "RL_FOOT",
+          "RR_FOOT"
+        ],
+        "joint_names": [
+          "FL_hip_joint",
+          "FR_hip_joint",
+          "RL_hip_joint",
+          "RR_hip_joint",
+          "FL_thigh_joint",
+          "FR_thigh_joint",
+          "RL_thigh_joint",
+          "RR_thigh_joint",
+          "FL_shank_joint",
+          "FR_shank_joint",
+          "RL_shank_joint",
+          "RR_shank_joint"
+        ],
+        "physx_joint_stiffness": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physx_joint_damping": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "actuators": {
+          "legs": {
+            "class": "DCMotor",
+            "stiffness": [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            "damping": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          }
+        },
+        "materials_static_dynamic_restitution": [
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            0.0
+          ]
+        ],
+        "masses": [
+          5.533940315246582,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825
+        ]
+      },
+      "control_dt": 0.02,
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.0070557449565863605,
+          "mean_vy": 0.0031244705643887626,
+          "mean_wz": -0.08073539001734129,
+          "mean_z": 0.27640608063765937,
+          "min_z": 0.2743493318557739,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -4.1382642526129054e-05,
+              "p95_m": 2.675670305191807e-06,
+              "p99_m": 1.731302866739914e-05,
+              "max_m": 5.373140711536703e-05,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 2,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": -2.9294610716466135e-05,
+              "p95_m": -1.003106443711428e-06,
+              "p99_m": 0.003684570614008578,
+              "max_m": 0.010833143236329161,
+              "above_1cm_fraction": 0.0014285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9857142857142858,
+              "raw_landing_count": 4,
+              "qualified_landings_air_at_least_20ms": 4,
+              "completed_air_time_mean_s": 0.05125117301940918,
+              "landing_median_period_s": 2.58,
+              "landing_frequency_hz": 0.38759689922480617
+            },
+            "RL_FOOT": {
+              "min_m": -2.101095706260117e-05,
+              "p95_m": 1.9244027849902445e-05,
+              "p99_m": 0.005948579076123733,
+              "max_m": 0.012154520222997713,
+              "above_1cm_fraction": 0.004285714285714286,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 1,
+              "height_bout_mean_peak_m": 0.012154520222997713,
+              "height_bout_mean_duration_s": 0.040000000000000036,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9857142857142858,
+              "raw_landing_count": 5,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.049001121520996095,
+              "landing_median_period_s": 2.55,
+              "landing_frequency_hz": 0.3921568627450981
+            },
+            "RR_FOOT": {
+              "min_m": -3.148361303575986e-05,
+              "p95_m": 1.440178130444978e-05,
+              "p99_m": 2.3997210686781248e-05,
+              "max_m": 0.001196674496186212,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9885714285714285,
+              "raw_landing_count": 6,
+              "qualified_landings_air_at_least_20ms": 4,
+              "completed_air_time_mean_s": 0.03749871253967285,
+              "landing_median_period_s": 2.58,
+              "landing_frequency_hz": 0.38759689922480617
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.31989920139312744,
+            "rms_target_step_rad": 0.017954044876942226,
+            "target_ranges_rad": [
+              0.06463755667209625,
+              0.19724035263061523,
+              0.5347262620925903,
+              0.24558952450752258,
+              0.16471821069717407,
+              0.4641082286834717,
+              0.23008203506469727,
+              0.15308350324630737,
+              0.6334055662155151,
+              0.09500828385353088,
+              0.06771618127822876,
+              0.48313212394714355
+            ],
+            "observed_joint_ranges_rad": [
+              0.09584376960992813,
+              0.10852515697479248,
+              0.05900740623474121,
+              0.16761083900928497,
+              0.11832588911056519,
+              0.06143474578857422,
+              0.1969953179359436,
+              0.1597599983215332,
+              0.09845757484436035,
+              0.14441998302936554,
+              0.0406528115272522,
+              0.06438422203063965
+            ],
+            "sampled_joint_velocity_rms_rad_s": 0.2449719445455092,
+            "actual_joint_velocity_rms_rad_s": 0.23784646982670218
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "FR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            }
+          },
+          "mean_net_contact_fz_N": 127.15476661924805
+        },
+        {
+          "case": "forward",
+          "command": [
+            0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.4328341323988778,
+          "mean_vy": 0.005280032849737576,
+          "mean_wz": -0.024498835280537604,
+          "mean_z": 0.27873355111905507,
+          "min_z": 0.2763306796550751,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -1.065453467187158e-05,
+              "p95_m": 0.011450637490728948,
+              "p99_m": 0.011451101787493015,
+              "max_m": 0.011451472406933415,
+              "above_1cm_fraction": 0.08285714285714285,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.011450671966104293,
+              "height_bout_mean_duration_s": 0.06000000000000005,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.7514285714285714,
+              "raw_landing_count": 58,
+              "qualified_landings_air_at_least_20ms": 58,
+              "completed_air_time_mean_s": 0.0749997434944942,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "FR_FOOT": {
+              "min_m": -1.991361030359573e-05,
+              "p95_m": 0.012912091160396886,
+              "p99_m": 0.012914654165226294,
+              "max_m": 0.012915108781078037,
+              "above_1cm_fraction": 0.16714285714285715,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.012912576425121435,
+              "height_bout_mean_duration_s": 0.05999999999999996,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.6657142857142857,
+              "raw_landing_count": 9,
+              "qualified_landings_air_at_least_20ms": 9,
+              "completed_air_time_mean_s": 0.08498658074273004,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "RL_FOOT": {
+              "min_m": -3.535051765258049e-05,
+              "p95_m": 0.011167615095155188,
+              "p99_m": 0.01116853919184983,
+              "max_m": 0.011169136074207005,
+              "above_1cm_fraction": 0.16714285714285715,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 33,
+              "height_bout_mean_peak_m": 0.011167698275920731,
+              "height_bout_mean_duration_s": 0.040000000000000625,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.75,
+              "raw_landing_count": 59,
+              "qualified_landings_air_at_least_20ms": 59,
+              "completed_air_time_mean_s": 0.07999962871357547,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "RR_FOOT": {
+              "min_m": -3.405169377385109e-05,
+              "p95_m": 0.015820750466844263,
+              "p99_m": 0.01582169917118623,
+              "max_m": 0.015821954804533835,
+              "above_1cm_fraction": 0.24857142857142858,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.015820973062330754,
+              "height_bout_mean_duration_s": 0.06000000000000005,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.6685714285714286,
+              "raw_landing_count": 8,
+              "qualified_landings_air_at_least_20ms": 8,
+              "completed_air_time_mean_s": 0.08498573303222656,
+              "landing_median_period_s": 0.23999999999999844,
+              "landing_frequency_hz": 4.166666666666694
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.3302828073501587,
+            "rms_target_step_rad": 0.07926454895684636,
+            "target_ranges_rad": [
+              0.08255301415920258,
+              0.19675850868225098,
+              0.5152971744537354,
+              0.10229697823524475,
+              0.11714529991149902,
+              0.6465778350830078,
+              0.11219953000545502,
+              0.22507309913635254,
+              0.6694326400756836,
+              0.09857705235481262,
+              0.26306700706481934,
+              0.6389622688293457
+            ],
+            "observed_joint_ranges_rad": [
+              0.015529841184616089,
+              0.26164817810058594,
+              0.08711504936218262,
+              0.01771673560142517,
+              0.21590101718902588,
+              0.11858177185058594,
+              0.013302817940711975,
+              0.237432062625885,
+              0.09533429145812988,
+              0.010714441537857056,
+              0.2760198712348938,
+              0.11162304878234863
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.5304904846006668,
+            "actual_joint_velocity_rms_rad_s": 1.4196756436042095
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.24,
+              "score": 0.9828717961043839,
+              "hz": 4.166666666666667
+            },
+            "FR": {
+              "period_s": 0.24,
+              "score": 0.9829009984015388,
+              "hz": 4.166666666666667
+            },
+            "RL": {
+              "period_s": 0.24,
+              "score": 0.9828963752383285,
+              "hz": 4.166666666666667
+            },
+            "RR": {
+              "period_s": 0.24,
+              "score": 0.9828743702817575,
+              "hz": 4.166666666666667
+            }
+          },
+          "mean_net_contact_fz_N": 129.89208307334354
+        },
+        {
+          "case": "backward",
+          "command": [
+            -0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.27524855107069013,
+          "mean_vy": -0.005839686214790813,
+          "mean_wz": -0.04742487898200384,
+          "mean_z": 0.2767441889643669,
+          "min_z": 0.273804634809494,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -0.00020566291169933984,
+              "p95_m": 1.849596996804491e-05,
+              "p99_m": 0.00010111213882064652,
+              "max_m": 0.00011387065986031078,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 10,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": -0.00023212334726189707,
+              "p95_m": 1.4902771130164683e-05,
+              "p99_m": 8.618890974556714e-05,
+              "max_m": 0.00010658561314305995,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 32,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RL_FOOT": {
+              "min_m": -0.00022232806648858974,
+              "p95_m": 0.0010935545361285743,
+              "p99_m": 0.0037476381959237826,
+              "max_m": 0.004830994927920641,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9357142857142857,
+              "raw_landing_count": 53,
+              "qualified_landings_air_at_least_20ms": 31,
+              "completed_air_time_mean_s": 0.029999609916440902,
+              "landing_median_period_s": 0.28000000000000114,
+              "landing_frequency_hz": 3.571428571428557
+            },
+            "RR_FOOT": {
+              "min_m": -0.00016595227868951637,
+              "p95_m": 4.5341514599799694e-05,
+              "p99_m": 9.547951660451025e-05,
+              "max_m": 0.00011396828920278226,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 48,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.24587523937225342,
+            "rms_target_step_rad": 0.0557693564248525,
+            "target_ranges_rad": [
+              0.1050906628370285,
+              0.3214062452316284,
+              0.32779622077941895,
+              0.13231897354125977,
+              0.2848823070526123,
+              0.32825005054473877,
+              0.082442507147789,
+              0.17076420783996582,
+              0.6368999481201172,
+              0.07461392879486084,
+              0.25732100009918213,
+              0.4743795394897461
+            ],
+            "observed_joint_ranges_rad": [
+              0.03555786609649658,
+              0.177040696144104,
+              0.029937267303466797,
+              0.027535513043403625,
+              0.25822657346725464,
+              0.07281208038330078,
+              0.0236014723777771,
+              0.2584870457649231,
+              0.07337045669555664,
+              0.02404502034187317,
+              0.21488595008850098,
+              0.0385134220123291
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.1667062693067347,
+            "actual_joint_velocity_rms_rad_s": 1.1662975257786827
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.28,
+              "score": 0.9300924770618113,
+              "hz": 3.571428571428571
+            },
+            "FR": {
+              "period_s": 0.28,
+              "score": 0.946680085309599,
+              "hz": 3.571428571428571
+            },
+            "RL": {
+              "period_s": 0.28,
+              "score": 0.944701582251903,
+              "hz": 3.571428571428571
+            },
+            "RR": {
+              "period_s": 0.28,
+              "score": 0.9384200040181765,
+              "hz": 3.571428571428571
+            }
+          },
+          "mean_net_contact_fz_N": 125.694563382864
+        }
+      ]
+    },
+    {
+      "stage": "isaac_friction06",
+      "policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+      "physics": {
+        "physics_dt": 0.005,
+        "decimation": 4,
+        "actor_observation_noise_enabled": false,
+        "body_names": [
+          "base",
+          "FL_HIP",
+          "FR_HIP",
+          "RL_HIP",
+          "RR_HIP",
+          "FL_THIGH",
+          "FR_THIGH",
+          "RL_THIGH",
+          "RR_THIGH",
+          "FL_SHANK",
+          "FR_SHANK",
+          "RL_SHANK",
+          "RR_SHANK",
+          "FL_FOOT",
+          "FR_FOOT",
+          "RL_FOOT",
+          "RR_FOOT"
+        ],
+        "joint_names": [
+          "FL_hip_joint",
+          "FR_hip_joint",
+          "RL_hip_joint",
+          "RR_hip_joint",
+          "FL_thigh_joint",
+          "FR_thigh_joint",
+          "RL_thigh_joint",
+          "RR_thigh_joint",
+          "FL_shank_joint",
+          "FR_shank_joint",
+          "RL_shank_joint",
+          "RR_shank_joint"
+        ],
+        "physx_joint_stiffness": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physx_joint_damping": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "actuators": {
+          "legs": {
+            "class": "DCMotor",
+            "stiffness": [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            "damping": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          }
+        },
+        "materials_static_dynamic_restitution": [
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ]
+        ],
+        "masses": [
+          5.533940315246582,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825
+        ]
+      },
+      "control_dt": 0.02,
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.009995733436231344,
+          "mean_vy": 0.004337054551984433,
+          "mean_wz": -0.09244171648785206,
+          "mean_z": 0.2771094653861863,
+          "min_z": 0.2746663987636566,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -3.001067746271832e-05,
+              "p95_m": 7.648813440568049e-06,
+              "p99_m": 1.103559540025781e-05,
+              "max_m": 4.6237749505514264e-05,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": -3.13100254422799e-05,
+              "p95_m": 3.4233912069102354e-06,
+              "p99_m": 0.0023464464687370148,
+              "max_m": 0.006471882177456048,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9842857142857143,
+              "raw_landing_count": 5,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.040999221801757815,
+              "landing_median_period_s": 2.02,
+              "landing_frequency_hz": 0.49504950495049505
+            },
+            "RL_FOOT": {
+              "min_m": -7.815944267790254e-05,
+              "p95_m": 2.0035525886146798e-05,
+              "p99_m": 0.004007389331708322,
+              "max_m": 0.007270141566337884,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9785714285714285,
+              "raw_landing_count": 5,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.04299945831298828,
+              "landing_median_period_s": 2.85,
+              "landing_frequency_hz": 0.3508771929824561
+            },
+            "RR_FOOT": {
+              "min_m": -2.4148908713876593e-05,
+              "p95_m": 6.5774585980477e-06,
+              "p99_m": 1.0916802679088071e-05,
+              "max_m": 0.0004918103510510759,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9871428571428571,
+              "raw_landing_count": 8,
+              "qualified_landings_air_at_least_20ms": 5,
+              "completed_air_time_mean_s": 0.026999664306640626,
+              "landing_median_period_s": 1.9000000000000008,
+              "landing_frequency_hz": 0.526315789473684
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.2977259159088135,
+            "rms_target_step_rad": 0.02068865356771503,
+            "target_ranges_rad": [
+              0.05807846784591675,
+              0.18535804748535156,
+              0.4955669641494751,
+              0.20960849523544312,
+              0.15437382459640503,
+              0.4877488613128662,
+              0.20694704353809357,
+              0.15031182765960693,
+              0.5958054065704346,
+              0.1091843843460083,
+              0.06461471319198608,
+              0.45423424243927
+            ],
+            "observed_joint_ranges_rad": [
+              0.09008031338453293,
+              0.10296189785003662,
+              0.054596900939941406,
+              0.1498660445213318,
+              0.07671308517456055,
+              0.03530001640319824,
+              0.194569393992424,
+              0.15268796682357788,
+              0.06827092170715332,
+              0.12599128484725952,
+              0.04055821895599365,
+              0.06022787094116211
+            ],
+            "sampled_joint_velocity_rms_rad_s": 0.2624700148621292,
+            "actual_joint_velocity_rms_rad_s": 0.2626909368793466
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "FR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RL": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            },
+            "RR": {
+              "period_s": null,
+              "score": null,
+              "hz": null
+            }
+          },
+          "mean_net_contact_fz_N": 127.18160904626761
+        },
+        {
+          "case": "forward",
+          "command": [
+            0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": 0.43889881908893585,
+          "mean_vy": 0.0024622473210495497,
+          "mean_wz": -0.021088336610118857,
+          "mean_z": 0.27852082392999106,
+          "min_z": 0.2762402296066284,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -2.58623808327349e-05,
+              "p95_m": 0.010806754370759515,
+              "p99_m": 0.010807954412708898,
+              "max_m": 0.010823757032708915,
+              "above_1cm_fraction": 0.08285714285714285,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.01080639789221001,
+              "height_bout_mean_duration_s": 0.06000000000000005,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.7514285714285714,
+              "raw_landing_count": 58,
+              "qualified_landings_air_at_least_20ms": 58,
+              "completed_air_time_mean_s": 0.0749997434944942,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "FR_FOOT": {
+              "min_m": -2.55863050713373e-05,
+              "p95_m": 0.012776069690342609,
+              "p99_m": 0.012779424816755248,
+              "max_m": 0.012786660856222605,
+              "above_1cm_fraction": 0.16714285714285715,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 55,
+              "height_bout_mean_peak_m": 0.012775590285285623,
+              "height_bout_mean_duration_s": 0.05818181818181825,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.6657142857142857,
+              "raw_landing_count": 9,
+              "qualified_landings_air_at_least_20ms": 9,
+              "completed_air_time_mean_s": 0.08498658074273004,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "RL_FOOT": {
+              "min_m": -2.713733888880937e-05,
+              "p95_m": 0.012545231614747557,
+              "p99_m": 0.012546622350152144,
+              "max_m": 0.012554644269075606,
+              "above_1cm_fraction": 0.16714285714285715,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.012542633380795136,
+              "height_bout_mean_duration_s": 0.05999999999999999,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.6657142857142857,
+              "raw_landing_count": 9,
+              "qualified_landings_air_at_least_20ms": 9,
+              "completed_air_time_mean_s": 0.08498658074273004,
+              "landing_median_period_s": 0.2400000000000002,
+              "landing_frequency_hz": 4.166666666666663
+            },
+            "RR_FOOT": {
+              "min_m": -2.7621217559340577e-05,
+              "p95_m": 0.012693203176543438,
+              "p99_m": 0.01269796582857622,
+              "max_m": 0.012729932119416233,
+              "above_1cm_fraction": 0.08285714285714285,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 58,
+              "height_bout_mean_peak_m": 0.012691690272386522,
+              "height_bout_mean_duration_s": 0.06000000000000005,
+              "height_bout_median_period_s": 0.2400000000000002,
+              "contact_fraction": 0.6685714285714286,
+              "raw_landing_count": 8,
+              "qualified_landings_air_at_least_20ms": 8,
+              "completed_air_time_mean_s": 0.08498573303222656,
+              "landing_median_period_s": 0.23999999999999844,
+              "landing_frequency_hz": 4.166666666666694
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.3127298355102539,
+            "rms_target_step_rad": 0.07829820904375105,
+            "target_ranges_rad": [
+              0.08324794471263885,
+              0.19511133432388306,
+              0.5211658477783203,
+              0.10519315302371979,
+              0.11070001125335693,
+              0.6402922868728638,
+              0.1106739193201065,
+              0.22690552473068237,
+              0.6769542694091797,
+              0.10938172042369843,
+              0.2626517415046692,
+              0.6327515840530396
+            ],
+            "observed_joint_ranges_rad": [
+              0.016540437936782837,
+              0.2519245147705078,
+              0.07457828521728516,
+              0.017163515090942383,
+              0.22132635116577148,
+              0.11923789978027344,
+              0.012782827019691467,
+              0.24268651008605957,
+              0.0988776683807373,
+              0.012010708451271057,
+              0.26748180389404297,
+              0.09487676620483398
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.5031967260225187,
+            "actual_joint_velocity_rms_rad_s": 1.411177964172765
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.24,
+              "score": 0.9828664655118993,
+              "hz": 4.166666666666667
+            },
+            "FR": {
+              "period_s": 0.24,
+              "score": 0.9829014600744576,
+              "hz": 4.166666666666667
+            },
+            "RL": {
+              "period_s": 0.24,
+              "score": 0.9828958425483535,
+              "hz": 4.166666666666667
+            },
+            "RR": {
+              "period_s": 0.24,
+              "score": 0.982876382810747,
+              "hz": 4.166666666666667
+            }
+          },
+          "mean_net_contact_fz_N": 128.3444222695487
+        },
+        {
+          "case": "backward",
+          "command": [
+            -0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.3034914126566478,
+          "mean_vy": -0.005052404849723514,
+          "mean_wz": -0.04778991122443196,
+          "mean_z": 0.2768986559339932,
+          "min_z": 0.2749977707862854,
+          "episode_resets": 0,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": -5.854527373662377e-05,
+              "p95_m": 8.971395789857795e-06,
+              "p99_m": 1.5401446532595646e-05,
+              "max_m": 2.5095445708181452e-05,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": -9.557830291599678e-05,
+              "p95_m": 6.232832602776746e-07,
+              "p99_m": 9.986022557464355e-06,
+              "max_m": 3.2369447352138814e-05,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RL_FOOT": {
+              "min_m": -8.371885082429642e-05,
+              "p95_m": 0.0019248433507509175,
+              "p99_m": 0.00234735485055771,
+              "max_m": 0.002577924418530858,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.9228571428571428,
+              "raw_landing_count": 16,
+              "qualified_landings_air_at_least_20ms": 16,
+              "completed_air_time_mean_s": 0.028123140335083008,
+              "landing_median_period_s": 0.5199999999999996,
+              "landing_frequency_hz": 1.9230769230769247
+            },
+            "RR_FOOT": {
+              "min_m": -7.42434363989325e-05,
+              "p95_m": 1.0773434083319669e-05,
+              "p99_m": 1.838062755142939e-05,
+              "max_m": 3.0511891962806126e-05,
+              "above_1cm_fraction": 0.0,
+              "above_2cm_fraction": 0.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 1.0,
+              "raw_landing_count": 52,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            }
+          },
+          "steady_window_valid": true,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 0.21518516540527344,
+            "rms_target_step_rad": 0.05562023890275521,
+            "target_ranges_rad": [
+              0.09606614708900452,
+              0.25662219524383545,
+              0.3005337715148926,
+              0.1203216165304184,
+              0.25264114141464233,
+              0.31349921226501465,
+              0.0862894207239151,
+              0.1630656123161316,
+              0.5980117321014404,
+              0.06545335054397583,
+              0.20784109830856323,
+              0.45145606994628906
+            ],
+            "observed_joint_ranges_rad": [
+              0.03362390398979187,
+              0.15972274541854858,
+              0.023103713989257812,
+              0.025400489568710327,
+              0.2534428834915161,
+              0.05694937705993652,
+              0.01579609513282776,
+              0.24307042360305786,
+              0.06067800521850586,
+              0.019602477550506592,
+              0.19793367385864258,
+              0.027721881866455078
+            ],
+            "sampled_joint_velocity_rms_rad_s": 1.1680174469637166,
+            "actual_joint_velocity_rms_rad_s": 1.1565475218107837
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.26,
+              "score": 0.9794767776395584,
+              "hz": 3.846153846153846
+            },
+            "FR": {
+              "period_s": 0.26,
+              "score": 0.9793554781210476,
+              "hz": 3.846153846153846
+            },
+            "RL": {
+              "period_s": 0.26,
+              "score": 0.9789942521488023,
+              "hz": 3.846153846153846
+            },
+            "RR": {
+              "period_s": 0.26,
+              "score": 0.9766229206074806,
+              "hz": 3.846153846153846
+            }
+          },
+          "mean_net_contact_fz_N": 125.71658686774117
+        }
+      ]
+    },
+    {
+      "stage": "isaac_pd1000",
+      "policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66",
+      "physics": {
+        "physics_dt": 0.001,
+        "decimation": 20,
+        "actor_observation_noise_enabled": false,
+        "body_names": [
+          "base",
+          "FL_HIP",
+          "FR_HIP",
+          "RL_HIP",
+          "RR_HIP",
+          "FL_THIGH",
+          "FR_THIGH",
+          "RL_THIGH",
+          "RR_THIGH",
+          "FL_SHANK",
+          "FR_SHANK",
+          "RL_SHANK",
+          "RR_SHANK",
+          "FL_FOOT",
+          "FR_FOOT",
+          "RL_FOOT",
+          "RR_FOOT"
+        ],
+        "joint_names": [
+          "FL_hip_joint",
+          "FR_hip_joint",
+          "RL_hip_joint",
+          "RR_hip_joint",
+          "FL_thigh_joint",
+          "FR_thigh_joint",
+          "RL_thigh_joint",
+          "RR_thigh_joint",
+          "FL_shank_joint",
+          "FR_shank_joint",
+          "RL_shank_joint",
+          "RR_shank_joint"
+        ],
+        "physx_joint_stiffness": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "physx_joint_damping": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "actuators": {
+          "legs": {
+            "class": "DCMotor",
+            "stiffness": [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            "damping": [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          }
+        },
+        "materials_static_dynamic_restitution": [
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ],
+          [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.0
+          ]
+        ],
+        "masses": [
+          5.533940315246582,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          0.6600000262260437,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          1.0440000295639038,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.09561741352081299,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825,
+          0.056000005453825
+        ]
+      },
+      "control_dt": 0.02,
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.0007994838785738725,
+          "mean_vy": -0.0008957671431250804,
+          "mean_wz": -0.00135702260980945,
+          "mean_z": 0.07354121702057975,
+          "min_z": 0.07349510490894318,
+          "episode_resets": 868,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": 0.20272135344989592,
+              "p95_m": 0.33529128188440493,
+              "p99_m": 0.33648994339390786,
+              "max_m": 0.3371234143585291,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": 0.19043231879247421,
+              "p95_m": 0.3372359708022116,
+              "p99_m": 0.3453854515586899,
+              "max_m": 0.3468099721945004,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RL_FOOT": {
+              "min_m": 0.2129490315439546,
+              "p95_m": 0.33990280069091394,
+              "p99_m": 0.3422196566598794,
+              "max_m": 0.34318782960975397,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RR_FOOT": {
+              "min_m": 0.24471153353995978,
+              "p95_m": 0.35962272583121774,
+              "p99_m": 0.3652084296057496,
+              "max_m": 0.3659004099172637,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            }
+          },
+          "steady_window_valid": false,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 1.7843283414840698,
+            "rms_target_step_rad": 0.47551759018274803,
+            "target_ranges_rad": [
+              0.19491340219974518,
+              0.3421630859375,
+              1.5317802429199219,
+              0.219820998609066,
+              0.3178863525390625,
+              2.1012996435165405,
+              0.24016709625720978,
+              0.30920660495758057,
+              1.8462204337120056,
+              0.3617016077041626,
+              0.4900117516517639,
+              1.2949106693267822
+            ],
+            "observed_joint_ranges_rad": [
+              0.13953626155853271,
+              0.26598334312438965,
+              0.9090301990509033,
+              0.18364258483052254,
+              0.21983301639556885,
+              1.0166267156600952,
+              0.1745942123234272,
+              0.13625943660736084,
+              0.8173576593399048,
+              0.12029290199279785,
+              0.22111493349075317,
+              0.7620502710342407
+            ],
+            "sampled_joint_velocity_rms_rad_s": 10.206135244827232,
+            "actual_joint_velocity_rms_rad_s": 10.250306824250572
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.16,
+              "score": 0.3185142892306578,
+              "hz": 6.25
+            },
+            "FR": {
+              "period_s": 0.16,
+              "score": 0.6943054042559185,
+              "hz": 6.25
+            },
+            "RL": {
+              "period_s": 0.16,
+              "score": 0.7124831363869003,
+              "hz": 6.25
+            },
+            "RR": {
+              "period_s": 0.16,
+              "score": 0.7218390550420078,
+              "hz": 6.25
+            }
+          },
+          "mean_net_contact_fz_N": 139.3799978692191
+        },
+        {
+          "case": "forward",
+          "command": [
+            0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -8.273175595864554e-05,
+          "mean_vy": -0.0002779433880433706,
+          "mean_wz": -0.00702711717824887,
+          "mean_z": 0.07355265866432871,
+          "min_z": 0.07349893450737,
+          "episode_resets": 870,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": 0.19194273166525647,
+              "p95_m": 0.33656133844056696,
+              "p99_m": 0.338690452427751,
+              "max_m": 0.3430018485360035,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": 0.1917079477841037,
+              "p95_m": 0.3314217533888199,
+              "p99_m": 0.3347772225078513,
+              "max_m": 0.3356072097911967,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RL_FOOT": {
+              "min_m": 0.21100734675641533,
+              "p95_m": 0.33852443548418415,
+              "p99_m": 0.342031893491921,
+              "max_m": 0.342466483812234,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RR_FOOT": {
+              "min_m": 0.2364952826842494,
+              "p95_m": 0.3536462232185881,
+              "p99_m": 0.3598007050052206,
+              "max_m": 0.3607600908139569,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            }
+          },
+          "steady_window_valid": false,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 2.019183874130249,
+            "rms_target_step_rad": 0.5412774072258442,
+            "target_ranges_rad": [
+              0.22765684127807617,
+              0.35151660442352295,
+              1.8340405821800232,
+              0.2098935768008232,
+              0.36667072772979736,
+              2.4366825819015503,
+              0.2656297106295824,
+              0.42275166511535645,
+              2.0693697929382324,
+              0.42676614597439766,
+              0.485374391078949,
+              1.3821027278900146
+            ],
+            "observed_joint_ranges_rad": [
+              0.15206632763147354,
+              0.20111918449401855,
+              1.0324376821517944,
+              0.19229350425302982,
+              0.19607031345367432,
+              0.9924756288528442,
+              0.1774633945315145,
+              0.15964841842651367,
+              0.8763867616653442,
+              0.1190677136182785,
+              0.2083638310432434,
+              0.789372444152832
+            ],
+            "sampled_joint_velocity_rms_rad_s": 10.668821778388773,
+            "actual_joint_velocity_rms_rad_s": 10.941862918918744
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.18,
+              "score": 0.38835358582104534,
+              "hz": 5.555555555555555
+            },
+            "FR": {
+              "period_s": 0.18,
+              "score": 0.38411971584246035,
+              "hz": 5.555555555555555
+            },
+            "RL": {
+              "period_s": 0.18,
+              "score": 0.19114010270532966,
+              "hz": 5.555555555555555
+            },
+            "RR": {
+              "period_s": 0.18,
+              "score": 0.5448286508971727,
+              "hz": 5.555555555555555
+            }
+          },
+          "mean_net_contact_fz_N": 123.97997372763497
+        },
+        {
+          "case": "backward",
+          "command": [
+            -0.4000000059604645,
+            0.0,
+            0.0
+          ],
+          "mean_vx": -0.020154526726816713,
+          "mean_vy": 0.0030717369551920065,
+          "mean_wz": -0.017611793488696483,
+          "mean_z": 0.07355166179793221,
+          "min_z": 0.07349979877471924,
+          "episode_resets": 856,
+          "per_foot": {
+            "FL_FOOT": {
+              "min_m": 0.22023739176672416,
+              "p95_m": 0.3085638501473406,
+              "p99_m": 0.30868006571780393,
+              "max_m": 0.30923140459970827,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "FR_FOOT": {
+              "min_m": 0.21766615504883538,
+              "p95_m": 0.3212695233480152,
+              "p99_m": 0.32137014347228754,
+              "max_m": 0.3219951415418146,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RL_FOOT": {
+              "min_m": 0.24010296711069318,
+              "p95_m": 0.31640064419828706,
+              "p99_m": 0.3165017807788763,
+              "max_m": 0.31679903406000964,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            },
+            "RR_FOOT": {
+              "min_m": 0.27117241357896926,
+              "p95_m": 0.3471155089591409,
+              "p99_m": 0.3471805605751199,
+              "max_m": 0.34750318735510993,
+              "above_1cm_fraction": 1.0,
+              "above_2cm_fraction": 1.0,
+              "height_bouts_over_5mm": 0,
+              "height_bout_mean_peak_m": null,
+              "height_bout_mean_duration_s": null,
+              "height_bout_median_period_s": null,
+              "contact_fraction": 0.0,
+              "raw_landing_count": 0,
+              "qualified_landings_air_at_least_20ms": 0,
+              "completed_air_time_mean_s": null,
+              "landing_median_period_s": null,
+              "landing_frequency_hz": null
+            }
+          },
+          "steady_window_valid": false,
+          "joint_metrics": {
+            "samples": 700,
+            "duration_s": 13.98,
+            "max_target_step_rad": 1.8246722221374512,
+            "rms_target_step_rad": 0.6202469171842905,
+            "target_ranges_rad": [
+              0.2040194422006607,
+              0.3708665370941162,
+              1.4996943473815918,
+              0.09454676508903503,
+              0.5280998945236206,
+              1.5243277549743652,
+              0.3109603300690651,
+              0.21899956464767456,
+              1.8257527351379395,
+              0.31766506657004356,
+              0.4915945529937744,
+              1.331376314163208
+            ],
+            "observed_joint_ranges_rad": [
+              0.08419737219810486,
+              0.09619081020355225,
+              0.5410076379776001,
+              0.12491046823561192,
+              0.1717360019683838,
+              0.6336139440536499,
+              0.08030073344707489,
+              0.048873841762542725,
+              0.42750823497772217,
+              0.07372166216373444,
+              0.16834449768066406,
+              0.5051490068435669
+            ],
+            "sampled_joint_velocity_rms_rad_s": 8.958865600145065,
+            "actual_joint_velocity_rms_rad_s": 9.993514785736966
+          },
+          "thigh_autocorrelation": {
+            "FL": {
+              "period_s": 0.16,
+              "score": 0.9884335798793004,
+              "hz": 6.25
+            },
+            "FR": {
+              "period_s": 0.16,
+              "score": 0.9886046673316297,
+              "hz": 6.25
+            },
+            "RL": {
+              "period_s": 0.16,
+              "score": 0.98854563177125,
+              "hz": 6.25
+            },
+            "RR": {
+              "period_s": 0.16,
+              "score": 0.9886273948040634,
+              "hz": 6.25
+            }
+          },
+          "mean_net_contact_fz_N": 120.81793490818569
+        }
+      ]
+    }
+  ],
+  "gazebo": [
+    {
+      "case": "stand",
+      "log_dir": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/stand",
+      "vx_cmd": 0.0,
+      "vy_cmd": 0.0,
+      "wz_cmd": 0.0,
+      "samples": {
+        "odom": 1599,
+        "joint_states": 15987,
+        "resampled_joint_states": 1599
+      },
+      "time_base": "simulation",
+      "pose": {
+        "z_mean": 0.2816081410062453,
+        "z_min": 0.27736643734420324,
+        "z_max": 0.28951129696494937,
+        "roll_range_deg": 4.064232928243342,
+        "pitch_range_deg": 2.9031818974712515,
+        "yaw_drift_deg_per_s": -3.258010392401986,
+        "dx_m": 0.11607396750863636,
+        "dx_per_s": 0.0072637025975366915
+      },
+      "tracking": {
+        "speed_mean": 0.013648472410267471,
+        "lateral_speed_mean": -0.0032144466660043113,
+        "world_x_speed_mean": 0.0072637025975366915,
+        "coordinate_frame": "body",
+        "error_abs": 0.013648472410267471,
+        "error_pct": 0.0,
+        "lateral_error_abs": 0.0032144466660043113,
+        "yaw_rate_mean": -0.0568630084116071,
+        "yaw_error_abs": 0.0568630084116071
+      },
+      "jitter": {
+        "hip": {
+          "mean_abs_ddq": 20.875616854736617,
+          "reversals_per_s": 16.739674593240473
+        },
+        "thigh": {
+          "mean_abs_ddq": 16.40277835840978,
+          "reversals_per_s": 14.23654568210171
+        },
+        "shank": {
+          "mean_abs_ddq": 25.581046387584163,
+          "reversals_per_s": 15.018773466832574
+        }
+      },
+      "periodicity": {
+        "period_s": 0.4875000000000762,
+        "freq_hz": 2.5509462876531166,
+        "score": 0.5503970953656014,
+        "FL_FR_phase_deg": -197.14285714285714,
+        "per_leg": {
+          "FL": {
+            "period_s": 0.42000000000006565,
+            "freq_hz": 2.380952380952009,
+            "score": 0.6791349339985117
+          },
+          "FR": {
+            "period_s": 0.870000000000136,
+            "freq_hz": 1.1494252873561421,
+            "score": 0.3241096245667785
+          },
+          "RL": {
+            "period_s": 0.4300000000000672,
+            "freq_hz": 2.3255813953484736,
+            "score": 0.4234738125321216
+          },
+          "RR": {
+            "period_s": 0.23000000000003595,
+            "freq_hz": 4.347826086955842,
+            "score": 0.7748700103649939
+          }
+        }
+      },
+      "joint_metrics": {
+        "samples": 881,
+        "duration_s": 18.255719423294067,
+        "max_target_step_rad": 0.544954062,
+        "rms_target_step_rad": 0.08660584574019096,
+        "target_ranges_rad": [
+          0.27702741694599997,
+          0.3083462122,
+          0.8529095649999998,
+          0.45281391222,
+          0.3827285170999999,
+          0.8217939140000001,
+          0.43518428502999995,
+          0.4177669287,
+          0.767545462,
+          0.325902475079,
+          0.34772568979999985,
+          0.5864020590000001
+        ],
+        "observed_joint_ranges_rad": [
+          0.1587807685,
+          0.14954984188999998,
+          0.12220704559999995,
+          0.20896054800000002,
+          0.1425201892600001,
+          0.12686491010000012,
+          0.1673758626,
+          0.23408311602099996,
+          0.1587119103000001,
+          0.13745701309999997,
+          0.125966548886,
+          0.10040998450000016
+        ],
+        "sampled_joint_velocity_rms_rad_s": 0.4130466868580389,
+        "actor_dq_rms_rad_s": 0.48942369532274066,
+        "true_joint_velocity_rms_rad_s": 0.5409066158305302
+      },
+      "per_foot_geometry": {
+        "FL": {
+          "min_m": -0.00017923487518637857,
+          "p95_m": 0.0010506154115528892,
+          "p99_m": 0.005601270170217279,
+          "max_m": 0.01245999948949194,
+          "above_1cm_fraction": 0.0012515644555694619,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 1,
+          "height_bout_mean_peak_m": 0.01245999948949194,
+          "height_bout_mean_duration_s": 0.06000000000000938,
+          "height_bout_median_period_s": null
+        },
+        "FR": {
+          "min_m": -0.0001479925618962548,
+          "p95_m": -1.3289139495966578e-06,
+          "p99_m": 0.003640660952686608,
+          "max_m": 0.017869956489302993,
+          "above_1cm_fraction": 0.0012515644555694619,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 1,
+          "height_bout_mean_peak_m": 0.017869956489302993,
+          "height_bout_mean_duration_s": 0.04000000000000625,
+          "height_bout_median_period_s": null
+        },
+        "RL": {
+          "min_m": -0.00022404794624176355,
+          "p95_m": 0.0006101259035727443,
+          "p99_m": 0.00622001952042298,
+          "max_m": 0.02042762508995373,
+          "above_1cm_fraction": 0.004380475594493116,
+          "above_2cm_fraction": 0.0006257822277847309,
+          "height_bouts_over_5mm": 1,
+          "height_bout_mean_peak_m": 0.02042762508995373,
+          "height_bout_mean_duration_s": 0.050000000000007816,
+          "height_bout_median_period_s": null
+        },
+        "RR": {
+          "min_m": -0.00015427010328182555,
+          "p95_m": 1.9526250867898014e-06,
+          "p99_m": 0.0006159999039454212,
+          "max_m": 0.011350473076903476,
+          "above_1cm_fraction": 0.0018773466833541927,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 1,
+          "height_bout_mean_peak_m": 0.011350473076903476,
+          "height_bout_mean_duration_s": 0.050000000000007816,
+          "height_bout_median_period_s": null
+        }
+      }
+    },
+    {
+      "case": "forward_04",
+      "log_dir": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/forward_04",
+      "vx_cmd": 0.4,
+      "vy_cmd": 0.0,
+      "wz_cmd": 0.0,
+      "samples": {
+        "odom": 1597,
+        "joint_states": 15976,
+        "resampled_joint_states": 1598
+      },
+      "time_base": "simulation",
+      "pose": {
+        "z_mean": 0.2805989099103956,
+        "z_min": 0.26818817801808437,
+        "z_max": 0.2929372136238937,
+        "roll_range_deg": 6.97819249057538,
+        "pitch_range_deg": 3.847481390950315,
+        "yaw_drift_deg_per_s": -0.4738946920245317,
+        "dx_m": 6.740733943052866,
+        "dx_per_s": 0.4223517508178487
+      },
+      "tracking": {
+        "speed_mean": 0.4246820560463463,
+        "lateral_speed_mean": 0.0041793695566135864,
+        "world_x_speed_mean": 0.4223517508178487,
+        "coordinate_frame": "body",
+        "error_abs": 0.024682056046346268,
+        "error_pct": 6.170514011586567,
+        "lateral_error_abs": 0.0041793695566135864,
+        "yaw_rate_mean": -0.00827102268355259,
+        "yaw_error_abs": 0.00827102268355259
+      },
+      "jitter": {
+        "hip": {
+          "mean_abs_ddq": 25.46238513925784,
+          "reversals_per_s": 19.06700062617114
+        },
+        "thigh": {
+          "mean_abs_ddq": 50.627429135793975,
+          "reversals_per_s": 8.422041327487744
+        },
+        "shank": {
+          "mean_abs_ddq": 87.18267425918593,
+          "reversals_per_s": 14.433312460861897
+        }
+      },
+      "periodicity": {
+        "period_s": 0.28000000000004377,
+        "freq_hz": 3.571428571428013,
+        "score": 0.6959690424559831,
+        "FL_FR_phase_deg": -141.42857142857142,
+        "per_leg": {
+          "FL": {
+            "period_s": 0.28000000000004377,
+            "freq_hz": 3.571428571428013,
+            "score": 0.7074136691851686
+          },
+          "FR": {
+            "period_s": 0.28000000000004377,
+            "freq_hz": 3.571428571428013,
+            "score": 0.7285182531620142
+          },
+          "RL": {
+            "period_s": 0.28000000000004377,
+            "freq_hz": 3.571428571428013,
+            "score": 0.6729458561736712
+          },
+          "RR": {
+            "period_s": 0.28000000000004377,
+            "freq_hz": 3.571428571428013,
+            "score": 0.6749983913030789
+          }
+        }
+      },
+      "joint_metrics": {
+        "samples": 896,
+        "duration_s": 18.47200894355774,
+        "max_target_step_rad": 0.9224759339999999,
+        "rms_target_step_rad": 0.09695370662971621,
+        "target_ranges_rad": [
+          0.37375757097999995,
+          0.5044094323,
+          1.0666397810000001,
+          0.581524666429,
+          0.44247466329999985,
+          1.2709254622999997,
+          0.45110985636999995,
+          0.443644822,
+          1.09831357,
+          0.51118204741,
+          0.5140384435,
+          0.9450931549999999
+        ],
+        "observed_joint_ranges_rad": [
+          0.13245646660000002,
+          0.373355746275,
+          0.2515997886999999,
+          0.15161265429999998,
+          0.35259836914999987,
+          0.27958059309999994,
+          0.1599405781,
+          0.39856332535999994,
+          0.42873001093999985,
+          0.17322520169999997,
+          0.4463596343999999,
+          0.26680827139999996
+        ],
+        "sampled_joint_velocity_rms_rad_s": 1.5633449810735716,
+        "actor_dq_rms_rad_s": 1.7415899015871021,
+        "true_joint_velocity_rms_rad_s": 1.6970809555534667
+      },
+      "per_foot_geometry": {
+        "FL": {
+          "min_m": -0.0003359904862666324,
+          "p95_m": 0.014577148214151498,
+          "p99_m": 0.02084690697346866,
+          "max_m": 0.03300272681810152,
+          "above_1cm_fraction": 0.13596491228070176,
+          "above_2cm_fraction": 0.013784461152882205,
+          "height_bouts_over_5mm": 56,
+          "height_bout_mean_peak_m": 0.014099094878121632,
+          "height_bout_mean_duration_s": 0.07214285714286826,
+          "height_bout_median_period_s": 0.2700000000000422
+        },
+        "FR": {
+          "min_m": -0.0004287638145794963,
+          "p95_m": 0.017661400780225236,
+          "p99_m": 0.02233128277227226,
+          "max_m": 0.027684565911960675,
+          "above_1cm_fraction": 0.18045112781954886,
+          "above_2cm_fraction": 0.023809523809523808,
+          "height_bouts_over_5mm": 52,
+          "height_bout_mean_peak_m": 0.018091154695463213,
+          "height_bout_mean_duration_s": 0.07250000000001133,
+          "height_bout_median_period_s": 0.28000000000004377
+        },
+        "RL": {
+          "min_m": -0.0010349486588163564,
+          "p95_m": 0.02329630307389623,
+          "p99_m": 0.03585303162308782,
+          "max_m": 0.05140908742855078,
+          "above_1cm_fraction": 0.19110275689223058,
+          "above_2cm_fraction": 0.08646616541353383,
+          "height_bouts_over_5mm": 53,
+          "height_bout_mean_peak_m": 0.024273527259934504,
+          "height_bout_mean_duration_s": 0.07132075471699229,
+          "height_bout_median_period_s": 0.28500000000004455
+        },
+        "RR": {
+          "min_m": -0.00023382180450505496,
+          "p95_m": 0.019226000626756674,
+          "p99_m": 0.02990484508674911,
+          "max_m": 0.04245709419826418,
+          "above_1cm_fraction": 0.18295739348370926,
+          "above_2cm_fraction": 0.041353383458646614,
+          "height_bouts_over_5mm": 53,
+          "height_bout_mean_peak_m": 0.01906968892923249,
+          "height_bout_mean_duration_s": 0.0756603773585024,
+          "height_bout_median_period_s": 0.28000000000004377
+        }
+      }
+    },
+    {
+      "case": "backward_04",
+      "log_dir": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/backward_04",
+      "vx_cmd": -0.4,
+      "vy_cmd": 0.0,
+      "wz_cmd": 0.0,
+      "samples": {
+        "odom": 1599,
+        "joint_states": 15985,
+        "resampled_joint_states": 1599
+      },
+      "time_base": "simulation",
+      "pose": {
+        "z_mean": 0.27972675173787737,
+        "z_min": 0.2676085865676722,
+        "z_max": 0.2956350592050227,
+        "roll_range_deg": 14.390307401418319,
+        "pitch_range_deg": 10.248151803832425,
+        "yaw_drift_deg_per_s": -1.1284805266712672,
+        "dx_m": -4.5921940869258995,
+        "dx_per_s": -0.28737134461363584
+      },
+      "tracking": {
+        "speed_mean": -0.3073160853950203,
+        "lateral_speed_mean": -0.014154586049113228,
+        "world_x_speed_mean": -0.28737134461363584,
+        "coordinate_frame": "body",
+        "error_abs": 0.09268391460497971,
+        "error_pct": 23.170978651244926,
+        "lateral_error_abs": 0.014154586049113228,
+        "yaw_rate_mean": -0.0196957007350533,
+        "yaw_error_abs": 0.0196957007350533
+      },
+      "jitter": {
+        "hip": {
+          "mean_abs_ddq": 36.00665090497513,
+          "reversals_per_s": 18.25719649561736
+        },
+        "thigh": {
+          "mean_abs_ddq": 63.073693381171715,
+          "reversals_per_s": 11.436170212764601
+        },
+        "shank": {
+          "mean_abs_ddq": 55.10992170166181,
+          "reversals_per_s": 16.129536921149526
+        }
+      },
+      "periodicity": {
+        "period_s": 0.3000000000000469,
+        "freq_hz": 3.333333333332812,
+        "score": 0.35506134696989317,
+        "FL_FR_phase_deg": -252.0,
+        "per_leg": {
+          "FL": {
+            "period_s": 0.3000000000000469,
+            "freq_hz": 3.333333333332812,
+            "score": 0.34235432646041
+          },
+          "FR": {
+            "period_s": 0.3000000000000469,
+            "freq_hz": 3.333333333332812,
+            "score": 0.3853896977299896
+          },
+          "RL": {
+            "period_s": 0.3000000000000469,
+            "freq_hz": 3.333333333332812,
+            "score": 0.34280514281301405
+          },
+          "RR": {
+            "period_s": 0.3000000000000469,
+            "freq_hz": 3.333333333332812,
+            "score": 0.34969622087615887
+          }
+        }
+      },
+      "joint_metrics": {
+        "samples": 890,
+        "duration_s": 18.450951099395752,
+        "max_target_step_rad": 1.29002630745,
+        "rms_target_step_rad": 0.13091989544015478,
+        "target_ranges_rad": [
+          0.6011591106,
+          0.5443397163,
+          1.6449786423,
+          0.67410905654,
+          0.6602779626999999,
+          1.6125260594,
+          0.73394842819,
+          1.0443006161000001,
+          1.5495084524999998,
+          0.683123948009,
+          0.9009253977999999,
+          2.10228323945
+        ],
+        "observed_joint_ranges_rad": [
+          0.20396293697,
+          0.5560085772999999,
+          0.24657571312999993,
+          0.25787678733999997,
+          0.5082841516000001,
+          0.32504367830000014,
+          0.2632656991,
+          0.6028353572,
+          0.24150073529000005,
+          0.2734008134,
+          0.5004187227000001,
+          0.26624715330000015
+        ],
+        "sampled_joint_velocity_rms_rad_s": 1.3364343450357126,
+        "actor_dq_rms_rad_s": 1.4606898316083028,
+        "true_joint_velocity_rms_rad_s": 1.507891939887651
+      },
+      "per_foot_geometry": {
+        "FL": {
+          "min_m": -0.0005647934545365031,
+          "p95_m": 0.00905159450549151,
+          "p99_m": 0.020261692390858496,
+          "max_m": 0.033409898153279806,
+          "above_1cm_fraction": 0.041927409261576974,
+          "above_2cm_fraction": 0.010638297872340425,
+          "height_bouts_over_5mm": 14,
+          "height_bout_mean_peak_m": 0.017426914302254064,
+          "height_bout_mean_duration_s": 0.07357142857143144,
+          "height_bout_median_period_s": 0.5799999999999841
+        },
+        "FR": {
+          "min_m": -0.0004446225915978458,
+          "p95_m": 0.004676371268546064,
+          "p99_m": 0.011148668300120323,
+          "max_m": 0.019584809548990764,
+          "above_1cm_fraction": 0.013141426783479349,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 5,
+          "height_bout_mean_peak_m": 0.014636452093833238,
+          "height_bout_mean_duration_s": 0.06200000000000401,
+          "height_bout_median_period_s": 3.670000000000419
+        },
+        "RL": {
+          "min_m": -0.0004570640437019588,
+          "p95_m": 0.003577378794489127,
+          "p99_m": 0.009975344160784116,
+          "max_m": 0.03206216041990783,
+          "above_1cm_fraction": 0.010012515644555695,
+          "above_2cm_fraction": 0.0012515644555694619,
+          "height_bouts_over_5mm": 7,
+          "height_bout_mean_peak_m": 0.015044271513947542,
+          "height_bout_mean_duration_s": 0.047142857142861976,
+          "height_bout_median_period_s": 2.200000000000344
+        },
+        "RR": {
+          "min_m": -0.00038405258455847385,
+          "p95_m": 0.0006027043284129436,
+          "p99_m": 0.004236615517336938,
+          "max_m": 0.009177163741378142,
+          "above_1cm_fraction": 0.0,
+          "above_2cm_fraction": 0.0,
+          "height_bouts_over_5mm": 0,
+          "height_bout_mean_peak_m": null,
+          "height_bout_mean_duration_s": null,
+          "height_bout_median_period_s": null
+        }
+      }
+    }
+  ],
+  "gazebo_contacts": [
+    {
+      "case": "stand",
+      "samples": 1596,
+      "mean_foot_force_world_N": [
+        0.11010282025206715,
+        -0.15275920490078612,
+        125.87293273720067
+      ],
+      "p95_foot_force_z_N": 152.15252111495386,
+      "max_penetration_m": 0.0004181023833993436,
+      "nonfoot_contact_sample_fraction": 0,
+      "self_contact_sample_fraction": 0,
+      "per_foot": {
+        "FL": {
+          "mean_fz_N": 25.648183074823372,
+          "contact_fraction_force_over_1N": 0.8784461152882206,
+          "qualified_landings": 42,
+          "mean_air_time_s": 0.0452380952380952,
+          "landing_median_period_s": 0.14999999999999858
+        },
+        "FR": {
+          "mean_fz_N": 36.27980567493558,
+          "contact_fraction_force_over_1N": 0.9548872180451128,
+          "qualified_landings": 18,
+          "mean_air_time_s": 0.03999999999999934,
+          "landing_median_period_s": 0.8960000000000008
+        },
+        "RL": {
+          "mean_fz_N": 37.080391820167904,
+          "contact_fraction_force_over_1N": 0.9367167919799498,
+          "qualified_landings": 23,
+          "mean_air_time_s": 0.04304347826087011,
+          "landing_median_period_s": 0.7330000000000005
+        },
+        "RR": {
+          "mean_fz_N": 26.864552167273814,
+          "contact_fraction_force_over_1N": 0.9768170426065163,
+          "qualified_landings": 10,
+          "mean_air_time_s": 0.03399999999999999,
+          "landing_median_period_s": 1.1799999999999997
+        }
+      },
+      "limits": "ODE wrenches are in link frames. FK uses nearest received base/joint samples; FOOT collisions must be lumped into SHANK, as verified in this run's SDF. Approximately 100Hz force samples; 1N contact and 20ms air gates. Summed foot force is not full robot net force when nonfoot contacts exist; peaks depend on sampling."
+    },
+    {
+      "case": "forward_04",
+      "samples": 1596,
+      "mean_foot_force_world_N": [
+        1.1274365904746526,
+        -0.12105703665407598,
+        125.96982127819756
+      ],
+      "p95_foot_force_z_N": 168.68486566513394,
+      "max_penetration_m": 0.0007867970246575248,
+      "nonfoot_contact_sample_fraction": 0,
+      "self_contact_sample_fraction": 0,
+      "per_foot": {
+        "FL": {
+          "mean_fz_N": 28.9357257041178,
+          "contact_fraction_force_over_1N": 0.6159147869674185,
+          "qualified_landings": 61,
+          "mean_air_time_s": 0.09960655737704915,
+          "landing_median_period_s": 0.27000000000000135
+        },
+        "FR": {
+          "mean_fz_N": 34.85449800675806,
+          "contact_fraction_force_over_1N": 0.668546365914787,
+          "qualified_landings": 57,
+          "mean_air_time_s": 0.09263157894736863,
+          "landing_median_period_s": 0.28000000000000114
+        },
+        "RL": {
+          "mean_fz_N": 32.79652508070889,
+          "contact_fraction_force_over_1N": 0.6741854636591479,
+          "qualified_landings": 58,
+          "mean_air_time_s": 0.08931034482758614,
+          "landing_median_period_s": 0.28000000000000114
+        },
+        "RR": {
+          "mean_fz_N": 29.383072486612804,
+          "contact_fraction_force_over_1N": 0.6453634085213033,
+          "qualified_landings": 59,
+          "mean_air_time_s": 0.09518644067796615,
+          "landing_median_period_s": 0.2799999999999976
+        }
+      },
+      "limits": "ODE wrenches are in link frames. FK uses nearest received base/joint samples; FOOT collisions must be lumped into SHANK, as verified in this run's SDF. Approximately 100Hz force samples; 1N contact and 20ms air gates. Summed foot force is not full robot net force when nonfoot contacts exist; peaks depend on sampling."
+    },
+    {
+      "case": "backward_04",
+      "samples": 1595,
+      "mean_foot_force_world_N": [
+        -0.4320012587716914,
+        0.35042076773258385,
+        126.31539140006124
+      ],
+      "p95_foot_force_z_N": 171.6539266686639,
+      "max_penetration_m": 0.0006420108964113394,
+      "nonfoot_contact_sample_fraction": 0,
+      "self_contact_sample_fraction": 0,
+      "per_foot": {
+        "FL": {
+          "mean_fz_N": 21.340859920490622,
+          "contact_fraction_force_over_1N": 0.774294670846395,
+          "qualified_landings": 60,
+          "mean_air_time_s": 0.05702499999999962,
+          "landing_median_period_s": 0.23000000000000043
+        },
+        "FR": {
+          "mean_fz_N": 32.18135707162185,
+          "contact_fraction_force_over_1N": 0.8181818181818182,
+          "qualified_landings": 59,
+          "mean_air_time_s": 0.0481355932203391,
+          "landing_median_period_s": 0.2950000000000017
+        },
+        "RL": {
+          "mean_fz_N": 41.5508854097193,
+          "contact_fraction_force_over_1N": 0.8507836990595611,
+          "qualified_landings": 47,
+          "mean_air_time_s": 0.04723404255319169,
+          "landing_median_period_s": 0.3000000000000007
+        },
+        "RR": {
+          "mean_fz_N": 31.242288998229473,
+          "contact_fraction_force_over_1N": 0.9015673981191222,
+          "qualified_landings": 40,
+          "mean_air_time_s": 0.034500000000000156,
+          "landing_median_period_s": 0.3100000000000023
+        }
+      },
+      "limits": "ODE wrenches are in link frames. FK uses nearest received base/joint samples; FOOT collisions must be lumped into SHANK, as verified in this run's SDF. Approximately 100Hz force samples; 1N contact and 20ms air gates. Summed foot force is not full robot net force when nonfoot contacts exist; peaks depend on sampling."
+    }
+  ],
+  "conversion_contracts": [
+    {
+      "trace": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/stand/policy_trace.csv",
+      "frames": 1070,
+      "all_joint_target_clip": true,
+      "actor_max_diff": 1.9073486328125e-06,
+      "target_max_diff": 0.0,
+      "last_action_max_diff": 0.0,
+      "raw_over_3_element_fraction": 0.0022585669066756964,
+      "raw_over_3_frame_fraction": 0.026168223470449448,
+      "max_abs_raw": 3.4920802116394043,
+      "processed_target_clipped_frame_fraction": 0.0,
+      "passed": true,
+      "controller_additional_position_limit": {
+        "affected_elements": 0,
+        "affected_frames": 0,
+        "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+      },
+      "stable_clock": {
+        "wall_span_s": 15.993047952651978,
+        "simulation_span_s": 15.980000000000004,
+        "real_time_factor": 0.9991841484693472,
+        "actor_hz_wall": 48.20912638550441,
+        "actor_hz_simulation": 48.24848998991437,
+        "actor_timestamp_quantized": false,
+        "actor_rate_method": "First/last actor timestamp in stable received-odom window",
+        "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+      },
+      "tested_policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/policy/imgo2/amp/policy.pt",
+      "tested_policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66"
+    },
+    {
+      "trace": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/forward_04/policy_trace.csv",
+      "frames": 1086,
+      "all_joint_target_clip": true,
+      "actor_max_diff": 1.9073486328125e-06,
+      "target_max_diff": 0.0,
+      "last_action_max_diff": 0.0,
+      "raw_over_3_element_fraction": 0.006829343270510435,
+      "raw_over_3_frame_fraction": 0.07182320207357407,
+      "max_abs_raw": 4.639954566955566,
+      "processed_target_clipped_frame_fraction": 0.0,
+      "passed": true,
+      "controller_additional_position_limit": {
+        "affected_elements": 3,
+        "affected_frames": 3,
+        "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+      },
+      "stable_clock": {
+        "wall_span_s": 15.98335862159729,
+        "simulation_span_s": 15.96,
+        "real_time_factor": 0.998538566133045,
+        "actor_hz_wall": 48.45373377661613,
+        "actor_hz_simulation": 48.52464934254745,
+        "actor_timestamp_quantized": false,
+        "actor_rate_method": "First/last actor timestamp in stable received-odom window",
+        "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+      },
+      "tested_policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/policy/imgo2/amp/policy.pt",
+      "tested_policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66"
+    },
+    {
+      "trace": "/tmp/imgo2_engine_audit_20261014/gazebo_diagnostics/backward_04/policy_trace.csv",
+      "frames": 1079,
+      "all_joint_target_clip": true,
+      "actor_max_diff": 2.384185791015625e-06,
+      "target_max_diff": 0.0,
+      "last_action_max_diff": 0.0,
+      "raw_over_3_element_fraction": 0.017608897760510445,
+      "raw_over_3_frame_fraction": 0.16496756672859192,
+      "max_abs_raw": 7.072237491607666,
+      "processed_target_clipped_frame_fraction": 0.0,
+      "passed": true,
+      "controller_additional_position_limit": {
+        "affected_elements": 26,
+        "affected_frames": 24,
+        "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+      },
+      "stable_clock": {
+        "wall_span_s": 15.995126724243164,
+        "simulation_span_s": 15.979999999999997,
+        "real_time_factor": 0.9990542916912162,
+        "actor_hz_wall": 48.128700854159085,
+        "actor_hz_simulation": 48.174259651781284,
+        "actor_timestamp_quantized": false,
+        "actor_rate_method": "First/last actor timestamp in stable received-odom window",
+        "limits": "Aggregate rate from received odom stamps; not individual feedback latency."
+      },
+      "tested_policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/policy/imgo2/amp/policy.pt",
+      "tested_policy_sha256": "9c6bf22baa552f39bcf023a288b7fa50ed82e687e66d2ed9c68ece3877e6fc66"
+    }
+  ],
+  "model_physics": {
+    "training": {
+      "path": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+      "sha256": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2",
+      "mass_total": 12.956409839999997,
+      "inertias": [
+        {
+          "link": "base",
+          "mass": 5.5339402,
+          "principal_inertias": [
+            0.03866859649134493,
+            0.10411418315961422,
+            0.12554154034904078
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00048620598896707465,
+            0.000577715334597741,
+            0.0009099651964351846
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00048620598896707465,
+            0.000577715334597741,
+            0.0009099651964351846
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00047389245285101207,
+            0.0005777135494645714,
+            0.0009099361176844165
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00047389245285101207,
+            0.0005777135494645714,
+            0.0009099361176844165
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        }
+      ]
+    },
+    "gazebo": {
+      "path": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.gazebo.urdf",
+      "sha256": "e8021e5f94108ccc2e441c605420f5dcb87d84e7aaaafe5db4484452aee1086f",
+      "mass_total": 12.966409839999997,
+      "inertias": [
+        {
+          "link": "base",
+          "mass": 5.5339402,
+          "principal_inertias": [
+            0.03866859649134493,
+            0.10411418315961422,
+            0.12554154034904078
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00048620598896707465,
+            0.000577715334597741,
+            0.0009099651964351846
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FL_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00048620598896707465,
+            0.000577715334597741,
+            0.0009099651964351846
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "FR_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00047389245285101207,
+            0.0005777135494645714,
+            0.0009099361176844165
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RL_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_HIP",
+          "mass": 0.66,
+          "principal_inertias": [
+            0.00047389245285101207,
+            0.0005777135494645714,
+            0.0009099361176844165
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_THIGH",
+          "mass": 1.044,
+          "principal_inertias": [
+            0.0008478239337608918,
+            0.005515547582324469,
+            0.005784027483914639
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_SHANK",
+          "mass": 0.09561741,
+          "principal_inertias": [
+            1.062658229497403e-05,
+            0.0005441318971630541,
+            0.000551461520541972
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "RR_FOOT",
+          "mass": 0.056,
+          "principal_inertias": [
+            9.6e-06,
+            9.6e-06,
+            9.6e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        },
+        {
+          "link": "base_imu",
+          "mass": 0.01,
+          "principal_inertias": [
+            1e-06,
+            1e-06,
+            1e-06
+          ],
+          "positive_definite": true,
+          "triangle_inequality": true,
+          "positive_mass": true
+        }
+      ]
+    },
+    "common_link_count": 17,
+    "link_differences": [],
+    "joint_differences": [],
+    "missing_links": [],
+    "extra_links": [
+      "base_imu"
+    ],
+    "invalid_inertias": [],
+    "passed": true,
+    "limits": "URDF consistency/physical validity only; does not verify server USD cache or identify real hardware inertia."
+  },
+  "measurement_sha256": {
+    "isaac_diagnostics_summary.json": "0cbe932f0a2d2092bf50787a918533a5ebe7aa5adba2a8bfd791343cf130619b",
+    "isaac_diagnostics_raw.json": "e58d6dea73df236f505c83c2926ea6760d79b8d025ba1493df8612cf2bfb1bb2",
+    "isaac_restitution0_summary.json": "352485d8a4d1d7e6e854d3d733b78ff80cb090e7fbc5857b59f7aa04298a1e8f",
+    "isaac_restitution0_raw.json": "53960405ba6a3d78233a23306f18e40db880ecd5d6373ef4d308e811350116a7",
+    "isaac_clean_summary.json": "0d6e4cbdf89a961dd54dec3e4099c776fbcbe739cf881b23828ca82cb50be65a",
+    "isaac_clean_raw.json": "a32ff7b239597da2f46316b6365f7c314622831c79eefcac24e451849e607f31",
+    "isaac_friction06_summary.json": "c65891f6135d9486afffa1bc86e68cd20c636b1de6c96f48ba38dcc78c001f99",
+    "isaac_friction06_raw.json": "276861168a2737f328230846a89d98dc5c628c74bf7128a055af5da4e9ddf89f",
+    "isaac_pd1000_summary.json": "3a70c34355884a751b5bd3d33a24a910a144072022165483626b78cf5e6d1233",
+    "isaac_pd1000_raw.json": "a43250a36979772223f4ba28937bd3985e8e9b2d35e2625969a4117cbb92610d",
+    "gazebo_diagnostics_summary.json": "31e2f1af23f6221e0ba7256e0cacebeb7aa1309f160c9d84ff1746c648ea0fe9",
+    "all_contracts.json": "24866fb093f85fa1e164fb9eb08b8012e842382f191f1e566fb8660a5b7a14aa",
+    "model_physics.json": "80bd18ea85c27acf68d6a928975eb891b05322ae37711f11a295de5ef0ce20a3",
+    "contact_force_summary.json": "1f28b0435a9f2646ac560ab0d78f0b933fb54f1385903f0582fc8038100f3a1d"
+  },
+  "limits": "One policy, seed42, one environment per native command and fresh Gazebo world per command. Noiseless/material ablations are evaluations, not retraining. Reset-heavy 1ms trial is invalid for gait comparison. Target jumps are not actual joint displacements; force and velocity sampling differ. Weak autocorrelation is not a reliable gait period. Gazebo contact CSVs used here contain robot-side link-frame wrenches, rotated using FK; static-ground wrench attempt was discarded."
+}

@@ -77,8 +77,44 @@ bool GoBus::exchange(GoMotor& motor, bool zero) {
     Command command;
     if (!motor.wireCommand(command, zero)) { motor.error_="invalid command encoding"; return false; }
     Feedback next;
-    if (!MotorTransport::exchange(port_, command, port_.deadline(), next, stats_, motor.error_))
+    const auto began=GoMotor::Clock::now();
+    const auto trace_start=trace_?trace_->nowNs():0;
+    const TransportStats before=stats_;
+    TransactionTiming timing;
+    const bool ok=MotorTransport::exchange(port_, command, port_.deadline(), next, stats_, motor.error_, &timing);
+    round_flush_us_ += timing.flush_us;
+    round_write_us_ += timing.write_us;
+    round_reply_us_ += timing.reply_us;
+    if(trace_) {
+        // 逐事务埋点：把"有没有发、等了多久、回来多少字节、坏了几帧"记下来，
+        // 事后才能分清"没发（线程没跑）/ 发了没回（bytes=0）/ 回了但是垃圾（bad>0）"。
+        auto clamp16=[](size_t v){return static_cast<std::uint16_t>(v>65535?65535:v);};
+        TraceRecord r;
+        r.start_ns=trace_start;
+        r.bus=static_cast<std::uint16_t>(trace_bus_);
+        r.id=static_cast<std::uint8_t>(motor.id_);
+        r.ok=ok?1:0;
+        r.waited_us=static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                        GoMotor::Clock::now()-began).count());
+        r.bytes=clamp16(stats_.bytesIn-before.bytesIn);
+        r.bad=clamp16(stats_.badFrames-before.badFrames);
+        r.stray=clamp16(stats_.strayFrames-before.strayFrames);
+        trace_->record(r);
+    }
+    if (!ok) {
+        // 把"等了多久 / 预算多少 / 这条总线上这次事务收到了什么"一起带上：
+        //   bytesIn=0             → 一个字节都没回来（电机没应答 / 链路断了）
+        //   badFrames>0           → 字节回来了但 CRC 不过（多为电机换向噪声/EMI）
+        //   strayFrames>0         → 收到的是别的 ID 的回复（接线串了/回显）
+        const auto waited=std::chrono::duration_cast<std::chrono::microseconds>(GoMotor::Clock::now()-began).count();
+        motor.error_ += " [id=" + std::to_string(motor.id_) +
+                        " waited=" + std::to_string(waited) + "us" +
+                        " budget=" + std::to_string(io_timeout_us_) + "us" +
+                        " bytesIn=" + std::to_string(stats_.bytesIn - before.bytesIn) +
+                        " badFrames=" + std::to_string(stats_.badFrames - before.badFrames) +
+                        " strayFrames=" + std::to_string(stats_.strayFrames - before.strayFrames) + "]";
         return false;
+    }
     const float q=motor.direction_*(next.q-motor.offset_);
     if (!std::isfinite(q)) { motor.error_="feedback-offset overflow"; return false; }
     next.q=q; next.dq*=motor.direction_; next.tau*=motor.direction_;
@@ -103,6 +139,9 @@ void GoBus::unloadOnce() {
  * 活动命令仅由上层成功提交续期；过期检查依赖 cycle() 运行，线程停止时不会自动执行。
  */
 bool GoBus::cycle() {
+    round_flush_us_ = 0;
+    round_write_us_ = 0;
+    round_reply_us_ = 0;
     if (!isOpen()) { error_ = "bus closed"; return false; }
     if (external_stop_ && external_stop_->load()) latchFault("whole robot stop requested");
     for (auto& motor : motors_) motor->fb_.valid = false;

@@ -20,13 +20,13 @@
 | 工况网格 | 40 列 × 20 行；列 = 连接类型 × 坡度（前 20 列平地、10 列 5°、10 列 10°），行 = 长度（绳 0.5–1.5 m、杆 0.5–1.0 m，各自区间） |
 | 平衡性 | 连接 compliant/inextensible/rigid = 320/160/320（含无车 40/20/40）；质量 5/10/15/20 kg 各 200；同一连接内质量四档均等；连接与坡度按比例平衡（各 50%/25%/25%） |
 | 受控带 | **row 0–9 是绳与杆长度完全相同的带**（0.5–1.0 m），且每行都含三类连接 ⇒ 用 `--rows 0 9` 可以把「长度」这一混淆项按住；再叠加 `--filter grade_deg=0` 按住坡度 |
-| latent 的输入 | 58 维 frame = `loco_command` 3 + `last_action` 13 + `base_ang_vel` 3 + `projected_gravity` 3 + `last_loco_action` 12 + `joint_pos` 12 + `joint_vel` 12（[upper_logic.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py) 的观测项与 [upper_mdp.py](imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py) 的 `policy_frame`）——**没有任何小车位置/速度、连接类型/长度、质量、力的输入** ⇒ 下面的可分性是「从机器人自身本体感觉与指令历史推断负载」，不是把标签喂进网络的泄漏 |
+| latent 的输入 | 58 维 frame = `loco_command` 3 + `last_action` 13 + `base_ang_vel` 3 + `projected_gravity` 3 + `last_loco_action` 12 + `joint_pos` 12 + `joint_vel` 12（[upper_logic.py](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py) 的观测项与 [upper_mdp.py](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py) 的 `policy_frame`）——**没有任何小车位置/速度、连接类型/长度、质量、力的输入** ⇒ 下面的可分性是「从机器人自身本体感觉与指令历史推断负载」，不是把标签喂进网络的泄漏 |
 
 与 2026-10-11 那轮数字的差别只在样本口径：`analyze_latent.py` 用的是全部 800 例，本文默认排除无车 100 例。用 `--include-nocart` 可以**逐项复现**旧口径（见「验证」）。
 
 ## 方法
 
-新增纯离线工具 [analyze_latent_clusters.py](imgo2_rl/scripts/tools/analyze_latent_clusters.py)（核心指标只用标准库，与仓库其它离线检查一致；只有 `--plots` 需要 matplotlib）：
+新增纯离线工具 [analyze_latent_clusters.py](../../imgo2_rl/scripts/tools/analyze_latent_clusters.py)（核心指标只用标准库，与仓库其它离线检查一致；只有 `--plots` 需要 matplotlib）：
 
 1. 16 维 latent 按列标准化 → 手写幂迭代 PCA（复用 `analyze_latent.py` 的线性代数）；
 2. **无监督**：k-means++ 多初始化（固定种子）→ 与标签比 **ARI / NMI / 纯度**（并与「多数类纯度」对照）；
@@ -99,7 +99,7 @@
 
 ### 3.1 为什么 latent 现在测不了（已核实）
 
-* `--wheel-damping` 与 `--ground-friction` 都是**整轮一个标量**（[play_towing_test.py](imgo2_rl/scripts/towing/play_towing_test.py)：默认 0.008 / 0.8，即训练名义值），report 只在 `arguments` 里记全局值，**不逐 case 记录**（case 字段只有 `env_index/cell_index/column/row/connection/connection_length_m/grade_deg/velocity_mps/cart_mass_kg/cart_present`）⇒ 单轮报告内部**没有任何摩擦标签**可聚类。
+* `--wheel-damping` 与 `--ground-friction` 都是**整轮一个标量**（[play_towing_test.py](../../imgo2_rl/scripts/towing/play_towing_test.py)：默认 0.008 / 0.8，即训练名义值），report 只在 `arguments` 里记全局值，**不逐 case 记录**（case 字段只有 `env_index/cell_index/column/row/connection/connection_length_m/grade_deg/velocity_mps/cart_mass_kg/cart_present`）⇒ 单轮报告内部**没有任何摩擦标签**可聚类。
 * 本机 20 份 play_test report 里：**地面摩擦 μ 全部是 0.8**（训练侧随机 0.4–1.2，测试台上从未扫过）；**轮轴阻尼只有 0.008 与 0.032 两个值**。
 * **带 latent 的只有 c=0.008 那一轮**。与它最对应的 c=0.032 轮 [`v3_800_policy`](imgo2_rl/logs/towing/play_test/v3_800_policy/report.json) 其余全同（同 checkpoint `model_2700.pt`、同 800 网格、同 4 档质量 × 3 档速度、同 μ=0.8、同代码 `4b2468ee`），只是 `dump_latent` 没开 ⇒ **「按阻尼分组的 latent 可分性」目前无数据**。
 
@@ -115,11 +115,11 @@
 | 质量 5 / 10 / 15 / **20** kg | 各 175 | 1.7 / 4.0 / 3.4 / 5.1% | 12.6 / 22.3 / 26.9 / **30.3%** | +10.9 / +18.3 / +23.4 / **+25.1pt** | — | — | — | — |
 | 坡度 0° / 5° / 10° | 340 / 180 / 180 | 0.3 / 8.3 / 5.0% | 17.1 / 30.0 / 27.2% | +16.8 / +21.7 / +22.2pt | — | — | — | — |
 
-* 口径与 [compare_play_runs.py](imgo2_rl/scripts/tools/compare_play_runs.py) 一致（硬证据 = `stop.deck_contact_peak_n > 0` 或 `stop.min_clearance_coast_m ≤ 0`）；**25/700 = 3.6% 与 161/700 = 23.0%**，在 800 格口径上就是该工具报的 **3.1% / 20.1%**（100 个无车格两轮都无碰撞，只起稀释作用）。
+* 口径与 [compare_play_runs.py](../../imgo2_rl/scripts/tools/compare_play_runs.py) 一致（硬证据 = `stop.deck_contact_peak_n > 0` 或 `stop.min_clearance_coast_m ≤ 0`）；**25/700 = 3.6% 与 161/700 = 23.0%**，在 800 格口径上就是该工具报的 **3.1% / 20.1%**（100 个无车格两轮都无碰撞，只起稀释作用）。
 * 机制非常直白：阻尼减到 1/4 ⇒ **STOP 后小车滚得更远**（滑移中位 0.26 → 0.55 m，P95 1.57 → 3.80 m）⇒ 最小间隙被吃掉（0.543 → 0.372 m）⇒ 甲板被撞（峰值力 P95 从 0 涨到 255 N）。**代价几乎全部落在绳侧**：两类绳各 +31pt，rigid 只有 3 格（+1.1pt，因为它 `d≡L0` 两端被约束住，小车滚不出去）。
 * 代理通道 `stop.contact` 在这条轴上完全读不出方向（rigid 甚至 52% → 44%，看着像"变好"）——再次印证判读只能用硬证据。
-* **量级参照**：同一 800 网格上，**端到端上层策略在 c=0.008 只救回 68 格**（28.6% → 20.1%，[§8.9](docs/towing/towing_play_test_2700_2026-10-11.md)）；而**同一策略把阻尼从 0.032 换到 0.008 就多出 136 格碰撞**。两者基准不同、不能直接相减，但**阻尼的影响量级大于当前上层策略的收益量级**这一点是清楚的。
-* 产物：[wheel_damping_behavior/](docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/)（逐轴表 `ab_by_axis.md`、两轮各自的 `play_test_stats` 输出与逐 case CSV、`compare_play_runs.py` 原始输出）。
+* **量级参照**：同一 800 网格上，**端到端上层策略在 c=0.008 只救回 68 格**（28.6% → 20.1%，[§8.9](towing_play_test_2700_2026-10-11.md)）；而**同一策略把阻尼从 0.032 换到 0.008 就多出 136 格碰撞**。两者基准不同、不能直接相减，但**阻尼的影响量级大于当前上层策略的收益量级**这一点是清楚的。
+* 产物：[wheel_damping_behavior/](data/latent_cluster_2026-10-12/wheel_damping_behavior)（逐轴表 `ab_by_axis.md`、两轮各自的 `play_test_stats` 输出与逐 case CSV、`compare_play_runs.py` 原始输出）。
 
 ### 3.3 补测 latent 需要什么（命令已 `--dry-run` 通过）
 
@@ -143,16 +143,16 @@ python imgo2_rl/scripts/towing/play_towing_test.py --headless --num-envs 800 \
 
 PCA（`metrics.json` + `points.csv` + 3 张 PNG）：
 
-* [station/pca_labels.png](docs/towing/data/latent_cluster_2026-10-12/station/pca_labels.png)：站定阶段两种着色——左图绳（圆/三角叠成一点）与杆（方块铺满弧线）分居两处；右图同一坐标按质量着色，**绳那一团四色完全重叠，杆那一串按质量从蓝到红依次排开**；
-* [station/pca_kmeans_connection.png](docs/towing/data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png)：k-means 三簇与连接对照（绳一团 + 杆两团）；
-* [station/pca_mass_by_connection.png](docs/towing/data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png)：按连接分面板按质量着色（黑 × = 该档质心）；
-* [tow/pca_mass_by_connection.png](docs/towing/data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png)：牵引段三面板，三类的质量质心都可分辨、rigid 最开；
-* 其余受控子集：[station_rows0-9/](docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/)、[tow_rows0-9_grade0/](docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/)、[coast/](docs/towing/data/latent_cluster_2026-10-12/coast/)、[tow_fixed_m10_v1_rows0-9/](docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/) 各有同款图。
+* [station/pca_labels.png](data/latent_cluster_2026-10-12/station/pca_labels.png)：站定阶段两种着色——左图绳（圆/三角叠成一点）与杆（方块铺满弧线）分居两处；右图同一坐标按质量着色，**绳那一团四色完全重叠，杆那一串按质量从蓝到红依次排开**；
+* [station/pca_kmeans_connection.png](data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png)：k-means 三簇与连接对照（绳一团 + 杆两团）；
+* [station/pca_mass_by_connection.png](data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png)：按连接分面板按质量着色（黑 × = 该档质心）；
+* [tow/pca_mass_by_connection.png](data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png)：牵引段三面板，三类的质量质心都可分辨、rigid 最开；
+* 其余受控子集：[station_rows0-9/](data/latent_cluster_2026-10-12/station_rows0-9)、[tow_rows0-9_grade0/](data/latent_cluster_2026-10-12/tow_rows0-9_grade0)、[coast/](data/latent_cluster_2026-10-12/coast)、[tow_fixed_m10_v1_rows0-9/](data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9) 各有同款图。
 
 t-SNE（perplexity 10/30/50、seed 0，均未按标签拟合）：
 
-* [tsne_station/tsne_station_p30_s0.png](docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png)：**rigid（绿）单独成带且沿带按质量 5→20 kg 排序，两类绳在上方结构里完全互混**；坡度与速度面板在两团里都没有结构 —— 与本文「只有绳/杆 + rigid 质量可读」的结论一致；
-* [tsne_tow/tsne_tow_p30_s0.png](docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png)：牵引段，连接/质量/速度都能看到方向，但四类着色互相叠压 —— 与「连接信息存在但方差远小于质量/速度」一致。
+* [tsne_station/tsne_station_p30_s0.png](data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png)：**rigid（绿）单独成带且沿带按质量 5→20 kg 排序，两类绳在上方结构里完全互混**；坡度与速度面板在两团里都没有结构 —— 与本文「只有绳/杆 + rigid 质量可读」的结论一致；
+* [tsne_tow/tsne_tow_p30_s0.png](data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png)：牵引段，连接/质量/速度都能看到方向，但四类着色互相叠压 —— 与「连接信息存在但方差远小于质量/速度」一致。
 * 其余参数组合（p10/p50 的 PNG、各参数点的 CSV 与 KL）在同两个目录里，**不能只按最漂亮的一张下结论**。
 
 ## 复现
@@ -187,16 +187,16 @@ $PY imgo2_rl/scripts/tools/analyze_latent_clusters.py --report $R --phase tow --
 
 * 新工具 10 项单元测试：ARI/NMI 的已知值与退化分支（对齐 scikit-learn 口径）、三分离簇上 k-means 恢复标签（ARI>0.99）、轮廓系数、kNN/质心留一、置换检验的确定性与灵敏度、无车/row/滤波选择、坏向量计数、端到端写 `metrics.json`（`pytest imgo2_rl/tests/test_towing_latent_clusters.py -q` ⇒ 10 passed）。
 * 全量离线测试：`pytest imgo2_rl/tests -q` ⇒ **601 passed**（在 `/opt/conda/envs/isaaclab/bin/python` 下，numpy/torch 可用）。
-* **与既有工具交叉核对**：加 `--include-nocart`（800 例）后，本文工具给出的连接/质量/坡度/速度留一质心准确率 **0.573 / 0.715 / 0.367 / 0.829** 与最优单维 η² **0.263(z11) / 0.716(z9) / 0.056(z8) / 0.740(z5)**，与 [analyze_latent.py](imgo2_rl/scripts/tools/analyze_latent.py) 的输出**逐项一致**（也就是 README 维护记录里 2026-10-11 那行引用的数字）。
+* **与既有工具交叉核对**：加 `--include-nocart`（800 例）后，本文工具给出的连接/质量/坡度/速度留一质心准确率 **0.573 / 0.715 / 0.367 / 0.829** 与最优单维 η² **0.263(z11) / 0.716(z9) / 0.056(z8) / 0.740(z5)**，与 [analyze_latent.py](../../imgo2_rl/scripts/tools/analyze_latent.py) 的输出**逐项一致**（也就是 README 维护记录里 2026-10-11 那行引用的数字）。
 * **确定性**：同一 `--seed` 重跑，`metrics.json` 与 `points.csv` 逐字一致（已 `diff`）。
-* 文中每个数字都来自 `docs/towing/data/latent_cluster_2026-10-12/<子集>/metrics.json`，图由同一次运行的 `--plots` 生成；t-SNE 图由 [t-SNE 工具](imgo2_rl/scripts/tools/analyze_latent_tsne.py)在同一份报告上跑出（这解决了该工具记录里「真实实验图待数据」的一半：数据已存在且已跑，**报告本身仍未归档**，见 [t-SNE 使用记录](docs/towing/towing_latent_tsne_2026-10-11.md)）。
+* 文中每个数字都来自 `docs/towing/data/latent_cluster_2026-10-12/<子集>/metrics.json`，图由同一次运行的 `--plots` 生成；t-SNE 图由 [t-SNE 工具](../../imgo2_rl/scripts/tools/analyze_latent_tsne.py)在同一份报告上跑出（这解决了该工具记录里「真实实验图待数据」的一半：数据已存在且已跑，**报告本身仍未归档**，见 [t-SNE 使用记录](towing_latent_tsne_2026-10-11.md)）。
 
 **限制（不要把上面的结论读过头）**
 
 * **只有一轮策略**（`v3_800_policy_c008`，低阻尼端 c=0.008）。没有第二个 checkpoint / 阻尼端可以复现，因此「连接可分」目前只在这一轮上成立。
 * **机理未定**：绳与杆的差别同时包含「松弛距离 0.8L vs 全长 L」「是否传力」「弹性 vs 约束」，本文只能说明 latent 分得开，**不能区分是力语义还是出生几何**。
 * k-means 的 ARI 依赖簇数 k 与初始化；本文固定 `--seed 0`、多初始化取最优，跨 k 的 ARI 不可直接比大小。
-* 二维 PCA/t-SNE 只是可视化（本工具用 PCA，另有 [t-SNE 工具](docs/towing/towing_latent_tsne_2026-10-11.md)）；**结论以 16 维上的 η²/ARI/留一为准**。
+* 二维 PCA/t-SNE 只是可视化（本工具用 PCA，另有 [t-SNE 工具](towing_latent_tsne_2026-10-11.md)）；**结论以 16 维上的 η²/ARI/留一为准**。
 * 最紧的受控子集只有 13 例（平地 + 10 kg + 1.0 m/s），只能当小样本旁证。
 * 无车样本（100 例）的 `cart_mass_kg` 是占位值，默认排除；纳入后连接可分性明显变差（η² 0.664 → 0.087），说明无负载样本会让 latent 的负载结构变糊。
 * 本轮只做离线复算，**没有启动仿真或训练**；不涉及 decoder 权重、训练配置或部署产物。

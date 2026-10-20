@@ -192,7 +192,7 @@ RL_Sim::RL_Sim(int argc, char **argv)
     // 顺序无关，所以顺序由我们给）。策略的顺序是模型顺序（URDF/MJCF 都是 FL,FR,RL,RR，也是训练
     // 顺序），而 base.yaml 的 joint_names 是 Unitree SDK 的电机顺序（FR,FL,RR,RL）；直接用
     // joint_names 会让恒等 joint_mapping 把策略的 FL 接到物理 FR（左右腿互换，给速度指令后翻成
-    // 四脚朝天，实测见 docs/gazebo_ros2_bringup_2026-09-17.md 第 8 节）。故按 URDF 顺序重排。
+    // 四脚朝天，实测见 docs/deployment/gazebo_ros2_bringup_2026-09-17.md 第 8 节）。故按 URDF 顺序重排。
     // MuJoCo 路径不读 joint_names，其 joint_mapping 语义与顺序保持原样。
     this->StartJointController(
         this->ros_namespace,
