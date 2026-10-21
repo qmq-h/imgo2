@@ -1,0 +1,1248 @@
+{
+  "source": "/home/tommy0929/Documents/imgo2/imgo2_deploy/go_imu/go_imu",
+  "wire_theory_us": 82.5,
+  "logs": [
+    {
+      "directory": "/home/tommy0929/Documents/imgo2/imgo2_deploy/go_imu/go_imu/build/log/2026-10-19_22-15-26_19277",
+      "rows": 67597,
+      "columns": 169,
+      "malformed_rows": 0,
+      "duration_s": 338.160518,
+      "mode_counts": {
+        "0": 7311,
+        "1": 800,
+        "2": 1578,
+        "3": 57908
+      },
+      "main_dt_ms": {
+        "n": 67596,
+        "median": 5.0,
+        "p95": 5.421999999991385,
+        "p99": 7.64000000001397,
+        "max": 18.74900000001071
+      },
+      "imu_age_ms": {
+        "n": 67597,
+        "median": 2.0,
+        "p95": 5.0,
+        "p99": 7.0,
+        "max": 23.0
+      },
+      "joint_age_ms": {
+        "n": 811164,
+        "median": 5.0,
+        "p95": 10.0,
+        "p99": 12.0,
+        "max": 34.0
+      },
+      "buses": {
+        "b0": {
+          "total": {
+            "n": 67597,
+            "median": 5020.0,
+            "p95": 7579.0,
+            "p99": 10056.0,
+            "max": 21941.0
+          },
+          "flush": {
+            "n": 67597,
+            "median": 4.0,
+            "p95": 14.0,
+            "p99": 32.0,
+            "max": 2542.0
+          },
+          "write": {
+            "n": 67597,
+            "median": 33.0,
+            "p95": 68.0,
+            "p99": 91.0,
+            "max": 3476.0
+          },
+          "reply": {
+            "n": 67597,
+            "median": 4943.0,
+            "p95": 7518.0,
+            "p99": 9950.0,
+            "max": 21903.0
+          }
+        },
+        "b1": {
+          "total": {
+            "n": 67597,
+            "median": 5029.0,
+            "p95": 7579.0,
+            "p99": 9977.0,
+            "max": 29358.0
+          },
+          "flush": {
+            "n": 67597,
+            "median": 4.0,
+            "p95": 14.0,
+            "p99": 28.0,
+            "max": 3460.0
+          },
+          "write": {
+            "n": 67597,
+            "median": 32.0,
+            "p95": 69.0,
+            "p99": 100.0,
+            "max": 10317.0
+          },
+          "reply": {
+            "n": 67597,
+            "median": 4950.0,
+            "p95": 7519.0,
+            "p99": 9885.0,
+            "max": 29320.0
+          }
+        },
+        "b2": {
+          "total": {
+            "n": 67597,
+            "median": 5020.0,
+            "p95": 7563.0,
+            "p99": 9944.0,
+            "max": 30981.0
+          },
+          "flush": {
+            "n": 67597,
+            "median": 4.0,
+            "p95": 15.0,
+            "p99": 32.0,
+            "max": 3300.0
+          },
+          "write": {
+            "n": 67597,
+            "median": 33.0,
+            "p95": 69.0,
+            "p99": 96.0,
+            "max": 3782.0
+          },
+          "reply": {
+            "n": 67597,
+            "median": 4941.0,
+            "p95": 7501.0,
+            "p99": 9870.0,
+            "max": 30935.0
+          }
+        },
+        "b3": {
+          "total": {
+            "n": 67597,
+            "median": 5013.0,
+            "p95": 7570.0,
+            "p99": 10008.0,
+            "max": 24190.0
+          },
+          "flush": {
+            "n": 67597,
+            "median": 3.0,
+            "p95": 13.0,
+            "p99": 25.0,
+            "max": 2940.0
+          },
+          "write": {
+            "n": 67597,
+            "median": 32.0,
+            "p95": 68.0,
+            "p99": 96.0,
+            "max": 2753.0
+          },
+          "reply": {
+            "n": 67597,
+            "median": 4938.0,
+            "p95": 7510.0,
+            "p99": 9917.0,
+            "max": 24033.0
+          }
+        }
+      },
+      "largest_main_gaps": [
+        {
+          "time_s": 124.224236,
+          "dt_ms": 18.74900000001071,
+          "imu_age_ms": 2.0,
+          "min_joint_age_ms": 3.0
+        },
+        {
+          "time_s": 169.24118900000002,
+          "dt_ms": 16.302000000025146,
+          "imu_age_ms": 1.0,
+          "min_joint_age_ms": 4.0
+        },
+        {
+          "time_s": 154.358361,
+          "dt_ms": 15.078000000008615,
+          "imu_age_ms": 5.0,
+          "min_joint_age_ms": 0.0
+        },
+        {
+          "time_s": 131.380417,
+          "dt_ms": 15.030999999988126,
+          "imu_age_ms": 1.0,
+          "min_joint_age_ms": 2.0
+        },
+        {
+          "time_s": 85.244226,
+          "dt_ms": 14.07499999999709,
+          "imu_age_ms": 2.0,
+          "min_joint_age_ms": 2.0
+        },
+        {
+          "time_s": 56.220358999999995,
+          "dt_ms": 13.99199999999837,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 5.0
+        },
+        {
+          "time_s": 264.226468,
+          "dt_ms": 13.923999999999069,
+          "imu_age_ms": 2.0,
+          "min_joint_age_ms": 3.0
+        },
+        {
+          "time_s": 94.28214200000001,
+          "dt_ms": 13.867000000012922,
+          "imu_age_ms": 3.0,
+          "min_joint_age_ms": 1.0
+        },
+        {
+          "time_s": 210.231155,
+          "dt_ms": 13.61600000000908,
+          "imu_age_ms": 2.0,
+          "min_joint_age_ms": 1.0
+        },
+        {
+          "time_s": 72.217181,
+          "dt_ms": 13.531999999991967,
+          "imu_age_ms": 5.0,
+          "min_joint_age_ms": 0.0
+        }
+      ],
+      "command_groups": {
+        "zero_command": {
+          "rows": 29670,
+          "gyro_rms_rad_s": 0.3103163457353504,
+          "gyro_hp_200ms_rms_rad_s": 0.527758700532626,
+          "joint_dq_rms_rad_s": 0.36013175507684186,
+          "tracking_rms_rad": 0.11878711047806614,
+          "imu_age_ms": {
+            "n": 29670,
+            "median": 2.0,
+            "p95": 5.0,
+            "p99": 8.0,
+            "max": 21.0
+          },
+          "bus_total_us": {
+            "n": 118680,
+            "median": 4976.0,
+            "p95": 7687.0,
+            "p99": 10178.0,
+            "max": 21941.0
+          }
+        },
+        "forward_medium_high": {
+          "rows": 5491,
+          "gyro_rms_rad_s": 0.5082111730344362,
+          "gyro_hp_200ms_rms_rad_s": 0.8462184919378059,
+          "joint_dq_rms_rad_s": 1.8181659882336356,
+          "tracking_rms_rad": 0.18042275252603343,
+          "imu_age_ms": {
+            "n": 5491,
+            "median": 2.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "max": 11.0
+          },
+          "bus_total_us": {
+            "n": 21964,
+            "median": 4992.0,
+            "p95": 7696.0,
+            "p99": 10114.0,
+            "max": 24190.0
+          }
+        },
+        "forward_low": {
+          "rows": 496,
+          "gyro_rms_rad_s": 0.5147124637475079,
+          "gyro_hp_200ms_rms_rad_s": 0.8048374632568543,
+          "joint_dq_rms_rad_s": 0.8170967560831127,
+          "tracking_rms_rad": 0.136982263307898,
+          "imu_age_ms": {
+            "n": 496,
+            "median": 1.0,
+            "p95": 4.0,
+            "p99": 6.0,
+            "max": 8.0
+          },
+          "bus_total_us": {
+            "n": 1984,
+            "median": 4910.0,
+            "p95": 7573.0,
+            "p99": 10313.0,
+            "max": 13651.0
+          }
+        },
+        "lateral_only": {
+          "rows": 4417,
+          "gyro_rms_rad_s": 0.9908545636754371,
+          "gyro_hp_200ms_rms_rad_s": 1.679227239013246,
+          "joint_dq_rms_rad_s": 1.3079461042837437,
+          "tracking_rms_rad": 0.1517476243994748,
+          "imu_age_ms": {
+            "n": 4417,
+            "median": 1.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "max": 12.0
+          },
+          "bus_total_us": {
+            "n": 17668,
+            "median": 4891.0,
+            "p95": 7650.0,
+            "p99": 9760.0,
+            "max": 14463.0
+          }
+        },
+        "yaw_only": {
+          "rows": 5707,
+          "gyro_rms_rad_s": 0.7247052097719602,
+          "gyro_hp_200ms_rms_rad_s": 1.2049085977622747,
+          "joint_dq_rms_rad_s": 0.9223620200927827,
+          "tracking_rms_rad": 0.1401809267941714,
+          "imu_age_ms": {
+            "n": 5707,
+            "median": 2.0,
+            "p95": 6.0,
+            "p99": 6.0,
+            "max": 13.0
+          },
+          "bus_total_us": {
+            "n": 22828,
+            "median": 5050.0,
+            "p95": 7935.0,
+            "p99": 10634.0,
+            "max": 19942.0
+          }
+        },
+        "mixed_commands": {
+          "rows": 12127,
+          "gyro_rms_rad_s": 0.7007328062599584,
+          "gyro_hp_200ms_rms_rad_s": 1.1662886457004467,
+          "joint_dq_rms_rad_s": 1.2880817514356389,
+          "tracking_rms_rad": 0.14782019205007085,
+          "imu_age_ms": {
+            "n": 12127,
+            "median": 2.0,
+            "p95": 5.0,
+            "p99": 7.0,
+            "max": 23.0
+          },
+          "bus_total_us": {
+            "n": 48508,
+            "median": 5029.0,
+            "p95": 7830.0,
+            "p99": 10387.0,
+            "max": 30981.0
+          }
+        }
+      },
+      "same_command_2s_contrasts": [
+        {
+          "command": "(0.0, 0.0, 0.0)",
+          "quiet": {
+            "start_s": 52,
+            "command": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "hp_rms": 0.0021561157815760314,
+            "bus_max_us": 11876.0,
+            "imu_age_max_ms": 8.0
+          },
+          "active": {
+            "start_s": 230,
+            "command": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "hp_rms": 2.3405839500878614,
+            "bus_max_us": 12927.0,
+            "imu_age_max_ms": 6.0
+          },
+          "ratio": 1085.5557804864225
+        },
+        {
+          "command": "(0.0, 0.0, -0.2)",
+          "quiet": {
+            "start_s": 248,
+            "command": [
+              0.0,
+              0.0,
+              -0.2
+            ],
+            "hp_rms": 0.05150491480137713,
+            "bus_max_us": 11891.0,
+            "imu_age_max_ms": 8.0
+          },
+          "active": {
+            "start_s": 244,
+            "command": [
+              0.0,
+              0.0,
+              -0.2
+            ],
+            "hp_rms": 1.984331913841312,
+            "bus_max_us": 14296.0,
+            "imu_age_max_ms": 9.0
+          },
+          "ratio": 38.52704002120309
+        },
+        {
+          "command": "(0.0, 0.0, 0.2)",
+          "quiet": {
+            "start_s": 264,
+            "command": [
+              0.0,
+              0.0,
+              0.2
+            ],
+            "hp_rms": 0.004549944891464574,
+            "bus_max_us": 12203.0,
+            "imu_age_max_ms": 5.0
+          },
+          "active": {
+            "start_s": 260,
+            "command": [
+              0.0,
+              0.0,
+              0.2
+            ],
+            "hp_rms": 0.11645084581775784,
+            "bus_max_us": 11999.0,
+            "imu_age_max_ms": 9.0
+          },
+          "ratio": 25.593902474777817
+        },
+        {
+          "command": "(0.1, 0.0, 0.2)",
+          "quiet": {
+            "start_s": 280,
+            "command": [
+              0.1,
+              0.0,
+              0.2
+            ],
+            "hp_rms": 0.004764523578645022,
+            "bus_max_us": 16003.0,
+            "imu_age_max_ms": 9.0
+          },
+          "active": {
+            "start_s": 272,
+            "command": [
+              0.1,
+              0.0,
+              0.2
+            ],
+            "hp_rms": 1.6230519570058495,
+            "bus_max_us": 15922.0,
+            "imu_age_max_ms": 12.0
+          },
+          "ratio": 340.65356802524786
+        },
+        {
+          "command": "(0.1, 0.0, 0.1)",
+          "quiet": {
+            "start_s": 288,
+            "command": [
+              0.1,
+              0.0,
+              0.1
+            ],
+            "hp_rms": 0.00947754073623801,
+            "bus_max_us": 13152.0,
+            "imu_age_max_ms": 9.0
+          },
+          "active": {
+            "start_s": 286,
+            "command": [
+              0.1,
+              0.0,
+              0.1
+            ],
+            "hp_rms": 0.02864036699267737,
+            "bus_max_us": 12019.0,
+            "imu_age_max_ms": 11.0
+          },
+          "ratio": 3.021919693066474
+        },
+        {
+          "command": "(0.1, -0.1, 0.1)",
+          "quiet": {
+            "start_s": 294,
+            "command": [
+              0.1,
+              -0.1,
+              0.1
+            ],
+            "hp_rms": 0.009041486903339191,
+            "bus_max_us": 12292.0,
+            "imu_age_max_ms": 9.0
+          },
+          "active": {
+            "start_s": 292,
+            "command": [
+              0.1,
+              -0.1,
+              0.1
+            ],
+            "hp_rms": 0.032699003110227866,
+            "bus_max_us": 16134.0,
+            "imu_age_max_ms": 12.0
+          },
+          "ratio": 3.6165515097026253
+        },
+        {
+          "command": "(0.1, -0.1, 0.0)",
+          "quiet": {
+            "start_s": 300,
+            "command": [
+              0.1,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 0.0037869608343101113,
+            "bus_max_us": 12990.0,
+            "imu_age_max_ms": 8.0
+          },
+          "active": {
+            "start_s": 334,
+            "command": [
+              0.1,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 0.27203864174021547,
+            "bus_max_us": 12732.0,
+            "imu_age_max_ms": 13.0
+          },
+          "ratio": 71.8356100426304
+        },
+        {
+          "command": "(-0.1, -0.1, 0.0)",
+          "quiet": {
+            "start_s": 316,
+            "command": [
+              -0.1,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 0.7007658472580223,
+            "bus_max_us": 14079.0,
+            "imu_age_max_ms": 7.0
+          },
+          "active": {
+            "start_s": 312,
+            "command": [
+              -0.1,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 3.023196659202867,
+            "bus_max_us": 11878.0,
+            "imu_age_max_ms": 5.0
+          },
+          "ratio": 4.314132418170951
+        },
+        {
+          "command": "(0.0, -0.1, 0.0)",
+          "quiet": {
+            "start_s": 328,
+            "command": [
+              0.0,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 0.2840664122914264,
+            "bus_max_us": 11347.0,
+            "imu_age_max_ms": 7.0
+          },
+          "active": {
+            "start_s": 324,
+            "command": [
+              0.0,
+              -0.1,
+              0.0
+            ],
+            "hp_rms": 2.360296077541186,
+            "bus_max_us": 11709.0,
+            "imu_age_max_ms": 7.0
+          },
+          "ratio": 8.308958663932913
+        }
+      ],
+      "cautions": [
+        "gyro_hp removes trailing 200ms mean; it is not a calibrated vibration band",
+        "quiet/active windows have no lift/contact labels",
+        "robot rows repeat asynchronous bus snapshots; medians are time-weighted",
+        "policy.csv obs is reconstructed at consumption, not captured in infer"
+      ],
+      "selected_windows": [
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 0.0014933406063810984,
+          "gyro_hp_200ms_rms_rad_s": 0.0021561157815760314,
+          "joint_dq_rms_rad_s": 0.0409865040816283,
+          "tracking_rms_rad": 0.11670844448498217,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 3.0,
+            "p95": 3.0,
+            "p99": 8.0,
+            "max": 8.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 5089.5,
+            "p95": 7522.0,
+            "p99": 8927.0,
+            "max": 11876.0
+          },
+          "start_s": 52,
+          "end_s": 54,
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 1.324465114112077,
+          "gyro_hp_200ms_rms_rad_s": 2.3128102904716537,
+          "joint_dq_rms_rad_s": 1.4097262581656516,
+          "tracking_rms_rad": 0.15795240339471464,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 3.0,
+            "p95": 3.0,
+            "p99": 5.0,
+            "max": 8.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 5040.0,
+            "p95": 7635.0,
+            "p99": 9832.0,
+            "max": 11263.0
+          },
+          "start_s": 170,
+          "end_s": 172,
+          "command": [
+            -0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 0.00254875984549349,
+          "gyro_hp_200ms_rms_rad_s": 0.003927690886114962,
+          "joint_dq_rms_rad_s": 0.04316301316038227,
+          "tracking_rms_rad": 0.11692593832217399,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 2.0,
+            "p95": 2.0,
+            "p99": 4.0,
+            "max": 7.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 5080.0,
+            "p95": 7748.0,
+            "p99": 8653.0,
+            "max": 11690.0
+          },
+          "start_s": 176,
+          "end_s": 178,
+          "command": [
+            -0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "rows": 399,
+          "gyro_rms_rad_s": 1.410325508751409,
+          "gyro_hp_200ms_rms_rad_s": 2.3405839500878614,
+          "joint_dq_rms_rad_s": 1.5188354057588513,
+          "tracking_rms_rad": 0.17034173506498598,
+          "imu_age_ms": {
+            "n": 399,
+            "median": 3.0,
+            "p95": 5.0,
+            "p99": 5.0,
+            "max": 6.0
+          },
+          "bus_total_us": {
+            "n": 1596,
+            "median": 4876.0,
+            "p95": 7723.0,
+            "p99": 10342.0,
+            "max": 12927.0
+          },
+          "start_s": 230,
+          "end_s": 232,
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "rows": 399,
+          "gyro_rms_rad_s": 1.1963992208643381,
+          "gyro_hp_200ms_rms_rad_s": 1.984331913841312,
+          "joint_dq_rms_rad_s": 1.313440911519929,
+          "tracking_rms_rad": 0.1641671085975503,
+          "imu_age_ms": {
+            "n": 399,
+            "median": 3.0,
+            "p95": 6.0,
+            "p99": 6.0,
+            "max": 9.0
+          },
+          "bus_total_us": {
+            "n": 1596,
+            "median": 5019.0,
+            "p95": 7969.0,
+            "p99": 10555.0,
+            "max": 14296.0
+          },
+          "start_s": 244,
+          "end_s": 246,
+          "command": [
+            0.0,
+            0.0,
+            -0.2
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 0.030976510642474458,
+          "gyro_hp_200ms_rms_rad_s": 0.05150491480137713,
+          "joint_dq_rms_rad_s": 0.09098391693258667,
+          "tracking_rms_rad": 0.13096173982415946,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 3.0,
+            "p95": 4.0,
+            "p99": 5.0,
+            "max": 8.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 5010.0,
+            "p95": 7982.0,
+            "p99": 10702.0,
+            "max": 11891.0
+          },
+          "start_s": 248,
+          "end_s": 250,
+          "command": [
+            0.0,
+            0.0,
+            -0.2
+          ]
+        },
+        {
+          "rows": 399,
+          "gyro_rms_rad_s": 1.0115049301275125,
+          "gyro_hp_200ms_rms_rad_s": 1.6230519570058495,
+          "joint_dq_rms_rad_s": 1.5069826151962324,
+          "tracking_rms_rad": 0.17207012249508052,
+          "imu_age_ms": {
+            "n": 399,
+            "median": 3.0,
+            "p95": 5.0,
+            "p99": 6.0,
+            "max": 12.0
+          },
+          "bus_total_us": {
+            "n": 1596,
+            "median": 4953.0,
+            "p95": 8086.0,
+            "p99": 10785.0,
+            "max": 15922.0
+          },
+          "start_s": 272,
+          "end_s": 274,
+          "command": [
+            0.1,
+            0.0,
+            0.2
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 0.004800877567348148,
+          "gyro_hp_200ms_rms_rad_s": 0.004764523578645022,
+          "joint_dq_rms_rad_s": 0.041999940614045314,
+          "tracking_rms_rad": 0.1245364351357164,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 3.0,
+            "p95": 5.0,
+            "p99": 9.0,
+            "max": 9.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 4942.5,
+            "p95": 8089.0,
+            "p99": 10634.0,
+            "max": 16003.0
+          },
+          "start_s": 280,
+          "end_s": 282,
+          "command": [
+            0.1,
+            0.0,
+            0.2
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 1.3256351118074183,
+          "gyro_hp_200ms_rms_rad_s": 2.360296077541186,
+          "joint_dq_rms_rad_s": 1.3736482308287816,
+          "tracking_rms_rad": 0.15789716319490987,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 0.5,
+            "p95": 5.0,
+            "p99": 5.0,
+            "max": 7.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 4948.0,
+            "p95": 7757.0,
+            "p99": 9264.0,
+            "max": 11709.0
+          },
+          "start_s": 324,
+          "end_s": 326,
+          "command": [
+            0.0,
+            -0.1,
+            0.0
+          ]
+        },
+        {
+          "rows": 400,
+          "gyro_rms_rad_s": 0.2159349976455106,
+          "gyro_hp_200ms_rms_rad_s": 0.2840664122914264,
+          "joint_dq_rms_rad_s": 0.8076340158769446,
+          "tracking_rms_rad": 0.08347647938566288,
+          "imu_age_ms": {
+            "n": 400,
+            "median": 2.0,
+            "p95": 2.0,
+            "p99": 4.0,
+            "max": 7.0
+          },
+          "bus_total_us": {
+            "n": 1600,
+            "median": 4838.0,
+            "p95": 5246.0,
+            "p99": 8094.0,
+            "max": 11347.0
+          },
+          "start_s": 328,
+          "end_s": 330,
+          "command": [
+            0.0,
+            -0.1,
+            0.0
+          ]
+        }
+      ],
+      "policy": {
+        "rows": 14485,
+        "malformed_rows": 0,
+        "dt_ms": {
+          "n": 14484,
+          "median": 20.0,
+          "p95": 25.002000000007683,
+          "p99": 29.247999999992317,
+          "max": 40.00600000000122
+        },
+        "result_age_ms": {
+          "n": 14485,
+          "median": 2.3,
+          "p95": 4.42,
+          "p99": 5.76,
+          "max": 13.58
+        },
+        "log_obs_age_ms": {
+          "n": 14485,
+          "median": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0
+        }
+      },
+      "fault_transactions": [
+        {
+          "time_ms": 338147.586,
+          "bus": 0.0,
+          "id": 0.0,
+          "waited_us": 22913.0,
+          "bytes": 16.0,
+          "bad": 0.0,
+          "stray": 0.0
+        },
+        {
+          "time_ms": 338148.423,
+          "bus": 2.0,
+          "id": 2.0,
+          "waited_us": 22066.0,
+          "bytes": 16.0,
+          "bad": 0.0,
+          "stray": 0.0
+        },
+        {
+          "time_ms": 338148.848,
+          "bus": 1.0,
+          "id": 1.0,
+          "waited_us": 21672.0,
+          "bytes": 16.0,
+          "bad": 0.0,
+          "stray": 0.0
+        }
+      ],
+      "recent_success_transaction_us": {
+        "bus2/id1": {
+          "n": 1364,
+          "median": 1599.0,
+          "p95": 1737.0,
+          "p99": 4363.0,
+          "max": 7589.0
+        },
+        "bus1/id1": {
+          "n": 1369,
+          "median": 1603.0,
+          "p95": 1754.0,
+          "p99": 4385.0,
+          "max": 6125.0
+        },
+        "bus2/id2": {
+          "n": 1362,
+          "median": 1599.0,
+          "p95": 1737.0,
+          "p99": 4502.0,
+          "max": 8468.0
+        },
+        "bus1/id2": {
+          "n": 1368,
+          "median": 1599.0,
+          "p95": 1737.0,
+          "p99": 4566.0,
+          "max": 9524.0
+        },
+        "bus3/id0": {
+          "n": 1366,
+          "median": 1633.0,
+          "p95": 1730.0,
+          "p99": 3940.0,
+          "max": 19962.0
+        },
+        "bus0/id0": {
+          "n": 1363,
+          "median": 1631.0,
+          "p95": 1804.0,
+          "p99": 4678.0,
+          "max": 7927.0
+        },
+        "bus3/id1": {
+          "n": 1366,
+          "median": 1599.0,
+          "p95": 1751.0,
+          "p99": 4416.0,
+          "max": 9583.0
+        },
+        "bus0/id1": {
+          "n": 1363,
+          "median": 1605.0,
+          "p95": 1750.0,
+          "p99": 4367.0,
+          "max": 8303.0
+        },
+        "bus2/id0": {
+          "n": 1363,
+          "median": 1626.0,
+          "p95": 1747.0,
+          "p99": 4665.0,
+          "max": 7811.0
+        },
+        "bus1/id0": {
+          "n": 1369,
+          "median": 1632.0,
+          "p95": 1760.0,
+          "p99": 4285.0,
+          "max": 6934.0
+        },
+        "bus3/id2": {
+          "n": 1366,
+          "median": 1600.0,
+          "p95": 1720.0,
+          "p99": 4511.0,
+          "max": 8465.0
+        },
+        "bus0/id2": {
+          "n": 1362,
+          "median": 1602.0,
+          "p95": 1728.0,
+          "p99": 4449.0,
+          "max": 8645.0
+        }
+      }
+    },
+    {
+      "directory": "/home/tommy0929/Documents/imgo2/imgo2_deploy/go_imu/go_imu/build/log/2026-10-19_22-47-33_21507",
+      "rows": 5419,
+      "columns": 169,
+      "malformed_rows": 0,
+      "duration_s": 27.090101999999998,
+      "mode_counts": {
+        "0": 5419
+      },
+      "main_dt_ms": {
+        "n": 5418,
+        "median": 5.0,
+        "p95": 5.063999999998487,
+        "p99": 5.1269999999967695,
+        "max": 5.397999999999229
+      },
+      "imu_age_ms": {
+        "n": 5419,
+        "median": 4.0,
+        "p95": 5.0,
+        "p99": 5.0,
+        "max": 5.0
+      },
+      "joint_age_ms": {
+        "n": 65028,
+        "median": 5.0,
+        "p95": 9.0,
+        "p99": 10.0,
+        "max": 11.0
+      },
+      "buses": {
+        "b0": {
+          "total": {
+            "n": 5419,
+            "median": 5070.0,
+            "p95": 5375.0,
+            "p99": 5487.0,
+            "max": 6098.0
+          },
+          "flush": {
+            "n": 5419,
+            "median": 5.0,
+            "p95": 19.0,
+            "p99": 25.0,
+            "max": 136.0
+          },
+          "write": {
+            "n": 5419,
+            "median": 44.0,
+            "p95": 92.0,
+            "p99": 121.0,
+            "max": 219.0
+          },
+          "reply": {
+            "n": 5419,
+            "median": 4986.0,
+            "p95": 5225.0,
+            "p99": 5324.0,
+            "max": 6008.0
+          }
+        },
+        "b1": {
+          "total": {
+            "n": 5419,
+            "median": 5060.0,
+            "p95": 5315.0,
+            "p99": 5511.0,
+            "max": 5784.0
+          },
+          "flush": {
+            "n": 5419,
+            "median": 7.0,
+            "p95": 14.0,
+            "p99": 25.0,
+            "max": 57.0
+          },
+          "write": {
+            "n": 5419,
+            "median": 47.0,
+            "p95": 75.0,
+            "p99": 99.0,
+            "max": 219.0
+          },
+          "reply": {
+            "n": 5419,
+            "median": 4979.0,
+            "p95": 5198.0,
+            "p99": 5342.0,
+            "max": 5610.0
+          }
+        },
+        "b2": {
+          "total": {
+            "n": 5419,
+            "median": 5075.0,
+            "p95": 5357.0,
+            "p99": 5536.0,
+            "max": 5750.0
+          },
+          "flush": {
+            "n": 5419,
+            "median": 6.0,
+            "p95": 20.0,
+            "p99": 27.0,
+            "max": 137.0
+          },
+          "write": {
+            "n": 5419,
+            "median": 46.0,
+            "p95": 93.0,
+            "p99": 124.0,
+            "max": 229.0
+          },
+          "reply": {
+            "n": 5419,
+            "median": 4989.0,
+            "p95": 5213.0,
+            "p99": 5352.0,
+            "max": 5549.0
+          }
+        },
+        "b3": {
+          "total": {
+            "n": 5419,
+            "median": 5087.0,
+            "p95": 5392.0,
+            "p99": 5498.0,
+            "max": 5799.0
+          },
+          "flush": {
+            "n": 5419,
+            "median": 6.0,
+            "p95": 21.0,
+            "p99": 28.0,
+            "max": 179.0
+          },
+          "write": {
+            "n": 5419,
+            "median": 47.0,
+            "p95": 94.0,
+            "p99": 119.0,
+            "max": 240.0
+          },
+          "reply": {
+            "n": 5419,
+            "median": 5002.0,
+            "p95": 5244.0,
+            "p99": 5342.0,
+            "max": 5680.0
+          }
+        }
+      },
+      "largest_main_gaps": [
+        {
+          "time_s": 14.445562,
+          "dt_ms": 5.397999999999229,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 0.0
+        },
+        {
+          "time_s": 21.665578,
+          "dt_ms": 5.381000000001222,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 3.0
+        },
+        {
+          "time_s": 22.5954,
+          "dt_ms": 5.217000000000553,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 2.0
+        },
+        {
+          "time_s": 19.775381000000003,
+          "dt_ms": 5.216000000000349,
+          "imu_age_ms": 3.0,
+          "min_joint_age_ms": 3.0
+        },
+        {
+          "time_s": 12.160371,
+          "dt_ms": 5.205999999998312,
+          "imu_age_ms": 4.0,
+          "min_joint_age_ms": 4.0
+        },
+        {
+          "time_s": 21.800385,
+          "dt_ms": 5.200999999997293,
+          "imu_age_ms": 5.0,
+          "min_joint_age_ms": 5.0
+        },
+        {
+          "time_s": 2.1204560000000003,
+          "dt_ms": 5.19800000000032,
+          "imu_age_ms": 4.0,
+          "min_joint_age_ms": 2.0
+        },
+        {
+          "time_s": 11.480377,
+          "dt_ms": 5.195999999999913,
+          "imu_age_ms": 4.0,
+          "min_joint_age_ms": 3.0
+        },
+        {
+          "time_s": 24.175382000000003,
+          "dt_ms": 5.1930000000029395,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 0.0
+        },
+        {
+          "time_s": 19.875387,
+          "dt_ms": 5.18999999999869,
+          "imu_age_ms": 0.0,
+          "min_joint_age_ms": 5.0
+        }
+      ],
+      "command_groups": {},
+      "same_command_2s_contrasts": [],
+      "cautions": [
+        "gyro_hp removes trailing 200ms mean; it is not a calibrated vibration band",
+        "quiet/active windows have no lift/contact labels",
+        "robot rows repeat asynchronous bus snapshots; medians are time-weighted",
+        "policy.csv obs is reconstructed at consumption, not captured in infer"
+      ],
+      "selected_windows": []
+    }
+  ],
+  "source_sha256": {
+    "Motor/inc/motor_transport.h": "d5398d4ac943dbaa770160132a0e955c0d2c6a3dbe1072d42a3269364c94df76",
+    "rl_real_imgo2.cpp": "7d972ee129cb710d564cac0b1dc9bcdceb5b65c375ec2ec316e6f93c5665b5c7",
+    "config/deployment.yaml": "44fbd57b346b7c312258596faa8b5b90a9f9fef9fe561d0982f7c82f424c74fb",
+    "config/real_config.h": "256a1b08be7949466358b6286bfa3ea06298500ea1aa3e5b078a4a77c48daa2e",
+    "policy/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+  },
+  "deadline_probe": "early_ok=1 late_ok=0 bytes=16 bad=0 stray=0 error=feedback timeout"
+}

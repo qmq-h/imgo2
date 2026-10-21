@@ -1,6 +1,6 @@
 # AMP 策略导出与 ROS 2 Gazebo 仿真
 
-本机路径示例，核对日期2026-10-14。用户称“sim2real”，但此处要求的是导出后启动ROS2仿真，实际为 **sim2sim**；本文不包含真机电机启动。
+本机路径示例，核对日期2026-10-20（目录迁移路径已修；历史策略结果不重新判定）。用户称“sim2real”，但此处要求的是导出后启动ROS2仿真，实际为 **sim2sim**；本文不包含真机电机启动。
 
 当前示例使用用户已复制到本机、路径已确认存在的 `2026-10-14_00-20-45_motion_new_model_new/model_25000.pt`。换策略时需同步修改checkpoint、导出目录和复制源；不同运行都会在各自checkpoint同级的exported目录产生文件。它不是2026-10-11滞空微调目录中的同名25000文件。
 
@@ -42,19 +42,41 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/amp/play.py \
 cd /home/tommy0929/Documents/imgo2/imgo2_rl
 
 mkdir -p logs/amp_rsl_rl/base_move_amp_height/2026-10-14_00-20-45_motion_new_model_new/deployment_backup
-cp ../imgo2_deploy/policy/imgo2/amp/policy.pt \
+cp ../imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt \
   "logs/amp_rsl_rl/base_move_amp_height/2026-10-14_00-20-45_motion_new_model_new/deployment_backup/policy_before_copy_$(date +%Y%m%d_%H%M%S).pt"
 
 cp logs/amp_rsl_rl/base_move_amp_height/2026-10-14_00-20-45_motion_new_model_new/exported/policy.pt \
-  ../imgo2_deploy/policy/imgo2/amp/policy.pt
+  ../imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt
 ```
 
 model_25000.pt是训练checkpoint，导出的policy.pt才是部署TorchScript。本轮只修正文档，未导出或替换当前部署4000策略；成功执行以上cp后才会换成新示例25000。复制不会自动更改amp/config.yaml，需要与所导出checkpoint的观测、动作、默认姿态和PD对应。更换策略不需重新编译，已有rl_sim需重启；本步骤不会改变训练奖励或模型文件。
 
+## 目录调整后的首次 ROS 2 构建（2026-10-20）
+
+仿真工作区已改为 `imgo2_deploy/ros2_ws`，真机工程在同级 `real`。移动前的build/install含旧绝对路径，不能直接source。首次执行下面步骤；旧产物只备份，不删除日志或运行库。以下路径是本机示例，其他电脑改成自己的仓库位置。
+
+```bash
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
+unset PYTHONHOME PYTHONPATH
+source /opt/ros/humble/setup.bash
+
+# 仅目录迁移后的首次重建需要；后续可以省略这一段。
+backup_dir="build_before_layout_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$backup_dir"
+for dir in build install cmake_build; do
+  if [ -e "$dir" ]; then mv "$dir" "$backup_dir/"; fi
+done
+
+bash build.sh
+source install/setup.bash
+```
+
+在新的干净终端构建，避免继承旧工作区overlay；Isaac/Conda环境与ROS运行环境分开。`build.sh`编译的是ROS仿真链路，**不会编译或启动real中的电机控制程序**。结构/路径离线验证见根README；Gazebo实际起身及策略运动仍需另测。
+
 ## 3. 终端A：启动 ROS 2 Gazebo
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
 unset PYTHONHOME PYTHONPATH
 source /opt/ros/humble/setup.bash
 source install/setup.bash
@@ -70,7 +92,7 @@ ros2 launch imgo2_deploy gazebo.launch.py gui:=true
 新开终端执行：
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
 unset PYTHONHOME PYTHONPATH
 source /opt/ros/humble/setup.bash
 source install/setup.bash
@@ -78,7 +100,7 @@ source install/setup.bash
 ros2 run imgo2_deploy rl_sim
 ```
 
-保持终端B键盘焦点，按 **0起身 → 3进入AMP**。0对应起身，3是AMP，不要按1（PPO）或2（HIM-Loco）。这时加载imgo2_deploy/policy/imgo2/amp/policy.pt，即刚复制的导出文件。
+保持终端B键盘焦点，按 **0起身 → 3进入AMP**。0对应起身，3是AMP，不要按1（PPO）或2（HIM-Loco）。这时加载imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt，即刚复制的导出文件。
 
 两ROS终端若自行设置ROS_DOMAIN_ID或GAZEBO_MASTER_URI，需要值一致。若终端激活了Conda导致ROS Python/动态库问题，先退出Conda再运行上述ROS命令；Isaac导出与ROS仿真是两个运行环境。
 
@@ -164,7 +186,7 @@ vx、vy 单位 m/s，yaw 单位 rad/s。设置范围 `[a,b]` 且 a≠b 时恢复
 
 | 条件 | 基线 |
 |---|---|
-| 策略 | 当前正式导出的 imgo2_deploy/policy/imgo2/amp/policy.pt；比较时核对SHA |
+| 策略 | 当前正式导出的 imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt；比较时核对SHA |
 | 模型/PD | 同源real模型；当前名义PD25/.5、默认角0/.87/−1.82 |
 | 策略周期 | .02s（50Hz）；Gazebo实际约48Hz，比较使用仿真时间 |
 | Isaac物理周期 | .005s、decimation4，保持原训练设定 |

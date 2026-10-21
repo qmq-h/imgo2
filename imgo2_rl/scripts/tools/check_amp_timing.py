@@ -48,7 +48,7 @@ def main():
                      "old_index_speedup_pct": 100 / (count - 1)})
     if not rows:
         raise ValueError("No motion files found")
-    deploy = (ROOT.parent / "imgo2_deploy/policy/imgo2/base.yaml").read_text()
+    deploy = (ROOT.parent / "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml").read_text()
     deploy_dt = float(re.search(r"^  dt:\s*([\d.]+)", deploy, re.M)[1])
     deploy_decimation = int(re.search(r"^  decimation:\s*(\d+)", deploy, re.M)[1])
     report = {

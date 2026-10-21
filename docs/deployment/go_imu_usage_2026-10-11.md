@@ -122,7 +122,7 @@ RealHardware：start电机一次归零→2秒内等待q+gyro→约5ms健康监�
 从仓库根构建（不自动启动设备）：
 
 ```bash
-cmake -S imgo2_deploy/go_imu -B /tmp/goimu_user -DCMAKE_BUILD_TYPE=Release
+cmake -S imgo2_deploy/real -B /tmp/goimu_user -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/goimu_user -j4
 ctest --test-dir /tmp/goimu_user --output-on-failure
 ```

@@ -42,10 +42,32 @@ cp "$IMGO2_RUN_DIR/exported/policy.onnx" "$IMGO2_RUN_DIR/exported_25000/policy.o
 将导出的策略安装到 AMP 部署入口：
 
 ```bash
-cp "$IMGO2_RUN_DIR/exported_25000/policy.pt"   "$IMGO2_REPO/imgo2_deploy/policy/imgo2/amp/policy.pt"
+cp "$IMGO2_RUN_DIR/exported_25000/policy.pt"   "$IMGO2_REPO/imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt"
 ```
 
 `model_25000.pt` 是训练 checkpoint，不能直接用它替换部署 `policy.pt`。当前默认部署已核对为2026-10-14_00-20-45_motion_new_model_new/model_25000.pt对应的正式导出；其它历史策略的备份路径以各自记录为准。更换策略后重启 `rl_sim`，无需重新编译。
+
+## 目录调整后的首次 ROS 2 构建（2026-10-20）
+
+仿真工作区已改为 `imgo2_deploy/ros2_ws`，真机工程在同级 `real`。移动前的build/install含旧绝对路径，不能直接source。首次执行下面步骤；旧产物只备份，不删除日志或运行库。以下路径是本机示例，其他电脑改成自己的仓库位置。
+
+```bash
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
+unset PYTHONHOME PYTHONPATH
+source /opt/ros/humble/setup.bash
+
+# 仅目录迁移后的首次重建需要；后续可以省略这一段。
+backup_dir="build_before_layout_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$backup_dir"
+for dir in build install cmake_build; do
+  if [ -e "$dir" ]; then mv "$dir" "$backup_dir/"; fi
+done
+
+bash build.sh
+source install/setup.bash
+```
+
+在新的干净终端构建，避免继承旧工作区overlay；Isaac/Conda环境与ROS运行环境分开。`build.sh`编译的是ROS仿真链路，**不会编译或启动real中的电机控制程序**。结构/路径离线验证见根README；Gazebo实际起身及策略运动仍需另测。
 
 # Gazebo sim2sim 命令
 
@@ -54,7 +76,7 @@ cp "$IMGO2_RUN_DIR/exported_25000/policy.pt"   "$IMGO2_REPO/imgo2_deploy/policy/
 **终端 A：启动 Gazebo。**
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
@@ -67,7 +89,7 @@ ros2 launch imgo2_deploy gazebo.launch.py gui:=true
 **终端 B：启动部署策略。**
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
@@ -79,7 +101,7 @@ ros2 run imgo2_deploy rl_sim
 **可选：第三个终端自动发送起身和 AMP 命令，测量 0.5 m/s 步态。** 在新启动、尚未手动进入策略的仿真中执行一次：
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 

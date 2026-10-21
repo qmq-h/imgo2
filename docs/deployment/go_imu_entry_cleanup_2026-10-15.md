@@ -27,16 +27,16 @@
 从仓库根目录，使用本机已存在的LibTorch：
 
 ```bash
-cmake -S imgo2_deploy/go_imu -B imgo2_deploy/go_imu/build \
+cmake -S imgo2_deploy/real -B imgo2_deploy/real/build_layout \
   -DCMAKE_BUILD_TYPE=Release -DGO_IMU_BUILD_RL=ON \
-  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/library/inference_runtime/libtorch"
-cmake --build imgo2_deploy/go_imu/build -j2
+  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch"
+cmake --build imgo2_deploy/real/build_layout -j2
 ```
 
 已有配置时，仅构建离线入口：
 
 ```bash
-cmake --build imgo2_deploy/go_imu/build --target fsm_check -j2
+cmake --build imgo2_deploy/real/build_layout --target fsm_check -j2
 ```
 
 运行时不需要再加`-D`参数。`-D`是CMake配置选项。本机依赖已由构建确认；其他机器仍需兼容C++11 ABI的LibTorch和yaml-cpp，不能据此认定复制工程后无需提供动态库。
@@ -46,9 +46,9 @@ cmake --build imgo2_deploy/go_imu/build --target fsm_check -j2
 ### 1. 先测离线FSM与输出
 
 ```bash
-./imgo2_deploy/go_imu/build/fsm_check \
-  --policy-dir ./imgo2_deploy/go_imu/policy \
-  --config ./imgo2_deploy/go_imu/config/deployment.yaml
+./imgo2_deploy/real/build_layout/fsm_check \
+  --policy-dir ./imgo2_deploy/real/policy \
+  --config ./imgo2_deploy/real/config/deployment.yaml
 ```
 
 依次确认：
@@ -65,9 +65,9 @@ cmake --build imgo2_deploy/go_imu/build --target fsm_check -j2
 ### 2. 模型与配置预检
 
 ```bash
-./imgo2_deploy/go_imu/build/rl_real_imgo2 --check-policy \
-  --policy-dir ./imgo2_deploy/go_imu/policy \
-  --config ./imgo2_deploy/go_imu/config/deployment.yaml
+./imgo2_deploy/real/build_layout/rl_real_imgo2 --check-policy \
+  --policy-dir ./imgo2_deploy/real/policy \
+  --config ./imgo2_deploy/real/config/deployment.yaml
 ```
 
 这一步只加载/预热模型并预检配置与固定轨迹，不打开设备。通过不代表机身能站稳。

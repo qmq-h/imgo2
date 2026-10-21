@@ -22,6 +22,8 @@
       <origin rpy="0 0 0" xyz="-0.00002223 -0.00136579 0.00287896"/>
       <mass value="5.53394020"/>
       <inertia ixx="0.03866860" ixy="0.00001502" ixz="0.00000229" iyy="0.10411461" iyz="-0.00009602" izz="0.12554111"/>
+      <!-- <mass value="6"/>
+      <inertia ixx="0.041932333" ixy="0.000016288" ixz="0.000002483" iyy="0.112902162" iyz="-0.000104124" izz="0.136137116"/> -->
     </inertial>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0.0"/>
@@ -660,7 +662,7 @@
         <initial_orientation_as_reference>false</initial_orientation_as_reference>
       </plugin>
       <always_on>true</always_on>
-      <update_rate>100</update_rate>
+      <update_rate>200</update_rate>
       <visualize>true</visualize>
       <imu>
         <angular_velocity>

@@ -36,7 +36,7 @@ bash build.sh -mj
 ./cmake_build/bin/rl_sim_mujoco imgo2 scene
 ```
 
-构建需要上述依赖，本轮没有执行下载。启动后的按0、按3和Space零指令仍需实测。来源代码见 [MuJoCo入口](../../imgo2_deploy/src/imgo2_deploy/src/rl_sim_mujoco.cpp)、[共享动作转换](../../imgo2_deploy/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp)。
+构建需要上述依赖，本轮没有执行下载。启动后的按0、按3和Space零指令仍需实测。来源代码见 [MuJoCo入口](../../imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_sim_mujoco.cpp)、[共享动作转换](../../imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp)。
 
 本轮发现当前部署policy已换成cba59d44...，本轮没有对其运行验证；以下双引擎数值针对上轮9c6bf22b...，不作为新文件的测量结果。
 

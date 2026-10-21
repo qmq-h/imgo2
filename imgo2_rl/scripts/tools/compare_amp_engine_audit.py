@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[3]
 
 
 def autocorrelation():
-    source = REPO / "imgo2_deploy/scripts/eval_gazebo_policy.py"
+    source = REPO / "imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py"
     node = next(n for n in ast.parse(source.read_text()).body
                 if isinstance(n, ast.FunctionDef) and n.name == "autocorr_peak")
     namespace = {"math": math}

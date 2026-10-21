@@ -19,7 +19,7 @@
 以下为新增部署涉及的目录；硬件目录继续沿用，避免改动已有工具的包含路径。
 
 ```text
-imgo2_deploy/go_imu/
+imgo2_deploy/real/
 ├── CMakeLists.txt
 ├── rl_real_imgo2.cpp           新的独立真机主入口
 ├── fsm_check.cpp               离线键盘FSM与PPO测试
@@ -53,7 +53,7 @@ imgo2_deploy/go_imu/
 └── tests/                     原21项+新增9项离线测试
 ```
 
-原 `imgo2_deploy/src/imgo2_deploy/src/rl_real_imgo2.cpp` 仍为参考的 Unitree/ROS 入口，本轮没替换它。**运行本篇的可执行文件必须由 `go_imu` 构建，不使用 `ros2 run` 启动参考入口。**
+原 `imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_real_imgo2.cpp` 仍为参考的 Unitree/ROS 入口，本轮没替换它。**运行本篇的可执行文件必须由 `go_imu` 构建，不使用 `ros2 run` 启动参考入口。**
 
 主函数直接显示顺序：解析 CLI → 加载部署/PPO 配置 → CPU 模型加载和 16 次预热 → 校验固定姿态/轨迹 → 配置信号与键盘 → 一次启动硬件 → 构造 FSM/推理线程 → 控制循环 → 请求卸力 → 回收推理线程 → 停止硬件 → 恢复终端。异常路径先请求卸力，再回收资源。模型与 YAML 不支持热切换，修改后需重新启动。
 
@@ -66,20 +66,20 @@ imgo2_deploy/go_imu/
 从仓库根目录构建（本机已存在的依赖路径示例；搬到另一台机器时换成该机实际 LibTorch 路径）：
 
 ```bash
-cmake -S imgo2_deploy/go_imu -B /tmp/imgo2_rl_deploy \
+cmake -S imgo2_deploy/real -B /tmp/imgo2_rl_deploy \
   -DCMAKE_BUILD_TYPE=Release -DGO_IMU_BUILD_RL=ON \
-  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/library/inference_runtime/libtorch"
+  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch"
 cmake --build /tmp/imgo2_rl_deploy -j2
 /tmp/imgo2_rl_deploy/rl_real_imgo2 --check-policy
 ctest --test-dir /tmp/imgo2_rl_deploy --output-on-failure
 ```
 
-`--check-policy` **不打开任何设备**，验证 YAML、模型输出、预热和固定轨迹。构建后自动把本工程 `policy/` 与 `config/deployment.yaml` 复制到可执行文件旁边。模型不存在会在硬件启动前报错。当前 `go_imu/policy/ppo/policy.pt` 受原忽略规则影响，不能假定Git clone会带上；本轮未改忽略规则。新机器需把已核对的模型随工程搬运，或从仓库已跟踪的 `imgo2_deploy/policy/imgo2/ppo/policy.pt` 复制并检查SHA256为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`，配置也须匹配。只修改资源时应确保同步到运行目录，可显式指定：
+`--check-policy` **不打开任何设备**，验证 YAML、模型输出、预热和固定轨迹。构建后自动把本工程 `policy/` 与 `config/deployment.yaml` 复制到可执行文件旁边。模型不存在会在硬件启动前报错。当前 `go_imu/policy/ppo/policy.pt` 受原忽略规则影响，不能假定Git clone会带上；本轮未改忽略规则。新机器需把已核对的模型随工程搬运，或从仓库已跟踪的 `imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt` 复制并检查SHA256为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`，配置也须匹配。只修改资源时应确保同步到运行目录，可显式指定：
 
 ```bash
 /tmp/imgo2_rl_deploy/rl_real_imgo2 --check-policy \
-  --policy-dir "$PWD/imgo2_deploy/go_imu/policy" \
-  --config "$PWD/imgo2_deploy/go_imu/config/deployment.yaml"
+  --policy-dir "$PWD/imgo2_deploy/real/policy" \
+  --config "$PWD/imgo2_deploy/real/config/deployment.yaml"
 ```
 
 `--policy-dir` 指向**包含 ppo 子目录**的根目录；不是直接指向 `.pt`。默认路径从可执行文件位置推导，与当前工作目录无关。硬件运行命令为 `/tmp/imgo2_rl_deploy/rl_real_imgo2`，本轮未执行该命令连接真实设备。
@@ -163,7 +163,7 @@ Fault不自动恢复；结果正常或数据恢复不会重新使能。退出先
 
 ## 7. 离线验证依据
 
-环境：Linux；CMake Release；现有C++11 ABI LibTorch路径 `imgo2_deploy/library/inference_runtime/libtorch`；yaml-cpp系统开发库。测试脚本用 `/usr/bin/python3`；Python数值参照使用本机 `/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python`（torch2.7.0+cu128，CPU推理）。路径是本机验证环境示例。
+环境：Linux；CMake Release；现有C++11 ABI LibTorch路径 `imgo2_deploy/ros2_ws/library/inference_runtime/libtorch`；yaml-cpp系统开发库。测试脚本用 `/usr/bin/python3`；Python数值参照使用本机 `/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python`（torch2.7.0+cu128，CPU推理）。路径是本机验证环境示例。
 
 启用 `GO_IMU_TORCH_PYTHON` 指向有torch的解释器后，**30/30 CTest通过**（原21项+新增9项）：
 

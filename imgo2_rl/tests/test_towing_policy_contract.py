@@ -17,7 +17,7 @@ import unittest
 RL = Path(__file__).resolve().parents[1]
 REPO = RL.parent
 UTILS_REL = "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/utils"
-DEPLOY_REL = "imgo2_deploy/policy/imgo2"
+DEPLOY_REL = "imgo2_deploy/ros2_ws/policy/imgo2"
 
 
 def _load_utils_package():

@@ -51,7 +51,7 @@ class DirectionTests(unittest.TestCase):
                 return Publisher()
 
         clock = SimpleNamespace(value=0)
-        source = ast.parse((REPO / "imgo2_deploy/scripts/eval_gazebo_policy.py").read_text())
+        source = ast.parse((REPO / "imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py").read_text())
         cls = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == "Eval")
         namespace = {"Node": Node, "QoSProfile": lambda **kwargs: None,
                      "ReliabilityPolicy": SimpleNamespace(BEST_EFFORT=0), "Joy": SimpleNamespace,

@@ -18,7 +18,7 @@ from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--task", default="Imgo2-basemove-flat-amp-height-play")
-parser.add_argument("--policy_path", type=Path, default=REPO / "imgo2_deploy/policy/imgo2/amp/policy.pt")
+parser.add_argument("--policy_path", type=Path, default=REPO / "imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt")
 parser.add_argument("--steps", type=int, default=900)
 parser.add_argument("--warmup", type=int, default=200)
 parser.add_argument("--json", type=Path)

@@ -101,8 +101,8 @@ Gazebo前进实际力>1N的落地周期约.27–.28s；后退腾空时间约.035
 ## 5. 可复现工具与验证
 
 - [原Isaac评测](../../imgo2_rl/scripts/tools/eval_actor_directions.py)：新增--diagnostics、--restitution、--disable_obs_noise、--robot_friction、--physics_dt。仅诊断覆盖，不改训练默认；输出实际材料、显式执行器PD、速度、力矩、contact_forces、actor输入。PhysX被动drive刚度0不是DCMotor的PD0。
-- [Gazebo评测](../../imgo2_deploy/scripts/run_gazebo_direction_audit.py)：新增可选--contact-tracer，自动管理所有自建进程与日志。
-- [接触采集器](../../imgo2_deploy/scripts/gazebo_contact_trace.cpp) 与 [世界坐标汇总](../../imgo2_rl/scripts/tools/summarize_gazebo_contacts.py)：C++采集局部机器人侧力，标准库工具按实际q/base姿态换算。
+- [Gazebo评测](../../imgo2_deploy/ros2_ws/scripts/run_gazebo_direction_audit.py)：新增可选--contact-tracer，自动管理所有自建进程与日志。
+- [接触采集器](../../imgo2_deploy/ros2_ws/scripts/gazebo_contact_trace.cpp) 与 [世界坐标汇总](../../imgo2_rl/scripts/tools/summarize_gazebo_contacts.py)：C++采集局部机器人侧力，标准库工具按实际q/base姿态换算。
 - [离线完整汇总](../../imgo2_rl/scripts/tools/compare_amp_engine_audit.py)：标准库计算指标及文件SHA，显式标记有reset的试验为无效。
 
 从仓库根复算（原始产物保留在本机logs，换机器需另行拷贝）：

@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-20",
+  "real_ctest": "29/29 passed",
+  "ros_build": "manual CMake build/install of robot_msgs, imgo2_description, robot_joint_controller, imgo2_deploy passed; colcon build interrupted at environment capture",
+  "launch": "LaunchDescription created (10 actions), no nodes started",
+  "python_regression": "7/7 passed",
+  "quaternion": "500 orientations; max error 2.35202e-07",
+  "asset_paths": "passed",
+  "model_sync": "failed: pre-existing mesh fingerprint drift and four unregistered URDFs",
+  "source_policy_hashes": {
+    "imgo2_deploy/real/policy/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt": "cba59d44e387834ea11983b7489f4fd0351ddba8e8eba3c41e6713e33b520c54",
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "imgo2_deploy/ros2_ws/policy/imgo2/towing/policy.pt": "a4d800a26c1d1a50eee220da44a32b51111c3ce475f28c8e25b421b32a1f6ab2"
+  },
+  "hardware_started": false,
+  "layout_check": "0 failure(s); no hardware accessed"
+}

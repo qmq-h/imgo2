@@ -138,7 +138,7 @@ def analyze_reference(raw_file, urdf, data):
             p,r=pose(chains[leg],frame[7+3*index:10+3*index])
             rp=fk.rotate(rotation,p)
             heights[leg].append(collision_bottom([0,0,frame[2]+rp[2]],fk.matmul(rotation,r),shapes[leg]))
-    source=REPO/'imgo2_deploy/scripts/eval_gazebo_policy.py'
+    source=REPO/'imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py'
     fn=next(x for x in ast.parse(source.read_text()).body if isinstance(x,ast.FunctionDef) and x.name=='autocorr_peak')
     ns={'math':math}
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(source),'exec'),ns)

@@ -52,7 +52,7 @@ C++初始化路径是：`MotorConfig`/`ImuConfig`构造函数与头文件字段�
 | `fsm_check.cpp` | 离线PPO模拟反馈：stand_pose、dq=0、单位四元数和gyro=0；面板100ms刷新 |
 | `go_monitor.cpp` | 联合诊断CLI默认刷新200ms、单次请求40ms；与控制库MotorConfig的20ms请求上限不同 |
 
-完整部署实际读取的是`go_imu/policy/ppo`。ROS参考链路中的`imgo2_deploy/policy/imgo2/ppo`是另一个路径，除非显式指定`--policy-dir`为合适目录结构，否则修改那边不会改变本程序。默认路径相对**可执行文件目录**，不相对当前终端目录；构建后的副本与源YAML需注意一致，推荐显式指定源路径，见第3节。
+完整部署实际读取的是`go_imu/policy/ppo`。ROS参考链路中的`imgo2_deploy/ros2_ws/policy/imgo2/ppo`是另一个路径，除非显式指定`--policy-dir`为合适目录结构，否则修改那边不会改变本程序。默认路径相对**可执行文件目录**，不相对当前终端目录；构建后的副本与源YAML需注意一致，推荐显式指定源路径，见第3节。
 
 没有启动时临时输入KP/KD、offset或串口名的交互步骤。真机入口目前只接受 `--policy-dir`、`--config`、`--check-policy`、`--help`。
 
@@ -256,10 +256,10 @@ SDK使用的四元数约定是body-to-world，投影重力通过逆旋转得到b
 
 ```bash
 cd /home/tommy0929/Documents/imgo2
-cmake -S imgo2_deploy/go_imu -B imgo2_deploy/go_imu/build \
+cmake -S imgo2_deploy/real -B imgo2_deploy/real/build_layout \
   -DCMAKE_BUILD_TYPE=Release -DGO_IMU_BUILD_RL=ON \
-  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/library/inference_runtime/libtorch"
-cmake --build imgo2_deploy/go_imu/build --target rl_real_imgo2 fsm_check -j2
+  -DCMAKE_PREFIX_PATH="$PWD/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch"
+cmake --build imgo2_deploy/real/build_layout --target rl_real_imgo2 fsm_check -j2
 ```
 
 这是本机已存在的路径示例；搬到其他机器需改仓库位置和LibTorch位置。已有build若缓存 `GO_IMU_BUILD_RL=OFF`，仅执行build不会生成RL目标，必须先执行上面的configure命令。当前检测程序名是 `fsm_check`，有下划线；旧ppo_check、imu_reader、go_probe已按用户要求删除。
@@ -276,7 +276,7 @@ build/policy/ppo/policy.pt
 这些资源在目标构建后复制。**仅修改源码目录的YAML，不保证build中的副本自动更新**；为了明确读取你正在编辑的配置，推荐从go_imu目录显式指定：
 
 ```bash
-cd /home/tommy0929/Documents/imgo2/imgo2_deploy/go_imu
+cd /home/tommy0929/Documents/imgo2/imgo2_deploy/real
 
 # 只验证配置、模型、预热和固定轨迹，不打开硬件
 ./build/rl_real_imgo2 --check-policy \
@@ -444,11 +444,11 @@ Fault状态下界面通常只报告一次错误，进程等待退出；普通状
 
 部署状态现分在 `fsm/states/` 的stand/passive/ppo/hold/fault文件中；AMP仅抽象头文件，不注册。`deployment_states.cpp`负责总调度，分工见 [拆分记录](go_imu_state_split_2026-10-15.md)。
 
-1. [主函数](../../imgo2_deploy/go_imu/rl_real_imgo2.cpp)：启动、键盘、循环、退出。
-2. [状态定义](../../imgo2_deploy/go_imu/fsm/deployment_states.h)和[状态实现](../../imgo2_deploy/go_imu/fsm/deployment_states.cpp)：request、change、update和各状态enter/run。
-3. [输入解析](../../imgo2_deploy/go_imu/apps/deployment_input.h)：数字整行、即时速度键和终端设置。
-4. [硬件接口](../../imgo2_deploy/go_imu/hardware/real_hardware.cpp)：启动、数据年龄、命令发布和故障监督。
-5. [策略处理](../../imgo2_deploy/go_imu/sdk/rl_sdk.cpp)与[推理线程](../../imgo2_deploy/go_imu/sdk/inference_worker.cpp)：观测、动作转换、异步结果。
+1. [主函数](../../imgo2_deploy/real/rl_real_imgo2.cpp)：启动、键盘、循环、退出。
+2. [状态定义](../../imgo2_deploy/real/fsm/deployment_states.h)和[状态实现](../../imgo2_deploy/real/fsm/deployment_states.cpp)：request、change、update和各状态enter/run。
+3. [输入解析](../../imgo2_deploy/real/apps/deployment_input.h)：数字整行、即时速度键和终端设置。
+4. [硬件接口](../../imgo2_deploy/real/hardware/real_hardware.cpp)：启动、数据年龄、命令发布和故障监督。
+5. [策略处理](../../imgo2_deploy/real/sdk/rl_sdk.cpp)与[推理线程](../../imgo2_deploy/real/sdk/inference_worker.cpp)：观测、动作转换、异步结果。
 
 已完成：当前源码流程、参数默认值、键盘状态条件、工程内编译方式及配置副本问题已核对并形成本文；文档链接和差异格式检查通过。状态拆分本轮已完成31/31离线回归，详见拆分记录；没有实机验收结论。
 

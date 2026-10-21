@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-21",
+  "cause": "Workspace relocation retained absolute symlinks and CMake source/install paths from imgo2_deploy instead of imgo2_deploy/ros2_ws",
+  "backup": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/build_before_rebuild_20261021_173237",
+  "build": {
+    "command": "bash build.sh",
+    "result": "4 packages finished [44.3s]",
+    "environment": "system /usr/bin python3, ROS2 Humble; clean prefix environment, parallel level 2",
+    "warning": "Missing Unitree SDK2 skips reference hardware target; rl_sim built successfully"
+  },
+  "source_setup_success": true,
+  "launch_arguments_success": true,
+  "rl_sim_libraries_resolved": true,
+  "startup": {
+    "spawn": true,
+    "passive_controller_ready": true,
+    "gui": false,
+    "policy_activated": false,
+    "owned_processes_stopped": true
+  },
+  "package_local_setup": {
+    "imgo2_description": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/build/imgo2_description/ament_cmake_environment_hooks/local_setup.bash",
+    "robot_msgs": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/build/robot_msgs/ament_cmake_environment_hooks/local_setup.bash",
+    "robot_joint_controller": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/build/robot_joint_controller/ament_cmake_environment_hooks/local_setup.bash",
+    "imgo2_deploy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/build/imgo2_deploy/ament_cmake_environment_hooks/local_setup.bash"
+  },
+  "caches": {
+    "imgo2_description": {
+      "CMAKE_HOME_DIRECTORY": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/imgo2_description",
+      "CMAKE_INSTALL_PREFIX": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/install"
+    },
+    "robot_msgs": {
+      "CMAKE_HOME_DIRECTORY": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/robot_msgs",
+      "CMAKE_INSTALL_PREFIX": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/install"
+    },
+    "robot_joint_controller": {
+      "CMAKE_HOME_DIRECTORY": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/robot_joint_controller",
+      "CMAKE_INSTALL_PREFIX": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/install"
+    },
+    "imgo2_deploy": {
+      "CMAKE_HOME_DIRECTORY": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/imgo2_deploy",
+      "CMAKE_INSTALL_PREFIX": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/install"
+    }
+  },
+  "limitations": [
+    "GUI not tested",
+    "No policy entry/walking test after this rebuild",
+    "No real hardware",
+    "Existing model synchronization issues unchanged"
+  ],
+  "rl_sim_sha256": "bccc57e1475d455dd323280c233aae294704a556d258b562ba9813d19cb23eca"
+}

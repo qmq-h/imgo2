@@ -23,7 +23,7 @@ def main():
     for name in ("native_raw","native_summary","gazebo_summary","gazebo_foot_summary","json"):
         parser.add_argument("--"+name.replace('_','-'),required=True,type=Path)
     args=parser.parse_args()
-    source=REPO/"imgo2_deploy/scripts/eval_gazebo_policy.py"
+    source=REPO/"imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py"
     function=next(n for n in ast.parse(source.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=="autocorr_peak")
     namespace={"math":math}
     exec(compile(ast.Module(body=[function],type_ignores=[]),str(source),"exec"),namespace)

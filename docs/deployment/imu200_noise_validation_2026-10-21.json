@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-21",
+  "cases": {
+    "baseline": {
+      "result": "imu200_noise_validation_2026-10-21_baseline.json",
+      "summary": {
+        "imu_policy_samples": 9999,
+        "roll_deg": {
+          "mean": 0.2446684034659527,
+          "std": 0.7134467500763221,
+          "min": -1.424089045958465,
+          "max": 2.3215696044444405,
+          "p95_abs": 1.554615586147653
+        },
+        "pitch_deg": {
+          "mean": 1.0698508185835036,
+          "std": 0.9052804861990928,
+          "min": -2.0579378963919845,
+          "max": 3.627942334463584,
+          "p95_abs": 2.4016212915580155
+        },
+        "yaw_total_change_deg": -29.079268788968637,
+        "height_min_m": 0.23944709035435827,
+        "vx_rmse_mps": 0.06671489505996167
+      },
+      "effective_mean_hz": 199.9919987197952
+    },
+    "gyro005": {
+      "result": "imu200_noise_validation_2026-10-21_gyro005.json",
+      "summary": {
+        "imu_policy_samples": 10000,
+        "roll_deg": {
+          "mean": 0.3908242117998845,
+          "std": 0.7733991379943992,
+          "min": -1.450763747513133,
+          "max": 2.3898876719284785,
+          "p95_abs": 1.7329988222180912
+        },
+        "pitch_deg": {
+          "mean": 0.9315963157997343,
+          "std": 0.7666832574438974,
+          "min": -2.0810059399852054,
+          "max": 3.3966547664460665,
+          "p95_abs": 2.1098165983117765
+        },
+        "yaw_total_change_deg": -35.18058416577518,
+        "height_min_m": 0.24134328167638175,
+        "vx_rmse_mps": 0.0645528553786574
+      },
+      "effective_mean_hz": 199.99999999999997
+    }
+  },
+  "limitations": [
+    "One run per condition, no matched simulator random seed; descriptive sensitivity test, not causal identification.",
+    "Current PPO kp=15 kd=.5 and base mass=6kg; not a controlled comparison with historical 25/.5,100Hz test.",
+    "Classic orientation is simulated pose, not noisy gyro/accel fusion.",
+    "No hardware used; source xacro remains100Hz while active generated real URDF is200Hz."
+  ],
+  "temporary_noise_model_sha256": "0960ab4d7d351a02059b0354730848100f32d87b3b12fec1a741ad6ade7e5b1d",
+  "source_xacro_sha256": "704c884ed81aeadc93dc39d7e99aef718540cc2ac96611c9a3cc985771dfa51a",
+  "formal_urdf_unchanged": true
+}

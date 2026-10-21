@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / 'imgo2_deploy/scripts/eval_gazebo_policy.py'
+SOURCE = ROOT / 'imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py'
 TREE = ast.parse(SOURCE.read_text())
 FUNC = next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name == 'autocorr_peak')
 NS = {'math': math}

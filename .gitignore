@@ -1,7 +1,6 @@
 # 根 .gitignore —— Imgo2 工作区（单一仓库）
 # 原则：跟踪训练与部署真正需要的源码、模型、动作数据和文档，排除可再生成的产物。
-# 仓库包含约 100 MB 的 STL 网格，这是有意保留的：四份模型副本各被一处流程引用
-# （原始模型、采集模型、训练用副本、部署副本），去掉网格会让 URDF 无法加载。
+# 网格唯一源是 imgo2_description/meshes；模型、部署权重与源码需要入库。
 #
 # 本文件合并了原先 imgo2_rl/ 与 imgo2_deploy/ 各自的 .gitignore。合并时把只对
 # 某个子树成立的规则加了路径前缀，避免在整仓范围内过度匹配。
@@ -38,15 +37,17 @@ logs/
 
 # ---------- 检查点 ----------
 # 训练 checkpoint 体积大且可再生成，不入库。
-# 例外：imgo2_deploy/policy/imgo2/himloco/himloco.pt 是部署配置引用的占位策略，
+# 例外：imgo2_deploy/ros2_ws/policy/imgo2/himloco/himloco.pt 是部署配置引用的占位策略，
 # 体积不到 1 MB，需要保留。
 *.pt
-!imgo2_deploy/policy/imgo2/himloco/himloco.pt
+!imgo2_deploy/ros2_ws/policy/imgo2/himloco/himloco.pt
 # 各策略目录下由 imgo2_rl 的 play/导出脚本产出的 policy.pt 也是部署配置引用的
 # 网络（每个 700 KB 量级）；deploy 侧不再保留导出脚本，所以必须入库，
 # 否则部署配置在任何新机器上都加载不到网络。当前有 amp/（model_9000.pt 导出）
 # 与 ppo/（imgo2_flat 2026-06-21_23-24-09 导出）。
-!imgo2_deploy/policy/imgo2/**/policy.pt
+!imgo2_deploy/ros2_ws/policy/imgo2/**/policy.pt
+!imgo2_deploy/ros2_ws/policy/imgo2/**/policy_xiaoji.pt
+!imgo2_deploy/real/policy/**/policy.pt
 *.pth
 *.ckpt
 *.onnx
@@ -62,12 +63,15 @@ install/
 MUJOCO_LOG.TXT
 
 # 仅对部署子树成立的构建/下载产物
-/imgo2_deploy/log/
-/imgo2_deploy/.catkin_tools/
+/imgo2_deploy/ros2_ws/log/
+/imgo2_deploy/real/log/
+/imgo2_deploy/ros2_ws/.catkin_tools/
 # 部署根下由 scripts/download_inference_runtime.sh / download_mujoco.sh 下载的
 # 推理与仿真依赖；也可以是软链到既有安装，因此整目录忽略（含软链本身）。
-# 注意只匹配部署根，不影响 imgo2_deploy/src/imgo2_deploy/library/ 源码。
-/imgo2_deploy/library/
+# 注意只匹配部署根，不影响 imgo2_deploy/src/imgo2_deploy/ros2_ws/library/
+/imgo2_deploy/real/library/ 源码。
+/imgo2_deploy/ros2_ws/library/
+/imgo2_deploy/real/library/
 # 部署包的 package.xml 由构建生成（源文件是 package.ros1.xml / package.ros2.xml）
 /imgo2_deploy/**/package.xml
 /imgo2_deploy/rust_build/
@@ -132,3 +136,18 @@ Thumbs.db
 
 # Isaac Sim / 训练进程的 nohup 日志（2026-10-11 实测在 imgo2_rl/ 下留了一个 11 MB 的）
 /imgo2_rl/nohup.out
+
+# ---------- 2026-10-20 real / ros2_ws 布局 ----------
+/imgo2_deploy/real/build*/
+/imgo2_deploy/ros2_ws/build*/
+/imgo2_deploy/**/CMakeFiles/
+/imgo2_deploy/**/Testing/
+/imgo2_deploy/**/CMakeCache.txt
+/imgo2_deploy/**/cmake_install.cmake
+/imgo2_deploy/**/CTestTestfile.cmake
+/imgo2_deploy/real/Makefile
+/imgo2_deploy/**/compile_commands.json
+
+# 迁移前旧索引仍包含这些已跟踪权重，保留兼容例外，避免迁移暂存前被判为忽略。
+!imgo2_deploy/policy/imgo2/**/policy.pt
+!imgo2_deploy/policy/imgo2/himloco/himloco.pt

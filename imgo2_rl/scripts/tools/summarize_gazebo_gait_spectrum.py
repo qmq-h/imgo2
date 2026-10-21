@@ -51,7 +51,7 @@ def main():
     ap.add_argument('--json', type=Path)
     args = ap.parse_args()
     root = Path(__file__).resolve().parents[3]
-    source = root / 'imgo2_deploy/scripts/eval_gazebo_policy.py'
+    source = root / 'imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py'
     tree = ast.parse(source.read_text())
     function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'autocorr_peak')
     namespace = {'math': math}

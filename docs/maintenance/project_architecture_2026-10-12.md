@@ -1,6 +1,6 @@
 # Imgo2 整体项目架构、入口与移植指南
 
-源码核对日期：2026-10-12。根 README 是总入口；本文用于从整体理解项目，细节链接到各模块指南。本轮只更新文档，没有修改代码、运行构建或启动机器人。2026-10-15补充：go_imu已新增独立SDK/FSM真机入口，结构、运行、移植及验证以 [Sim2Real指南](../deployment/go_imu_sim2real_2026-10-15.md) 为准，原ROS参考真机入口保留。go_imu部分于2026-10-14更新为五阶段重构结构，见 [整理记录](../deployment/go_imu_cleanup_2026-10-14.md)。
+路径核对日期：2026-10-20，已按real/ros2_ws更新；迁移验证见 [路径修复记录](../deployment/deploy_layout_migration_2026-10-20.md)。以下控制原理含2026-10-12起的历史说明。根 README 是总入口；本文用于从整体理解项目，细节链接到各模块指南。本轮只更新文档，没有修改代码、运行构建或启动机器人。2026-10-15补充：go_imu已新增独立SDK/FSM真机入口，结构、运行、移植及验证以 [Sim2Real指南](../deployment/go_imu_sim2real_2026-10-15.md) 为准，原ROS参考真机入口保留。go_imu部分于2026-10-14更新为五阶段重构结构，见 [整理记录](../deployment/go_imu_cleanup_2026-10-14.md)。
 
 ## 1. 先看这一张图
 
@@ -18,14 +18,16 @@ imgo2/                          一个 Git 项目，训练和部署都在这里
 │         └─ checkpoint/model_*.pt
 │                     └─ 对应 play.py 正式导出 → exported/policy.pt
 │
-├─ imgo2_deploy/                C++：读传感器 → 拼观察 → 推理 → 下发目标
-│   ├─ policy/imgo2/            base.yaml + 各策略 config.yaml / policy.pt
-│   ├─ src/imgo2_deploy/        FSM、推理核心、Gazebo/MuJoCo/宇树真机入口
-│   ├─ src/robot_msgs/          ROS 关节状态／命令消息
-│   ├─ src/robot_joint_controller/  Gazebo 控制器
-│   ├─ go_imu/                 你的串口电机 + Yesense IMU + 整机硬件接口
-│   ├─ go/                     原已成功站起代码，保留
-│   └─ imu_sensor/             原 IMU 调试代码，保留
+├─ imgo2_deploy/                部署总目录，两条独立链路
+│   ├─ real/                   串口真机：Motor/Imu/hardware/sdk/fsm/config/policy
+│   │   └─ CMakeLists.txt       独立构建，不依赖ROS
+│   └─ ros2_ws/                Gazebo／MuJoCo／旧宇树参考后端
+│       ├─ build.sh
+│       ├─ policy/imgo2/       仿真策略及对应配置
+│       ├─ scripts/            仿真诊断与依赖下载
+│       ├─ library/            本机下载依赖，不入Git
+│       └─ src/                imgo2_deploy、robot_msgs、robot_joint_controller
+│           └─ imgo2_description → 仓库根模型唯一源
 │
 ├─ docs/                       架构、故障与验证细节
 ├─ README.md                   总入口、当前状态、问题表和维护记录
@@ -33,7 +35,7 @@ imgo2/                          一个 Git 项目，训练和部署都在这里
 ```
 
 **已经存在的关系：**模型→训练→导出→仿真部署；go_imu→串口电机／IMU。
-**2026-10-15已接通：**go_imu/rl_real_imgo2→SDK/FSM→go_imu::hardware；离线通过，映射默认锁定，实机待确认。src/rl_real_imgo2仍是宇树 DDS 参考后端。
+**2026-10-15已接通：**real/rl_real_imgo2→SDK/FSM→go_imu::hardware；离线通过，映射默认锁定，实机待确认。src/rl_real_imgo2仍是宇树 DDS 参考后端。
 
 训练程序和部署程序是不同进程、不同环境。部署只需要导出策略与观察／动作契约，不需要把训练算法、判别器或 Isaac Lab 一起搬到机器人上。
 
@@ -51,10 +53,10 @@ imgo2/                          一个 Git 项目，训练和部署都在这里
 | …/tasks/manager_based/towing/ | 上层拖曳任务 | 与底层步态策略分开，不当普通12关节actor直接部署 |
 | imgo2_rl/scripts/rl_lab/ | train/play、算法、网络、runner、包装器 | 修改算法找 rl_lab/algorithms；改训练参数找任务 agents |
 | imgo2_rl/scripts/tools/ | 离线检查、数据与步态分析 | 不能把离线通过当真机验证 |
-| imgo2_deploy/build.sh | ROS／普通 CMake／MuJoCo 构建入口 | 可下载依赖、处理软链及构建产物；不是启动机器人命令 |
-| imgo2_deploy/policy/imgo2/base.yaml | 公共 dt、关节数、固定增益、默认姿态和映射 | 改动会影响多个入口，仿真映射不自动适用于串口硬件 |
-| imgo2_deploy/policy/imgo2/{ppo,amp,himloco}/ | 策略配置和部署模型 | 每份模型必须匹配观察顺序、缩放、历史和动作定义 |
-| imgo2_deploy/src/imgo2_deploy/src/ | 三个主要部署入口 | rl_sim、rl_sim_mujoco、rl_real_imgo2 分别构建运行 |
+| imgo2_deploy/ros2_ws/build.sh | ROS／普通 CMake／MuJoCo 构建入口 | 可下载依赖、处理软链及构建产物；不是启动机器人命令 |
+| imgo2_deploy/ros2_ws/policy/imgo2/base.yaml | 公共 dt、关节数、固定增益、默认姿态和映射 | 改动会影响多个入口，仿真映射不自动适用于串口硬件 |
+| imgo2_deploy/ros2_ws/policy/imgo2/{ppo,amp,himloco}/ | 策略配置和部署模型 | 每份模型必须匹配观察顺序、缩放、历史和动作定义 |
+| imgo2_deploy/ros2_ws/src/imgo2_deploy/src/ | 三个主要部署入口 | rl_sim、rl_sim_mujoco、rl_real_imgo2 分别构建运行 |
 | …/include/ | 上述入口的类声明／后端成员 | 真机头文件仍引入 Unitree SDK |
 | …/fsm_robot/fsm_imgo2.hpp | Imgo2 状态与按键切换 | 没有同名 cpp；状态机不负责串口协议 |
 | …/library/core/rl_sdk/ | 公共机器人状态／命令、观察构造、策略输出、FSM 辅助 | rl_sdk 是项目自己的 C++ 核心，区别于训练侧 RSL-RL 与宇树 SDK |
@@ -62,9 +64,9 @@ imgo2/                          一个 Git 项目，训练和部署都在这里
 | …/library/core/observation_buffer/ | 历史观察缓存 | 只对要求历史帧的策略使用 |
 | …/library/core/{fsm,loop,vector_math}/ | 状态机调度、循环、向量／四元数数学 | 公共机制，避免写入具体电机接线 |
 | …/library/thirdparty/robot_sdk/ | Unitree 等参考硬件 SDK | 自己的串口后端不应该继续依赖宇树 DDS |
-| imgo2_deploy/library/ | 推理运行库／MuJoCo等外部依赖位置 | 是否已下载以文件和构建结果为准 |
-| imgo2_deploy/config、launch、worlds/ | ROS 控制配置、启动和世界 | 不等同于 go_imu/config |
-| imgo2_deploy/go_imu/ | 独立硬件工具与新真机SDK/FSM | RL目标可选，启用时依赖LibTorch/yaml-cpp；原工具不依赖推理 |
+| imgo2_deploy/ros2_ws/library/ | 推理运行库／MuJoCo等外部依赖位置 | 是否已下载以文件和构建结果为准 |
+| imgo2_deploy/ros2_ws/src/imgo2_deploy/{config,launch,worlds}/ | ROS 控制配置、启动和世界 | 不等同于 go_imu/config |
+| imgo2_deploy/real/ | 独立硬件工具与新真机SDK/FSM | RL目标可选，启用时依赖LibTorch/yaml-cpp；原工具不依赖推理 |
 
 外层 imgo2_deploy 是**工作区**；内层 src/imgo2_deploy 才是 ROS 功能包。src/imgo2_description 为指向模型唯一源的软链。当前部署包 package.xml 指向 package.ros2.xml；仍保留 ROS1 描述及条件代码，不表示本机已验证 ROS1。
 
@@ -77,11 +79,11 @@ imgo2/                          一个 Git 项目，训练和部署都在这里
 | src/rl_sim.cpp | rl_sim：Gazebo ROS部署 | 初始化ROS，创建RL_Sim节点、控制器与订阅发布，启动循环，spin | GetState→StateController→SetCommand；独立RunModel做推理 |
 | src/rl_sim_mujoco.cpp | rl_sim_mujoco：MuJoCo部署 | 解析机器人／scene、加载模型、建立模拟器、循环和键盘／手柄 | MuJoCo反馈→共同FSM／观察／模型→MuJoCo控制量 |
 | src/rl_real_imgo2.cpp | rl_real_imgo2：当前宇树参考后端 | networkInterface→DDS→LowCmd/LowState→运动服务释放→循环 | Unitree反馈→共同FSM／推理→Unitree LowCmd |
-| go_imu/rl_real_imgo2.cpp | 独立rl_real_imgo2 | 配置/模型预热→一次硬件初始化→多状态控制→卸力退出 | SDK的45维PPO→单次映射→串口硬件；详情见新指南 |
-| go_imu/fsm_check.cpp | 离线键盘FSM测试 | 载入正式配置/模型、模拟反馈、运行同一FSM | 首行状态＋四腿轨迹/PPO目标原地刷新；不连接硬件 |
-| go_imu/go_monitor.cpp | go_monitor：电机＋IMU监测 | main：四总线诊断、IMU线程和面板 | 取独立快照→单线程固定刷新；Ctrl+C汇总 |
-| go_imu/pd_demo_main.cpp | go_pd_demo：保持 | main：严格电机启动、归零、保持 | 不断提交当前位置保持目标，退出卸力 |
-| go_imu/stand_main.cpp | go_stand：站起 | main：轨迹预检、严格启动、FSM保持与0事件 | 8秒五次平滑轨迹→站姿保持，退出卸力 |
+| real/rl_real_imgo2.cpp | 独立rl_real_imgo2 | 配置/模型预热→一次硬件初始化→多状态控制→卸力退出 | SDK的45维PPO→单次映射→串口硬件；详情见新指南 |
+| real/fsm_check.cpp | 离线键盘FSM测试 | 载入正式配置/模型、模拟反馈、运行同一FSM | 首行状态＋四腿轨迹/PPO目标原地刷新；不连接硬件 |
+| real/go_monitor.cpp | go_monitor：电机＋IMU监测 | main：四总线诊断、IMU线程和面板 | 取独立快照→单线程固定刷新；Ctrl+C汇总 |
+| real/pd_demo_main.cpp | go_pd_demo：保持 | main：严格电机启动、归零、保持 | 不断提交当前位置保持目标，退出卸力 |
+| real/stand_main.cpp | go_stand：站起 | main：轨迹预检、严格启动、FSM保持与0事件 | 8秒五次平滑轨迹→站姿保持，退出卸力 |
 
 C++ main 通常只是初始化和等待；真正循环在构造函数创建的线程、RobotControl/RunModel中；go_imu的主循环直接位于顶层main。不要只读 main 就以为找到所有控制逻辑。
 
@@ -151,7 +153,7 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/amp/play.py \
 两个终端都在imgo2_deploy工作目录；先安装相应ROS/Gazebo依赖，避免conda的Python路径干扰。
 
 ```bash
-cd imgo2_deploy
+cd imgo2_deploy/ros2_ws
 unset PYTHONPATH PYTHONHOME
 source /opt/ros/humble/setup.bash
 bash build.sh
@@ -167,7 +169,7 @@ Gazebo启动实体与控制器，rl_sim读状态并下发控制。先检查初�
 ### 5.3 MuJoCo sim2sim（独立CMake）
 
 ```bash
-cd imgo2_deploy
+cd imgo2_deploy/ros2_ws
 bash build.sh --mujoco
 ./cmake_build/bin/rl_sim_mujoco imgo2 scene
 ```
@@ -179,7 +181,7 @@ bash build.sh --mujoco
 从仓库根执行，构建放/tmp以保持go_imu文件夹不变：
 
 ```bash
-cmake -S imgo2_deploy/go_imu -B /tmp/imgo2_go_imu_user -DCMAKE_BUILD_TYPE=Release
+cmake -S imgo2_deploy/real -B /tmp/imgo2_go_imu_user -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/imgo2_go_imu_user -j4
 # 机械架空／托住后运行电机＋IMU联合监测：
 /tmp/imgo2_go_imu_user/go_monitor
@@ -212,7 +214,7 @@ go_pd_demo、go_stand位于同一构建目录；旧go_probe/imu_reader/ppo_check
 set(GO_IMU_BUILD_APPS OFF CACHE BOOL "" FORCE)
 # 建议同时关闭测试，避免给消费者引入工具测试目标
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-add_subdirectory(imgo2_deploy/go_imu)
+add_subdirectory(imgo2_deploy/real)
 target_link_libraries(your_target PRIVATE go_imu::hardware)
 ```
 
