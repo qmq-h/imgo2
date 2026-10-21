@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(imgo2_deploy VERSION 1.0.0 LANGUAGES CXX)
+option(IMGO2_BUILD_FEEDBACK_DELAY_TEST "Build the standalone feedback delay test" ON)
 
 # Set C++ standard globally
 set(CMAKE_CXX_STANDARD 17)
@@ -559,6 +560,12 @@ endif()
 # only for test
 # ========================
 # add_executable(test_observation_buffer test/test_observation_buffer.cpp)
+if(IMGO2_BUILD_FEEDBACK_DELAY_TEST)
+    enable_testing()
+    add_executable(test_feedback_delay test/test_feedback_delay.cpp)
+    target_include_directories(test_feedback_delay PRIVATE include)
+    add_test(NAME feedback_delay COMMAND test_feedback_delay)
+endif()
 # target_link_libraries(test_observation_buffer
 #     observation_buffer
 # )

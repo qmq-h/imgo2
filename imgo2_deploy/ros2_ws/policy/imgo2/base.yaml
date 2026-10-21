@@ -4,6 +4,12 @@
 imgo2:
   dt: 0.005
   decimation: 4
+  # Gazebo ROS2 only: additional host-monotonic feedback delivery latency (ms).
+  # Read once when rl_sim starts; 0 disables, allowed range 0..1000.
+  # Delays all joint q/dq/tau feedback together, and IMU quaternion/gyro together.
+  # No sleeping/interpolation; source sampling and control polling add their own age.
+  gazebo_motor_feedback_delay_ms: 10
+  gazebo_imu_feedback_delay_ms: 1.5
   # ROS2 路径：启动时最多等 /controller_manager（Gazebo 侧 gazebo_ros2_control 插件在实体 spawn
   # 成功后才创建它）多少秒再 spawn 关节控制器。等不到会打印可操作的报错，而不是笼统的
   # "Failed to start joint controller"。ROS1/MuJoCo 路径不读该键。

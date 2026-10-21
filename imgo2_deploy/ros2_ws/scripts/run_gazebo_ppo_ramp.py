@@ -158,6 +158,7 @@ def run(args):
                IMGO2_GAZEBO_URDF=str(REPO / "imgo2_description/urdf/imgo2_real.gazebo.urdf"))
     env.pop("IMGO2_POLICY_TRACE", None)
     sources = ["imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt", "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml",
+               "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml",
                "imgo2_description/urdf/imgo2_real.gazebo.urdf", "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim"]
     meta = {"algorithm": "PPO", "gui": False, "domain": args.domain, "master_port": args.master_port,
             "ramp_seconds": args.ramp_seconds, "hold_seconds": args.hold_seconds,

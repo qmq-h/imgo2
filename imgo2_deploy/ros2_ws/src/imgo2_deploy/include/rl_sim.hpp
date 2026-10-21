@@ -16,6 +16,7 @@
 #include "fsm_all.hpp"
 #include "policy_transition.hpp"
 #include "policy_action_clip.hpp"
+#include "feedback_delay.hpp"
 
 #include <csignal>
 #include <vector>
@@ -112,6 +113,14 @@ private:
     void CmdvelCallback(const geometry_msgs::Twist::ConstPtr &msg);
     void JoyCallback(const sensor_msgs::Joy::ConstPtr &msg);
 #elif defined(USE_ROS2)
+    // Protect callback histories and the control->inference state snapshot.
+    std::mutex feedback_mutex;
+    std::ofstream feedback_delay_trace;
+    std::chrono::steady_clock::time_point feedback_trace_epoch = std::chrono::steady_clock::now();
+    FeedbackDelay<sensor_msgs::msg::Imu> imu_feedback_history;
+    FeedbackDelay<robot_msgs::msg::RobotState> motor_feedback_history;
+    sensor_msgs::msg::Imu delayed_imu;
+    robot_msgs::msg::RobotState delayed_motors;
     sensor_msgs::msg::Imu gazebo_imu;
     geometry_msgs::msg::Twist cmd_vel;
     sensor_msgs::msg::Joy joy_msg;

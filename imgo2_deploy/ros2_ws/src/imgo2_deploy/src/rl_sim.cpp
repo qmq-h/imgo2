@@ -115,6 +115,24 @@ RL_Sim::RL_Sim(int argc, char **argv)
 
     // read params from yaml
     this->ReadYaml(this->robot_name, "base.yaml");
+#if defined(USE_ROS2)
+    const double motor_delay_ms = this->ros2_node->declare_parameter<double>(
+        "gazebo_motor_feedback_delay_ms", this->params.Get<double>("gazebo_motor_feedback_delay_ms", 0.0));
+    const double imu_delay_ms = this->ros2_node->declare_parameter<double>(
+        "gazebo_imu_feedback_delay_ms", this->params.Get<double>("gazebo_imu_feedback_delay_ms", 0.0));
+    this->motor_feedback_history.configure(motor_delay_ms);
+    this->imu_feedback_history.configure(imu_delay_ms);
+    this->delayed_imu.orientation.w = 1.0;
+    if (const char* trace_path = std::getenv("IMGO2_FEEDBACK_DELAY_TRACE"))
+    {
+        this->feedback_delay_trace.open(trace_path);
+        if (!this->feedback_delay_trace)
+            throw std::runtime_error("Cannot open IMGO2_FEEDBACK_DELAY_TRACE");
+        this->feedback_delay_trace << "host_s,motor_age_ms,imu_age_ms,motor_ready,imu_ready\n";
+    }
+    std::cout << LOGGER::INFO << "Gazebo additional feedback delay (host time): motor="
+              << motor_delay_ms << " ms, IMU=" << imu_delay_ms << " ms" << std::endl;
+#endif
     // ReadYaml 只打印一行错误就返回，后面会以空参数一路走下去（FSM 未注册、关节名单为空），
     // 把一个"文件没读到"放大成看起来完全无关的失败。这里直接判定。
     if (!this->params.Has("num_of_dofs"))
@@ -495,12 +513,24 @@ void RL_Sim::StartJointController(const std::string& ros_namespace, const std::v
 
 void RL_Sim::GetState(RobotState<float> *state)
 {
+#if defined(USE_ROS2)
+    std::lock_guard<std::mutex> lock(this->feedback_mutex);
+    const auto now = std::chrono::steady_clock::now();
+    auto imu_arrival = now, motor_arrival = now;
+    const bool imu_ready = this->imu_feedback_history.read(now, this->delayed_imu, &imu_arrival);
+    const bool motor_ready = this->motor_feedback_history.read(now, this->delayed_motors, &motor_arrival);
+    if (this->feedback_delay_trace.is_open())
+        this->feedback_delay_trace << std::chrono::duration<double>(now-this->feedback_trace_epoch).count()
+            << ',' << (motor_ready ? std::chrono::duration<double, std::milli>(now-motor_arrival).count() : -1)
+            << ',' << (imu_ready ? std::chrono::duration<double, std::milli>(now-imu_arrival).count() : -1)
+            << ',' << motor_ready << ',' << imu_ready << '\n';
+#endif
 #if defined(USE_ROS1)
     const auto &orientation = this->pose.orientation;
     const auto &angular_velocity = this->vel.angular;
 #elif defined(USE_ROS2)
-    const auto &orientation = this->gazebo_imu.orientation;
-    const auto &angular_velocity = this->gazebo_imu.angular_velocity;
+    const auto &orientation = this->delayed_imu.orientation;
+    const auto &angular_velocity = this->delayed_imu.angular_velocity;
 #endif
 
     state->imu.quaternion[0] = orientation.w;
@@ -519,9 +549,11 @@ void RL_Sim::GetState(RobotState<float> *state)
         state->motor_state.dq[i] = this->joint_velocities[this->params.Get<std::vector<std::string>>("joint_controller_names")[this->params.Get<std::vector<int>>("joint_mapping")[i]]];
         state->motor_state.tau_est[i] = this->joint_efforts[this->params.Get<std::vector<std::string>>("joint_controller_names")[this->params.Get<std::vector<int>>("joint_mapping")[i]]];
 #elif defined(USE_ROS2)
-        state->motor_state.q[i] = this->robot_state_subscriber_msg.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].q;
-        state->motor_state.dq[i] = this->robot_state_subscriber_msg.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].dq;
-        state->motor_state.tau_est[i] = this->robot_state_subscriber_msg.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].tau_est;
+        if (this->delayed_motors.motor_state.empty())
+            continue; // Initial delay warmup: retain the initialized state.
+        state->motor_state.q[i] = this->delayed_motors.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].q;
+        state->motor_state.dq[i] = this->delayed_motors.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].dq;
+        state->motor_state.tau_est[i] = this->delayed_motors.motor_state[this->params.Get<std::vector<int>>("joint_mapping")[i]].tau_est;
 #endif
     }
 }
@@ -656,7 +688,9 @@ void RL_Sim::ModelStatesCallback(const gazebo_msgs::ModelStates::ConstPtr &msg)
 #elif defined(USE_ROS2)
 void RL_Sim::GazeboImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
+    std::lock_guard<std::mutex> lock(this->feedback_mutex);
     this->gazebo_imu = *msg;
+    this->imu_feedback_history.push(*msg, std::chrono::steady_clock::now());
 }
 #endif
 
@@ -735,7 +769,11 @@ void RL_Sim::JointStatesCallback(const robot_msgs::MotorState::ConstPtr &msg, co
 #elif defined(USE_ROS2)
 void RL_Sim::RobotStateCallback(const robot_msgs::msg::RobotState::SharedPtr msg)
 {
+    std::lock_guard<std::mutex> lock(this->feedback_mutex);
+    if (msg->motor_state.size() != this->robot_state_subscriber_msg.motor_state.size())
+        return; // A malformed frame must not enter the delayed state history.
     this->robot_state_subscriber_msg = *msg;
+    this->motor_feedback_history.push(*msg, std::chrono::steady_clock::now());
 }
 #endif
 
@@ -743,16 +781,25 @@ void RL_Sim::RunModel()
 {
     if (this->rl_init_done && simulation_running)
     {
+        RobotState<float> policy_state;
+#if defined(USE_ROS2)
+        {
+            std::lock_guard<std::mutex> lock(this->feedback_mutex);
+            policy_state = this->robot_state;
+        }
+#else
+        policy_state = this->robot_state;
+#endif
         this->episode_length_buf += 1;
-        this->obs.ang_vel = this->robot_state.imu.gyroscope;
+        this->obs.ang_vel = policy_state.imu.gyroscope;
         this->obs.commands = {this->control.x, this->control.y, this->control.yaw};
         if (this->control.navigation_mode)
         {
             this->obs.commands = {(float)this->cmd_vel.linear.x, (float)this->cmd_vel.linear.y, (float)this->cmd_vel.angular.z};
         }
-        this->obs.base_quat = this->robot_state.imu.quaternion;
-        this->obs.dof_pos = this->robot_state.motor_state.q;
-        this->obs.dof_vel = this->robot_state.motor_state.dq;
+        this->obs.base_quat = policy_state.imu.quaternion;
+        this->obs.dof_pos = policy_state.motor_state.q;
+        this->obs.dof_vel = policy_state.motor_state.dq;
 
         this->obs.actions = this->Forward();
         this->ComputeOutput(this->obs.actions, this->output_dof_pos, this->output_dof_vel, this->output_dof_tau);
