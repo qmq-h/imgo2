@@ -1,0 +1,127 @@
+{
+  "date": "2026-10-21",
+  "clock": "host steady_clock callback arrival -> GetState, additional feedback latency",
+  "cases": {
+    "motor15": {
+      "configured_motor_ms": 1.5,
+      "configured_imu_ms": 0.0,
+      "trace_rows": 3283,
+      "run_metadata": {
+        "algorithm": "PPO",
+        "gui": false,
+        "domain": 78,
+        "master_port": 11388,
+        "ramp_seconds": 2.0,
+        "hold_seconds": 2.0,
+        "ramp_acceleration_mps2": 0.25,
+        "sequence_mps": [
+          0,
+          0.5,
+          0,
+          -0.5,
+          0
+        ],
+        "lateral_and_yaw_commands": [
+          0,
+          0
+        ],
+        "files": {
+          "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+          "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "2be8602f339c135ae687dcc27ef99121f247175f62d0aaccd20faf98ed286090",
+          "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "8e97d93c70886bc377c83e1e609c020febd3183ef4252ca78cb4fe170cc25584",
+          "imgo2_description/urdf/imgo2_real.gazebo.urdf": "ce49b743b306c0e57c40e1bbb4c7b087b34053287aef1135924309ecf98c32b1",
+          "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim": "a4e49c60384f46ed4f3f39449d72f82be945d3f57a17cea174ddd9fcec87561b"
+        },
+        "source_files_unchanged_after_run": true
+      },
+      "recorder": {
+        "complete": true,
+        "imu_samples": 3600,
+        "odom_samples": 1800,
+        "policy_seconds": 12.0
+      },
+      "motor_age_ms": {
+        "n": 3282,
+        "min": 1.50065,
+        "median": 1.975315,
+        "p95": 2.47769,
+        "p99": 2.58871,
+        "max": 4.24443
+      },
+      "imu_age_ms": {
+        "n": 3282,
+        "min": 0.002193,
+        "median": 2.54925,
+        "p95": 4.71439,
+        "p99": 4.95664,
+        "max": 5.50607
+      },
+      "trace_archive": "gazebo_feedback_delay_2026-10-21_motor15.csv.gz",
+      "trace_sha256": "24d7d8060037cc456eb11bd43063764ddaab6123a96d2d42846c1db053dd0843",
+      "controller_delay_line": "\u001b[0;37m[INFO]   \u001b[0m Gazebo additional feedback delay (host time): motor=1.5 ms, IMU=0 ms"
+    },
+    "imu75": {
+      "configured_motor_ms": 0.0,
+      "configured_imu_ms": 7.5,
+      "trace_rows": 3214,
+      "run_metadata": {
+        "algorithm": "PPO",
+        "gui": false,
+        "domain": 79,
+        "master_port": 11389,
+        "ramp_seconds": 2.0,
+        "hold_seconds": 2.0,
+        "ramp_acceleration_mps2": 0.25,
+        "sequence_mps": [
+          0,
+          0.5,
+          0,
+          -0.5,
+          0
+        ],
+        "lateral_and_yaw_commands": [
+          0,
+          0
+        ],
+        "files": {
+          "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+          "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "2be8602f339c135ae687dcc27ef99121f247175f62d0aaccd20faf98ed286090",
+          "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "8e97d93c70886bc377c83e1e609c020febd3183ef4252ca78cb4fe170cc25584",
+          "imgo2_description/urdf/imgo2_real.gazebo.urdf": "ce49b743b306c0e57c40e1bbb4c7b087b34053287aef1135924309ecf98c32b1",
+          "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim": "a4e49c60384f46ed4f3f39449d72f82be945d3f57a17cea174ddd9fcec87561b"
+        },
+        "source_files_unchanged_after_run": true
+      },
+      "recorder": {
+        "complete": true,
+        "imu_samples": 3598,
+        "odom_samples": 1799,
+        "policy_seconds": 12.0
+      },
+      "motor_age_ms": {
+        "n": 3213,
+        "min": 0.001224,
+        "median": 0.515075,
+        "p95": 0.968782,
+        "p99": 1.08812,
+        "max": 1.31636
+      },
+      "imu_age_ms": {
+        "n": 3212,
+        "min": 7.50217,
+        "median": 9.95741,
+        "p95": 12.2599,
+        "p99": 12.5116,
+        "max": 12.7055
+      },
+      "trace_archive": "gazebo_feedback_delay_2026-10-21_imu75.csv.gz",
+      "trace_sha256": "d946270a1f8040c1cf7f9b25d71d7c351e159ec37c487178bbd9c3ac3f6dfb3e",
+      "controller_delay_line": "\u001b[0;37m[INFO]   \u001b[0m Gazebo additional feedback delay (host time): motor=0 ms, IMU=7.5 ms"
+    }
+  },
+  "code_sha256": {
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/feedback_delay.hpp": "43810056cae3642599e68d11fee2bbbae01c544c739cf11df767bbbbd7135314",
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_sim.cpp": "5ec89a8892726bef1205d85f7b35cd9c841e5dbfd761ecabcb76f754d2534ac7",
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "8e97d93c70886bc377c83e1e609c020febd3183ef4252ca78cb4fe170cc25584"
+  }
+}

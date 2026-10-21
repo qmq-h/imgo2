@@ -1,0 +1,370 @@
+{
+  "2026-10-21_17-10-15_9557": {
+    "hip_target_at_sdk_bound_fraction": {
+      "0": 0.0005162970279249349,
+      "3": 0.001818263446170423,
+      "6": 0.0038834515578701624,
+      "9": 0.014680793750561192
+    },
+    "clamped_rows": 0,
+    "imu_hz_range": [
+      199.3,
+      260.4
+    ]
+  },
+  "2026-10-19_22-15-26_19277": {
+    "hip_target_at_sdk_bound_fraction": {
+      "0": 0.001226082751951371,
+      "3": 0.0016405332596532431,
+      "6": 0.0032637977481522417,
+      "9": 0.013262416246459902
+    },
+    "clamped_rows": 0,
+    "imu_hz_range": [
+      199.1,
+      260.0
+    ]
+  },
+  "sim25_forward_18_20": {
+    "samples": 200,
+    "command_ranges": [
+      [
+        0.25002499999999994,
+        0.3495250000000001
+      ],
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "roll_deg": {
+      "mean": 0.4544669845891451,
+      "std": 0.36487604681217195,
+      "min": -0.3769612919321439,
+      "max": 1.2332637266194597
+    },
+    "pitch_deg": {
+      "mean": -0.10283010324000681,
+      "std": 0.28005982034925775,
+      "min": -0.7268743707168791,
+      "max": 0.4015042317912937
+    },
+    "gyro_rms_rad_s": [
+      0.20546371079893472,
+      0.1262637200750344,
+      0.10070705272641109
+    ],
+    "gyro_100hz_bin_mean_rms_rad_s": [
+      0.20546371079893472,
+      0.1262637200750344,
+      0.10070705272641109
+    ]
+  },
+  "sim25_static_2_4": {
+    "samples": 200,
+    "command_ranges": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "roll_deg": {
+      "mean": 0.0580973795683361,
+      "std": 0.018130414915908027,
+      "min": 0.015357614378996685,
+      "max": 0.08881339847727561
+    },
+    "pitch_deg": {
+      "mean": -0.16809844714867422,
+      "std": 0.01870146627365448,
+      "min": -0.19879412555027268,
+      "max": -0.12596514456080898
+    },
+    "gyro_rms_rad_s": [
+      0.0019778456080933554,
+      0.0019771646839157725,
+      0.0009906111321311116
+    ],
+    "gyro_100hz_bin_mean_rms_rad_s": [
+      0.0019778456080933554,
+      0.0019771646839157725,
+      0.0009906111321311116
+    ]
+  },
+  "old_selected_windows": [
+    {
+      "start_s": 52.0,
+      "end_s": 54.0,
+      "samples": 400,
+      "roll_std_deg": 0.002525440732823961,
+      "pitch_std_deg": 0.01408048801068306,
+      "gyro_rms_rad_s": [
+        0.0014337266127124795,
+        0.001305552852243064,
+        0.0017117705015567946
+      ],
+      "command_ranges": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "hips": {
+        "0": {
+          "q_std_deg": 0.002220592163187509,
+          "target_std_deg": 0.011960721353098025,
+          "error_rms_deg": 2.790088821670695,
+          "dq_rms_rad_s": 0.04430198580199312
+        },
+        "3": {
+          "q_std_deg": 0.0010799874486043881,
+          "target_std_deg": 0.02684434818294294,
+          "error_rms_deg": 5.590246229281724,
+          "dq_rms_rad_s": 0.03605593060787642
+        },
+        "6": {
+          "q_std_deg": 0.001013953196987285,
+          "target_std_deg": 0.02502015553700205,
+          "error_rms_deg": 5.067375818467765,
+          "dq_rms_rad_s": 0.038892486523749034
+        },
+        "9": {
+          "q_std_deg": 0.001452803946739115,
+          "target_std_deg": 0.012778879171621911,
+          "error_rms_deg": 3.51653964354205,
+          "dq_rms_rad_s": 0.0374705860709437
+        }
+      },
+      "gyro_x_spectrum": {
+        "peak_hz": 4.0,
+        "resolution_hz": 0.5,
+        "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+      },
+      "hip_spectra": {
+        "0": {
+          "peak_hz": 14.0,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "3": {
+          "peak_hz": 24.0,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "6": {
+          "peak_hz": 4.5,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "9": {
+          "peak_hz": 3.5,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        }
+      }
+    },
+    {
+      "start_s": 73.0,
+      "end_s": 75.0,
+      "samples": 400,
+      "roll_std_deg": 0.8477960984484962,
+      "pitch_std_deg": 0.708155242456177,
+      "gyro_rms_rad_s": [
+        0.5896388625756447,
+        0.30870395039341497,
+        0.06911060878946156
+      ],
+      "command_ranges": [
+        [
+          0.3,
+          0.3
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "hips": {
+        "0": {
+          "q_std_deg": 1.6703656129320787,
+          "target_std_deg": 5.114493986307988,
+          "error_rms_deg": 5.137076267126135,
+          "dq_rms_rad_s": 0.7663011442789642
+        },
+        "3": {
+          "q_std_deg": 1.77299267654446,
+          "target_std_deg": 5.933959642294634,
+          "error_rms_deg": 5.882196831320682,
+          "dq_rms_rad_s": 0.7153829070859535
+        },
+        "6": {
+          "q_std_deg": 1.2929965605022085,
+          "target_std_deg": 3.718882838789613,
+          "error_rms_deg": 3.898262834959431,
+          "dq_rms_rad_s": 0.6655491070249813
+        },
+        "9": {
+          "q_std_deg": 2.473581969149618,
+          "target_std_deg": 5.844575327467616,
+          "error_rms_deg": 5.421850473434141,
+          "dq_rms_rad_s": 0.8438246505186964
+        }
+      },
+      "gyro_x_spectrum": {
+        "peak_hz": 8.0,
+        "resolution_hz": 0.5,
+        "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+      },
+      "hip_spectra": {
+        "0": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "3": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "6": {
+          "peak_hz": 4.5,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "9": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.5,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        }
+      }
+    },
+    {
+      "start_s": 165.0,
+      "end_s": 168.0,
+      "samples": 600,
+      "roll_std_deg": 0.8694655404522221,
+      "pitch_std_deg": 0.6871493814021586,
+      "gyro_rms_rad_s": [
+        0.6105880867550288,
+        0.376176068795141,
+        0.09353427955835229
+      ],
+      "command_ranges": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "hips": {
+        "0": {
+          "q_std_deg": 1.7895216638995737,
+          "target_std_deg": 5.64211698524205,
+          "error_rms_deg": 5.470649449169384,
+          "dq_rms_rad_s": 0.9410738277515744
+        },
+        "3": {
+          "q_std_deg": 1.7867480904920074,
+          "target_std_deg": 5.186811201003241,
+          "error_rms_deg": 5.851428358077669,
+          "dq_rms_rad_s": 0.7683093491013239
+        },
+        "6": {
+          "q_std_deg": 1.6191040877464322,
+          "target_std_deg": 5.363735985718649,
+          "error_rms_deg": 5.7393042757912776,
+          "dq_rms_rad_s": 0.750916871732706
+        },
+        "9": {
+          "q_std_deg": 1.1934303947081333,
+          "target_std_deg": 5.768684680854104,
+          "error_rms_deg": 6.755791509604541,
+          "dq_rms_rad_s": 0.6996444258210738
+        }
+      },
+      "gyro_x_spectrum": {
+        "peak_hz": 6.666666666666667,
+        "resolution_hz": 0.3333333333333333,
+        "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+      },
+      "hip_spectra": {
+        "0": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.3333333333333333,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "3": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.3333333333333333,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "6": {
+          "peak_hz": 2.3333333333333335,
+          "resolution_hz": 0.3333333333333333,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        },
+        "9": {
+          "peak_hz": 2.0,
+          "resolution_hz": 0.3333333333333333,
+          "scope": "2-40Hz demeaned Hann DFT; host bins, not device spectrum"
+        }
+      }
+    }
+  ],
+  "old_quaternion_gyro_40ms_consistency": {
+    "x": {
+      "correlation": 0.9982516014218193,
+      "quat_rate_over_gyro_scale": 1.0638527109850755,
+      "residual_rms_rad_s": 0.06532613672374361,
+      "gyro_smoothed_rms_rad_s": 0.7282831347079335,
+      "samples": 28909
+    },
+    "y": {
+      "correlation": 0.9979765765000658,
+      "quat_rate_over_gyro_scale": 1.039067059505807,
+      "residual_rms_rad_s": 0.01624962640988443,
+      "gyro_smoothed_rms_rad_s": 0.211321707575976,
+      "samples": 28909
+    },
+    "z": {
+      "correlation": 0.998397135741324,
+      "quat_rate_over_gyro_scale": 1.0127184275198795,
+      "residual_rms_rad_s": 0.007695636855601242,
+      "gyro_smoothed_rms_rad_s": 0.12732676410971036,
+      "samples": 28909
+    }
+  },
+  "old_robot_sha256": "3e4fe546ba60a552d7d2d395d1492776fb5b99755ab1dc0b98ab8213b349ea8b",
+  "current_log_transport_source_not_uploaded": true
+}
