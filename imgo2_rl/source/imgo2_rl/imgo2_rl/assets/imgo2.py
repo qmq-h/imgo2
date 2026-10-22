@@ -60,8 +60,14 @@ IMGO2_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=4,
             solver_velocity_iteration_count=1,
+            enabled_self_collisions=False,
+            solver_position_iteration_count=4,
+            solver_velocity_iteration_count=1,
         ),
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
+            gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
+                stiffness=0, damping=0
+            )
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(
                 stiffness=0, damping=0
             )

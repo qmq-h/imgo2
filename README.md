@@ -115,6 +115,8 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 ## 3. 代码阅读导航
 
+首次学习 Isaac Lab：先读 [仿真最小结构与运行链路](docs/isaaclab_basics_2026-09-24.md)，区分模型资源、资产配置、环境和算法。
+
 理解 `imgo2_rl` 的目录、配置继承、采样更新循环和启动步骤：先读 [RL 工程阅读与运行指南](docs/training/rl_structure_guide_2026-10-10.md)。
 常用 AMP 导出、Gazebo、从头训练、续训和 Isaac Sim 回放命令见用户维护的 [command.md](command.md)；使用前替换跨机器路径，命令核对范围见 [填写记录](docs/maintenance/command_guide_2026-10-11.md)。
 服务器安装、从头训练与续训练统一见 [服务器训练.md](docs/xiaoji_cmd/服务器训练.md)：系统Python已装Sim5.1.0/Lab2.3.2与空白环境新建Conda两种路线，项目固定/root/Desktop/imgo2；AMP算法在工程内，不要求RSL-RL5，但注册/导出仍需要外部配套包装依赖。
