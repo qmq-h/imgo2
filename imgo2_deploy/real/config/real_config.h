@@ -61,8 +61,12 @@ namespace go
         uint32_t baud = 4000000;
         size_t io_timeout_us = 20000;
         size_t command_timeout_ms = 100;
-        std::chrono::microseconds period = std::chrono::milliseconds(7);
+        std::chrono::microseconds period = std::chrono::milliseconds(5);
         std::chrono::milliseconds watchdog = std::chrono::milliseconds(80);
+        // 一轮的收发方式：true = 先连发本总线所有命令、再按 ID 收全部应答（流水线）；
+        // false = 逐台一问一答。间隔必须大于"命令43us+换向10us+应答40us"，150us 留了余量。
+        bool pipeline = true;
+        std::uint32_t pipeline_gap_us = 150;
     };
     using RobotConfig = MotorConfig; // 保留已有硬件调用方类型名。
     MotorConfig makeDefaultConfig();

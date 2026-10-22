@@ -14,9 +14,10 @@ int main() {
     CHECK(my_myth::quinticRate(0,8)==0 && my_myth::quinticRate(8,8)==0);
     go::MotorConfig motor;
     CHECK(motor.baud==4000000 && motor.io_timeout_us==20000 && motor.command_timeout_ms==100);
-    // period=7 ms：实测一轮 3 台电机要 6~7 ms（远超旧值 5 ms），把节拍调到实际能力，
-    // 否则每轮都"超期"、lateCount 一直涨。control_ms 仍是 5 ms（上层思考节拍，与总线解耦）。
-    CHECK(motor.period==std::chrono::milliseconds(7) && motor.watchdog==std::chrono::milliseconds(80));
+    // period=5 ms：流水线（pipeline=true）一轮约 2.5 ms，5 ms 节拍有余量；
+    // 若关掉流水线（逐台一问一答，一轮 6~7 ms），这里要相应改成 7 ms 或更大。
+    CHECK(motor.period==std::chrono::milliseconds(5) && motor.watchdog==std::chrono::milliseconds(80));
+    CHECK(motor.pipeline && motor.pipeline_gap_us==150);
     const char* paths[]={"/dev/robot/leg_fl","/dev/robot/leg_fr","/dev/robot/leg_bl","/dev/robot/leg_br"};
     const float directions[][3]={{1,1,1},{1,-1,-1},{-1,1,1},{-1,-1,-1}};
     CHECK(motor.buses.size()==4 && motor.limits.size()==12);

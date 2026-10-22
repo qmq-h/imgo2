@@ -4,6 +4,8 @@
 #include "states/fault_state.h"
 #include "function/my_myth.h"
 #include <cmath>
+#include <cstdio>
+#include <string>
 namespace go_fsm {
 namespace {
 std::vector<float> measured(const real_hardware::HardwareState& h) {
@@ -59,7 +61,9 @@ bool RobotFSM::ready(const real_hardware::HardwareState& h,Clock::time_point now
     return std::chrono::duration<double>(now-settled_).count()>=c_.settings.settle_s;
 }
 std::string RobotFSM::request(int digit,const real_hardware::HardwareState& h,Clock::time_point now) {
-    if(mode_==Mode::Fault) return {};
+    // 不要静默：Fault 下按 1 以前什么都不打印，看起来像"按键没反应"。
+    if(mode_==Mode::Fault)
+        return "故障中（" + error_ + "）：1 不会进入 PPO；排除故障后重启程序，或按 0/9 走安全流程";
     if(digit==2) return "AMP未开放，保持当前状态";
     std::string error;
     if(digit==0 && (mode_==Mode::InitialHold || mode_==Mode::Passive || mode_==Mode::PPO)) {
@@ -76,11 +80,26 @@ std::string RobotFSM::request(int digit,const real_hardware::HardwareState& h,Cl
     if(digit==1 && mode_==Mode::Standing)
         return "尚未就绪：站立轨迹未完成，完成并稳定后请重新输入1+回车";
     if(digit==1 && mode_==Mode::StandHold) {
-        if(!c_.settings.mapping_confirmed) return "PPO锁定：关节映射尚未确认";
-        if(!ready(h,now)) return "尚未就绪：站立尚未稳定，稳定后请重新输入1+回车";
+        if(!c_.settings.mapping_confirmed) return "PPO锁定：关节映射尚未确认（config/deployment.yaml 的 mapping_confirmed）";
+        if(!ready(h,now)) {
+            // 把"差在哪"打出来：最差关节的位置/速度误差，方便判断是不是没站稳/被吊着。
+            double worst_q=0, worst_dq=0; int worst_i=-1;
+            for(size_t i=0;i<12;++i) {
+                const double dq_err=std::abs(h.joints[i].feedback.q-stand_goal_[i]);
+                const double dv=std::abs(h.joints[i].feedback.dq);
+                if(dq_err>worst_q) {worst_q=dq_err;worst_i=static_cast<int>(i);}
+                worst_dq=std::max(worst_dq,dv);
+            }
+            char buf[160];
+            std::snprintf(buf,sizeof buf,
+                "尚未就绪：站立尚未稳定（最差关节 %d 位置误差 %.3f rad，最大速度 %.3f rad/s；容差 %.2f/%.2f）",
+                worst_i,worst_q,worst_dq,c_.settings.position_tolerance,c_.settings.velocity_tolerance);
+            return buf;
+        }
         change(Mode::PPO,"PPO",now);return "进入PPO，等待有效推理结果";
     }
-    return {};
+    if(digit==1) return std::string("当前状态 ") + name() + " 不能进 PPO（先按 0 站起，等进入 StandHold 后再按 1）";
+    return std::string("当前状态 ") + name() + " 不接受指令 " + std::to_string(digit);
 }
 void RobotFSM::fault(const std::string& error,Clock::time_point now) {
     if(mode_==Mode::Fault) return;

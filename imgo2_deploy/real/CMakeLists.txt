@@ -103,6 +103,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(go_pd_demo PRIVATE go_motor_array)
     add_executable(go_stand stand_main.cpp)
     target_link_libraries(go_stand PRIVATE go_motor_array go_stand_fsm)
+    # 单事务诊断：按一次键发一条全零指令，打印 flush/write/reply 三段耗时
+    add_executable(single_monitor single_monitor.cpp)
+    target_link_libraries(single_monitor PRIVATE go_motor_array)
   endif()
   if(BUILD_TESTING)
     add_executable(test_shared_serial tests/test_shared_serial.cpp)
@@ -250,11 +253,7 @@ if(GO_IMU_BUILD_RL)
   add_executable(rl_real_imgo2 rl_real_imgo2.cpp apps/log_writer.cpp)
   target_link_libraries(rl_real_imgo2 PRIVATE go_policy_runner)
   # Keep the external runtime discoverable after installation; sibling lib also permits packaging it.
-  # CMake filters in-source runtime directories out of implicit install RPATH.
-  # Keep the selected external LibTorch explicitly, and prefer a packaged sibling lib/.
-  set_target_properties(rl_real_imgo2 fsm_check PROPERTIES
-    INSTALL_RPATH "$ORIGIN/../lib;${TORCH_INSTALL_PREFIX}/lib"
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
+  set_target_properties(rl_real_imgo2 fsm_check PROPERTIES INSTALL_RPATH "$ORIGIN/../lib" INSTALL_RPATH_USE_LINK_PATH TRUE)
   foreach(app rl_real_imgo2 fsm_check)
   add_custom_command(TARGET ${app} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/policy $<TARGET_FILE_DIR:${app}>/policy

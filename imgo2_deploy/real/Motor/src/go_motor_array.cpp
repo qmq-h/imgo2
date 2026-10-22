@@ -51,7 +51,8 @@ struct GoMotorArray::Worker
 GoMotorArray::GoMotorArray(RobotConfig config)
     : limits_(std::move(config.limits)), baud_(config.baud),
       io_timeout_us_(config.io_timeout_us), command_timeout_ms_(config.command_timeout_ms),
-      period_(config.period), watchdog_(config.watchdog)
+      period_(config.period), watchdog_(config.watchdog),
+      pipeline_(config.pipeline), pipeline_gap_us_(config.pipeline_gap_us)
 {
     if (command_timeout_ms_ == 0 || command_timeout_ms_ > 60000)
         throw std::invalid_argument("command timeout must be 1..60000 ms");
@@ -285,6 +286,7 @@ bool GoMotorArray::initWorker(Worker &worker, std::size_t bus_index)
         worker.bus.reset(
             new go::GoBus(worker.config.device, baud_, io_timeout_us_, command_timeout_ms_));
         worker.bus->bindStopFlag(&unload_requested_);
+        worker.bus->setPipelined(pipeline_, std::chrono::microseconds(pipeline_gap_us_));
         worker.bus->attachTrace(&trace_, bus_index); // 逐事务埋点（诊断用，不影响时序）
         for (size_t i = 0; i < worker.config.motor_ids.size(); ++i)
             worker.motors.push_back(&worker.bus->addMotor(worker.config.motor_ids[i],

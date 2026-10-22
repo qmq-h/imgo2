@@ -35,6 +35,18 @@ public:
      */
     GoBus& operator=(const GoBus&) = delete;
     void bindStopFlag(const std::atomic<bool>* flag) { external_stop_ = flag; }
+    /**
+     * 切换一轮的收发方式（必须在 open() 之前调用）：
+     *   false（默认）= 逐台"发送→等应答→下一台"，半双工最保守；
+     *   true          = 先连发本总线全部命令（相邻间隔 gap），再按 ID 收全部应答。
+     * 间隔下限受"命令 43µs + 电机换向 ~10µs + 应答 40µs"约束，建议 >=100µs。
+     * 任何一台没收到/反馈不健康，仍然和逐台模式一样锁故障并逐台卸力。
+     */
+    void setPipelined(bool on, std::chrono::microseconds gap = std::chrono::microseconds(150)) {
+        if (isOpen()) return; // 只允许打开前切换，避免运行中改语义
+        pipelined_ = on;
+        if (gap.count() > 0) gap_ = gap;
+    }
     TransportStats transportStats() const { return stats_; }
     /**
      * 诊断埋点（只记录，不改变控制与超时行为）：每次 exchange() 记一条 TraceRecord。
@@ -42,10 +54,14 @@ public:
      */
     void attachTrace(TransactionTrace* trace, std::size_t bus_index) { trace_ = trace; trace_bus_ = static_cast<unsigned>(bus_index); }
     /**
-     * 最近一轮 cycle() 的三段耗时累计（µs，含该轮的卸载重试）。只在诊断/日志里用，
-     * 不参与任何判决；每次 cycle() 开头清零。
+     * 最近一轮 cycle() 的分段耗时（µs，含该轮的卸载重试）。只在诊断/日志里用，不参与判决；
+     * 每次 cycle() 开头清零。
+     *   逐台模式：flush/write/reply 分别为各台事务的累计，first 为首字节等待累计；
+     *   流水线模式：flush 只有一次，write 为各条写入合计，first 为"开始发送→第一个应答字节"，
+     *               reply 为"最后一条写完→全部收齐"（即一个芯片攒包周期的量级）。
      */
     std::uint32_t roundFlushUs() const { return round_flush_us_; }
+    std::uint32_t roundFirstUs() const { return round_first_us_; }
     std::uint32_t roundWriteUs() const { return round_write_us_; }
     std::uint32_t roundReplyUs() const { return round_reply_us_; }
     // Throws invalid_argument for invalid/duplicate ID or offset; logic_error if open.
@@ -113,6 +129,11 @@ private:
      * 返回 true 只代表得到可解析的目标 ID 反馈，健康检查由 cycle() 负责。
      */
     bool exchange(GoMotor& motor, bool zero);
+    bool cyclePipelined();
+    bool applyFeedback(GoMotor& motor, Feedback next);
+    void traceRound(const GoMotor& motor, std::uint64_t start_ns, bool ok,
+                    std::uint32_t waited_us, std::uint16_t bytes,
+                    std::uint16_t bad, std::uint16_t stray);
     /**
      * 内部保留总线首次故障原因 reason，并锁定本总线所有电机、清除活动命令。
      * 不执行串口操作；调用方随后使用 unloadOnce() 尝试卸力。
@@ -139,5 +160,8 @@ private:
     TransactionTrace* trace_ = nullptr; // 诊断埋点，可为空
     unsigned trace_bus_ = 0;
     std::uint32_t round_flush_us_ = 0, round_write_us_ = 0, round_reply_us_ = 0;
+    std::uint32_t round_first_us_ = 0;
+    bool pipelined_ = false;
+    std::chrono::microseconds gap_{150};
 };
 }

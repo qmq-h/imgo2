@@ -6,6 +6,28 @@ namespace go_display {
 using PortState=go::DiagnosticBus;
 using MotorState=go::DiagnosticMotor;
 double toLogical(const MotorState& motor,double raw) { return motor.direction*(raw-motor.offset); }
+namespace {
+long long sumErrorRounds(const std::vector<PortState>& states) {
+    long long n = 0;
+    for (const auto& s : states) n += s.errorRounds;
+    return n;
+}
+long long sumErrorCount(const std::vector<PortState>& states) {
+    long long n = 0;
+    for (const auto& s : states) n += static_cast<long long>(s.errorSeq);
+    return n;
+}
+// 最近一条错误（来自错误序号最大的那条总线），按长度截断
+std::string latestError(const std::vector<PortState>& states, size_t max_len) {
+    const PortState* worst = nullptr;
+    for (const auto& s : states)
+        if (!worst || s.errorSeq > worst->errorSeq) worst = &s;
+    if (!worst || worst->errors.empty()) return {};
+    std::string text = worst->device + " " + worst->errors.back();
+    if (text.size() > max_len) text = text.substr(0, max_len) + "...";
+    return text;
+}
+} // namespace
 void append(std::string& output, const char* format, ...) {
     va_list args, copy;
     va_start(args, format);
@@ -49,8 +71,13 @@ void printBusLine(std::string& screen, const PortState &state)
         if (motor.timeoutCount)
             append(screen, " TO%llu", (unsigned long long)motor.timeoutCount);
     }
-    append(screen, "  [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
-           (unsigned long long)state.timeoutTotal);
+    if (state.roundSent > 0)
+        append(screen, "  [流水线 发%.2f/收%.2fms 收齐%d/%d 缺%d 重复%d 错轮%lld]\n",
+               state.sendMs, state.replyMs, state.roundGot, state.roundSent,
+               state.roundMissing, state.roundDuplicate, state.errorRounds);
+    else
+        append(screen, "  [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
+               (unsigned long long)state.timeoutTotal);
 }
 
 void RenderMonitor(const std::vector<PortState> &states, long long refresh,
@@ -73,8 +100,12 @@ void RenderMonitor(const std::vector<PortState> &states, long long refresh,
                            unsigned(motor.feedback.error));
                 else append(screen, " ID%d --x%llu", motor.id, (unsigned long long)motor.timeoutCount);
             }
-            append(screen, " [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
-                   (unsigned long long)state.timeoutTotal);
+            if (state.roundSent > 0)
+                append(screen, " [发%.1f/收%.1f 缺%d 错%d]\n", state.sendMs, state.replyMs,
+                       state.roundMissing, state.errorRounds);
+            else
+                append(screen, " [轮 %.1f/%.1fms TO=%llu]\n", state.sweepMs, state.sweepMaxMs,
+                       (unsigned long long)state.timeoutTotal);
         }
         {
             uint64_t timeouts = 0; size_t bad = 0; double worst = 0;
@@ -83,8 +114,11 @@ void RenderMonitor(const std::vector<PortState> &states, long long refresh,
                 bad += state.badFrames;
                 worst = std::max(worst, state.sweepMaxMs);
             }
-            append(screen, "合计 超时=%llu 次, 坏帧=%zu, 最坏单轮=%.2fms, 单次预算=%.1fms\n",
-                   (unsigned long long)timeouts, bad, worst, timeout_us / 1000.0);
+            append(screen, "合计 超时=%llu 坏帧=%zu 最坏轮=%.2fms 错轮=%lld",
+                   (unsigned long long)timeouts, bad, worst, sumErrorRounds(states));
+            const std::string err = latestError(states, 36);
+            if (!err.empty()) append(screen, " 最后: %s", err.c_str());
+            append(screen, "\n");
         }
         display.Show(screen + imu_sensor::MonitorPanel(imu, config));
         return;
@@ -112,8 +146,12 @@ void RenderMonitor(const std::vector<PortState> &states, long long refresh,
         worst = std::max(worst, state.sweepMaxMs);
     }
     append(screen, "\n  合计: 收到 %zu 字节，坏帧 %zu，非请求 ID 帧 %zu | 超时 %llu 次"
-                   "（单次预算 %.1f ms，最坏单轮 %.2f ms）\n",
-           bytes, bad, stray, (unsigned long long)timeouts, timeout_us / 1000.0, worst);
+                   "（单次预算 %.1f ms，最坏单轮 %.2f ms）| 流水线错轮 %lld，错误 %lld 条\n",
+           bytes, bad, stray, (unsigned long long)timeouts, timeout_us / 1000.0, worst,
+           sumErrorRounds(states), sumErrorCount(states));
+    const std::string last = latestError(states, display.Columns() > 30 ? display.Columns() - 12 : 40);
+    if (!last.empty()) append(screen, "  最后错误: %s\n", last.c_str());
+    else append(screen, "  最后错误: 无\n");
     display.Show(screen + imu_sensor::MonitorPanel(imu, config));
 }
 

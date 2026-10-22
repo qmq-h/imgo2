@@ -279,6 +279,8 @@ private:
     size_t command_timeout_ms_;
     std::chrono::microseconds period_;
     std::chrono::milliseconds watchdog_;
+    bool pipeline_ = true;
+    std::uint32_t pipeline_gap_us_ = 150;
     std::chrono::milliseconds start_timeout_{5000}; // start() 等启动探测的上限
     TransactionTrace trace_; // 诊断埋点：各总线线程写入，停机/故障时读
 

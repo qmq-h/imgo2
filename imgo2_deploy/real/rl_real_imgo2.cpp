@@ -1,3 +1,23 @@
+/* ----------------------------------------------------------------------------
+ * 用法
+ *   ./rl_real_imgo2 [参数]
+ *   真机部署：读可执行文件旁的 config/deployment.yaml 与 policy/ppo/config.yaml。
+ *
+ * 参数（默认值）
+ *   --config <yaml>     部署配置（默认 <exe 目录>/config/deployment.yaml）
+ *   --policy-dir <dir>  策略目录，下含 ppo/config.yaml（默认 policy）
+ *   --check-policy      只校验策略/配置，不打开硬件
+ *   --log               写日志：robot.csv(200Hz) / policy.csv(50Hz) / events.log / meta.json / trace
+ *   --log-dir <dir>     日志根目录（默认 ./log）
+ *   --log-every <N>     每 N 个控制拍写一行（默认 1=200Hz，2=100Hz）
+ *   --log-max-mb <N>    robot.csv 超过 N MB 切分（默认 200，0=不切）
+ *   --bus-stats         每秒打印每总线耗时/线程最坏值/IMU age（--log 会自动开）
+ *   --trace <前缀>      逐事务时间线（--log 会自动开）
+ *   --help
+ *
+ * 键盘：0 站起 / 1 PPO / 2 占位 / 9 趴下 / WASDQE 即时速度 / 空格清零 / Ctrl+C 退出
+ * 安全：任何 Fault、看门狗、9、Ctrl+C 都是力矩归零（会塌），测试时必须吊住/托住。
+ * ---------------------------------------------------------------------------- */
 #include "apps/runtime.h"
 #include "apps/deployment_paths.h"
 #include "apps/deployment_input.h"

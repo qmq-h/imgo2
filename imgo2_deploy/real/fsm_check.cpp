@@ -1,3 +1,11 @@
+/* ----------------------------------------------------------------------------
+ * 用法
+ *   ./fsm_check [--policy-dir dir] [--config file] [--duration 秒]
+ *               [--imu-rpy roll,pitch,yaw(deg)] [--imu-gyro x,y,z(rad/s)]
+ *   纯软件：模拟反馈走一遍 FSM / 键盘 / PPO，不打开任何硬件。
+ *   0/1/2/9 + 回车 = 站起 / PPO / 占位 / 趴下；WASDQE 速度；空格清零；Ctrl+C 退出。
+ *   duration=0 表示一直跑；IMU 默认用实测姿态 (1.076,-1.613,-76.094)°，水平用 --imu-rpy 0,0,0。
+ * ---------------------------------------------------------------------------- */
 #include "apps/runtime.h"
 #include "apps/deployment_input.h"
 #include "apps/deployment_paths.h"

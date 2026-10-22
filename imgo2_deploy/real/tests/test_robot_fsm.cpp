@@ -23,9 +23,11 @@ int main(int argc,char** argv) {
     CHECK(loaded.crouch_pose==crouch_expected);
     RobotAdapter adapter(d.policy_to_hardware);const auto t=Clock::time_point{};
     go_fsm::RobotFSM locked(p,d,motor,adapter,initial,t);auto h=hardware(initial);
-    CHECK(locked.update(h,{},t).kp[0]==60);CHECK(locked.request(1,h,t).empty());
+    CHECK(locked.update(h,{},t).kp[0]==60);
+    // 现在 request() 不再静默：任何被拒绝的按键都会返回原因，但状态不能变。
+    CHECK(!locked.request(1,h,t).empty() && locked.mode()==Mode::InitialHold);
     CHECK(!locked.request(0,h,t).empty());CHECK(locked.mode()==Mode::Standing);
-    CHECK(locked.request(9,h,t).empty());
+    CHECK(!locked.request(9,h,t).empty() && locked.mode()==Mode::Standing);
     auto end=locked.update(h,{},t+std::chrono::seconds(8));CHECK(locked.mode()==Mode::StandHold && end.q==p.default_pose);
     CHECK(locked.request(1,hardware(p.default_pose),t+std::chrono::seconds(9)).find("PPO锁定")!=std::string::npos);
     CHECK(!locked.request(2,h,t).empty() && locked.mode()==Mode::StandHold);
@@ -48,7 +50,7 @@ int main(int argc,char** argv) {
     down=fsm.update(h,{},end_time+std::chrono::milliseconds(220));
     CHECK(fsm.mode()==Mode::Passive && down.q==initial && down.kp[0]==0 && down.kd[0]==0);
     fsm.update(h,{},end_time+std::chrono::seconds(1));CHECK(fsm.mode()==Mode::Passive);
-    CHECK(fsm.request(1,h,end_time).empty());
+    CHECK(!fsm.request(1,h,end_time).empty() && fsm.mode()==Mode::Passive);
     CHECK(!fsm.request(0,h,end_time+std::chrono::seconds(1)).empty());
     CHECK(fsm.mode()==Mode::Standing);
     CHECK(fsm.update(h,{},end_time+std::chrono::seconds(1)).kp[0]==0);
@@ -58,7 +60,7 @@ int main(int argc,char** argv) {
     r.generation=timeout.generation()-1;r.generated=enter+std::chrono::milliseconds(50);
     timeout.update(h,r,r.generated);CHECK(timeout.mode()==Mode::PPO);
     timeout.update(h,r,enter+std::chrono::milliseconds(100));CHECK(timeout.mode()==Mode::Fault);
-    CHECK(timeout.request(0,h,enter).empty());
+    CHECK(!timeout.request(0,h,enter).empty() && timeout.mode()==Mode::Fault);
     go_fsm::RobotFSM invalid_imu(p,d,motor,adapter,initial,t);
     auto broken=hardware(initial);broken.imu.data.quaternion[0]=0;
     invalid_imu.update(broken,{},t);CHECK(invalid_imu.mode()==Mode::Fault);
