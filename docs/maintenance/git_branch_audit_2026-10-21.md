@@ -80,3 +80,35 @@ reflog显示10月14日10:58从origin/main的4d66f2c开始rebase，13:42完成。
 已完成：独立副本真实merge预演、未合并索引清单、自动变更diff、策略哈希和类型变更检查，见[JSON](git_merge_preview_2026-10-22.json)。原仓库HEAD/暂存区/合并状态不变；仅按维护约定写入记录。
 
 待处理：先审查并保存当前未提交产物，再在正式审查分支merge --no-commit --no-ff；人工决定5项冲突与自动变更的取舍，模型生成物与源一致性、资源路径、策略来源及ROS包软链验证后才提交合并。不能把临时预演当正式合并/部署验证。合并提交将同时保留两条历史，正常push可用；审查分支完成后原real可ff-only跟进，不需要force。若中止正式未提交merge可merge --abort，但开始前必须先保存工作区。
+
+
+## 8. 2026-10-22正式审查分支continue受阻的只读检查
+
+当前在xiaoji/merge_real_review，实际merge尚未完成。Git索引仍有3项未解决：README.md、real.gazebo.urdf、real.urdf。工作文件README与real.gazebo.urdf仍有真实<<<<<<< /======= />>>>>>>标记；real.urdf未发现标记且XML可解析，但尚未git add标记解决。
+
+已暂存的core.xacro与assets/imgo2.py也不能视为合并正确：core新增6处inertial重复origin/mass/inertia；assets出现重复关键字及相邻重复gains块，当前文本存在Python语法问题。没有自行清除重复或还原文件。前述AMP策略替换、package.xml软链转普通文件及旧文档复现仍在暂存区，继续需审查。
+
+已完成：status、ls-files -u、工作区/暂存区diff检查、XML解析与重复节点检查。待修：清理残留标记、确认完整current取舍、去除重复并验证，然后显式stage解决文件，最后审查自动合并项。未执行add/restore/commit/continue/push；用户正在手工处理冲突，未编辑仍冲突中的根README，维护入口更新待冲突解决后补齐。本节仅新增审查记录，不自动暂存。
+
+
+### 第8节后续复查
+
+用户再次询问状态。当前HEAD为438b845，仍在merge_real_review合并中。README已无标记且已暂存；两份real URDF工作文件均无标记、XML可解析、未发现重复inertial子节点，但索引仍未解决，需要确认内容后git add。core的6处inertial重复仍在；assets compile(...,'exec')静态语法检查失败于第68行；package.xml仍是普通文件且XML解析失败。AMP仍为21e7ae...，不同于当前HEAD中的策略，旧4篇文档仍待审查。不能continue/提交为合并正确。仅更新本记录，未改模型/代码、未暂存/提交；根README正在用户合并审查中，避免插入额外工作区改动。
+
+
+## 9. 正式merge已提交，但文件正确性复查未通过
+
+用户询问能否继续。当前merge_real_review HEAD=dddf956，父节点438b845与1c6f6c9，合并操作已经完成，无unmerged paths，不需要merge --continue。原real仍在438b845。工作区原有本记录未暂存修改。
+
+只读复查：5个原冲突文件均无标记，两份real URDF XML解析通过；但core.xacro仍有6处重复inertial子项，assets/imgo2.py第68行附近compile语法失败，package.xml仍非软链且XML解析失败。三项问题已包含在dddf956合并提交中。旧AMP策略21e7ae...及旧4篇文档也仍在合并结果。git diff --check通过只表示当前差异无该类格式问题，不表示已提交代码正确。
+
+已完成：确认合并提交和父链、残留标记/语法/XML/策略哈希复查。待修：上述三项内容错误、策略/文档取舍；修复后追加普通提交并验证，再让原real快进与正常push。未修改代码/配置/模型，未暂存或提交/推送；本轮仅同步维护状态。
+
+
+## 10. 恢复操作后检查通过，等待修复提交与同步
+
+用户已按步骤恢复。当前仍在merge_real_review，HEAD dddf956；8项预期恢复已暂存。core/assets/package.xml/AMP与合并前438b845逐字节或软链目标一致；core及两份real URDF XML解析通过且无重复inertial子节点；assets compile语法通过；package.xml已恢复软链且目标XML有效；AMP回到cba59d44...；旧4篇文档副本不存在，迁移后文档仍在各主题目录。无未解决冲突，工作区/暂存区diff格式检查通过，tracked ignored为空。
+
+将暂存树与438b845比较，除README新增2行导航外，其余文件一致；说明本次恢复没有额外改动部署代码。该导航仍指向已删除的docs/isaaclab_basics_2026-09-24.md，已在README工作文件修正为已存在的docs/training/isaaclab_basics_2026-09-24.md，并更新维护状态，未自动暂存。
+
+已修复且完成对应静态验证：合并引入的重复代码/模型子项、包描述类型、策略回退和旧文档复现。待完成：将README及本记录的未暂存更新一并提交修复，再让原real快进及普通push；未执行上述Git写操作。恢复只回到此前代码，未重新构建、训练、运行仿真或硬件，不宣称既有部署振荡问题已解决。

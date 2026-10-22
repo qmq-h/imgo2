@@ -115,7 +115,7 @@ Imgo2 自己的 checkpoint，**2026-09-18 已确认**：45 维 actor 正式导�
 
 ## 3. 代码阅读导航
 
-首次学习 Isaac Lab：先读 [仿真最小结构与运行链路](docs/isaaclab_basics_2026-09-24.md)，区分模型资源、资产配置、环境和算法。
+首次学习 Isaac Lab：先读 [仿真最小结构与运行链路](docs/training/isaaclab_basics_2026-09-24.md)，区分模型资源、资产配置、环境和算法。
 
 理解 `imgo2_rl` 的目录、配置继承、采样更新循环和启动步骤：先读 [RL 工程阅读与运行指南](docs/training/rl_structure_guide_2026-10-10.md)。
 常用 AMP 导出、Gazebo、从头训练、续训和 Isaac Sim 回放命令见用户维护的 [command.md](command.md)；使用前替换跨机器路径，命令核对范围见 [填写记录](docs/maintenance/command_guide_2026-10-11.md)。
@@ -722,7 +722,7 @@ ctest --test-dir imgo2_deploy/real/build_layout --output-on-failure
 | DEPLOY-IMU-01 | P2 | 200Hz IMU及gyro白噪声对照已实跑；源生成不一致与动态误差待确认 | 当前15/.5、base6kg，两组50秒PPO实测约200Hz，无倾倒停止；gyro.005对照结束零指令摆动更明显、两组偏航。正式文件未改，见 [结果](docs/deployment/imu200_noise_validation_2026-10-21.md) | Xacro仍100Hz、real生成URDF200Hz，需确认用户模型改动后同步源；未测姿态融合/延迟、横移/yaw和硬件，不据白噪声对照排除实机IMU |
 | DEPLOY-FREQ-01 | P1 | 当前配置与338秒频率已离线核对；执行链路差异与长尾待处理 | 本次Gazebo外层配置200Hz、实际命令接收约176Hz；时序差异待修/确认 | 归档复算及LoopFunc整毫秒截断线索见 [10月22日复核](docs/deployment/forward_sim_real_2026-10-22.md#后续复核配置200hz不等于本次实测200hz)。已实现ROS2附加延迟配置并短测通过，见 [延迟接口](docs/deployment/gazebo_feedback_delay_2026-10-21.md)；长时单变量试验待做。需旧权重原训练配置、完整安全trace/实际推理输入和IMU时标，以及电机内部PD资料；先分解通信长尾，再评估200Hz执行，不能直接改7ms为5ms声称对齐；未修运动颤抖 |
 | DEPLOY-TIME-01 | P1 | 旧串行等待已被新批量链路改善；偶发长尾仍待定位 | 新5ms批量日志body中位约2.13ms、关节年龄中位2ms，末尾仍20ms超时/48字节；缺新源码及埋点语义，见 [新记录](docs/deployment/imu_hip_new_log_2026-10-21.md)。旧版82.5µs只是33字节的线速下限；日志bus0整轮中位5.020ms、P99 10.056ms，7ms配置周期不能当200Hz反馈；小电脑usbmon原始数据未上传，1.592ms为转述。见 [复审§2](docs/deployment/go_imu_timing_vibration_review_2026-10-20.md#2-4mbps-为什么没有得到80微秒事务) | 已获A/B截图候选约100µs但4MHz采样/未解码，待高采样率确认；仍需原始USB/内核记录、适配器及驱动信息和单变量替换对照；不能认定电机或桥接唯一根因，不削弱超时/故障锁定 |
-| GIT-REAL-01 | P2 | rebase导致同名分支62/6分叉，已核对，待同步 | 本地fd9e30e、远端1c6f6c9；旧提交有重放/主要内容保留依据，见 [Git核对](docs/maintenance/git_branch_audit_2026-10-21.md) | 用户决定保存旧远端历史后以lease更新，或保留两图合并；隔离merge预演有5冲突及自动变更，正式审查/合并未执行，最新main另有10提交未合入；维护记录未提交 |
+| GIT-REAL-01 | P2 | 审查分支merge恢复检查通过，修复待提交/云端待同步 | core/assets/package/AMP均与438b845一致；语法/XML/软链、重复节点检查通过；旧副本已移除，README导航路径已修，见 [验证](docs/maintenance/git_branch_audit_2026-10-21.md#10-恢复操作后检查通过等待修复提交与同步) | 提交已暂存恢复与维护文档后，让原real快进并正常push；未重跑构建/仿真/硬件，部署振荡仍待解决 |
 | DEPLOY-DIAG-01 | P1 | 上传诊断代码存在观测配对与trace并发问题，尚未修改 | policy.csv重算obs而非记录实际推理输入，obs_age全0不能当零延迟；trace在线程仍写ring时快照缺少安全发布。已离线复现完整好帧越deadline也可出现bytes16/bad0/stray0，不能凭此认定错位。见 [复审§4](docs/deployment/go_imu_timing_vibration_review_2026-10-20.md#4-诊断代码中发现的限制尚未修改) | 已出现历史目标7.5–10ms更能解释新估算力矩的对齐线索，见 [动态复核](docs/deployment/joint_feedback_dynamics_2026-10-21.md)，不等于USB时延；待新批量源码及实际命令应用时标；分段确定方法见 [测量方案](docs/deployment/command_feedback_identification_plan_2026-10-21.md)。待授权修实际推理输入/采样时间戳记录与稳定trace导出，并回归验证；deadline仅需澄清错误分类，保留迟到故障安全语义；并发风险未跑TSan，不声称它导致运动抖动 |
 | DEPLOY-12 | P2 | 已源码定位，待修复 | 推理持续向output_dof_tau_queue入队，全仓未找到消费；当前Gazebo RLControl发送目标角/PD且tau_ff=0，这份队列未用于驱动，见 [代码指南](docs/deployment/sim2sim_gazebo_code_guide_2026-10-12.md#7-已修复与待确认) | 明确或移除无用队列，验证控制输出保持一致与长时未消费数据不再累积；本轮未修改/运行测量 |
 | DEPLOY-11 | P1 | 启动姿态已源码归因，初始化改进待验证 | 世界先无主动姿态控制落地；rl_sim启动发送reset_world再次回到z=.5；初始Passive为kp=0/kd=8，无固定趴姿。已补说明，未修改初始化，见 [排查](docs/deployment/gazebo_startup_posture_2026-10-12.md) | 核对启动/重置/按0起身的位姿、关节与FSM时序；验证受控初始化后不会翻倒，再按3评估策略 |
@@ -878,6 +878,8 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-10-22 | **用户恢复合并误改后验证通过** | core/assets/package/AMP与合并前一致，语法/XML/软链/重复节点检查通过，旧文档副本已移除；修正README旧导航。修复尚待提交、原分支快进及push；未运行硬件，见 [验证](docs/maintenance/git_branch_audit_2026-10-21.md#10-恢复操作后检查通过等待修复提交与同步) |
+| 2026-10-22 | **确认审查分支merge已提交，但3项内容错误仍在** | dddf956无未解决冲突；静态复查发现core重复、assets语法失败、package.xml无效，尚不能判合并可用。未改代码/模型或推送，见 [复查](docs/maintenance/git_branch_audit_2026-10-21.md#9-正式merge已提交但文件正确性复查未通过) |
 | 2026-10-21 | 核对PPO增益YAML修改的生效方式 | 当前20/.5及编译POLICY_DIR、PPO Enter→InitRL→ReadYaml链路确认；重进PPO即可读取，无需重编译，起身仍用fixed增益。仅源码配置核对，未运行20/.5策略，步态待确认，见 [说明](docs/deployment/deploy_layout_migration_2026-10-20.md#7-2026-10-21修改ppo的rl_kprl_kd如何生效) |
 | 2026-10-21 | 修复ros2_ws迁移后source报四个local_setup缺失 | 确认旧绝对软链/缓存，保留旧输出后colcon四包重建；source、四包前缀、launch参数/动态库及无界面spawn/Passive启动通过，已停止进程。未改参数/模型/策略，未测试本次策略运动/GUI，见 [记录](docs/deployment/deploy_layout_migration_2026-10-20.md#6-2026-10-21四个local_setup缺失的实际修复) |
 | 2026-10-22 | **隔离副本预演real历史merge，发现5项冲突及自动回退风险** | 临时clone实际merge：README/2份URDF/core/assets冲突；旧文档复现、AMP策略替换、package.xml软链变普通文件须人工审查。正式仓库未merge/切分支/提交；取舍与验证待完成，见 [预演](docs/maintenance/git_branch_audit_2026-10-21.md#7-2026-10-22用户选择逐项审查merge隔离预演结果) |
