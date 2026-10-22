@@ -1,0 +1,18 @@
+{
+  "preview_directory": "/tmp/imgo2_merge_preview_xm78dgzz/repo",
+  "merge_exit_code": 1,
+  "status": "UU README.md\nA  docs/amp_viewing_2026-09-24.md\nA  docs/git_fetch_proxy_2026-10-07.md\nA  docs/isaaclab_basics_2026-09-24.md\nA  docs/rebase_main_2026-10-07.md\nM  imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt\nT  imgo2_description/package.xml\nAA imgo2_description/urdf/imgo2_real.gazebo.urdf\nAA imgo2_description/urdf/imgo2_real.urdf\nUU imgo2_description/xacro/core.xacro\nUU imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py\n",
+  "conflicts": [
+    "README.md",
+    "imgo2_description/urdf/imgo2_real.gazebo.urdf",
+    "imgo2_description/urdf/imgo2_real.urdf",
+    "imgo2_description/xacro/core.xacro",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py"
+  ],
+  "scope": "Committed HEAD fd9e30e versus fetched origin/xiaoji/imgo2_real 1c6f6c9; temporary shared clone only; current uncommitted files excluded",
+  "automatic_changes_requiring_review": [
+    "4 old docs paths reappear",
+    "AMP policy changes cba59d44e387834ea11983b7489f4fd0351ddba8e8eba3c41e6713e33b520c54 -> 21e7ae53091f83ffc62eb465fd2db413acd3e063db51353db4d71b81fee77a29",
+    "imgo2_description/package.xml changes symlink to plain file containing package.ros2.xml"
+  ]
+}

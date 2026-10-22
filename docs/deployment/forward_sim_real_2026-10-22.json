@@ -1,0 +1,324 @@
+{
+  "real_log": "imgo2_deploy/real/build/log/2026-10-21_17-10-15_9557",
+  "real_window_s": [
+    78.682762,
+    80.942405
+  ],
+  "sim_window_ppo_s": [
+    14.0,
+    16.259642999999997
+  ],
+  "duration_s": 2.259642999999997,
+  "sim_state_samples": 2260,
+  "sim_imu_samples": 452,
+  "real_samples": 453,
+  "command": [
+    0.5,
+    0,
+    0
+  ],
+  "gains": [
+    25,
+    0.5
+  ],
+  "alignment": "independent window starts; no gait phase or lag fitting",
+  "contact": "real lift/contact unlabelled",
+  "joints": {
+    "FL 髋": {
+      "q_std": {
+        "sim": 0.013745276653375564,
+        "real": 0.03781886490096263
+      },
+      "dq_rms": {
+        "sim": 0.421078710208934,
+        "real": 1.2483209785600997
+      },
+      "tau_rms": {
+        "sim": 2.362969748235179,
+        "real": 2.7548196481674365
+      },
+      "position_error_rms": {
+        "sim": 0.09310812730484555,
+        "real": 0.11754243656389586
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.22912887997995493,
+        "real": 1.3543195139851942
+      }
+    },
+    "FL 大腿": {
+      "q_std": {
+        "sim": 0.13704714767378376,
+        "real": 0.11022639382088598
+      },
+      "dq_rms": {
+        "sim": 2.4115088265011355,
+        "real": 2.2485342277813327
+      },
+      "tau_rms": {
+        "sim": 1.9183273711635371,
+        "real": 1.8888127254761204
+      },
+      "position_error_rms": {
+        "sim": 0.07128418527256275,
+        "real": 0.0911218323444021
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.2695556563934152,
+        "real": 1.0488013234099316
+      }
+    },
+    "FL 小腿": {
+      "q_std": {
+        "sim": 0.08370339929584378,
+        "real": 0.10525952042884523
+      },
+      "dq_rms": {
+        "sim": 2.432537456888268,
+        "real": 2.98652259963786
+      },
+      "tau_rms": {
+        "sim": 6.091506301078147,
+        "real": 5.865854345526829
+      },
+      "position_error_rms": {
+        "sim": 0.24971063825466044,
+        "real": 0.25487468277454717
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.719755196060616,
+        "real": 2.680344733208444
+      }
+    },
+    "FR 髋": {
+      "q_std": {
+        "sim": 0.01074128277002715,
+        "real": 0.03384907597912873
+      },
+      "dq_rms": {
+        "sim": 0.4170542307347661,
+        "real": 0.9053048988496838
+      },
+      "tau_rms": {
+        "sim": 2.6533287940557955,
+        "real": 2.3871547191169253
+      },
+      "position_error_rms": {
+        "sim": 0.10659231267419066,
+        "real": 0.10545054216572979
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.2179322007477087,
+        "real": 1.061662025650167
+      }
+    },
+    "FR 大腿": {
+      "q_std": {
+        "sim": 0.11820448329499661,
+        "real": 0.11858015554492443
+      },
+      "dq_rms": {
+        "sim": 2.0858536564011754,
+        "real": 2.710009813518517
+      },
+      "tau_rms": {
+        "sim": 2.0162910972175587,
+        "real": 2.7131900100590682
+      },
+      "position_error_rms": {
+        "sim": 0.07767820669323519,
+        "real": 0.12696798327634684
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.2629204257648112,
+        "real": 1.5829258693192136
+      }
+    },
+    "FR 小腿": {
+      "q_std": {
+        "sim": 0.06897313043815517,
+        "real": 0.09454781046695188
+      },
+      "dq_rms": {
+        "sim": 2.0851194583608446,
+        "real": 2.520735828096564
+      },
+      "tau_rms": {
+        "sim": 6.511242945019001,
+        "real": 5.667255154034195
+      },
+      "position_error_rms": {
+        "sim": 0.2682459188197323,
+        "real": 0.2375439254651365
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.7049438629798537,
+        "real": 2.3527615871831227
+      }
+    },
+    "RL 髋": {
+      "q_std": {
+        "sim": 0.020497839523356324,
+        "real": 0.04767359846093909
+      },
+      "dq_rms": {
+        "sim": 0.4492627283168477,
+        "real": 1.4748402468370219
+      },
+      "tau_rms": {
+        "sim": 2.265834524982581,
+        "real": 2.6429408999897923
+      },
+      "position_error_rms": {
+        "sim": 0.08874215420931571,
+        "real": 0.10895525656991652
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.21249426540163244,
+        "real": 1.206783611263778
+      }
+    },
+    "RL 大腿": {
+      "q_std": {
+        "sim": 0.12200466065607703,
+        "real": 0.13468163341182987
+      },
+      "dq_rms": {
+        "sim": 2.133361746245636,
+        "real": 2.6614078927922713
+      },
+      "tau_rms": {
+        "sim": 1.746252103654432,
+        "real": 3.0295088410448803
+      },
+      "position_error_rms": {
+        "sim": 0.08461204933129013,
+        "real": 0.14890927231673134
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.2910901774904262,
+        "real": 1.4624431419986808
+      }
+    },
+    "RL 小腿": {
+      "q_std": {
+        "sim": 0.06785516203787584,
+        "real": 0.08222610527188295
+      },
+      "dq_rms": {
+        "sim": 1.9456565250469242,
+        "real": 2.49141014218417
+      },
+      "tau_rms": {
+        "sim": 7.831642369863044,
+        "real": 7.207574420674302
+      },
+      "position_error_rms": {
+        "sim": 0.32072058950228793,
+        "real": 0.30020314655283137
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.7817946972955127,
+        "real": 2.5382270422388307
+      }
+    },
+    "RR 髋": {
+      "q_std": {
+        "sim": 0.022044838788629454,
+        "real": 0.03623040497387719
+      },
+      "dq_rms": {
+        "sim": 0.5207245265896694,
+        "real": 1.1987346520831275
+      },
+      "tau_rms": {
+        "sim": 2.3787072468683172,
+        "real": 2.9553578631556063
+      },
+      "position_error_rms": {
+        "sim": 0.09473683186901036,
+        "real": 0.11640774022704939
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.23124645068390742,
+        "real": 1.3013006158319547
+      }
+    },
+    "RR 大腿": {
+      "q_std": {
+        "sim": 0.133265965287925,
+        "real": 0.12554163535693333
+      },
+      "dq_rms": {
+        "sim": 2.4106407128756095,
+        "real": 2.511922460536707
+      },
+      "tau_rms": {
+        "sim": 1.3788907868796854,
+        "real": 2.1239429401006826
+      },
+      "position_error_rms": {
+        "sim": 0.07258728977915332,
+        "real": 0.11114799171388975
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.2925569330426193,
+        "real": 1.1196576280565553
+      }
+    },
+    "RR 小腿": {
+      "q_std": {
+        "sim": 0.07311890647889842,
+        "real": 0.08842961749372491
+      },
+      "dq_rms": {
+        "sim": 1.9224678045680548,
+        "real": 2.6769736292661372
+      },
+      "tau_rms": {
+        "sim": 6.835864917340027,
+        "real": 6.4889080233772685
+      },
+      "position_error_rms": {
+        "sim": 0.27642083174519555,
+        "real": 0.26753574977922817
+      },
+      "pd_feedback_residual_rms": {
+        "sim": 0.6848059065035329,
+        "real": 2.4263390077816376
+      }
+    }
+  },
+  "imu": {
+    "x": {
+      "sim_gyro_rms": 0.15954501519531958,
+      "real_gyro_rms": 1.1208985466695136,
+      "sim_rpy_std_deg": 0.30063851800700925,
+      "real_rpy_std_deg": 1.570318729850829
+    },
+    "y": {
+      "sim_gyro_rms": 0.0969832561332564,
+      "real_gyro_rms": 0.299353601667202,
+      "sim_rpy_std_deg": 0.22821296564678534,
+      "real_rpy_std_deg": 0.6118629847191773
+    },
+    "z": {
+      "sim_gyro_rms": 0.08585065489914771,
+      "real_gyro_rms": 0.08674033656122719,
+      "sim_rpy_std_deg": 0.5272786607745007,
+      "real_rpy_std_deg": 0.3390284541287972
+    }
+  },
+  "sim_body_vx_mean_mps": 0.4668311760051603,
+  "sim_body_vx_std_mps": 0.020350747891499658,
+  "input_sha256": {
+    "imgo2_deploy/real/build/log/2026-10-21_17-10-15_9557/robot.csv": "b5217d8cfd0b743844d4475c5891cdafb3ee5d8fc8bbec3d9a844502848fe7ee",
+    "/tmp/imgo2_forward_comparison_stamped_20261022/metadata.json": "fcb0511fc814cb07f690ff715cc30dedadf706628ceb3e20fc48fb1e4ea97dff"
+  },
+  "sim_time_basis": "IMU/odom header stamps; unstamped motor topics mapped from host arrivals by clock interpolation, not exact device sampling times",
+  "sim_command_match_host_age_ms": {
+    "median": 2.8757045001839288,
+    "max": 6.663141997705679
+  },
+  "real_context": ".2 to .5 command ramp in about .100s immediately before selected window; actual base speed and contact unknown; sim window is late steady command"
+}

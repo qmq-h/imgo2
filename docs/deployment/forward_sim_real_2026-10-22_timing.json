@@ -1,0 +1,80 @@
+{
+  "window_ppo_s": [
+    14,
+    16.259643
+  ],
+  "interpretation": "ROS receive cadence, not directly instrumented function execution or device sampling clock",
+  "sim": {
+    "command": {
+      "samples": 399,
+      "observed_host_hz": 176.43579705680625,
+      "interval_ms": {
+        "median": 5.6338385002163704,
+        "p95": 6.558906999998726,
+        "p99": 6.704260005790275,
+        "max": 7.071988002280705
+      },
+      "observed_sim_hz": 176.62256028285475
+    },
+    "target_value_changes": {
+      "samples": 109,
+      "observed_host_hz": 48.38986466567223,
+      "interval_ms": {
+        "median": 21.87383349883021,
+        "p95": 23.52582599996822,
+        "p99": 23.725980005110614,
+        "max": 24.12828300293768
+      }
+    },
+    "state": {
+      "samples": 2260,
+      "observed_host_hz": 999.0207920134311,
+      "interval_ms": {
+        "median": 1.0003839997807518,
+        "p95": 1.2444359963410534,
+        "p99": 1.3879719990654849,
+        "max": 2.3840450012357906
+      },
+      "observed_sim_hz": 1000.0802234985939
+    },
+    "imu": {
+      "samples": 452,
+      "observed_host_hz": 199.7795243797676,
+      "interval_ms": {
+        "median": 4.995260002033319,
+        "p95": 5.315768001310062,
+        "p99": 5.434781996882521,
+        "max": 5.512863004696555
+      },
+      "observed_sim_hz": 200.00000000000009
+    }
+  },
+  "real": {
+    "main_log_rows": {
+      "samples": 453,
+      "observed_host_hz": 200.0315979117058,
+      "interval_ms": {
+        "median": 4.999000000012188,
+        "p95": 6.547999999995113,
+        "p99": 7.607000000007247,
+        "max": 9.826000000003887
+      }
+    },
+    "target_value_changes": {
+      "samples": 113,
+      "observed_host_hz": 49.77547704461676,
+      "interval_ms": {
+        "median": 19.99899999999144,
+        "p95": 25.111000000009653,
+        "p99": 29.99700000000871,
+        "max": 30.00400000000525
+      }
+    }
+  },
+  "loop_source_sha256": "02d0cbd067be8c476a83fea9d7afaa7a3da619ed390d46c4d3df092a2fee4c4b",
+  "limits": [
+    "target value changes are not direct inference event timestamps",
+    "ROS receive jitter can differ from publisher scheduling",
+    "real per-motor feedback frequency cannot be obtained by counting repeated main snapshots"
+  ]
+}

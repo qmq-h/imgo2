@@ -1,0 +1,708 @@
+status	old_or_current_path	new_path_if_rename
+M	.gitignore
+M	AGENTS.md
+M	README.md
+A	command.md
+A	docs/amp/amp_25000_loss_and_standing_review_2026-10-13.md
+A	docs/amp/amp_4000_deploy_2026-10-12.md
+A	docs/amp/amp_air_time_reward_2026-10-10.md
+A	docs/amp/amp_air_time_style_2026-10-10.md
+R097	docs/amp_alignment_review.md	docs/amp/amp_alignment_review.md
+A	docs/amp/amp_collection_review_2026-10-11.md
+R100	docs/amp_config_cleanup_2026-09-22.md	docs/amp/amp_config_cleanup_2026-09-22.md
+R100	docs/amp_experiments_2026-09-17.md	docs/amp/amp_experiments_2026-09-17.md
+A	docs/amp/amp_feet_air_time_2026-10-10.md
+A	docs/amp/amp_foot_lift_review_2026-10-13.md
+R098	docs/amp_gait_adjust_plan_2026-09-18.md	docs/amp/amp_gait_adjust_plan_2026-09-18.md
+A	docs/amp/amp_low_speed_finetune_plan_2026-10-13.md
+A	docs/amp/amp_motion_new_training_2026-10-12.md
+A	docs/amp/amp_new_collection_preflight_2026-10-13.md
+A	docs/amp/amp_settings_review_2026-10-12.md
+A	docs/amp/amp_slow_gait_resume_review_2026-10-13.md
+A	docs/amp/amp_speed_coverage_2026-10-10.md
+R100	docs/amp_standstill_diagnosis_2026-09-17.md	docs/amp/amp_standstill_diagnosis_2026-09-17.md
+R100	docs/amp_stuck_diagnosis_todo.md	docs/amp/amp_stuck_diagnosis_todo.md
+R098	docs/amp_stuck_plan_for_review.md	docs/amp/amp_stuck_plan_for_review.md
+A	docs/amp/amp_timing_audit_2026-10-10.md
+A	docs/amp/amp_training_plateau_2026-10-10.md
+A	docs/amp/amp_velocity_range_2026-10-12.md
+R100	docs/amp_viewing_2026-09-24.md	docs/amp/amp_viewing_2026-09-24.md
+A	docs/amp/data/amp_25000_export_contract_2026-10-11.json
+A	docs/amp/data/amp_25000_gait_spectrum_2026-10-11.json
+A	docs/amp/data/amp_25000_gait_spectrum_repeat_2026-10-11.json
+A	docs/amp/data/amp_29000_export_contract_2026-10-10.json
+A	docs/amp/data/amp_4000_export_contract_2026-10-12.json
+A	docs/amp/data/amp_collection_dataset_real_fk_2026-10-11.json
+A	docs/amp/data/amp_collection_dataset_summary_2026-10-11.json
+A	docs/amp/data/amp_current_policy_identity_2026-10-13.json
+R100	docs/amp_data_audit.json	docs/amp/data/amp_data_audit.json
+A	docs/amp/data/amp_foot_clearance_comparison_2026-10-13.png
+A	docs/amp/data/amp_gazebo_isaac_direction_comparison_2026-10-13.json
+A	docs/amp/data/amp_low_speed_motion_inventory_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_contract_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_foot_clearance_04_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_foot_clearance_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_foot_clearance_target_clip_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_spectrum_2026-10-13.json
+A	docs/amp/data/amp_motion_new_25000_training_windows_2026-10-13.json
+A	docs/amp/data/amp_motion_new_direction_data_2026-10-13.json
+A	docs/amp/data/amp_motion_new_fk_2026-10-12.json
+A	docs/amp/data/amp_motion_new_reference_clearance_2026-10-13.json
+A	docs/amp/data/amp_motion_new_summary_2026-10-12.json
+A	docs/amp/data/amp_motion_new_training_2026-10-12.json
+A	docs/amp/data/amp_new_collection_directions_2026-10-13.json
+A	docs/amp/data/amp_new_collection_fk_2026-10-13.json
+A	docs/amp/data/amp_new_collection_manifest_2026-10-13.json
+A	docs/amp/data/amp_new_collection_model_physics_2026-10-13.json
+A	docs/amp/data/amp_new_collection_timing_2026-10-13.json
+A	docs/amp/data/amp_original24000_gait_spectrum_2026-10-11.json
+A	docs/amp/data/amp_reference_swing_proxy_2026-10-10.json
+A	docs/amp/data/amp_standing_response_comparison_2026-10-13.json
+A	docs/amp/data/amp_timing_audit_2026-10-10.json
+A	docs/amp/data/amp_training_plateau_2026-10-10.json
+A	docs/amp/data/amp_training_plateau_2026-10-10.png
+R100	docs/gait_eval_amp_24500.json	docs/amp/data/gait_eval_amp_24500.json
+R100	docs/gait_eval_amp_24500_vx0.6.json	docs/amp/data/gait_eval_amp_24500_vx0.6.json
+R100	docs/gait_eval_amp_24500_vx1.0.json	docs/amp/data/gait_eval_amp_24500_vx1.0.json
+R100	docs/gait_reference_baseline.json	docs/amp/data/gait_reference_baseline.json
+A	docs/amp/data/isaac_amp_motion_new_25000_directions_2026-10-13.json
+A	docs/amp/data/isaac_amp_motion_new_25000_feet_2026-10-13.json
+A	docs/amp/data/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json
+A	docs/amp/data/isaac_motion_new_standing_targets_2026-10-13.json
+A	docs/amp/data/isaac_xiaoji_real1_24000_direction_feet_2026-10-13.json
+A	docs/amp/data/isaac_xiaoji_real1_standing_targets_2026-10-13.json
+R096	docs/gait_eval_amp_24500_2026-09-18.md	docs/amp/gait_eval_amp_24500_2026-09-18.md
+A	docs/cmoe/.gitkeep
+A	docs/deployment/amp_engine_comparison_2026-10-14.json
+A	docs/deployment/amp_engine_comparison_2026-10-14.md
+A	docs/deployment/amp_engine_comparison_2026-10-14.png
+A	docs/deployment/command_feedback_identification_plan_2026-10-21.md
+A	docs/deployment/deploy_layout_migration_2026-10-20.md
+A	docs/deployment/deploy_layout_validation_2026-10-20.json
+A	docs/deployment/deployment_frequency_audit_2026-10-21.json
+A	docs/deployment/deployment_frequency_audit_2026-10-21.md
+A	docs/deployment/fsm_check_2026-10-15.md
+A	docs/deployment/fsm_check_neutral_2026-10-15.json
+A	docs/deployment/gazebo_amp_25000_2026-10-11.md
+A	docs/deployment/gazebo_amp_25000_compare_2026-10-11.json
+A	docs/deployment/gazebo_amp_29000_2026-10-10.md
+A	docs/deployment/gazebo_amp_29000_vx05_2026-10-10.json
+A	docs/deployment/gazebo_amp_29000_vx05_repeat_2026-10-10.json
+A	docs/deployment/gazebo_amp_clip_fix_comparison_2026-10-13.md
+A	docs/deployment/gazebo_amp_motion_new_25000_2026-10-13.md
+A	docs/deployment/gazebo_amp_motion_new_25000_baseline_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_baseline_high_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_default_disabled_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_foot_04_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_target_clip_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_target_only_2026-10-13.json
+A	docs/deployment/gazebo_amp_motion_new_25000_transition_2026-10-13.json
+A	docs/deployment/gazebo_amp_original24000_2026-10-11.json
+A	docs/deployment/gazebo_amp_standing_contract_postclip_2026-10-13.json
+A	docs/deployment/gazebo_amp_standing_postclip_2026-10-13.json
+A	docs/deployment/gazebo_amp_standing_transition_postclip_2026-10-13.json
+A	docs/deployment/gazebo_amp_target_clip_contract_2026-10-13.json
+A	docs/deployment/gazebo_amp_transition_baseline_2026-10-13.json
+A	docs/deployment/gazebo_amp_transition_baseline_high_2026-10-13.json
+A	docs/deployment/gazebo_amp_transition_default_disabled_2026-10-13.json
+A	docs/deployment/gazebo_amp_transition_target_only_2026-10-13.json
+A	docs/deployment/gazebo_amp_transition_transition_2026-10-13.json
+A	docs/deployment/gazebo_conversion_review_2026-10-13.md
+A	docs/deployment/gazebo_feedback_delay_2026-10-21.json
+A	docs/deployment/gazebo_feedback_delay_2026-10-21.md
+A	docs/deployment/gazebo_feedback_delay_2026-10-21_imu75.csv.gz
+A	docs/deployment/gazebo_feedback_delay_2026-10-21_motor15.csv.gz
+A	docs/deployment/gazebo_gait_frequency_2026-10-09.md
+A	docs/deployment/gazebo_model_physics_2026-10-13.json
+R099	docs/gazebo_rl_sim_startup_2026-09-18.md	docs/deployment/gazebo_rl_sim_startup_2026-09-18.md
+R097	docs/gazebo_ros2_bringup_2026-09-17.md	docs/deployment/gazebo_ros2_bringup_2026-09-17.md
+A	docs/deployment/gazebo_startup_posture_2026-10-12.md
+A	docs/deployment/gazebo_startup_repair_2026-10-13.json
+A	docs/deployment/gazebo_startup_repair_2026-10-13.md
+A	docs/deployment/go_imu_cleanup_2026-10-14.md
+A	docs/deployment/go_imu_control_flow_2026-10-15.md
+A	docs/deployment/go_imu_entry_cleanup_2026-10-15.md
+A	docs/deployment/go_imu_first_hardware_2026-10-16.md
+A	docs/deployment/go_imu_integration_2026-10-10.md
+A	docs/deployment/go_imu_limits_2026-10-14.md
+A	docs/deployment/go_imu_refactor_2026-10-11.md
+A	docs/deployment/go_imu_return_stand_review_2026-10-15.md
+A	docs/deployment/go_imu_runtime_audit_2026-10-20.json
+A	docs/deployment/go_imu_sim2real_2026-10-15.md
+A	docs/deployment/go_imu_sim2real_checks_2026-10-15.json
+A	docs/deployment/go_imu_stand_fsm_2026-10-14.md
+A	docs/deployment/go_imu_state_split_2026-10-15.md
+A	docs/deployment/go_imu_timing_vibration_review_2026-10-20.md
+A	docs/deployment/go_imu_usage_2026-10-11.md
+A	docs/deployment/imgo2_policy_structure_review_2026-10-14.md
+A	docs/deployment/imu200_noise_validation_2026-10-21.json
+A	docs/deployment/imu200_noise_validation_2026-10-21.md
+A	docs/deployment/imu200_noise_validation_2026-10-21_baseline.json
+A	docs/deployment/imu200_noise_validation_2026-10-21_baseline.png
+A	docs/deployment/imu200_noise_validation_2026-10-21_baseline_commands.csv.gz
+A	docs/deployment/imu200_noise_validation_2026-10-21_baseline_imu.csv.gz
+A	docs/deployment/imu200_noise_validation_2026-10-21_baseline_odom.csv.gz
+A	docs/deployment/imu200_noise_validation_2026-10-21_gyro005.json
+A	docs/deployment/imu200_noise_validation_2026-10-21_gyro005.png
+A	docs/deployment/imu200_noise_validation_2026-10-21_gyro005_commands.csv.gz
+A	docs/deployment/imu200_noise_validation_2026-10-21_gyro005_imu.csv.gz
+A	docs/deployment/imu200_noise_validation_2026-10-21_gyro005_odom.csv.gz
+A	docs/deployment/imu_frame_review_2026-10-14.json
+A	docs/deployment/imu_frame_review_2026-10-14.md
+A	docs/deployment/imu_hip_new_log_2026-10-21.json
+A	docs/deployment/imu_hip_new_log_2026-10-21.md
+A	docs/deployment/imu_hip_new_log_2026-10-21_comparison.json
+A	docs/deployment/imu_hip_new_log_2026-10-21_detail.pdf
+A	docs/deployment/imu_hip_new_log_2026-10-21_detail.png
+A	docs/deployment/imu_hip_new_log_2026-10-21_frequencies.json
+A	docs/deployment/imu_hip_new_log_2026-10-21_full.pdf
+A	docs/deployment/imu_hip_new_log_2026-10-21_full.png
+A	docs/deployment/imu_terminal_2026-10-10.md
+A	docs/deployment/joint_feedback_dynamics_2026-10-21.md
+A	docs/deployment/joint_feedback_dynamics_2026-10-21_alignment.pdf
+A	docs/deployment/joint_feedback_dynamics_2026-10-21_alignment.png
+A	docs/deployment/joint_feedback_dynamics_new_2026-10-21.json
+A	docs/deployment/joint_feedback_dynamics_old_2026-10-21.json
+A	docs/deployment/mujoco_current_model_readiness_2026-10-14.json
+A	docs/deployment/mujoco_current_model_readiness_2026-10-14.md
+A	docs/deployment/ppo_check_2026-10-15.md
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16.json
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16.md
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16.pdf
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16.png
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16_commands.csv.gz
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16_imu.csv.gz
+A	docs/deployment/ppo_gazebo_ramp_2026-10-16_odom.csv.gz
+R100	docs/ppo_policy_provenance_2026-09-19.md	docs/deployment/ppo_policy_provenance_2026-09-19.md
+A	docs/deployment/ppo_real_readiness_2026-10-14.md
+A	docs/deployment/ppo_sim_real_imu_comparison_2026-10-21.json
+A	docs/deployment/ppo_sim_real_imu_comparison_2026-10-21.md
+A	docs/deployment/ros2_workspace_rebuild_2026-10-21.json
+A	docs/deployment/sim2real_vibration_literature_plan_2026-10-21.md
+R100	docs/sim2sim_amp_2026-09-17.md	docs/deployment/sim2sim_amp_2026-09-17.md
+A	docs/deployment/sim2sim_gazebo_code_guide_2026-10-12.md
+R099	docs/sim2sim_mujoco_vs_gazebo_2026-09-19.md	docs/deployment/sim2sim_mujoco_vs_gazebo_2026-09-19.md
+R100	docs/sim2sim_policy_runtime_2026-09-17.md	docs/deployment/sim2sim_policy_runtime_2026-09-17.md
+R100	docs/train_vs_deploy_gap_2026-09-19.md	docs/deployment/train_vs_deploy_gap_2026-09-19.md
+R099	docs/code_review_2026-09-15.md	docs/maintenance/code_review_2026-09-15.md
+A	docs/maintenance/command_guide_2026-10-11.md
+A	docs/maintenance/docs_reorganization_2026-10-09.json
+A	docs/maintenance/docs_reorganization_2026-10-09.md
+A	docs/maintenance/docs_reorganization_2026-10-14.json
+A	docs/maintenance/docs_reorganization_2026-10-14.md
+A	docs/maintenance/git_deploy_layout_review_2026-10-20.md
+R100	docs/git_fetch_proxy_2026-10-07.md	docs/maintenance/git_fetch_proxy_2026-10-07.md
+A	docs/maintenance/git_sync_2026-10-08.md
+A	docs/maintenance/git_sync_2026-10-12.md
+A	docs/maintenance/git_sync_review_2026-10-09.md
+R100	docs/offline_check_2026-09-22.md	docs/maintenance/offline_check_2026-09-22.md
+A	docs/maintenance/policy_git_history_2026-10-14.md
+A	docs/maintenance/project_architecture_2026-10-12.md
+A	docs/maintenance/rebase_amp_air_time_resolution_2026-10-14.md
+A	docs/maintenance/rebase_latest_policy_identity_2026-10-14.json
+R100	docs/rebase_main_2026-10-07.md	docs/maintenance/rebase_main_2026-10-07.md
+A	docs/maintenance/urdf_real_regeneration_2026-10-13.md
+A	docs/maintenance/urdf_real_regeneration_checks_2026-10-13.json
+A	docs/maintenance/urdf_real_regeneration_fk_2026-10-13.json
+A	docs/maintenance/urdf_real_regeneration_physics_2026-10-13.json
+R097	docs/paper_plan_review_2026-09-18.md	docs/research/paper_plan_review_2026-09-18.md
+R056	docs/paper_plan_rl.md	docs/research/paper_plan_rl.md
+A	docs/towing/data/2026-10-09_necessity_800/experiment.json
+A	docs/towing/data/2026-10-09_necessity_800/no-load_comparison.md
+A	docs/towing/data/2026-10-09_necessity_800/overview.md
+A	docs/towing/data/2026-10-09_necessity_800/report.csv
+A	docs/towing/data/2026-10-09_necessity_800/report.json
+A	docs/towing/data/2026-10-09_necessity_800/report.md
+A	docs/towing/data/2026-10-09_necessity_800/stats.txt
+A	docs/towing/data/2026-10-09_necessity_800_noload/experiment.json
+A	docs/towing/data/2026-10-09_necessity_800_noload/overview.md
+A	docs/towing/data/2026-10-09_necessity_800_noload/report.csv
+A	docs/towing/data/2026-10-09_necessity_800_noload/report.json
+A	docs/towing/data/2026-10-09_necessity_800_noload/report.md
+A	docs/towing/data/2026-10-09_necessity_800_noload/stats.txt
+A	docs/towing/data/2026-10-09_necessity_800_noload/windows_and_crossings.txt
+A	docs/towing/data/2026-10-10_amp_envelope_800/experiment.json
+A	docs/towing/data/2026-10-10_amp_envelope_800/overview.md
+A	docs/towing/data/2026-10-10_amp_envelope_800/report.csv
+A	docs/towing/data/2026-10-10_amp_envelope_800/report.json
+A	docs/towing/data/2026-10-10_amp_envelope_800/report.md
+A	docs/towing/data/experiment_review_2026-10-11/archive_mass_audit.json
+A	docs/towing/data/latent_cluster_2026-10-12/coast/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/coast/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/coast/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/coast/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/coast/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/coast_flat_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/coast_flat_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/station/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/station/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/station/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/station/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/station_flat_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/station_flat_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/station_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tow/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/tow/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_fixed_m10_v1_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/pca_kmeans_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/pca_labels.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/pca_mass_by_connection.png
+A	docs/towing/data/latent_cluster_2026-10-12/tow_rows0-9_grade0/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tow_v1_rows0-9/metrics.json
+A	docs/towing/data/latent_cluster_2026-10-12/tow_v1_rows0-9/points.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/metadata.json
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p10_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p10_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p30_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p50_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_station/tsne_station_p50_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/metadata.json
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p10_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p10_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p30_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p50_s0.csv
+A	docs/towing/data/latent_cluster_2026-10-12/tsne_tow/tsne_tow_p50_s0.png
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/ab_by_axis.md
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/c008_upper_cases.csv
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/c008_upper_stats.txt
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/c032_upper_cases.csv
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/c032_upper_stats.txt
+A	docs/towing/data/latent_cluster_2026-10-12/wheel_damping_behavior/paired_compare_c032_vs_c008.txt
+R094	docs/towing_boundary_scan_2026-09-21.md	docs/towing/towing_boundary_scan_2026-09-21.md
+A	docs/towing/towing_deltapos_residual_2026-10-08.md
+A	docs/towing/towing_experiment_sufficiency_review_2026-10-11.md
+A	docs/towing/towing_force_rate_2026-10-10.md
+R089	docs/towing_gru_design_2026-09-22.md	docs/towing/towing_gru_design_2026-09-22.md
+A	docs/towing/towing_impact_window_2026-10-10.md
+A	docs/towing/towing_latent_cluster_2026-10-12.md
+A	docs/towing/towing_latent_tsne_2026-10-11.md
+A	docs/towing/towing_necessity_test_2026-10-09.md
+R096	docs/towing_observability_2026-09-22.md	docs/towing/towing_observability_2026-09-22.md
+R095	docs/towing_play_2026-09-25.md	docs/towing/towing_play_2026-09-25.md
+A	docs/towing/towing_play_test_2700_2026-10-11.md
+A	docs/towing/towing_profile_terrain_2026-10-09.md
+A	docs/towing/towing_reward_retune_2026-10-10.md
+A	docs/towing/towing_rigid_link_2026-10-08.md
+A	docs/towing/towing_rolling_terrain_2026-10-12.md
+R100	docs/towing_sim2sim_2026-09-24.md	docs/towing/towing_sim2sim_2026-09-24.md
+R085	docs/towing_simulation_validation.md	docs/towing/towing_simulation_validation.md
+A	docs/towing/towing_slope_goal_vae_2026-10-09.md
+R100	docs/towing_smoke_run_2026-09-22.md	docs/towing/towing_smoke_run_2026-09-22.md
+R094	docs/towing_training_prep_2026-09-22.md	docs/towing/towing_training_prep_2026-09-22.md
+R088	docs/towing_upper_rl_fix_2026-09-22.md	docs/towing/towing_upper_rl_fix_2026-09-22.md
+R094	docs/towing_upper_rl_review_2026-09-22.md	docs/towing/towing_upper_rl_review_2026-09-22.md
+A	docs/towing/towing_upper_switch_2026-10-10.md
+A	docs/towing/towing_upper_two_head_2026-10-10.md
+A	docs/towing/towing_upper_two_head_impl_2026-10-10.md
+A	docs/towing/towing_verdict_jnt_excluded_2026-10-10.md
+A	docs/towing/towing_work_domain_2026-10-10.md
+R100	docs/isaaclab_basics_2026-09-24.md	docs/training/isaaclab_basics_2026-09-24.md
+R100	docs/isaaclab_launcher_libtorch_dlopen_2026-09-20.md	docs/training/isaaclab_launcher_libtorch_dlopen_2026-09-20.md
+A	docs/training/isaaclab_rsl5_install_2026-10-10.md
+A	docs/training/ppo_training_preflight_2026-10-14.md
+A	docs/training/rl_structure_guide_2026-10-10.md
+A	docs/training/server_amp_train_2026-10-12.md
+R100	docs/training_stack_compatibility_2026-09-22.md	docs/training/training_stack_compatibility_2026-09-22.md
+A	docs/training/ubuntu_amp_install_2026-10-10.md
+A	docs/xiaoji_cmd/服务器训练.md
+A	docs/xiaoji_cmd/策略导出与ROS2仿真.md
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_0.3.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_0.6.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_0.9.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_1.0.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_turn_left_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_backward_turn_right_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_0.3.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_0.6.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_0.9.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_1.0.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_turn_left_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_forward_turn_right_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_left_0.3.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_left_0.4.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_right_0.3.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_right_0.4.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_stance.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_turn_left_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_turn_left_1.0.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_turn_right_0.5.txt
+A	imgo2_dataset/datasets/imgo2_motion_new/imgo2_turn_right_1.0.txt
+D	imgo2_deploy/policy/imgo2/amp/policy.pt
+A	imgo2_deploy/real/CMakeLists.txt
+A	imgo2_deploy/real/Imu/inc/imu_sensor/imu_data.hpp
+A	imgo2_deploy/real/Imu/inc/imu_sensor/imu_monitor.hpp
+A	imgo2_deploy/real/Imu/inc/imu_sensor/imu_sensor.hpp
+A	imgo2_deploy/real/Imu/inc/imu_sensor/yesense_parser.hpp
+A	imgo2_deploy/real/Imu/src/imu_monitor.cpp
+A	imgo2_deploy/real/Imu/src/imu_sensor.cpp
+A	imgo2_deploy/real/Imu/src/yesense_parser.cpp
+A	imgo2_deploy/real/Motor/inc/go_bus.h
+A	imgo2_deploy/real/Motor/inc/go_loop.h
+A	imgo2_deploy/real/Motor/inc/go_motor.h
+A	imgo2_deploy/real/Motor/inc/go_motor_array.h
+A	imgo2_deploy/real/Motor/inc/go_motor_monitor.h
+A	imgo2_deploy/real/Motor/inc/go_protocol.h
+A	imgo2_deploy/real/Motor/inc/go_safety.h
+A	imgo2_deploy/real/Motor/inc/go_trace.h
+A	imgo2_deploy/real/Motor/inc/go_trajectory.h
+A	imgo2_deploy/real/Motor/inc/motor_transport.h
+A	imgo2_deploy/real/Motor/src/go_bus.cpp
+A	imgo2_deploy/real/Motor/src/go_loop.cpp
+A	imgo2_deploy/real/Motor/src/go_motor.cpp
+A	imgo2_deploy/real/Motor/src/go_motor_array.cpp
+A	imgo2_deploy/real/Motor/src/go_motor_monitor.cpp
+A	imgo2_deploy/real/Motor/src/go_protocol.cpp
+A	imgo2_deploy/real/Motor/src/go_safety.cpp
+A	imgo2_deploy/real/Motor/src/go_trajectory.cpp
+A	imgo2_deploy/real/apps/deployment_input.h
+A	imgo2_deploy/real/apps/deployment_paths.h
+A	imgo2_deploy/real/apps/log_writer.cpp
+A	imgo2_deploy/real/apps/log_writer.h
+A	imgo2_deploy/real/apps/runtime.h
+A	imgo2_deploy/real/config/deployment.yaml
+A	imgo2_deploy/real/config/deployment_config.cpp
+A	imgo2_deploy/real/config/deployment_config.h
+A	imgo2_deploy/real/config/real_config.cpp
+A	imgo2_deploy/real/config/real_config.h
+A	imgo2_deploy/real/display/imu_panel.cpp
+A	imgo2_deploy/real/display/imu_panel.h
+A	imgo2_deploy/real/display/motor_panel.cpp
+A	imgo2_deploy/real/display/motor_panel.h
+A	imgo2_deploy/real/display/terminal_display.hpp
+A	imgo2_deploy/real/docs/xiaoji/udev.md
+A	imgo2_deploy/real/docs/xiaoji/报警条件.md
+A	imgo2_deploy/real/docs/xiaoji/日志说明.md
+A	imgo2_deploy/real/docs/xiaoji/项目验证总结.md
+A	imgo2_deploy/real/fsm/deployment_context.h
+A	imgo2_deploy/real/fsm/deployment_states.cpp
+A	imgo2_deploy/real/fsm/deployment_states.h
+A	imgo2_deploy/real/fsm/fsm.h
+A	imgo2_deploy/real/fsm/states/amp_state.h
+A	imgo2_deploy/real/fsm/states/fault_state.cpp
+A	imgo2_deploy/real/fsm/states/fault_state.h
+A	imgo2_deploy/real/fsm/states/hold_state.cpp
+A	imgo2_deploy/real/fsm/states/hold_state.h
+A	imgo2_deploy/real/fsm/states/passive_state.cpp
+A	imgo2_deploy/real/fsm/states/passive_state.h
+A	imgo2_deploy/real/fsm/states/ppo_state.cpp
+A	imgo2_deploy/real/fsm/states/ppo_state.h
+A	imgo2_deploy/real/fsm/states/stand_state.cpp
+A	imgo2_deploy/real/fsm/states/stand_state.h
+A	imgo2_deploy/real/fsm_check.cpp
+A	imgo2_deploy/real/function/my_myth.cpp
+A	imgo2_deploy/real/function/my_myth.h
+A	imgo2_deploy/real/go_monitor.cpp
+A	imgo2_deploy/real/hardware/real_hardware.cpp
+A	imgo2_deploy/real/hardware/real_hardware.h
+A	imgo2_deploy/real/hardware/robot_adapter.cpp
+A	imgo2_deploy/real/hardware/robot_adapter.h
+A	imgo2_deploy/real/pd_demo_main.cpp
+A	imgo2_deploy/real/policy/ppo/config.yaml
+R100	imgo2_deploy/policy/imgo2/ppo/policy.pt	imgo2_deploy/real/policy/ppo/policy.pt
+A	imgo2_deploy/real/rl_real_imgo2.cpp
+A	imgo2_deploy/real/sdk/inference_worker.cpp
+A	imgo2_deploy/real/sdk/inference_worker.h
+A	imgo2_deploy/real/sdk/policy_config.cpp
+A	imgo2_deploy/real/sdk/policy_config.h
+A	imgo2_deploy/real/sdk/policy_runner.cpp
+A	imgo2_deploy/real/sdk/policy_runner.h
+A	imgo2_deploy/real/sdk/rl_sdk.cpp
+A	imgo2_deploy/real/sdk/rl_sdk.h
+A	imgo2_deploy/real/sdk/robot_types.h
+A	imgo2_deploy/real/serialport/inc/imu_sensor/serial_port.hpp
+A	imgo2_deploy/real/serialport/inc/serial_port.h
+A	imgo2_deploy/real/serialport/src/serial_port.cpp
+A	imgo2_deploy/real/stand_main.cpp
+A	imgo2_deploy/real/tests/fake_serial.h
+A	imgo2_deploy/real/tests/hardware_pty_client.cpp
+A	imgo2_deploy/real/tests/imu/parser_test.cpp
+A	imgo2_deploy/real/tests/imu/serial_test.cpp
+A	imgo2_deploy/real/tests/imu/test_packets.hpp
+A	imgo2_deploy/real/tests/policy_inference_check.cpp
+A	imgo2_deploy/real/tests/pty_devices.h
+A	imgo2_deploy/real/tests/pty_helpers.py
+A	imgo2_deploy/real/tests/terminal_input_client.cpp
+A	imgo2_deploy/real/tests/test_application_preflight.py
+A	imgo2_deploy/real/tests/test_combined_monitor.py
+A	imgo2_deploy/real/tests/test_demo.py
+A	imgo2_deploy/real/tests/test_fsm_check.py
+A	imgo2_deploy/real/tests/test_hardware_pty.py
+A	imgo2_deploy/real/tests/test_inference_worker.cpp
+A	imgo2_deploy/real/tests/test_library_import.py
+A	imgo2_deploy/real/tests/test_loop.cpp
+A	imgo2_deploy/real/tests/test_math_config.cpp
+A	imgo2_deploy/real/tests/test_monitor.py
+A	imgo2_deploy/real/tests/test_motor_fake.cpp
+A	imgo2_deploy/real/tests/test_policy_core.cpp
+A	imgo2_deploy/real/tests/test_policy_reference.py
+A	imgo2_deploy/real/tests/test_protocol.cpp
+A	imgo2_deploy/real/tests/test_rl_deployment_pty.py
+A	imgo2_deploy/real/tests/test_rl_preflight.py
+A	imgo2_deploy/real/tests/test_rl_relocation.py
+A	imgo2_deploy/real/tests/test_robot_fsm.cpp
+A	imgo2_deploy/real/tests/test_safety.cpp
+A	imgo2_deploy/real/tests/test_serial_pty.cpp
+A	imgo2_deploy/real/tests/test_shared_serial.cpp
+A	imgo2_deploy/real/tests/test_stand.py
+A	imgo2_deploy/real/tests/test_stand_fsm.cpp
+A	imgo2_deploy/real/tests/test_terminal_input.py
+A	imgo2_deploy/real/tests/test_trajectory.cpp
+A	imgo2_deploy/real/tests/test_trajectory_safety.cpp
+A	imgo2_deploy/real/tests/test_watchdog.cpp
+R089	imgo2_deploy/build.sh	imgo2_deploy/ros2_ws/build.sh
+R055	imgo2_deploy/policy/imgo2/amp/config.yaml	imgo2_deploy/ros2_ws/policy/imgo2/amp/config.yaml
+A	imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt
+A	imgo2_deploy/ros2_ws/policy/imgo2/amp/policy_xiaoji.pt
+R085	imgo2_deploy/policy/imgo2/base.yaml	imgo2_deploy/ros2_ws/policy/imgo2/base.yaml
+R100	imgo2_deploy/policy/imgo2/himloco/config.yaml	imgo2_deploy/ros2_ws/policy/imgo2/himloco/config.yaml
+R100	imgo2_deploy/policy/imgo2/himloco/himloco.pt	imgo2_deploy/ros2_ws/policy/imgo2/himloco/himloco.pt
+R091	imgo2_deploy/policy/imgo2/ppo/config.yaml	imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml
+A	imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt
+R100	imgo2_deploy/policy/imgo2/towing/policy.pt	imgo2_deploy/ros2_ws/policy/imgo2/towing/policy.pt
+A	imgo2_deploy/ros2_ws/scripts/check_policy_trace.py
+R096	imgo2_deploy/scripts/check_ros2_dds.py	imgo2_deploy/ros2_ws/scripts/check_ros2_dds.py
+R100	imgo2_deploy/scripts/common.sh	imgo2_deploy/ros2_ws/scripts/common.sh
+R100	imgo2_deploy/scripts/download_inference_runtime.sh	imgo2_deploy/ros2_ws/scripts/download_inference_runtime.sh
+R100	imgo2_deploy/scripts/download_mujoco.sh	imgo2_deploy/ros2_ws/scripts/download_mujoco.sh
+R060	imgo2_deploy/scripts/eval_gazebo_policy.py	imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py
+R088	imgo2_deploy/scripts/fastdds_udp_only.xml	imgo2_deploy/ros2_ws/scripts/fastdds_udp_only.xml
+A	imgo2_deploy/ros2_ws/scripts/gazebo_contact_trace.cpp
+R100	imgo2_deploy/scripts/install_pytorch_jetson.sh	imgo2_deploy/ros2_ws/scripts/install_pytorch_jetson.sh
+A	imgo2_deploy/ros2_ws/scripts/plot_gazebo_imu_ramp.py
+A	imgo2_deploy/ros2_ws/scripts/plot_joint_pd_alignment.py
+A	imgo2_deploy/ros2_ws/scripts/plot_real_hip_imu.py
+A	imgo2_deploy/ros2_ws/scripts/run_gazebo_direction_audit.py
+A	imgo2_deploy/ros2_ws/scripts/run_gazebo_ppo_ramp.py
+R098	imgo2_deploy/src/imgo2_deploy/CMakeLists.txt	imgo2_deploy/ros2_ws/src/imgo2_deploy/CMakeLists.txt
+R100	imgo2_deploy/src/imgo2_deploy/config/robot_control.yaml	imgo2_deploy/ros2_ws/src/imgo2_deploy/config/robot_control.yaml
+R100	imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_all.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/fsm_robot/fsm_all.hpp
+R100	imgo2_deploy/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/fsm_robot/fsm_imgo2.hpp
+A	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/feedback_delay.hpp
+A	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/policy_action_clip.hpp
+A	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/policy_transition.hpp
+R100	imgo2_deploy/src/imgo2_deploy/include/rl_real_imgo2.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/rl_real_imgo2.hpp
+R082	imgo2_deploy/src/imgo2_deploy/include/rl_sim.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/rl_sim.hpp
+R100	imgo2_deploy/src/imgo2_deploy/include/rl_sim_mujoco.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/include/rl_sim_mujoco.hpp
+R100	imgo2_deploy/src/imgo2_deploy/launch/gazebo.launch	imgo2_deploy/ros2_ws/src/imgo2_deploy/launch/gazebo.launch
+R060	imgo2_deploy/src/imgo2_deploy/launch/gazebo.launch.py	imgo2_deploy/ros2_ws/src/imgo2_deploy/launch/gazebo.launch.py
+R100	imgo2_deploy/src/imgo2_deploy/library/core/fsm/fsm.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/fsm/fsm.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/inference_runtime/inference_runtime.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/inference_runtime/inference_runtime.cpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/inference_runtime/inference_runtime.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/inference_runtime/inference_runtime.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/logger/logger.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/logger/logger.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/loop/loop.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/loop/loop.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/matplotlibcpp/matplotlibcpp.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/matplotlibcpp/matplotlibcpp.h
+R100	imgo2_deploy/src/imgo2_deploy/library/core/motion_loader/motion_loader.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/motion_loader/motion_loader.cpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/motion_loader/motion_loader.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/motion_loader/motion_loader.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/observation_buffer/observation_buffer.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/observation_buffer/observation_buffer.cpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/observation_buffer/observation_buffer.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/observation_buffer/observation_buffer.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.cpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/rl_sdk/rl_sdk.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/core/vector_math/vector_math.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/core/vector_math/vector_math.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/joystick/joystick.cc	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/joystick/joystick.cc
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/joystick/joystick.hh	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/joystick/joystick.hh
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/array_safety.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/array_safety.h
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_adapter.cc	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_adapter.cc
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_adapter.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_adapter.h
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_corevideo.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_corevideo.h
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_corevideo.mm	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_corevideo.mm
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_dispatch.cc	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_dispatch.cc
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_dispatch.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/glfw_dispatch.h
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/macos_gui.mm	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/macos_gui.mm
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/mujoco_utils.hpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/mujoco_utils.hpp
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/platform_ui_adapter.cc	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/platform_ui_adapter.cc
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/platform_ui_adapter.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/platform_ui_adapter.h
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/simulate.cc	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/simulate.cc
+R100	imgo2_deploy/src/imgo2_deploy/library/thirdparty/mujoco_simulate/simulate.h	imgo2_deploy/ros2_ws/src/imgo2_deploy/library/thirdparty/mujoco_simulate/simulate.h
+R100	imgo2_deploy/src/imgo2_deploy/package.ros1.xml	imgo2_deploy/ros2_ws/src/imgo2_deploy/package.ros1.xml
+R100	imgo2_deploy/src/imgo2_deploy/package.ros2.xml	imgo2_deploy/ros2_ws/src/imgo2_deploy/package.ros2.xml
+R098	imgo2_deploy/src/imgo2_deploy/scripts/actuator_net.py	imgo2_deploy/ros2_ws/src/imgo2_deploy/scripts/actuator_net.py
+R100	imgo2_deploy/src/imgo2_deploy/scripts/convert_policy.py	imgo2_deploy/ros2_ws/src/imgo2_deploy/scripts/convert_policy.py
+R100	imgo2_deploy/src/imgo2_deploy/src/rl_real_imgo2.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_real_imgo2.cpp
+R082	imgo2_deploy/src/imgo2_deploy/src/rl_sim.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_sim.cpp
+R100	imgo2_deploy/src/imgo2_deploy/src/rl_sim_mujoco.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_sim_mujoco.cpp
+A	imgo2_deploy/ros2_ws/src/imgo2_deploy/test/test_feedback_delay.cpp
+R100	imgo2_deploy/src/imgo2_deploy/test/test_inference_runtime.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/test/test_inference_runtime.cpp
+R100	imgo2_deploy/src/imgo2_deploy/test/test_observation_buffer.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/test/test_observation_buffer.cpp
+R100	imgo2_deploy/src/imgo2_deploy/test/test_vector_math.cpp	imgo2_deploy/ros2_ws/src/imgo2_deploy/test/test_vector_math.cpp
+R100	imgo2_deploy/src/imgo2_deploy/worlds/earth.world	imgo2_deploy/ros2_ws/src/imgo2_deploy/worlds/earth.world
+R100	imgo2_deploy/src/imgo2_deploy/worlds/stairs.world	imgo2_deploy/ros2_ws/src/imgo2_deploy/worlds/stairs.world
+A	imgo2_deploy/ros2_ws/src/imgo2_description
+R100	imgo2_deploy/src/robot_joint_controller/CMakeLists.txt	imgo2_deploy/ros2_ws/src/robot_joint_controller/CMakeLists.txt
+R100	imgo2_deploy/src/robot_joint_controller/package.ros1.xml	imgo2_deploy/ros2_ws/src/robot_joint_controller/package.ros1.xml
+R100	imgo2_deploy/src/robot_joint_controller/package.ros2.xml	imgo2_deploy/ros2_ws/src/robot_joint_controller/package.ros2.xml
+R100	imgo2_deploy/src/robot_joint_controller/ros/include/robot_joint_controller.h	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros/include/robot_joint_controller.h
+R100	imgo2_deploy/src/robot_joint_controller/ros/robot_joint_controller_plugins.xml	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros/robot_joint_controller_plugins.xml
+R100	imgo2_deploy/src/robot_joint_controller/ros/src/robot_joint_controller.cpp	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros/src/robot_joint_controller.cpp
+R100	imgo2_deploy/src/robot_joint_controller/ros2/examples/config/robot_control.yaml	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/examples/config/robot_control.yaml
+R100	imgo2_deploy/src/robot_joint_controller/ros2/examples/config/robot_control_group.yaml	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/examples/config/robot_control_group.yaml
+R100	imgo2_deploy/src/robot_joint_controller/ros2/examples/launch/group_gazebo.launch.py	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/examples/launch/group_gazebo.launch.py
+R100	imgo2_deploy/src/robot_joint_controller/ros2/examples/launch/single_gazebo.launch.py	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/examples/launch/single_gazebo.launch.py
+R100	imgo2_deploy/src/robot_joint_controller/ros2/include/robot_joint_controller.hpp	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/include/robot_joint_controller.hpp
+R100	imgo2_deploy/src/robot_joint_controller/ros2/include/robot_joint_controller_group.hpp	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/include/robot_joint_controller_group.hpp
+R100	imgo2_deploy/src/robot_joint_controller/ros2/include/visibility_control.h	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/include/visibility_control.h
+R100	imgo2_deploy/src/robot_joint_controller/ros2/robot_joint_controller_plugins.xml	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/robot_joint_controller_plugins.xml
+R100	imgo2_deploy/src/robot_joint_controller/ros2/src/robot_joint_controller.cpp	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/src/robot_joint_controller.cpp
+R100	imgo2_deploy/src/robot_joint_controller/ros2/src/robot_joint_controller_group.cpp	imgo2_deploy/ros2_ws/src/robot_joint_controller/ros2/src/robot_joint_controller_group.cpp
+R100	imgo2_deploy/src/robot_msgs/CMakeLists.txt	imgo2_deploy/ros2_ws/src/robot_msgs/CMakeLists.txt
+R100	imgo2_deploy/src/robot_msgs/msg/IMU.msg	imgo2_deploy/ros2_ws/src/robot_msgs/msg/IMU.msg
+R100	imgo2_deploy/src/robot_msgs/msg/MotorCommand.msg	imgo2_deploy/ros2_ws/src/robot_msgs/msg/MotorCommand.msg
+R100	imgo2_deploy/src/robot_msgs/msg/MotorState.msg	imgo2_deploy/ros2_ws/src/robot_msgs/msg/MotorState.msg
+R100	imgo2_deploy/src/robot_msgs/msg/RobotCommand.msg	imgo2_deploy/ros2_ws/src/robot_msgs/msg/RobotCommand.msg
+R100	imgo2_deploy/src/robot_msgs/msg/RobotState.msg	imgo2_deploy/ros2_ws/src/robot_msgs/msg/RobotState.msg
+R100	imgo2_deploy/src/robot_msgs/package.ros1.xml	imgo2_deploy/ros2_ws/src/robot_msgs/package.ros1.xml
+R100	imgo2_deploy/src/robot_msgs/package.ros2.xml	imgo2_deploy/ros2_ws/src/robot_msgs/package.ros2.xml
+A	imgo2_deploy/ros2_ws/tests/test_amp_quaternion_conversion.cpp
+A	imgo2_deploy/ros2_ws/tests/test_policy_action_clip.cpp
+A	imgo2_deploy/ros2_ws/tests/test_policy_transition.cpp
+D	imgo2_deploy/src/imgo2_description
+M	imgo2_description/config/robot_control_ros2.yaml
+T	imgo2_description/package.xml
+M	imgo2_description/urdf/imgo2_real.gazebo.urdf
+M	imgo2_description/urdf/imgo2_real.urdf
+A	imgo2_description/urdf/imgo2_real_wrong.gazebo.urdf
+A	imgo2_description/urdf/imgo2_real_wrong.urdf
+M	imgo2_description/xacro/core.xacro
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.6.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_0.9.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_1.2.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_backward_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.6.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_0.9.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_1.2.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_forward_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_left_0.4.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_right_0.4.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_stance.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_left_1.0.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new/imgo2_turn_right_1.0.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_0.6.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_0.9.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_1.0.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_backward_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_0.6.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_0.9.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_1.0.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_forward_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_left_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_left_0.4.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_right_0.3.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_right_0.4.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_stance.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_turn_left_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_turn_left_1.0.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_turn_right_0.5.txt
+A	imgo2_rl/datasets/imgo2_motion_new_wrong_model/imgo2_turn_right_1.0.txt
+M	imgo2_rl/scripts/rl_lab/amp/train.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/config/towing_algorithm_cfg.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/datasets/motion_loader.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/modules/towing_decoder.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/runners/amp_on_policy_runner.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/runners/towing_on_policy_runner.py
+M	imgo2_rl/scripts/rl_lab/rl_lab/wrapper/towing_vec_env_wrapper.py
+M	imgo2_rl/scripts/rl_lab/towing/play.py
+A	imgo2_rl/scripts/tools/analyze_latent.py
+A	imgo2_rl/scripts/tools/analyze_latent_clusters.py
+A	imgo2_rl/scripts/tools/analyze_latent_tsne.py
+A	imgo2_rl/scripts/tools/audit_deployment_frequencies.py
+A	imgo2_rl/scripts/tools/audit_gazebo_model_physics.py
+A	imgo2_rl/scripts/tools/audit_go_imu_runtime.py
+A	imgo2_rl/scripts/tools/audit_imu_hip_log.py
+A	imgo2_rl/scripts/tools/audit_joint_feedback_dynamics.py
+A	imgo2_rl/scripts/tools/audit_motion_directions.py
+A	imgo2_rl/scripts/tools/check_amp_timing.py
+A	imgo2_rl/scripts/tools/check_deploy_layout.py
+A	imgo2_rl/scripts/tools/check_mjcf_current_robot.py
+A	imgo2_rl/scripts/tools/check_reference_swing_proxy.py
+A	imgo2_rl/scripts/tools/check_towing_slope_grid.py
+A	imgo2_rl/scripts/tools/compare_amp_engine_audit.py
+A	imgo2_rl/scripts/tools/compare_gait_engines.py
+A	imgo2_rl/scripts/tools/compare_play_runs.py
+A	imgo2_rl/scripts/tools/compare_ppo_sim_real_imu.py
+M	imgo2_rl/scripts/tools/dump_towing_contacts.py
+A	imgo2_rl/scripts/tools/eval_actor_directions.py
+M	imgo2_rl/scripts/tools/eval_gait.py
+M	imgo2_rl/scripts/tools/gait_metrics.py
+A	imgo2_rl/scripts/tools/inspect_amp_collection_data.py
+A	imgo2_rl/scripts/tools/organize_docs.py
+A	imgo2_rl/scripts/tools/play_test_stats.py
+A	imgo2_rl/scripts/tools/summarize_foot_clearance.py
+A	imgo2_rl/scripts/tools/summarize_gazebo_contacts.py
+A	imgo2_rl/scripts/tools/summarize_gazebo_gait_spectrum.py
+A	imgo2_rl/scripts/tools/summarize_gazebo_transition.py
+A	imgo2_rl/scripts/tools/summarize_standing_response.py
+M	imgo2_rl/scripts/tools/summarize_tow.py
+A	imgo2_rl/scripts/tools/summarize_training_windows.py
+A	imgo2_rl/scripts/towing/play_towing_test.py
+M	imgo2_rl/scripts/towing/scan_towing_boundary.py
+M	imgo2_rl/scripts/towing/tow_drag.py
+A	imgo2_rl/scripts/towing/upper_policy_runtime.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/rewards.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/__init__.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/agents/upper_ppo_cfg.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/__init__.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/connection_grid.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/episode_geometry.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/profile_torch.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rolling_geometry.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rolling_torch.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rope.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/rope_model.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/mdp/slope_geometry.py
+A	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/slope_terrain.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_env_cfg.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_logic.py
+M	imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/towing/upper_mdp.py
+M	imgo2_rl/tests/test_amp_alignment.py
+A	imgo2_rl/tests/test_amp_motion_timing.py
+M	imgo2_rl/tests/test_amp_recipe_contract.py
+A	imgo2_rl/tests/test_foot_clearance.py
+A	imgo2_rl/tests/test_gazebo_period_estimator.py
+A	imgo2_rl/tests/test_gazebo_runtime_audit.py
+M	imgo2_rl/tests/test_run_isaaclab_launcher.py
+A	imgo2_rl/tests/test_towing_connection_grid.py
+A	imgo2_rl/tests/test_towing_force_rate.py
+A	imgo2_rl/tests/test_towing_latent_clusters.py
+A	imgo2_rl/tests/test_towing_latent_tsne.py
+A	imgo2_rl/tests/test_towing_play_test.py
+M	imgo2_rl/tests/test_towing_policy_contract.py
+A	imgo2_rl/tests/test_towing_rolling_geometry.py
+M	imgo2_rl/tests/test_towing_rope_models.py
+A	imgo2_rl/tests/test_towing_slope_geometry.py
+M	imgo2_rl/tests/test_towing_tow_drag.py
+M	imgo2_rl/tests/test_towing_tow_metrics.py
+A	imgo2_rl/tests/test_towing_upper_policy_runtime.py
+M	imgo2_rl/tests/test_towing_upper_rl_contract.py
+A	log/COLCON_IGNORE
+A	log/latest
+A	log/latest_list

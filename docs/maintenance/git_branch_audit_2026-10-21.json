@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-21",
+  "branch": "xiaoji/imgo2_real",
+  "head": "fd9e30ee1b247fd8f446c4f1415a588990f41b86",
+  "remote_branch": "1c6f6c9bc3ec281f4582a74cc39de035d60cab91",
+  "remote_main": "82533ad1ce39245aa3431f38f361badcae0ba690",
+  "worktree_before_documentation": "clean",
+  "head_vs_remote_counts": "62\t6",
+  "head_vs_main_counts": "14\t10",
+  "merge_base": "ddf118e3b19b0779f1535b93bf346d5680c3d7d6",
+  "diff_status_counts": {
+    "M": 40,
+    "A": 536,
+    "R": 128,
+    "D": 2,
+    "T": 1
+  },
+  "top_paths": [
+    [
+      "imgo2_deploy/real",
+      121
+    ],
+    [
+      "docs/deployment",
+      111
+    ],
+    [
+      "docs/towing",
+      106
+    ],
+    [
+      "imgo2_deploy/ros2_ws",
+      105
+    ],
+    [
+      "docs/amp",
+      69
+    ],
+    [
+      "imgo2_rl/scripts",
+      44
+    ],
+    [
+      "imgo2_rl/datasets",
+      42
+    ],
+    [
+      "docs/maintenance",
+      21
+    ],
+    [
+      "imgo2_dataset/datasets",
+      21
+    ],
+    [
+      "imgo2_rl/tests",
+      20
+    ],
+    [
+      "imgo2_rl/source",
+      18
+    ],
+    [
+      "docs/training",
+      8
+    ]
+  ],
+  "remote_only_commits": [
+    "1c6f6c9 更换real amp policy",
+    "97ce9c9 修改readme",
+    "287c196 保存更改",
+    "c642c73 保存更改",
+    "11a4fce 修改readme",
+    "45d2f8e 修改为real urdf"
+  ],
+  "cherry_patch_equivalence": [
+    "+ 45d2f8e19fdc3f3a92eec5790d0cbc606fc6740a",
+    "+ 11a4fce0034faf8f482b6d10cf736e9348c02ed3",
+    "- c642c73a3e2b4e39a824ff13f9ec72c93936c3d1",
+    "+ 287c196ab3fad265e7c5d5cf83cb4729836e76b1",
+    "- 1c6f6c9bc3ec281f4582a74cc39de035d60cab91"
+  ],
+  "diff_shortstat": "707 files changed, 3388907 insertions(+), 944 deletions(-)",
+  "fetch_completed": true,
+  "merge_rebase_reset_push_performed": false
+}

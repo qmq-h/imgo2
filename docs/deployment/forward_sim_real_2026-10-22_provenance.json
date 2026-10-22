@@ -1,0 +1,61 @@
+{
+  "files": {
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "b8e903d8e77b11c09affee4650740168851d11a8e7aeeea17d23609a51ea1118",
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "509ea3e5b64542f42ef511579c848aabefe02b8280e33bdc317ed07f38c13f3d",
+    "imgo2_description/urdf/imgo2_real.gazebo.urdf": "ce49b743b306c0e57c40e1bbb4c7b087b34053287aef1135924309ecf98c32b1",
+    "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim": "a4e49c60384f46ed4f3f39449d72f82be945d3f57a17cea174ddd9fcec87561b"
+  },
+  "motor_extra_delay_ms": 0,
+  "imu_extra_delay_ms": 0,
+  "gui": false,
+  "completed": true,
+  "sources_unchanged": true,
+  "collection": {
+    "complete": true,
+    "counts": [
+      22993,
+      3995,
+      4600,
+      2300
+    ],
+    "schedule": "6s getup; 2s PPO zero; 5s ramp to .5; 10s hold"
+  },
+  "raw_archives": {
+    "forward_sim_real_2026-10-22_sim_state.csv.gz": {
+      "raw_sha256": "913ef109e1e6e588503a6a39061e074e9b1b7aba753c93c3db11bb53eccf4f97",
+      "rows": 22993
+    },
+    "forward_sim_real_2026-10-22_sim_command.csv.gz": {
+      "raw_sha256": "5afb0e06946d8826fa2a83381ea973858f94a753971c89567f4a7ec10d7a5e7b",
+      "rows": 3995
+    },
+    "forward_sim_real_2026-10-22_sim_imu.csv.gz": {
+      "raw_sha256": "a674b4f1dce4d4e69bbe28ee5dc58e76690f955847f16788a207007d3e8340c8",
+      "rows": 4600
+    },
+    "forward_sim_real_2026-10-22_sim_odom.csv.gz": {
+      "raw_sha256": "8c519ce3c6bd62465c7a739b3b1c981fd7298aa6aec892ab9121804800c7de4b",
+      "rows": 2300
+    },
+    "forward_sim_real_2026-10-22_sim_velocity.csv.gz": {
+      "raw_sha256": "612a02cd77e9831a0772d14cc039d448595976cf055de43a93f09dd830832209",
+      "rows": 231
+    },
+    "forward_sim_real_2026-10-22_sim_clock.csv.gz": {
+      "raw_sha256": "56666c029624f808b7c49fd9cda01f4864f4206ba265a82110f0d2d9e10aec54",
+      "rows": 231
+    }
+  },
+  "real_window": {
+    "source": "imgo2_deploy/real/build/log/2026-10-21_17-10-15_9557/robot.csv",
+    "source_sha256": "b5217d8cfd0b743844d4475c5891cdafb3ee5d8fc8bbec3d9a844502848fe7ee",
+    "selected_rows": 453,
+    "archive": "forward_sim_real_2026-10-22_real_window.csv.gz",
+    "raw_sha256": "32c76a42bd6df580934d12e2c52d5a79b920b52ff1e3ddb4ce631f2d19897c52"
+  },
+  "config_text": {
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "# PPO 策略（base_move），按键 1（手柄 RB+DPadUp）进入 RLFSMStatePPOLocomotion。\n# Actor: 45 -> 512 -> 256 -> 128 -> 12，ELU。\n# 训练 actor 观察（45 维，base_lin_vel 与 height_scan 均为 null）：\n#   base_ang_vel 3, projected_gravity 3, velocity_commands 3,\n#   joint_pos_rel 12, joint_vel_rel 12, last_action 12\n#\n# 权重来源：参考项目 ~/RL/sim2sim/Imgo2_deploy/policy/imgo2/base_move/policy_flat.pt\n#   （sha256 53a57f909b61d2a7…，文件时间 06-30 12:45），配置数值取自同目录 config.yaml。\n#   2026-09-17 用 Gazebo 侧四项指标（位姿/速度跟随/抖动/周期性）评过 5 个候选后换成它\n#   （评测脚本 imgo2_deploy/ros2_ws/scripts/eval_gazebo_policy.py，数字见\n#   docs/deployment/gazebo_ros2_bringup_2026-09-17.md 第 9 节）：vx=0.5 时 z 0.288 m、roll 2.5°、\n#   yaw 漂 -0.5°/s、抖动(大腿|Δdq|均值) 45 rad/s²、周期强度 0.95、FL-FR 相位 175°（trot），\n#   实测 0.428 m/s（比命令低 14%）；同项目 policy.pt 跟速更准（0.522 m/s）但抖动与姿态更差\n#   （79 rad/s²、roll 5.0°、周期强度 0.74），可作备选。\n#   注意该 run 用 0/0.87/-1.82 默认姿态与 25/0.5 增益（与其它 PPO 候选不同）。\nimgo2/ppo:\n  model_name: \"policy.pt\"\n  num_observations: 45\n  observations: [\"ang_vel\", \"gravity_vec\", \"commands\", \"dof_pos\", \"dof_vel\", \"actions\"]\n  observations_history: []  # 0 is the latest observation\n  observations_history_priority: \"time\"  # \"time\" or \"term\" priority\n  clip_obs: 100.0\n  clip_actions_lower: [-3.0, -3.0, -3.0,\n                       -3.0, -3.0, -3.0,\n                       -3.0, -3.0, -3.0,\n                       -3.0, -3.0, -3.0]\n  clip_actions_upper: [3.0, 3.0, 3.0,\n                       3.0, 3.0, 3.0,\n                       3.0, 3.0, 3.0,\n                       3.0, 3.0, 3.0]\n  rl_kp: [25.0, 25.0, 25.0,\n          25.0, 25.0, 25.0,\n          25.0, 25.0, 25.0,\n          25.0, 25.0, 25.0]\n  rl_kd: [0.5, 0.5, 0.5,\n          0.5, 0.5, 0.5,\n          0.5, 0.5, 0.5,\n          0.5, 0.5, 0.5]\n  fixed_kp: [60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0]\n  fixed_kd: [2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0]\n  num_of_dofs: 12\n  action_scale: [0.125, 0.25, 0.25,\n                 0.125, 0.25, 0.25,\n                 0.125, 0.25, 0.25,\n                 0.125, 0.25, 0.25]\n  wheel_indices: []\n  lin_vel_scale: 2.0\n  ang_vel_scale: 0.25\n  dof_pos_scale: 1.0\n  dof_vel_scale: 0.05\n  commands_scale: [1.0, 1.0, 1.0]\n  torque_limits: [23.5, 23.5, 23.5,\n                  23.5, 23.5, 23.5,\n                  23.5, 23.5, 23.5,\n                  23.5, 23.5, 23.5]\n  default_dof_pos: [ 0.00, 0.87, -1.82,\n                     0.00, 0.87, -1.82,\n                     0.00, 0.87, -1.82,\n                     0.00, 0.87, -1.82]\n  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]",
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "# Copyright (c) 2024-2025 Ziqi Fan\n# SPDX-License-Identifier: Apache-2.0\n\nimgo2:\n  dt: 0.005\n  decimation: 4\n  # Gazebo ROS2 only: additional host-monotonic feedback delivery latency (ms).\n  # Read once when rl_sim starts; 0 disables, allowed range 0..1000.\n  # Delays all joint q/dq/tau feedback together, and IMU quaternion/gyro together.\n  # No sleeping/interpolation; source sampling and control polling add their own age.\n  gazebo_motor_feedback_delay_ms: 0\n  gazebo_imu_feedback_delay_ms: 0\n  # ROS2 路径：启动时最多等 /controller_manager（Gazebo 侧 gazebo_ros2_control 插件在实体 spawn\n  # 成功后才创建它）多少秒再 spawn 关节控制器。等不到会打印可操作的报错，而不是笼统的\n  # \"Failed to start joint controller\"。ROS1/MuJoCo 路径不读该键。\n  controller_manager_timeout: 60.0\n  # kp/kd taken from the working reference deployment (~/RL/sim2sim/Imgo2_deploy).\n  fixed_kp: [60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0,\n             60.0, 60.0, 60.0]\n  fixed_kd: [2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0,\n             2.0, 2.0, 2.0]\n  num_of_dofs: 12\n  wheel_indices: []\n  # Torque limit follows the training side (URDF actuatorfrcrange and\n  # DCMotorCfg effort_limit, both 23.7). The reference file uses 23.5.\n  torque_limits: [23.7, 23.7, 23.7,\n                  23.7, 23.7, 23.7,\n                  23.7, 23.7, 23.7,\n                  23.7, 23.7, 23.7]\n  # Training init_state (assets/imgo2.py): hip 0.0, thigh 0.87, shank -1.82.\n  default_dof_pos: [0.00, 0.87, -1.82,\n                    0.00, 0.87, -1.82,\n                    0.00, 0.87, -1.82,\n                    0.00, 0.87, -1.82]\n  # 关节顺序（2026-09-17 定，起因见 docs/deployment/gazebo_ros2_bringup_2026-09-17.md 第 8 节）：\n  #   * 模型/策略顺序 = URDF 与 MJCF 的声明顺序 = 训练顺序 = FL,FR,RL,RR；\n  #   * 这两个名单按模型顺序写：ROS2 路径的控制器槽位顺序就是 joint_names 顺序，于是恒等的\n  #     joint_mapping 与 MuJoCo 路径（sensordata/ctrl 也是模型顺序）一致。写成 SDK 顺序\n  #     （FR,FL,RR,RL）会让策略的 FL 接到物理 FR，给速度指令后翻车（实测）；\n  #   * rl_sim.cpp 的 ROS2 分支还会按 URDF 声明顺序再重排一次（OrderJointsByModelOrder），\n  #     所以即使这里顺序写错，ROS 路径也不会错位；\n  #   * 真机路径（rl_real_imgo2.cpp）不读这两份名单，而是用 joint_mapping 索引 Unitree SDK\n  #     的电机数组（固定 FR,FL,RR,RL）⇒ 真机用恒等映射时需要另行处理，见 README 问题表。\n  joint_names: [\"FL_hip_joint\", \"FL_thigh_joint\", \"FL_shank_joint\",\n                \"FR_hip_joint\", \"FR_thigh_joint\", \"FR_shank_joint\",\n                \"RL_hip_joint\", \"RL_thigh_joint\", \"RL_shank_joint\",\n                \"RR_hip_joint\", \"RR_thigh_joint\", \"RR_shank_joint\"]\n  joint_controller_names: [\"FL_hip_controller\", \"FL_thigh_controller\", \"FL_shank_controller\",\n                           \"FR_hip_controller\", \"FR_thigh_controller\", \"FR_shank_controller\",\n                           \"RL_hip_controller\", \"RL_thigh_controller\", \"RL_shank_controller\",\n                           \"RR_hip_controller\", \"RR_thigh_controller\", \"RR_shank_controller\"]\n  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]\n"
+  }
+}
