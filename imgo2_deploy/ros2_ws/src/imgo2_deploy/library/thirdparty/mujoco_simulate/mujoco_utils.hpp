@@ -56,6 +56,9 @@ const int kErrorLength = 1024;          // load error string length
 // model and data
 mjModel* m = nullptr;
 mjData* d = nullptr;
+// Optional post-step observation sampling; installed before physics starts and
+// removed only after it joins. Called while holding the simulation mutex.
+void (*physics_feedback_hook)(const mjModel*, const mjData*) = nullptr;
 
 using Seconds = std::chrono::duration<double>;
 
@@ -367,6 +370,7 @@ void PhysicsLoop(mj::Simulate& sim) {
 
             // run single step, let next iteration deal with timing
             mj_step(m, d);
+              if (physics_feedback_hook) physics_feedback_hook(m, d);
             const char* message = Diverged(m->opt.disableflags, d);
             if (message) {
               sim.run = 0;
@@ -398,6 +402,7 @@ void PhysicsLoop(mj::Simulate& sim) {
 
               // call mj_step
               mj_step(m, d);
+              if (physics_feedback_hook) physics_feedback_hook(m, d);
               const char* message = Diverged(m->opt.disableflags, d);
               if (message) {
                 sim.run = 0;
@@ -437,11 +442,12 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
   // request loadmodel if file given (otherwise drag-and-drop)
   if (filename != nullptr) {
     sim->LoadMessage(filename);
-    m = LoadModel(filename, *sim);
-    if (m) {
+    mjModel* loaded = LoadModel(filename, *sim);
+    if (loaded) {
       // lock the sim mutex
       const std::unique_lock<std::recursive_mutex> lock(sim->mtx);
 
+      m = loaded;
       d = mj_makeData(m);
     }
     if (d) {
@@ -459,9 +465,12 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
 
   PhysicsLoop(*sim);
 
-  // delete everything we allocated
+  // Publish null under the same mutex used by RobotControl before releasing data.
+  const std::unique_lock<std::recursive_mutex> lock(sim->mtx);
   mj_deleteData(d);
   mj_deleteModel(m);
+  d = nullptr;
+  m = nullptr;
 }
 
 //------------------------------------------ main --------------------------------------------------

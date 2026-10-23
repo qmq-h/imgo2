@@ -4,6 +4,12 @@
 imgo2:
   dt: 0.005
   decimation: 4
+  # MuJoCo only: additional delivery delay, in simulation-time milliseconds.
+  # 0 disables; allowed 0..1000. Restart the program after editing.
+  # Motor q/dq/tau are delayed together; IMU quaternion/gyro together.
+  # The internal per-step motor PD always uses current qpos/qvel.
+  mujoco_motor_feedback_delay_ms: 10.0
+  mujoco_imu_feedback_delay_ms: 0.0
   # Gazebo ROS2 only: additional host-monotonic feedback delivery latency (ms).
   # Read once when rl_sim starts; 0 disables, allowed range 0..1000.
   # Delays all joint q/dq/tau feedback together, and IMU quaternion/gyro together.

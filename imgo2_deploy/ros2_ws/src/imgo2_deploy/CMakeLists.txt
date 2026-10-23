@@ -553,6 +553,16 @@ if(USE_MUJOCO)
     endif()
 
     install(TARGETS rl_sim_mujoco DESTINATION bin)
+    if(IMGO2_BUILD_FEEDBACK_DELAY_TEST)
+        enable_testing()
+        foreach(check_name mujoco_motor_pd mujoco_feedback)
+            add_executable(test_${check_name} test/test_${check_name}.cpp)
+            target_include_directories(test_${check_name} PRIVATE include)
+            target_link_libraries(test_${check_name} PRIVATE mujoco_prebuilt Threads::Threads)
+            add_test(NAME ${check_name} COMMAND test_${check_name}
+                "${PROJECT_ROOT_DIR}/../../imgo2_description/mjcf/scene.xml")
+        endforeach()
+    endif()
     message(STATUS "MuJoCo configured: ${MUJOCO_DIR}")
 endif()
 

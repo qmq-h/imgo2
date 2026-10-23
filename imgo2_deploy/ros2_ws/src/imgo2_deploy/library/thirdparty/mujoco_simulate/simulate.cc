@@ -2150,7 +2150,9 @@ void Simulate::Load(mjModel* m, mjData* d, const char* displayed_filename) {
     // Wait for the render thread to be done loading
     // so that we know the old model and data's memory can
     // be free'd by the other thread (sometimes python)
-    cond_loadrequest.wait(lock, [this]() { return this->loadrequest == 0; });
+    while (this->loadrequest != 0 && !this->exitrequest.load()) {
+      cond_loadrequest.wait_for(lock, std::chrono::milliseconds(20));
+    }
   }
 }
 

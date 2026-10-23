@@ -29,7 +29,7 @@ public:
     LoopFunc(const std::string &name, float period, std::function<void()> func, int bindCPU = -1)
         : _name(name), _period(period), _func(func), _bindCPU(bindCPU), _running(false) {}
 
-    void start()
+    void start(bool detached = true)
     {
         _running = true;
         std::cout << LOGGER::INFO << "[Loop] Loop start - name: " << _name << ", period: " << formatPeriod() << "ms"
@@ -43,7 +43,7 @@ public:
         {
             _thread = std::thread(&LoopFunc::loop, this);
         }
-        _thread.detach();
+        if (detached) _thread.detach();
     }
 
     void shutdown()

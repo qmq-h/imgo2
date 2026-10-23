@@ -31,6 +31,8 @@
 #include <mujoco/mujoco.h>
 #include "joystick.hh"
 #include "mujoco_utils.hpp"
+#include "mujoco_motor_pd.hpp"
+#include "mujoco_feedback.hpp"
 
 #include "matplotlibcpp.h"
 namespace plt = matplotlibcpp;
@@ -83,8 +85,18 @@ private:
     void Plot();
 
     // mujoco
-    mjData *mj_data;
-    mjModel *mj_model;
+    mjData *mj_data = nullptr;
+    mjModel *mj_model = nullptr;
+    std::unique_ptr<MujocoMotorPd> motor_pd;
+    MujocoFeedback feedback;
+    std::vector<int> pd_mapping;
+    std::atomic<bool> feedback_ready{false};
+    std::mutex state_mutex;
+    double motor_feedback_delay_ms = 0, imu_feedback_delay_ms = 0;
+    void ConfigureMotorInterfaces();
+    static void SampleFeedback(const mjModel*, const mjData*);
+    std::thread physics_thread;
+    void StopResources();
     std::string scene_name;
     double cart_mass_kg = 10.0;
     bool towing_scene = false;
