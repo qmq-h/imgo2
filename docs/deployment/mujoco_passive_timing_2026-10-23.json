@@ -1,0 +1,50 @@
+{
+  "scope": "Five 5-second independent Passive PD experiments, last-second metrics. No production FSM or PPO.",
+  "cases": [
+    {
+      "mode": 0.0,
+      "PD_Hz": 200.0,
+      "armature": 0.0,
+      "initial": "zero",
+      "final1s_joint_dq_rms": 10.2394,
+      "power_W": 456.99,
+      "z_std": 0.0034078
+    },
+    {
+      "mode": 1.0,
+      "PD_Hz": 2000.0,
+      "armature": 0.0,
+      "initial": "zero",
+      "final1s_joint_dq_rms": 0.0512538,
+      "power_W": -0.219992,
+      "z_std": 0.00118751
+    },
+    {
+      "mode": 2.0,
+      "PD_Hz": 1000.0,
+      "armature": 0.0,
+      "initial": "zero",
+      "final1s_joint_dq_rms": 3.18542,
+      "power_W": 385.633,
+      "z_std": 0.00196284
+    },
+    {
+      "mode": 3.0,
+      "PD_Hz": 200.0,
+      "armature": 0.1,
+      "initial": "zero",
+      "final1s_joint_dq_rms": 0.0642833,
+      "power_W": -0.395932,
+      "z_std": 0.00185037
+    },
+    {
+      "mode": 4.0,
+      "PD_Hz": 200.0,
+      "armature": 0.0,
+      "initial": "crouch",
+      "final1s_joint_dq_rms": 9.60401,
+      "power_W": 386.766,
+      "z_std": 0.00192275
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "scope": "Three scenes load and bounded 60/2,25/.5 PD holds; no production FSM/PPO/hardware.",
+  "scenes": {
+    "scene": {
+      "version": "3.2.7",
+      "nq": 19,
+      "nv": 18,
+      "nu": 12,
+      "body_count_without_world": 18,
+      "mass_kg": 12.96640984,
+      "timestep": 0.0005,
+      "warnings": 0,
+      "holds": [
+        {
+          "kp": 60,
+          "kd": 2,
+          "seconds": 10,
+          "last_second_z_min": 0.287790740735,
+          "last_second_z_max": 0.28782325374,
+          "last_second_max_joint_error_rad": 0.108231897123,
+          "foot_floor_friction": 0.6
+        },
+        {
+          "kp": 25,
+          "kd": 0.5,
+          "seconds": 10,
+          "last_second_z_min": 0.238558485579,
+          "last_second_z_max": 0.238606783545,
+          "last_second_max_joint_error_rad": 0.372262564201,
+          "foot_floor_friction": 0.6
+        }
+      ]
+    },
+    "scene_tow_compliant": {
+      "version": "3.2.7",
+      "nq": 30,
+      "nv": 28,
+      "nu": 12,
+      "body_count_without_world": 23,
+      "mass_kg": 22.96640984,
+      "timestep": 0.0005,
+      "warnings": 0,
+      "holds": [
+        {
+          "kp": 60,
+          "kd": 2,
+          "seconds": 10,
+          "last_second_z_min": 0.287803457569,
+          "last_second_z_max": 0.287835794081,
+          "last_second_max_joint_error_rad": 0.102978066251,
+          "foot_floor_friction": 0.6
+        },
+        {
+          "kp": 25,
+          "kd": 0.5,
+          "seconds": 10,
+          "last_second_z_min": 0.236478454953,
+          "last_second_z_max": 0.236520968085,
+          "last_second_max_joint_error_rad": 0.386056848529,
+          "foot_floor_friction": 0.6
+        }
+      ]
+    },
+    "scene_tow_inextensible": {
+      "version": "3.2.7",
+      "nq": 30,
+      "nv": 28,
+      "nu": 12,
+      "body_count_without_world": 23,
+      "mass_kg": 22.96640984,
+      "timestep": 0.0005,
+      "warnings": 0,
+      "holds": [
+        {
+          "kp": 60,
+          "kd": 2,
+          "seconds": 10,
+          "last_second_z_min": 0.287803457569,
+          "last_second_z_max": 0.287835794081,
+          "last_second_max_joint_error_rad": 0.102978066251,
+          "foot_floor_friction": 0.6
+        },
+        {
+          "kp": 25,
+          "kd": 0.5,
+          "seconds": 10,
+          "last_second_z_min": 0.236478454953,
+          "last_second_z_max": 0.236520968085,
+          "last_second_max_joint_error_rad": 0.386056848529,
+          "foot_floor_friction": 0.6
+        }
+      ]
+    }
+  },
+  "robot_sha256": "c5e1c5fcefcfdfaf57aa7184bce0ee7ad660f6370054c9d3cf1aaf60cbcb48ae"
+}

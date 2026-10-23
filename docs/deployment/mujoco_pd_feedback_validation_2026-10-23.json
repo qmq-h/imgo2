@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-23",
+  "ctest": {
+    "passed": 3,
+    "total": 3,
+    "tests": [
+      "mujoco_motor_pd",
+      "mujoco_feedback",
+      "feedback_delay"
+    ]
+  },
+  "python_model_regression": {
+    "passed": 10,
+    "total": 10
+  },
+  "production_component_passive_joint_dq_rms_rad_s": 0.0512658,
+  "gui": {
+    "default": {
+      "exit_code": 0,
+      "events": [
+        "0",
+        "1",
+        "w",
+        "Space",
+        "Enter pause",
+        "Enter resume",
+        "r",
+        "SIGINT"
+      ],
+      "started": true,
+      "ppo": true,
+      "pause": true,
+      "resume": true,
+      "clean_exit": true
+    },
+    "perturbed": {
+      "exit_code": 0,
+      "events": [
+        "0",
+        "1",
+        "w",
+        "Space",
+        "Enter pause",
+        "Enter resume",
+        "r",
+        "SIGINT"
+      ],
+      "started": true,
+      "ppo": true,
+      "pause": true,
+      "resume": true,
+      "clean_exit": true,
+      "configured_delay_logged": true,
+      "settings": {
+        "motor_delay_ms": 1.5,
+        "imu_delay_ms": 10,
+        "gyro_noise_std_rad_s": 0.005,
+        "orientation_noise_std_rad": 0.001
+      }
+    }
+  },
+  "lifecycle": [
+    {
+      "robot": "imgo2",
+      "exit": 0,
+      "sigterm_sent": true,
+      "clean_exit": true,
+      "tail": "ms, cpu: unspecified\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop start - name: loop_rl, period: 20ms, cpu: unspecified\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop start - name: loop_keyboard, period: 50ms, cpu: unspecified\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop start - name: loop_joystick, period: 10ms, cpu: unspecified\r\n\u001b[0;37m[INFO]   \u001b[0m RL_Sim start\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop end - name: loop_keyboard\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop end - name: loop_joystick\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop end - name: loop_control\r\n\u001b[0;37m[INFO]   \u001b[0m [Loop] Loop end - name: loop_rl\r\n\u001b[0;37m[INFO]   \u001b[0m RL_Sim exit\r\n"
+    },
+    {
+      "robot": "missing_robot_test",
+      "exit": 1,
+      "sigterm_sent": false,
+      "clean_exit": false,
+      "tail": "\u001b[0;37m[INFO]   \u001b[0m [FSMManager] Registered type: imgo2\r\n\u001b[0;37m[INFO]   \u001b[0m [MuJoCo] Launching...\r\n\u001b[0;37m[INFO]   \u001b[0m [MuJoCo] Version: 3.2.7\r\n\u001b[0;37m[INFO]   \u001b[0m [MuJoCo] Data prepared\r\n\u001b[0;31m[ERROR]  \u001b[0m Joystick [/dev/input/js0] open failed.\r\n\u001b[0;31m[ERROR]  \u001b[0m The file '/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/missing_robot_test/base.yaml' does not exist\r\n\u001b[0;31m[ERROR]  \u001b[0m [FSM] No FSM registered for robot: missing_robot_test\r\nMuJoCo initialization failed: Incompatible MuJoCo feedback layout\r\n"
+    }
+  ],
+  "sha256": {
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/src/rl_sim_mujoco.cpp": "a9ac84aa0128eb901977859f4cb20794bde90cad7591af912382ace5eb6f9ca6",
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_motor_pd.hpp": "5ffda21a1ae41306ee6e673f75aa29b5bb5644eeffea373f1f444f614d4587c8",
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_feedback.hpp": "3cad4601da73785918cae8a7a0b047a8857db4764c88abf931ac08a5e344c0a0",
+    "imgo2_description/mjcf/imgo2.xml": "dd109dc86515e0420b4fb61db80189e78cb75e31a07537b5fe90ae358e42d9bb",
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "f68f516e4a3d2826466ccd0dc76dec043b18a982a04ae6aa3feeb0fe2eb63769"
+  },
+  "limitations": [
+    "GUI checks verify state/input/pause/reset/exit, not sustained gait quality or measured real-time rates.",
+    "No real motors or sensors used.",
+    "Raw sensor noise is supplied by our observation adapter."
+  ]
+}

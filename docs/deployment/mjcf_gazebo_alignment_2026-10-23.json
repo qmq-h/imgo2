@@ -1,0 +1,40 @@
+{
+  "scope": "Explicit XML inertials plus structural audit; not a runtime or contact-equivalence test.",
+  "urdf": "imgo2_description/urdf/imgo2_real.gazebo.urdf",
+  "mjcf": "/home/tommy0929/Documents/imgo2/imgo2_description/mjcf/imgo2.xml",
+  "urdf_sha256": "ce49b743b306c0e57c40e1bbb4c7b087b34053287aef1135924309ecf98c32b1",
+  "mjcf_sha256": "c5e1c5fcefcfdfaf57aa7184bce0ee7ad660f6370054c9d3cf1aaf60cbcb48ae",
+  "different_bodies": [],
+  "missing_bodies": [],
+  "structure": {
+    "issues": [],
+    "active_joints_checked": 12,
+    "joint_connections_checked": 17,
+    "collisions_checked": 33,
+    "scope": "Body hierarchy, all source joint origins, active axes/ranges/anchors, motor gear/ctrlrange, explicit collision shapes/transforms/sizes. No contact dynamics equivalence."
+  },
+  "urdf_total_mass": 12.966409839999997,
+  "mjcf_total_mass": 12.966409839999997,
+  "joint_damping_and_armature": [
+    [
+      "0",
+      "0"
+    ]
+  ],
+  "passed": true,
+  "runtime_fk": {
+    "mujoco": "3.2.7",
+    "poses": 21,
+    "bodies_per_pose": 18,
+    "max_position_error_m": 1.1102230246251565e-16,
+    "max_rotation_matrix_error": 6.661338147750939e-16,
+    "scope": "mj_forward vs independent URDF FK; no dynamics/PPO validation"
+  },
+  "checker_validation": [
+    "axis mutation",
+    "collision size mutation",
+    "joint origin mutation",
+    "motor effort mutation",
+    "collision order invariant"
+  ]
+}
