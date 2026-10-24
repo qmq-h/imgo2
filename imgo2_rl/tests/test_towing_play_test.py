@@ -1579,11 +1579,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**关闭**", text)
         self.assertIn("残差恒 0", text)
         self.assertIn("vx 偏移恒 0", text)
-        # 关时也要打印打开后的**契约口径**（v5 CE Net：帧 58 / explicit 5 / 动作 13）
-        self.assertIn("v5 CE Net", text)
-        self.assertIn("帧 58", text)
-        self.assertIn("动作 13", text)
-        self.assertIn("offset 有界且门控", text)
+        # 关时也要打印 v6 口径（帧 57 / explicit 5 / 动作 12）
+        self.assertIn("v6", text)
+        self.assertIn("帧 57", text)
+        self.assertIn("动作 12", text)
+        self.assertIn("无 vx 偏移头", text)
         # 打开：需要真实存在的 checkpoint（parse_args 会在启动 Isaac Sim 之前校验）
         with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
             args = play.parse_args(["--dry-run", "--upper-checkpoint", handle.name])
@@ -1596,22 +1596,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**开启**", opened)
         self.assertIn("确定性均值", opened)
         self.assertIn("towing_contract", opened)
-        # TOW-26：期望契约是 v5 CE Net（帧 58 / explicit 5 / 动作 13），不是 v4/v3（explicit 6）/ v2
-        self.assertIn("契约 **v5 CE Net**", opened)
-        self.assertIn("帧 58", opened)
-        self.assertIn("frame_dim=58", opened)
+        # v6：帧 57 / explicit 5 / 动作 12，不是 v5（58/13）或 v4/v3
+        self.assertIn("契约 **v6**", opened)
+        self.assertIn("帧 57", opened)
+        self.assertIn("frame_dim=57", opened)
         self.assertIn("explicit_dim=5", opened)
-        self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", opened)
+        self.assertIn("动作 12 = 12 维关节残差", opened)
         self.assertIn("v2（57/79）", opened)
-        self.assertNotIn("frame_dim=57", opened)
+        self.assertNotIn("frame_dim=58", opened)
         self.assertNotIn("explicit_dim=6", opened)
-        # 偏移头：有界（两层限幅）+ 门控（出生段不叠加、STOP 之后仍生效）都要在 plan 里
-        self.assertIn("有界", opened)
-        self.assertIn("两层限幅", opened)
-        self.assertIn("门控", opened)
-        self.assertIn("elapsed_s ≥ tow_start_s", opened)
-        self.assertIn("STOP 之后仍生效", opened)
-        self.assertIn(f"= {play.UPPER_GATE_AFTER_S:g} s", opened)
+        self.assertIn("无 vx 偏移头", opened)
         self.assertIn("随机采样", stochastic)
 
     def test_upper_switch_bad_values_rejected(self):
@@ -2148,12 +2142,12 @@ class DryRunTests(unittest.TestCase):
         # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
         self.assertIn("判定口径：**JNT 不计入**", result.stdout)
         self.assertIn("--count-jnt", result.stdout)
-        # ⑤ 上层开关状态与 v5 CE Net 口径（帧 58 / explicit 5 / 动作 13 / offset 有界 + 门控）也在 plan 里
+        # ⑤ 上层开关状态与 v6 口径（帧 57 / explicit 5 / 动作 12 / 无偏移头）也在 plan 里
         self.assertIn("上层网络：**关闭**", result.stdout)
-        self.assertIn("v5 CE Net", result.stdout)
-        self.assertIn("帧 58", result.stdout)
-        self.assertIn("动作 13", result.stdout)
-        self.assertIn("offset 有界且门控", result.stdout)
+        self.assertIn("v6", result.stdout)
+        self.assertIn("帧 57", result.stdout)
+        self.assertIn("动作 12", result.stdout)
+        self.assertIn("无 vx 偏移头", result.stdout)
 
     def test_dry_run_with_upper_checkpoint_and_no_torch(self):
         """`--dry-run --upper-checkpoint <存在的文件>` 也要**纯标准库**跑完并打印开启态 plan。
@@ -2180,12 +2174,10 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)
         self.assertIn("上层网络：**开启**", result.stdout)
-        self.assertIn("契约 **v5 CE Net**", result.stdout)
-        self.assertIn("frame_dim=58", result.stdout)
-        self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", result.stdout)
-        self.assertIn("两层限幅", result.stdout)
-        self.assertIn("门控", result.stdout)
-        self.assertIn("STOP 之后仍生效", result.stdout)
+        self.assertIn("契约 **v6**", result.stdout)
+        self.assertIn("frame_dim=57", result.stdout)
+        self.assertIn("动作 12 = 12 维关节残差", result.stdout)
+        self.assertIn("无 vx 偏移头", result.stdout)
         self.assertIn("v2（57/79）", result.stdout)
         self.assertIn("56/63 维 checkpoint 会被拒绝", result.stdout)
 
@@ -2425,7 +2417,6 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertIn('"cmd_action_dim": UPPER_CMD_ACTION_DIM', self.source)
         self.assertIn('"joint_action_dim": UPPER_JOINT_ACTION_DIM', self.source)
         self.assertIn('"amp_vx_range_mps": list(UPPER_AMP_VX_RANGE_MPS)', self.source)
-        self.assertIn('"gate": "elapsed_s >= tow_start_s"', self.source)
         self.assertIn("expected_towing_contract(upper.spec)", self.source)
         # report.json 带上层信息与对照节；report.md 用同一个汇总函数
         self.assertIn('"upper_policy": experiment["upper_policy"]', self.source)
@@ -2438,18 +2429,8 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertIn("ARCHIVED_BASELINE_2026_10_09", self.source)
 
 
-class UpperV3WiringTests(unittest.TestCase):
-    """必要性测试台接到 **v3 双头契约**（帧 58 / 动作 13）后的离线守卫（TOW-26 / TOW-21）。
-
-    仿真相位跑不了（本机无 Isaac Lab），这里只钉三件可离线复现的事：
-
-    1. 测量台的**期望契约 / 偏移边界 / 门控阈值**必须与 `upper_policy_runtime` 的常量逐项一致
-       （运行时顶部 import torch，`--dry-run` 不能 import 它 ⇒ 只能镜像 + 交叉核对）；
-    2. `compose_loco_vx_offset()` 的**退化性**：偏移为 0（或门控关闭）时与任务指令**逐位相等**
-       ⇒ 「关开关时行为与现在逐位一致」的残差/偏移那一半有据可查；
-    3. 开关开时的**链路顺序**：`upper.act` → 偏移头限幅 → 合成 loco_command → 冻结策略 →
-       `+ 残差` ⇒ `held`（偏移在底层输入之前、残差在底层输出之后，与训练侧同序）。
-    """
+class UpperV6WiringTests(unittest.TestCase):
+    """必要性测试台接到 **v6 单头契约**（帧 57 / 动作 12，去掉 vx 偏移头）。"""
 
     TOWING_DIR = RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing"
 
@@ -2457,8 +2438,8 @@ class UpperV3WiringTests(unittest.TestCase):
     def setUpClass(cls):
         try:
             import torch
-        except ImportError:                       # pragma: no cover - 本机有 torch
-            raise unittest.SkipTest("需要 torch 才能核对运行时契约与逐位退化性")
+        except ImportError:                       # pragma: no cover
+            raise unittest.SkipTest("需要 torch 才能核对运行时契约")
         cls.torch = torch
         if str(RL / "scripts" / "towing") not in sys.path:
             sys.path.insert(0, str(RL / "scripts" / "towing"))
@@ -2466,191 +2447,62 @@ class UpperV3WiringTests(unittest.TestCase):
         cls.runtime = runtime
         cls.source = (RL / "scripts/towing/play_towing_test.py").read_text(encoding="utf-8")
 
-    # ------------------------------------------------------------------ 契约镜像
-    def test_expected_contract_matches_the_runtime_and_is_v4(self):
+    def test_expected_contract_matches_the_runtime(self):
         runtime = self.runtime
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
                          runtime.expected_towing_contract(runtime.UpperNetworkSpec()))
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
-                         {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
+                         {"version": 6, "frame_dim": 57, "explicit_dim": 5, "latent_dim": 16})
         self.assertEqual(play.UPPER_CONTRACT_VERSION, runtime.CHECKPOINT_CONTRACT_VERSION)
         self.assertEqual(play.UPPER_FRAME_DIM, runtime.FRAME_DIM)
-        self.assertEqual(play.UPPER_EXPLICIT_DIM, runtime.EXPLICIT_DIM)
-        self.assertEqual(play.UPPER_LATENT_DIM, runtime.LATENT_DIM)
         self.assertEqual(play.UPPER_ACTION_DIM, runtime.ACTION_DIM)
-        self.assertEqual(play.UPPER_CMD_ACTION_DIM, runtime.CMD_ACTION_DIM)
-        self.assertEqual(play.UPPER_JOINT_ACTION_DIM, runtime.JOINT_ACTION_DIM)
-        self.assertEqual(play.UPPER_ACTION_DIM,
-                         play.UPPER_CMD_ACTION_DIM + play.UPPER_JOINT_ACTION_DIM)
-        # 帧布局：13 项之和 = 58，且 `last_action` 是 **13** 维（v2 是 12）
+        self.assertEqual(play.UPPER_ACTION_DIM, 12)
+        self.assertEqual(play.UPPER_CMD_ACTION_DIM, 0)
+        self.assertEqual(play.UPPER_JOINT_ACTION_DIM, 12)
         terms = {name: (dim, scale) for name, dim, scale in runtime.FRAME_TERMS}
         self.assertEqual(sum(dim for dim, _scale in terms.values()), play.UPPER_FRAME_DIM)
-        self.assertEqual(terms["last_action"], (13, 1.0))
-        self.assertEqual(terms["loco_command"], (3, 1.0))
+        self.assertEqual(terms["last_action"], (12, 1.0))
 
-    def test_v2_contract_is_rejected_by_the_runtime(self):
-        """旧 v2（帧 57 / actor 79 / 动作 12）checkpoint 必须被硬校验拒绝。"""
+    def test_v5_contract_is_rejected_by_the_runtime(self):
         with self.assertRaises(self.runtime.TowingCheckpointContractError):
             self.runtime.validate_towing_contract(
-                {"version": 2, "frame_dim": 57, "explicit_dim": 6, "latent_dim": 16},
+                {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16},
                 self.runtime.UpperNetworkSpec())
 
-    def test_offset_bounds_match_the_runtime(self):
-        runtime = self.runtime
-        self.assertEqual(play.UPPER_OFFSET_SCALE_MPS, runtime.COMMAND_OFFSET_SCALE)
-        self.assertEqual(play.UPPER_OFFSET_RANGE_MPS,
-                         (runtime.COMMAND_OFFSET_MIN, runtime.COMMAND_OFFSET_MAX))
-        self.assertEqual(play.UPPER_AMP_VX_RANGE_MPS,
-                         (runtime.AMP_VX_MIN, runtime.AMP_VX_MAX))
-        self.assertEqual(play.UPPER_AMP_VX_RANGE_MPS, (-1.0, 1.0))
-
-    def test_gate_threshold_is_the_training_cfg_default(self):
-        """门控阈值 = `episode_geometry.SETTLE_TIME_S` = `HierarchicalVelocityActionCfg.tow_start_s`。"""
-        self.assertEqual(play.UPPER_GATE_AFTER_S,
-                         float(play.episode_geometry.SETTLE_TIME_S))
-        self.assertEqual(play.UPPER_GATE_AFTER_S, 1.0)
-        tree = ast.parse((self.TOWING_DIR / "upper_mdp.py").read_text(encoding="utf-8"))
-        cfg = next(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-                   and node.name == "HierarchicalVelocityActionCfg")
-        assigned = {}
-        for node in cfg.body:
-            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                assigned[node.target.id] = node.value
-        self.assertIn("tow_start_s", assigned)
-        gate = assigned["tow_start_s"]
-        self.assertIsInstance(gate, ast.Name,
-                              "tow_start_s 必须是 `SETTLE_TIME_S` 这个具名常量，不能另写数字")
-        self.assertEqual(gate.id, "SETTLE_TIME_S")
-        # 节拍常量同样从 cfg 派生（plan 行按它和 `--dt` 算「每几个物理步一拍」）
-        self.assertEqual(play.UPPER_CONTROL_DT_S, 0.05)
-        self.assertEqual(ast.literal_eval(assigned["upper_control_dt"]),
-                         play.UPPER_CONTROL_DT_S)
-
-    # ------------------------------------------------------------------ 退化性与限幅
-    def test_compose_is_bit_identical_when_the_offset_is_zero(self):
-        """关开关（残差与偏移恒 0）：合成结果与任务指令**逐位相等**（`torch.equal`）。
-
-        这是「关时与旧口径逐位一致」里偏移那一半的离线证据：`offset = 0` 时第 2 层包络裁剪
-        也是恒等的（脚本速度 0.5–1.0 全在 `amp_vx_range = (−1.0, 1.0)` 内）。
-        """
-        torch = self.torch
-        for values in ([0.0, 0.5, 1.0], [-1.0, 0.0, 0.7]):
-            task = torch.tensor(values, dtype=torch.float32).unsqueeze(1)
-            zeros = torch.zeros_like(task)
-            for active in (False, True):          # 门控开/关都必须逐位相等
-                got = play.compose_loco_vx_offset(task, zeros, active=active)
-                self.assertTrue(torch.equal(got, task), f"{values} active={active}")
-
-    def test_gate_ignores_the_offset_before_tow_start(self):
-        """出生段（门控关）不叠加偏移；**STOP 之后门控仍打开** ⇒ `task_vx = 0` 时就是偏移本身。"""
-        torch = self.torch
-        task = torch.zeros(3, 1, dtype=torch.float32)
-        offset = torch.tensor([[0.5], [-0.2], [0.6]], dtype=torch.float32)
-        closed = play.compose_loco_vx_offset(task, offset, active=False)
-        self.assertTrue(torch.equal(closed, task))
-        opened = play.compose_loco_vx_offset(task, offset, active=True)
-        self.assertTrue(torch.equal(opened, offset))
-
-    def test_two_layer_limits_clip_the_sum_into_the_amp_envelope(self):
-        """第 1 层限偏移（runtime 的 `command_offset_vx`）、第 2 层把「和」裁进 AMP 包络。"""
-        torch = self.torch
-        task = torch.tensor([[1.0], [0.0], [1.0]], dtype=torch.float32)
-        offset = torch.tensor([[0.6], [0.6], [-0.2]], dtype=torch.float32)   # 已在头权限内
-        got = play.compose_loco_vx_offset(task, offset, active=True)
-        self.assertTrue(torch.equal(got, torch.tensor([[1.0], [0.6], [0.8]],
-                                                      dtype=torch.float32)))
-        self.assertTrue(bool((got <= play.UPPER_AMP_VX_RANGE_MPS[1]).all()))
-        self.assertTrue(bool((got >= play.UPPER_AMP_VX_RANGE_MPS[0]).all()))
-
-    def test_compose_matches_the_runtime_helper(self):
-        """门控打开时，测量台的合成与 `upper_policy_runtime.compose_loco_vx` **逐位相等**。
-
-        用 `MethodType` 把运行时的真实方法绑到一个只有 `device` 的桩上（不构造网络、不读
-        checkpoint），这样核对的是**运行时本体的代码**，而不是在测试里重抄一遍公式。
-        """
-        torch = self.torch
-        runtime = self.runtime
-        stub = types.SimpleNamespace(device=torch.device("cpu"))
-        stub.command_offset_vx = types.MethodType(
-            runtime.UpperPolicyRuntime.command_offset_vx, stub)
-        stub.compose_loco_vx = types.MethodType(
-            runtime.UpperPolicyRuntime.compose_loco_vx, stub)
-        task = torch.tensor([[1.5], [0.0], [1.2], [-1.0]], dtype=torch.float32)
-        processed = torch.cat(
-            (torch.tensor([[5.0], [-5.0], [0.4], [-0.3]], dtype=torch.float32),
-             torch.zeros(4, 12)), dim=1)
-        offset = stub.command_offset_vx(processed)          # 头权限限幅（第 1 层）
-        want = stub.compose_loco_vx(task, processed)        # 第 1 + 第 2 层，不含门控
-        got = play.compose_loco_vx_offset(task, offset, active=True)
-        self.assertTrue(torch.equal(got, want))
-
-    # ------------------------------------------------------------------ 产物记录
-    def test_upper_policy_record_carries_the_expected_contract_and_offset_bounds(self):
+    def test_upper_policy_record_has_no_offset_head(self):
         off = play.upper_policy_record(play.parse_args(["--dry-run"]))
-        self.assertFalse(off["enabled"])
-        self.assertIsNone(off["checkpoint"])
-        self.assertIsNone(off["towing_contract"])          # 实际加载到的契约只有实跑才有
-        self.assertFalse(off["loaded"])
-        self.assertEqual(off["towing_contract_expected"], play.UPPER_TOWING_CONTRACT_EXPECTED)
-        self.assertEqual(off["towing_contract_expected"]["version"], 5)
-        self.assertEqual(off["towing_contract_expected"]["frame_dim"], 58)
-        self.assertEqual(off["frame_dim_expected"], 58)
-        self.assertEqual(off["action_dim_expected"], 13)
-        self.assertEqual(off["cmd_action_dim"], 1)
+        self.assertEqual(off["towing_contract_expected"]["version"], 6)
+        self.assertEqual(off["towing_contract_expected"]["frame_dim"], 57)
+        self.assertEqual(off["frame_dim_expected"], 57)
+        self.assertEqual(off["action_dim_expected"], 12)
+        self.assertEqual(off["cmd_action_dim"], 0)
         self.assertEqual(off["joint_action_dim"], 12)
         self.assertEqual(off["control_dt_s"], 0.05)
-        self.assertTrue(off["offset"]["bounded"])
-        self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.5)
-        self.assertEqual(off["offset"]["min_mps"], -0.2)
-        self.assertEqual(off["offset"]["max_mps"], 0.6)
-        self.assertEqual(off["offset"]["amp_vx_range_mps"], [-1.0, 1.0])
-        self.assertEqual(off["offset"]["gate"], "elapsed_s >= tow_start_s")
-        self.assertEqual(off["offset"]["gate_after_s"], play.UPPER_GATE_AFTER_S)
-        self.assertIn("STOP 之后仍然生效", off["offset"]["gate_note"])
-        self.assertTrue(off["offset"]["applied_before_frozen_policy"])
+        self.assertTrue(off["offset"]["removed"])
+        self.assertFalse(off["offset"]["bounded"])
+        self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.0)
         self.assertEqual(off["mode"], "deterministic")
-        with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
-            on = play.upper_policy_record(
-                play.parse_args(["--upper-checkpoint", handle.name, "--upper-stochastic"]))
-        self.assertEqual(on["checkpoint"], str(Path(handle.name).resolve()))
-        self.assertTrue(on["enabled"])
-        self.assertEqual(on["mode"], "stochastic")
-        self.assertEqual(on["towing_contract_expected"], play.UPPER_TOWING_CONTRACT_EXPECTED)
 
-    # ------------------------------------------------------------------ 链路顺序（静态）
-    def test_switch_branch_order_offset_then_frozen_then_residual(self):
-        """开关开时：`upper.act` → 偏移头限幅 → 合成 `loco_command` → 冻结策略 → `+ 残差`。"""
+    def test_switch_branch_order_is_act_then_frozen_then_residual(self):
         tree = ast.parse(self.source)
         blocks = [node for node in ast.walk(tree) if isinstance(node, ast.If)
                   and ast.unparse(node.test) == "upper is None"]
-        self.assertEqual(len(blocks), 1, "只应有一个 `if upper is None:` 主循环分支")
+        self.assertEqual(len(blocks), 1)
         block = blocks[0]
         opened = "\n".join(ast.unparse(statement) for statement in block.orelse)
         baseline = "\n".join(ast.unparse(statement) for statement in block.body)
-        order = [opened.index("upper.act("), opened.index("command_offset_vx("),
-                 opened.index("compose_loco_vx_offset("),
+        order = [opened.index("upper.act("),
                  opened.index("policy_step(upper_loco_command)"),
                  opened.index("loco_joint_targets + upper_delta")]
-        self.assertEqual(order, sorted(order), "链路顺序错了（偏移必须在冻结策略推理之前）")
-        # 帧里的 `loco_command` 是**上一拍合成**的那条（不是本拍 `command_tensor`）
+        self.assertEqual(order, sorted(order))
         self.assertIn("loco_command=upper_loco_command", opened)
-        # 上层一拍（20 Hz）与冻结策略刷新（50 Hz）**独立**：两个 gate 都在开关开的分支里
         self.assertIn("step % upper_control_decimation == 0", opened)
         self.assertIn("step % decimation == 0", opened)
-        # 偏差与残差都只在开关开的分支里被写；基线分支一个字都不碰
-        for token in ("upper_delta", "upper_loco_command", "upper_processed",
-                      "command_offset_vx", "compose_loco_vx_offset", "upper.act("):
+        for token in ("upper_delta", "upper_loco_command", "upper_processed", "upper.act("):
             self.assertNotIn(token, baseline)
         self.assertIn("joint_targets = loco_joint_targets", baseline)
-        # **逐字钉住基线路径**：关开关时冻结策略拿到的仍是 `lane_command(vx_command)` 原样
-        # 指令、下发的仍是冻结策略自己的目标（残差/偏移恒 0）⇒ 「与加开关之前逐位一致」
-        # 的代码侧证据（运行读数只能由训练机跑两轮 800 环境给出）。
-        self.assertEqual(
-            baseline,
-            "if step % decimation == 0:\n"
-            "    command_tensor = lane_command(vx_command)\n"
-            "    loco_joint_targets = policy_step(command_tensor)\n"
-            "    joint_targets = loco_joint_targets")
+        self.assertNotIn("command_offset_vx", self.source)
+        self.assertNotIn("compose_loco_vx_offset(", opened)
 
 
 class CommandDiagnosticsTests(unittest.TestCase):

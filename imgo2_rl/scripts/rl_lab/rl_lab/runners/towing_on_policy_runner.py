@@ -23,7 +23,7 @@ from rl_lab.modules import (
 #: 远端那条线也用过 v4 指「含质量 + 重建」（58/6/16）⇒ 三条线共用同一个号会混淆。
 #: v5 明确表示「5 维 + 重建」；v4 / v3 / v2 及更早 checkpoint 一律拒绝，必须新建 run。
 #: 与 `scripts/towing/upper_policy_runtime.CHECKPOINT_CONTRACT_VERSION` 同值（离线测试交叉核对）。
-TOWING_CONTRACT_VERSION = 5
+TOWING_CONTRACT_VERSION = 6
 
 
 class TowingOnPolicyRunner:

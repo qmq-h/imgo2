@@ -41,9 +41,9 @@ class TowingDynamicsDecoder(nn.Module):
     两路拼接（21 维）共同重建 ``o[t+1]``；推理只前向编码分支，不调用重建头。
     """
 
-    # 默认帧维 = 当前契约的 policy 帧（58）。调用方（runner / 运行时）一律显式传配置值，
+    # 默认帧维 = 当前 v6 契约的 policy 帧（57）。调用方（runner / 运行时）一律显式传配置值，
     # 这里只是防止"不传参构造"时悄悄退回旧 57 维契约。
-    def __init__(self, frame_dim=58, feature_dim=128, hidden_dim=128,
+    def __init__(self, frame_dim=57, feature_dim=128, hidden_dim=128,
                  num_layers=1, force_scale=10.0, latent_dim=16):
         super().__init__()
         if latent_dim <= 0:

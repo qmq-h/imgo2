@@ -35,14 +35,14 @@ class SourceContractTests(unittest.TestCase):
             value = next(node.value.value for node in tree.body
                          if isinstance(node, ast.Assign)
                          and any(isinstance(t, ast.Name) and t.id == name for t in node.targets))
-            self.assertEqual(value, 5)
+            self.assertEqual(value, 6)
         cfg = ast.parse((MODULES / "config/towing_algorithm_cfg.py").read_text("utf-8"))
         decoder = next(n for n in cfg.body if isinstance(n, ast.ClassDef)
                        and n.name == "TowingDecoderCfg")
         values = {n.target.id: n.value.value for n in decoder.body
                   if isinstance(n, ast.AnnAssign) and isinstance(n.value, ast.Constant)}
         self.assertEqual(values["reconstruction_coef"], 1.0)
-        self.assertEqual(values["frame_dim"], 58)
+        self.assertEqual(values["frame_dim"], 57)
         self.assertEqual(values["latent_dim"], 16)
 
     def test_reconstruction_mask_wiring(self):
@@ -54,11 +54,11 @@ class SourceContractTests(unittest.TestCase):
         spec_obj.loader.exec_module(logic)
         spec = logic.UpperObservationSpec()
         mask = spec.reconstruction_mask()
-        self.assertEqual(len(mask), 58)
+        self.assertEqual(len(mask), 57)
         self.assertEqual(spec.reconstruction_dim, 42)
-        # 排除 loco_command(3) + last_action(13)，其余 42 维参与重建
-        self.assertEqual(list(mask[:16]), [False] * 16)
-        self.assertTrue(all(mask[16:]))
+        # 排除 loco_command(3) + last_action(12)，其余 42 维参与重建
+        self.assertEqual(list(mask[:15]), [False] * 15)
+        self.assertTrue(all(mask[15:]))
         self.assertEqual(spec.reconstruction_excluded_terms, ("loco_command", "last_action"))
         cfg = (MODULES / "config/towing_algorithm_cfg.py").read_text("utf-8")
         self.assertIn("reconstruction_mask: tuple[bool, ...] | None = None", cfg)
@@ -91,7 +91,7 @@ class ContextEstimatorTests(unittest.TestCase):
         self.net = self.module.TowingDynamicsDecoder(feature_dim=8, hidden_dim=12)
 
     def test_parallel_heads_and_reconstruction_gradient(self):
-        frames = torch.randn(3, 2, 58)
+        frames = torch.randn(3, 2, 57)
         explicit, mu, log_var, state = self.net.encode(frames)
         self.assertEqual(explicit.shape, (3, 2, 5))
         self.assertEqual(mu.shape, (3, 2, 16))
@@ -109,7 +109,7 @@ class ContextEstimatorTests(unittest.TestCase):
         self.assertIsNone(self.net.force_head.weight.grad)
 
     def test_explicit_prediction_does_not_depend_on_latent_sampling(self):
-        frames = torch.randn(2, 58)
+        frames = torch.randn(2, 57)
         first, z1, _ = self.net.forward_with_latent(frames, sample=True)
         second, z2, _ = self.net.forward_with_latent(frames, sample=True)
         torch.testing.assert_close(first, second)
@@ -121,7 +121,7 @@ class ContextEstimatorTests(unittest.TestCase):
         return self.module.DynamicsDecoderTrainer(self.net, learning_rate=0.0)
 
     def test_next_frame_loss_and_reset_target_mask(self):
-        frames = torch.randn(3, 2, 58, requires_grad=True)
+        frames = torch.randn(3, 2, 57, requires_grad=True)
         targets = torch.randn(3, 2, 5)
         next_frames = torch.randn_like(frames, requires_grad=True)
         dones = torch.tensor([[False, True], [False, False], [True, True]])
@@ -143,7 +143,7 @@ class ContextEstimatorTests(unittest.TestCase):
         self.assertFalse(self.net.training)
 
     def test_all_terminal_batch_has_zero_reconstruction_and_finite_loss(self):
-        frames = torch.randn(2, 2, 58)
+        frames = torch.randn(2, 2, 57)
         trainer = self.trainer()
         loss = trainer.update(frames, torch.zeros(2, 2, 5),
                               dones=torch.ones(2, 2, dtype=torch.bool),
@@ -152,7 +152,7 @@ class ContextEstimatorTests(unittest.TestCase):
         self.assertEqual(trainer.last_reconstruction, 0)
 
     def test_hidden_state_resets_only_ended_environments(self):
-        frames = torch.randn(2, 2, 58)
+        frames = torch.randn(2, 2, 57)
         hidden = torch.randn(1, 2, 12, requires_grad=True)
         original = hidden.detach().clone()
         encode = self.net.encode
@@ -173,24 +173,24 @@ class ContextEstimatorTests(unittest.TestCase):
         self.assertIsNone(hidden.grad)
 
     def test_reconstruction_mask_ignores_policy_driven_slices(self):
-        """排除的 16 维（loco_command 3 + last_action 13）**不得**影响重建损失。
+        """排除的 15 维（loco_command 3 + last_action 12）**不得**影响重建损失。
 
         这正是 2026-10-17 评审的 ①：`o[t+1]` 里那 16 维由策略下一拍自己的动作决定，
         训练时是采样噪声。测试把它们的真值替换成 NaN —— 掩码正确时损失逐位不变，
         掩码失效时会直接变成 NaN。
         """
-        mask = [False] * 16 + [True] * 42
+        mask = [False] * 15 + [True] * 42
         trainer = self.module.DynamicsDecoderTrainer(
             self.net, learning_rate=0.0, reconstruction_mask=mask)
-        frames = torch.randn(2, 2, 58)
+        frames = torch.randn(2, 2, 57)
         targets = torch.zeros(2, 2, 5)
-        next_frames = torch.randn(2, 2, 58)
+        next_frames = torch.randn(2, 2, 57)
         torch.manual_seed(31)
         clean = trainer.update(frames, targets, next_frames=next_frames)
         clean_reconstruction = trainer.last_reconstruction
         self.assertGreater(clean_reconstruction, 0)
         poisoned = next_frames.clone()
-        poisoned[..., :16] = float("nan")
+        poisoned[..., :15] = float("nan")
         torch.manual_seed(31)
         dirty = trainer.update(frames, targets, next_frames=poisoned)
         torch.testing.assert_close(clean, dirty)
@@ -205,7 +205,7 @@ class ContextEstimatorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.module.DynamicsDecoderTrainer(self.net, reconstruction_mask=[True] * 40)
         with self.assertRaises(ValueError):
-            self.module.DynamicsDecoderTrainer(self.net, reconstruction_mask=[False] * 58)
+            self.module.DynamicsDecoderTrainer(self.net, reconstruction_mask=[False] * 57)
 
     def test_real_rollout_pairs_frames_and_snapshots_reused_buffers(self):
         # Execute the actual runner loop with a tiny reusable-buffer environment.
@@ -217,8 +217,8 @@ class ContextEstimatorTests(unittest.TestCase):
                          augment_actor_observation=self.module.augment_actor_observation,
                          reset_gru_hidden=self.module.reset_gru_hidden)
         exec(compile(ast.Module(body=[learn], type_ignores=[]), "<runner.learn>", "exec"), namespace)
-        obs, targets = torch.zeros(2, 58), torch.full((2, 5), 10.)
-        critic = torch.zeros(2, 73)
+        obs, targets = torch.zeros(2, 57), torch.full((2, 5), 10.)
+        critic = torch.zeros(2, 72)
 
         def step(actions):
             obs.add_(1)
@@ -235,7 +235,7 @@ class ContextEstimatorTests(unittest.TestCase):
                               get_privileged_observations=lambda: critic,
                               get_decoder_supervision=lambda: targets, step=step)
         alg = SimpleNamespace(actor_critic=SimpleNamespace(train=lambda: None),
-                              act=lambda *args: torch.zeros(2, 13),
+                              act=lambda *args: torch.zeros(2, 12),
                               process_env_step=lambda *args: None,
                               compute_returns=lambda *args: None, update=lambda: (0., 0.))
         subject = SimpleNamespace(env=env, alg=alg, decoder=self.net.eval(), decoder_hidden=None,

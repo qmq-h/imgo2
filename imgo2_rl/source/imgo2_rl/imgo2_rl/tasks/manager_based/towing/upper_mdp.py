@@ -36,7 +36,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils import math as math_utils
 
 from ....assets import cart_mass
-from .upper_logic import CMD_ACTION_DIM, UpperActionSpec, effective_vx_clip
+from .upper_logic import UpperActionSpec, effective_vx_clip
 from .mdp.connection_grid import (
     ELASTIC_KC, GRID_SIZE, SPEEDBUMP_TERRAIN, WAVE_TERRAIN, env_spec, is_full_grid)
 from .mdp.episode_geometry import SETTLE_TIME_S, STOP_DISTANCE_M
@@ -103,18 +103,12 @@ class HierarchicalVelocityAction(ActionTerm):
         self._action_spec = UpperActionSpec(
             residual_scale=tuple(self._policy_cfg.action_scale),
             control_dt=cfg.upper_control_dt,
-            cmd_offset_scale=cfg.cmd_offset_scale,
-            offset_min=cfg.offset_min,
-            offset_max=cfg.offset_max,
         )
         self._action_spec.validate()
         self._residual_scale = torch.tensor(
             self._policy_cfg.action_scale, dtype=torch.float32, device=env.device)
-        # 动作 13 维 = 1 维 vx 偏移 + 12 维关节残差（`upper_logic.CMD_ACTION_DIM`）。
-        # 这里展开写而不用 `self.action_dim`（属性在类上已定义，但那是 `init` 顺序守卫里的
-        # 未赋值名字；展开可让守卫保持严格，不新增白名单）。
-        self._raw = torch.zeros(env.num_envs, CMD_ACTION_DIM + self._joint_action_dim,
-                                device=env.device)
+        # 动作 12 维 = 12 维关节残差（2026-10-24 去掉 vx 偏移头）。
+        self._raw = torch.zeros(env.num_envs, self._joint_action_dim, device=env.device)
         self._processed = torch.zeros_like(self._raw)
         self._previous = torch.zeros_like(self._raw)
         # 12 维关节位置残差（**策略关节顺序**）。`apply_actions` 每次刷新冻结策略输出时
@@ -123,7 +117,7 @@ class HierarchicalVelocityAction(ActionTerm):
         # **任务指令**（脚本调度 + 可选 STOP ramp）：只给奖励当参考量（`velocity_tracking_exp`）。
         # 与 `loco_command` 分开是防作弊红线：策略的偏移只进 `loco_command`，不许污染奖励参考。
         self.task_command = torch.zeros(env.num_envs, 3, device=env.device)
-        # 实际送给冻结底层策略的速度指令 = `task_command` + 有界 vx 偏移（出生段不叠加偏移）。
+        # 实际送给冻结底层策略的速度指令 = 脚本 `task_command`（没有 actor 偏移）。
         self.loco_command = torch.zeros(env.num_envs, 3, device=env.device)
         self.tow_speed = torch.full((env.num_envs,), cfg.initial_tow_speed, device=env.device)
         self.tow_start_s = torch.full((env.num_envs,), cfg.tow_start_s, device=env.device)
@@ -355,8 +349,8 @@ class HierarchicalVelocityAction(ActionTerm):
 
     @property
     def action_dim(self):
-        """13：1 维 vx 偏移（cmd vel 头）+ 12 维关节残差（策略关节顺序）。"""
-        return CMD_ACTION_DIM + self._joint_action_dim
+        """12：只有 12 维关节残差（策略关节顺序；v6 去掉 vx 偏移头）。"""
+        return self._joint_action_dim
 
     @property
     def raw_actions(self):
@@ -367,9 +361,9 @@ class HierarchicalVelocityAction(ActionTerm):
         return self._processed
 
     def process_actions(self, actions):
-        """每上层控制步（50 ms）更新一次：脚本速度指令 + 1 维偏移 + 12 维关节残差。
+        """每上层控制步（50 ms）更新一次：脚本速度指令 + 12 维关节残差。
 
-        动作 ``u = cat(u_cmd(1), u_joint(12))``（`upper_logic.CMD_ACTION_DIM`）。相位
+        动作 ``u = u_joint(12)``（2026-10-24 去掉 1 维 vx 偏移头）。相位
         （2026-10-09 恢复三段制，用户要求）：
 
             0 ── settle（指令 0，静止稳定）── tow（指令 = tow_speed）── STOP（指令 0）
@@ -380,16 +374,13 @@ class HierarchicalVelocityAction(ActionTerm):
         供 `post_stop_towing_force`／`post_stop_distance` 定相位。用进度而非固定时间的原因：
         最慢速度下走到坡出口（9.0 m）就要约 23 s，固定时间阈值无法保证"越过坡之后"。
 
-        **两个命令解耦（2026-10-10，防作弊红线）**：
+        **命令（2026-10-24 起无 actor 偏移）**：
 
-        - ``task_command`` = 脚本调度（+ 可选 ramp）：**只给奖励**当参考量；
-        - ``loco_command`` = ``clamp(task_command + 有界偏移, 任务包络)``：给冻结策略、进 actor 帧。
+        - ``task_command`` = 脚本调度（+ 可选 ramp）：给奖励当参考量；
+        - ``loco_command`` = ``clip(task_command, 任务包络)``：给冻结策略、进 actor 帧。
 
-        偏移只在 ``elapsed_s >= tow_start_s`` 后生效（出生段不许推机器人）；STOP 之后
-        ``task_command`` 归零，但偏移头**仍然生效** —— 这正是「停机后继续走两步」的表达口。
-        合成后的 vx 一律裁进任务包络 ``amp_vx_range = (−1.0, 1.0)``（2026-10-17 工作域
-        0.5–1.0 m/s）；它必须落在冻结低层的训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0），
-        由 `effective_vx_clip` 校验，越界直接报错而不是静默放宽。
+        速度完全由脚本/PD 决定，actor 只出 12 维关节残差。``amp_vx_range`` 仍会校验
+        任务包络落在冻结低层训练包络内；脚本速度 0.5–1.0 m/s 时零裁剪。
         """
         elapsed_s = self._env.episode_length_buf * self._env.step_dt
         progress = ((self._asset.data.root_pos_w - self._env.scene.env_origins)
@@ -418,8 +409,7 @@ class HierarchicalVelocityAction(ActionTerm):
         self._processed.copy_(actions.clamp(-1.0, 1.0))
         # 归一化关节残差 → 逐关节位置增量（rad）。尺度取冻结策略的 action_scale，
         # 因此等价于在底层动作空间上叠一个同量纲偏移。
-        self.delta_joint_pos.copy_(
-            self._processed[:, CMD_ACTION_DIM:] * self._residual_scale)
+        self.delta_joint_pos.copy_(self._processed * self._residual_scale)
         # ---- 2) 任务指令：脚本调度 + 可选 STOP ramp（ramp_s = 0 时与旧口径逐位一致）----
         towing = (elapsed_s >= self.tow_start_s) & ~self._was_stopped
         scripted_vx = torch.where(towing, self.tow_speed, torch.zeros_like(self.tow_speed))
@@ -437,22 +427,10 @@ class HierarchicalVelocityAction(ActionTerm):
         if self.cfg.lane_keeping:
             self.task_command[:, 1] = self._lane_keeping_vy()
             self.task_command[:, 2] = self._lane_keeping_wz()
-        # ---- 3) 送冻结策略的指令 = 任务指令 + 有界偏移，再裁进任务包络 ----
-        # 两层限幅，顺序不能反：
-        #   a) 偏移本身限在头权限 [offset_min, offset_max]（**不是**把和裁到这个区间：
-        #      脚本速度 0.5–1.0，裁和会把牵引段砍到 0.6 而奖励参考仍是 1.0）；
-        #   b) **和**再限在任务包络 amp_vx_range = (−1.0, 1.0)；它已由
-        #      effective_vx_clip 校验落在冻结低层训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0）。
-        # 因为包络覆盖整个脚本速度范围，u_cmd = 0 时 clamp 是恒等的 ⇒ 与旧口径逐位一致。
+        # ---- 3) 送冻结策略的指令 = 脚本任务指令（没有 actor 偏移）----
         self.loco_command.copy_(self.task_command)
-        offset = self._processed[:, :CMD_ACTION_DIM] * self.cfg.cmd_offset_scale
-        offset = offset.clamp(self.cfg.offset_min, self.cfg.offset_max)
-        offset_active = (elapsed_s >= self.tow_start_s).unsqueeze(1)
-        self.loco_command[:, :CMD_ACTION_DIM] += torch.where(
-            offset_active, offset, torch.zeros_like(offset))
         vx_min, vx_max = self._vx_clip
-        self.loco_command[:, :CMD_ACTION_DIM] = self.loco_command[:, :CMD_ACTION_DIM].clamp(
-            vx_min, vx_max)
+        self.loco_command[:, 0] = self.loco_command[:, 0].clamp(vx_min, vx_max)
 
     def _lane_keeping_vy(self):
         """横向 PD → `vy` 指令：把机器人压在 lane 中线（lane 系 `y = 0`）。
@@ -662,16 +640,10 @@ class HierarchicalVelocityAction(ActionTerm):
 
 @configclass
 class HierarchicalVelocityActionCfg(ActionTermCfg):
-    """上层动作 = **1 维 vx 偏移 + 12 维归一化关节残差**（13 维，2026-10-10 起）。
+    """上层动作 = **12 维归一化关节残差**（2026-10-24 v6；vx 偏移头已删除）。
 
-    原先的 `acceleration_min/max` 与 `reference_min/max` 已删除：动作不再是加速度积分，
-    残差尺度直接取冻结策略契约的 `action_scale`（见 `UpperActionSpec`）。
-
-    双头分工（`docs/towing/towing_upper_two_head_2026-10-10.md`）：
-
-    - ``u_joint``（12 维）：关节位置残差，叠加在冻结策略的关节目标上；
-    - ``u_cmd``（1 维）：vx 偏移，**加性 + 有界**地叠在脚本调度的 vx 上，只在
-      ``elapsed_s >= tow_start_s`` 后生效。新字段默认值即用户建议值。
+    动作不再是加速度积分，也没有 cmd vel 头；残差尺度直接取冻结策略契约的
+    `action_scale`（见 `UpperActionSpec`）。vx 由脚本调度 / 横向 PD 给出。
     """
 
     class_type: type[ActionTerm] = HierarchicalVelocityAction
@@ -686,29 +658,15 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     physics_dt: float = 0.005
     initial_tow_speed: float = 0.5
     tow_start_s: float = SETTLE_TIME_S
-    # ---- 2026-10-10 新增：1 维 vx 偏移头（cmd vel 头）----
-    #: offset = clip(u_cmd, ±1) × cmd_offset_scale（m/s）。
-    cmd_offset_scale: float = 0.5
-    #: 偏移量本身的限幅（m/s）——**不是** `task_vx + offset` 的绝对限幅。理由见
-    #: `upper_logic.UpperActionSpec`：脚本速度 0.5–1.0 m/s，裁和会把牵引指令砍到 0.6。
-    offset_min: float = -0.2
-    offset_max: float = 0.6
-    #: **合成后 vx 的任务包络**（m/s），不是低层训练包络；默认 (−1.0, 1.0)。
-    #: 低层训练包络在 `utils/policy_cfg.py`：AMP (−1.0, 1.5) / PPO (−1.5, 3.0)，
-    #: 构造时由 `effective_vx_clip` 校验本包络必须落在其中，越界直接报错。
-    #: 这不是"权限"，是**分布约束**：超出即 OOD，冻结策略的步态会退化。
-    #: 它必须覆盖脚本速度范围（2026-10-17 起 `SPEED_RANGE = 0.5–1.0`），
-    #: `upper_env_cfg.__post_init__` 有断言守着这条 —— 否则零偏移时脚本自己就被裁掉。
-    #: 2026-10-17 用户把工作域上界收到 1.0，这里同步收束：偏移头不能再把合成指令推到
-    #: 1.0 以上（冻结低层 PPO 在 ≥1.5 会停滞；即便换回 AMP，1.0 以上也不在任务域内）。
+    #: **脚本 vx 的任务包络**（m/s），不是低层训练包络；默认 (−1.0, 1.0)。
+    #: 没有偏移头后它只用于约束脚本 vx，必须覆盖脚本速度范围（0.5–1.0 m/s）。
     amp_vx_range: tuple[float, float] = (-1.0, 1.0)
     # ---- 2026-10-10 新增：「停机之后」开关，默认关闭 = 今天的行为 ----
     # 同批落地的另一个「停机之后」旋钮 `post_stop_allowance_m` 是 `post_stop_distance` 的
     # **奖励 params**（不在本 cfg 上）；该奖励项已于 2026-10-10 删除（见 `post_stop_distance`
     # 的 docstring），形参保留供复用。
     #: STOP 之后脚本 vx 在多少秒内从 tow_speed 线性降到 0。**0.0 = 关闭**（今天的脚本调度，
-    #: 到点直接归零）。要让策略学会「停机续走」就设成 1.0–2.0 s：脚本侧先给出可跟的
-    #: 参考量，偏移头只做按车重/坡度的自适应修正，而不是从零学一个不存在的步态。
+    #: 到点直接归零）。2026-10-24 去掉偏移头后，STOP 后是否续走完全由脚本 ramp 决定。
     stop_command_ramp_s: float = 0.0
     # 归零的沿 lane 水平距离（m）；必须 > `slope_geometry.FLAT_OUT_START_M`（坡面出口），
     # 即"越过坡之后"才 STOP。`upper_env_cfg.__post_init__` 有显式断言守着这条。
@@ -891,17 +849,16 @@ def reset_towing_episode(
 
 
 def loco_command(env):
-    """送给冻结底层策略的速度指令 = ``task_command`` + 有界 vx 偏移。
+    """送给冻结底层策略的速度指令 = 脚本 ``task_command``（v6 起无 actor 偏移）。
 
-    ⚠ 这是**送策略 / 进 actor 帧**的量，含策略自己的偏移，**绝不能**当奖励参考量
-    （否则策略把偏移开大就能自己给自己发目标）。奖励一律读 `task_command`。
+    奖励仍一律读 `task_command`；两者目前只差 `amp_vx_range` 的脚本裁剪。
     """
     return _term(env).loco_command
 def task_command(env):
-    """**任务指令**（脚本调度 + 可选 STOP ramp）：只给奖励当参考量，不含策略偏移。"""
+    """**任务指令**（脚本调度 + 可选 STOP ramp）：奖励参考量。"""
     return _term(env).task_command
 def upper_last_action(env):
-    """上一拍 **13 维**上层动作（clamp 到 ±1，未缩放）：1 维 vx 偏移 + 12 维关节残差。"""
+    """上一拍 **12 维**上层动作（clamp 到 ±1，未缩放）：只有关节残差。"""
     return _term(env).processed_actions
 def base_angular_velocity(env): return _term(env)._asset.data.root_ang_vel_b
 def projected_gravity(env):
@@ -969,9 +926,8 @@ def feet_slide(env, sensor_name, contact_threshold=1.0):
 def policy_frame(env):
     """One complete actor frame; history is applied once to preserve frame-major ordering.
 
-    2026-10-10 起为 **58 维**（双头动作，v3 契约）：命令项是 ``loco_command``
-    （= 任务指令 + 有界偏移；原来并列的 `cmd_vel`／`reference_command` 在残差方案下恒等，
-    属冗余），``last_action`` 由 12 维变 **13 维**（1 维 vx 偏移 + 12 维关节残差）。
+    2026-10-24 起为 **57 维**（v6 契约）：命令项是脚本 ``loco_command``，
+    ``last_action`` 回到 **12 维**关节残差；vx 偏移头已删除。
     """
     return torch.cat((loco_command(env), upper_last_action(env),
                       base_angular_velocity(env) * 0.25, projected_gravity(env),

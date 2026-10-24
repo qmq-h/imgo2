@@ -27,9 +27,9 @@ class TowingDecoderCfg:
     显式 5 维与 latent 16 拼接（21 维）重建下一时刻的 58 维 policy 帧。
     """
 
-    # 必须等于环境的 policy 帧维数（`upper_logic.UpperObservationSpec.frame_dim`，契约 v3
+    # 必须等于环境的 policy 帧维数（`upper_logic.UpperObservationSpec.frame_dim`，契约 v6
     # 起为 58：`last_action` 12 → 13）；runner 会断言它与 `env.num_obs` 一致。
-    frame_dim: int = 58
+    frame_dim: int = 57
     feature_dim: int = 128
     hidden_dim: int = 128
     num_layers: int = 1

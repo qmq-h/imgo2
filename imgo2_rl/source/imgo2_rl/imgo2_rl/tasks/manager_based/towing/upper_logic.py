@@ -4,9 +4,8 @@ from dataclasses import dataclass
 import math
 
 
-#: 双头动作布局的切分点：``u = cat(u_cmd(1), u_joint(12))``。
-#: 切分点唯一定义在这里，`upper_mdp` 与 `upper_policy_runtime` 都引用它，避免两处各自漂移。
-CMD_ACTION_DIM = 1
+#: 2026-10-24 起动作只有 12 维关节残差；原 1 维 vx 偏移头已删除。
+#: 保留常量名会让旧 import 静默变成 0 维切片，因此代码里不再定义 `CMD_ACTION_DIM`。
 
 
 def effective_vx_clip(task_range, policy_range):
@@ -31,55 +30,22 @@ def effective_vx_clip(task_range, policy_range):
 
 @dataclass(frozen=True)
 class UpperActionSpec:
-    """双头动作：**1 维 vx 偏移** + **12 维归一化关节残差**。
+    """**12 维归一化关节位置残差**（2026-10-24 起去掉 1 维 vx 偏移头）。
 
-    2026-10-08 由「3 维归一化加速度 → 积分成参考速度」改为**关节位置残差**；2026-10-10
-    再在其前面加一个 **cmd vel 头**（用户批准的双头方案），动作 12 → 13：
+    历史：2026-10-08 由 3 维加速度积分改为关节残差；2026-10-10 在残差前加 1 维 cmd vel
+    偏移头（动作 12→13）；2026-10-24 用户要求去掉该偏移，动作回到 **12**。速度指令完全由
+    脚本调度（+ 横向/朝向 PD）给出，不再允许 actor 改写 vx。
 
-        u        = cat(u_cmd(1), u_joint(12))
-        offset   = clip(u_cmd, ±1) × cmd_offset_scale，再限在 [offset_min, offset_max]
-        loco_vx  = clamp(task_vx + offset, amp_vx_min, amp_vx_max)
-        delta    = clip(u_joint, ±1) ⊙ residual_scale
-
-    两头的语义与分工（`docs/towing/towing_upper_two_head_2026-10-10.md`）：
-
-    - ``u_joint``：叠加在冻结策略关节目标上的位置增量（力矩级、单步级），负责抗击冲击；
-    - ``u_cmd``：叠加在**脚本调度**的 vx 上的偏移（行为级、秒级），负责「STOP 之后还走不走」。
-      偏移**只在 `elapsed_s >= tow_start_s` 后生效**：出生段（settle）不许推机器人。
-
-    **加性 + 有界，但限的两层是分开的**（2026-10-10 从源码核对后确定）：
-
-    1. ``offset_min`` / ``offset_max`` 限的是**偏移量本身**（头权限，默认 −0.2 / +0.6）；
-    2. ``amp_vx_range`` 限的是**合成后的 vx**。2026-10-17 起任务域收到 **0.5–1.0 m/s**
-       （`episode_geometry.SPEED_RANGE`），包络随之是 **(−1.0, 1.0)**：偏移头不得把指令
-       推到任务域之外（冻结低层 PPO 在 ≥1.5 会停滞）。
-
-    ⚠ **绝不能**把"和"裁到偏移头的 `[−0.2, +0.6]`：拖曳脚本速度是 0.5–1.0 m/s
-    （`episode_geometry.SPEED_RANGE`），那样会把正常牵引指令压成 0.6 而奖励参考量
-    （`task_command`）仍是 1.0 ⇒ 策略被要求跟一个它根本发不出的速度。
-    反过来，`amp_vx_range` 必须**覆盖整个脚本速度范围**（`upper_env_cfg.__post_init__` 有断言），
-    这样 `u_cmd = 0` 时 `clamp(task_vx, ...) == task_vx`，与旧口径**逐位一致**。
-
-    语义后果（写进文档与日志）：牵引段速度高时正半轴偏移会被包络钳掉（1.0 m/s 时 +0.5 无梯度），
-    偏移实际只能**减小** vx —— 正好用于「绷直前降速、少灌冲击能量」；STOP 之后 `task_vx = 0`，
-    偏移头在同一包络内可正可负（可倒走制造松弛）。因此偏移量建议**按相位分开记日志**。
+        u     = u_joint(12)
+        delta = clip(u, ±1) ⊙ residual_scale
 
     残差尺度取 ``LowLevelPolicyCfg.action_scale``（12 个逐关节值），与底层动作同量纲。
-    这样残余的物理幅值由冻结策略自己的动作范围界定，不需要另立一套尺度常数。
     """
 
     residual_scale: tuple[float, ...]
     control_dt: float = 0.05
-    # ---- 2026-10-10 新增：1 维 vx 偏移头（全部是 cfg 字段，默认值 = 用户建议值）----
-    #: 偏移头的归一化尺度（m/s）：offset = clip(u_cmd, ±1) × cmd_offset_scale。
-    cmd_offset_scale: float = 0.5
-    #: 偏移下限（m/s）。scale 0.5 时负向先触界：u_cmd ≤ −0.4 就被压在 −0.2。
-    offset_min: float = -0.2
-    #: 偏移上限（m/s）。scale 0.5 时正向最多 +0.5，本值 0.6 是留出的富余。
-    offset_max: float = 0.6
-    #: **合成后 vx 的指令包络**（m/s）。2026-10-17 起任务域 0.5–1.0 ⇒ 包络 (−1.0, **1.0**)
-    #: （原 AMP `lin_vel_x = (−1.0, 1.5)` 已不再需要：偏移头不该把指令推出任务域）。
-    #: 它必须覆盖脚本速度范围 0.5–1.0，否则零偏移时脚本自己就被裁掉（破坏退化性）。
+    #: 脚本速度的任务包络；仍是冻结低层训练包络的子区间（由 `effective_vx_clip` 校验）。
+    #: 没有偏移头后它只用于给脚本 vx 做分布约束，不再与动作相加。
     amp_vx_range: tuple[float, float] = (-1.0, 1.0)
 
     def validate(self):
@@ -91,16 +57,10 @@ class UpperActionSpec:
             raise ValueError("residual_scale 必须全为正（否则该关节的残差通道被静默关闭）")
         if not math.isfinite(self.control_dt) or self.control_dt <= 0.0:
             raise ValueError("control_dt 必须为有限正数")
-        if not math.isfinite(self.cmd_offset_scale) or self.cmd_offset_scale <= 0.0:
-            raise ValueError("cmd_offset_scale 必须为有限正数")
-        if not (math.isfinite(self.offset_min) and math.isfinite(self.offset_max)):
-            raise ValueError("offset_min / offset_max 必须为有限数")
-        if self.offset_min >= self.offset_max:
-            raise ValueError("必须满足 offset_min < offset_max")
         self.validate_amp_vx_range()
 
     def validate_amp_vx_range(self):
-        """训练包络必须是有限、有序、**包含 0** 的区间。"""
+        """任务速度包络必须是有限、有序、**包含 0** 的区间。"""
         low, high = self.amp_vx_range
         if not (math.isfinite(low) and math.isfinite(high)):
             raise ValueError("amp_vx_range 必须为有限数")
@@ -116,56 +76,11 @@ class UpperActionSpec:
 
     @property
     def action_dim(self):
-        """动作总维数：1 维 vx 偏移 + 12 维关节残差 = 13。"""
-        return CMD_ACTION_DIM + len(self.residual_scale)
-
-    def split_action(self, action):
-        """把 13 维归一化动作切成 ``(u_cmd(1), u_joint(12))``，各自 clamp 到 ±1。
-
-        拆分的唯一定义处（`upper_mdp.process_actions` 的张量版与运行时都必须与此一致）。
-        """
-        self.validate()
-        if len(action) != self.action_dim:
-            raise ValueError(
-                f"upper action 维数 {len(action)} != {self.action_dim}"
-                f"（{CMD_ACTION_DIM} 维 vx 偏移 + {self.joint_action_dim} 维关节残差）")
-        values = tuple(min(1.0, max(-1.0, float(value))) for value in action)
-        return values[:CMD_ACTION_DIM], values[CMD_ACTION_DIM:]
-
-    def command_offset(self, action):
-        """``clip(u_cmd, ±1) × cmd_offset_scale``（m/s，未做 [min, max] 限幅）。"""
-        command, _ = self.split_action(action)
-        return command[0] * self.cmd_offset_scale
-
-    def bounded_command_offset(self, action):
-        """把 vx 偏移限在 ``[offset_min, offset_max]``（m/s）。"""
-        offset = self.command_offset(action)
-        return min(self.offset_max, max(self.offset_min, offset))
-
-    def loco_command_vx(self, action, scripted_vx, *, apply_offset=True):
-        """送给冻结策略的 vx = ``clamp(脚本 vx + 有界偏移, amp_vx_min, amp_vx_max)``。
-
-        两层限幅（顺序不能反）：
-
-        1. 偏移先限在头权限 ``[offset_min, offset_max]``；
-        2. **和**再限在任务包络 ``amp_vx_range``（默认 −1.0…1.0）；它由
-           `effective_vx_clip` 校验必须落在冻结低层的训练包络内（AMP −1.0…1.5 /
-           PPO −1.5…3.0），越界在构造时直接报错。
-
-        ``apply_offset=False`` 即出生段（`elapsed_s < tow_start_s`）：偏移不生效，返回值等于
-        ``clamp(scripted_vx, ...)``；由于 `amp_vx_range` 覆盖脚本速度范围（0.5–1.0），
-        这就是脚本值本身，与旧口径**逐位一致**。
-        """
-        offset = self.bounded_command_offset(action) if apply_offset else 0.0
-        low, high = self.amp_vx_range
-        return min(high, max(low, float(scripted_vx) + offset))
+        """动作总维数：只有 12 维关节残差（v6 起没有 vx 偏移头）。"""
+        return len(self.residual_scale)
 
     def delta_joint_pos(self, action):
-        """把 |u| ≤ 1 的归一化**关节残差**映射为逐关节位置增量（rad，策略关节顺序）。
-
-        入参是 12 维关节残差（不是 13 维完整动作）：本方法语义自 2026-10-08 起未变，
-        新增的 cmd vel 头由 `split_action` / `bounded_command_offset` 单独处理。
-        """
+        """把 |u| ≤ 1 的 12 维归一化关节残差映射为逐关节位置增量（rad，策略关节顺序）。"""
         self.validate()
         if len(action) != len(self.residual_scale):
             raise ValueError(
@@ -173,21 +88,26 @@ class UpperActionSpec:
         return tuple(scale * min(1.0, max(-1.0, float(value)))
                      for value, scale in zip(action, self.residual_scale))
 
+    def clip_loco_vx(self, scripted_vx):
+        """把脚本 vx 裁进任务包络（没有偏移头，不再做加法）。"""
+        low, high = self.amp_vx_range
+        return min(high, max(low, float(scripted_vx)))
+
 
 @dataclass(frozen=True)
 class UpperObservationSpec:
     """Raw recurrent input plus the deployable decoder estimate.
 
-    ``loco_command`` 是**实际送给冻结策略**的速度指令 = ``task_command + 有界偏移``
-    （2026-10-10 起是双头动作的第一个头写出来的，策略因此看得见自己下了什么指令）。
+    ``loco_command`` 是**实际送给冻结策略**的速度指令 = ``task_command``（2026-10-24 起
+    不再叠加 actor 的 vx 偏移；vy/wz 仍由 PD 外环给出）。
 
-    ``last_action`` 2026-10-10 由 12 维变 **13 维**（1 维 vx 偏移 + 12 维关节残差），
-    因此帧 57 → **58**、decoder ``frame_dim`` 57 → 58，checkpoint 契约 v2 → **v3**。
+    2026-10-24 去掉 1 维 vx 偏移头后，``last_action`` 回到 **12 维**、帧回到 **57**、
+    decoder ``frame_dim`` 57、actor **78**，checkpoint 契约升 **v6**。旧 v5（58/13/79）
+    及更早 checkpoint 一律失效，需重训。
 
-    2026-10-16：decoder 去掉显式质量预测（准则「只建模与四足机器人直接相关的量」，质量交给
-    latent）⇒ explicit 6 → **5**、actor 80 → **79**、契约 v3 → **v4**。旧 checkpoint 必须被拒，
-    按仓库惯例新建 run。2026-10-17 合并 CE Net 后契约再升 **v5**（显式 5 + 重建下一帧，
-    42 维重建掩码）；v2/v3/v4 checkpoint 一律失效。
+    2026-10-16：decoder 去掉显式质量预测 ⇒ explicit 6 → **5**、契约 v4；2026-10-17 合并
+    CE Net 后升 v5（显式 5 + 重建下一帧，42 维重建掩码）。2026-10-24 去掉 vx 偏移头后
+    帧 58→57、actor 79→78，契约升 **v6**；v2/v3/v4/v5 checkpoint 一律失效，必须重训。
 
     **防作弊红线**：奖励**只能**读 ``task_command``（脚本调度、到点归零），绝不能读
     ``loco_command``（含策略自己的偏移），否则策略只要把偏移开大就能自己给自己发目标。
@@ -195,7 +115,7 @@ class UpperObservationSpec:
 
     terms: tuple[tuple[str, int], ...] = (
         ("loco_command", 3),     # [vx, vy, yaw_rate]，送冻结策略 = task_command + 有界偏移
-        ("last_action", 13),     # 上一拍 13 维动作（1 维 vx 偏移 + 12 维关节残差）
+        ("last_action", 12),     # 上一拍 12 维关节残差（2026-10-24 去掉 vx 偏移头）
         ("base_ang_vel", 3),     # body-frame IMU gyroscope
         ("projected_gravity", 3),
         ("last_loco_action", 12),
@@ -209,9 +129,9 @@ class UpperObservationSpec:
     #: 这两个项在 ``o[t+1]`` 里由**策略自己下一拍的动作**决定，而 decoder 在 t 时刻只看到
     #: ``o_t``（Isaac Lab 的 ``step()`` 顺序是 ``process_action → 物理 → reset → 算观测``，
     #: 所以 ``o_t`` 里的 ``last_action`` 是 ``a_t``，``o[t+1]`` 里的是 ``a_{t+1}``）：
-    #: - ``last_action``（13 维）= ``a_{t+1}`` 本身 ⇒ 训练时是策略采样，**不可预测**；
-    #: - ``loco_command``（3 维）= ``task_command + 偏移(a_{t+1})`` ⇒ vx 维同样不可预测
-    #:   （vy/wz 由 PD 外环决定，可以预测，但整项一起排除更简单、也更保守）。
+    #: - ``last_action``（12 维）= ``a_{t+1}`` 本身 ⇒ 训练时是策略采样，**不可预测**；
+    #: - ``loco_command``（3 维）= ``task_command``（2026-10-24 起无偏移），vx 可预测，
+    #:   但整项一起排除更简单、也更保守。
     #: 只对剩下的 **42 维**（ang_vel/gravity/last_loco_action/joint_pos/joint_vel）算重建
     #: ⇒ 去掉不可消除的 MSE 地板（≈0.05）与那 16 维上的噪声梯度。
     #: 详见 docs/towing/towing_ce_net_2026-10-17.md §5①。
@@ -239,7 +159,7 @@ class UpperObservationSpec:
 
     @property
     def reconstruction_dim(self) -> int:
-        """参与下一帧重建的维数（当前 58 − 13 − 3 = **42**）。"""
+        """参与下一帧重建的维数（当前 57 − 12 − 3 = **42**）。"""
         return sum(self.reconstruction_mask())
 
     @property

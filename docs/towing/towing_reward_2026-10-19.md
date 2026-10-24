@@ -1,3 +1,5 @@
+> **2026-10-24 v6 变更（本文以下内容多为 v5 历史）**：用户要求去掉 1 维 vx 偏移头，动作改为 **12 维纯关节残差**；policy 帧 58→57、actor 79→78、critic 73→72、`towing_contract` v6。旧 v5 checkpoint/`policy.pt` 全部失效，必须从零重训后重新导出。
+
 # 拖曳训练奖励随验收口径调整（2026-10-19）
 
 > 用户原话：「clearance 和 min_clearance 置为 0；建议新加的奖励都不需要；fall 只看高度?

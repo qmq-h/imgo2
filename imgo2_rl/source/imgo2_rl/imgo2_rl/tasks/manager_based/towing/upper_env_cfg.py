@@ -1,16 +1,14 @@
 """Class-based configuration for the hierarchical towing RL environment.
 
-架构（2026-10-10 起，**双头**）：送给冻结低层策略的速度指令 = 脚本调度 + 上层
-**1 维 vx 偏移**（``loco_command``）；上层网络另有 **12 维关节位置残差**叠加在冻结策略的
-关节目标上。两个命令量**解耦**（防作弊红线）：
+架构（2026-10-24 起，**v6**）：送给冻结低层策略的速度指令 = 脚本调度（+ 横向/朝向 PD）；
+上层网络只输出 **12 维关节位置残差**，叠加在冻结策略的关节目标上。2026-10-10 引入的
+1 维 vx 偏移头已删除，actor 不再改写速度。
 
-    task_command —— 脚本调度、到点归零 —— **只给奖励**（`tracking_velocity` 等）；
-    loco_command —— task_command + 有界偏移 —— **给冻结策略 + 进 actor 帧**。
+    task_command —— 脚本调度、到点归零 —— 奖励参考量；
+    loco_command —— 脚本指令裁进任务包络 —— 给冻结策略 + 进 actor 帧。
 
-偏移先被限在头权限 `[offset_min, offset_max]`，再与脚本 vx 相加后裁进**任务包络**
-`amp_vx_range`（默认 −1.0…1.0）。任务包络必须落在冻结低层的**训练包络**内
-（AMP (−1.0, 1.5) / PPO (−1.5, 3.0)，见 `utils/policy_cfg.py`），由
-`upper_logic.effective_vx_clip` 在构造时校验——越界直接报错，不静默放宽。
+`amp_vx_range`（默认 −1.0…1.0）仍是**脚本 vx 的任务包络**，必须落在冻结低层训练包络内
+（AMP (−1.0, 1.5) / PPO (−1.5, 3.0)），由 `upper_logic.effective_vx_clip` 构造时校验。
 
 回合结构（2026-10-09 恢复三段制）：settle（指令 0，静止稳定）→ tow（指令 = tow_speed）
 → **STOP**（走到 `stop_distance_m`，**必须已越过坡**，指令归零）→ 继续跑到 timeout，
@@ -18,12 +16,11 @@
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 
-契约 v5（2026-10-17，CE Net）：policy 帧 **58** = 57 + 1（`last_action` 12 → 13）、
-explicit **5**（机器人速度 2 + 牵引力 3，**去掉显式质量预测**）、latent **16**、
-actor **79**、critic **73**、decoder ``frame_dim`` **58**；动作 **13** = 1 + 12。
-decoder 走 CE Net（并列显式头 + latent → 重建下一帧），重建目标按
-`UpperObservationSpec.reconstruction_mask()` 取 **42 维**（排除策略下一拍自决的
-`loco_command` 3 + `last_action` 13）。
+契约 v6（2026-10-24，去掉 vx 偏移头）：policy 帧 **57**、explicit **5**（机器人速度 2 +
+牵引力 3）、latent **16**、actor **78**、critic **73**、decoder ``frame_dim`` **57**；
+动作 **12** = 12 维关节残差。decoder 走 CE Net，重建目标按
+`UpperObservationSpec.reconstruction_mask()` 取 **42 维**（排除 `loco_command` 3 +
+`last_action` 12）。
 """
 
 from dataclasses import MISSING
@@ -142,13 +139,12 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class UpperActionsCfg:
-    """13 维动作（2026-10-10 起）= 1 维 vx 偏移 + 12 维归一化关节残差。
+    """12 维动作（2026-10-24 起）= 12 维归一化关节残差；vx 偏移头已删除。
 
     残差尺度取冻结策略契约的 `action_scale`，所以这里不再有 `acceleration_*`／
     `reference_*` 两组限制：送给冻结策略的速度指令由脚本调度产生，不由网络积分。
-    偏移头的三个尺度与「停机之后」开关 `stop_command_ramp_s` 都在
-    `mdp.HierarchicalVelocityActionCfg` 上（默认值 = 用户 2026-10-10 建议值，
-    `stop_command_ramp_s` 默认 0.0 = 今天的行为）。
+    「停机之后」开关 `stop_command_ramp_s` 仍在
+    `mdp.HierarchicalVelocityActionCfg` 上（默认 0.0）。
     另一个「停机之后」旋钮 `post_stop_allowance_m` **不在本文件**：它是
     `mdp.post_stop_distance` 的形参，而该函数自 2026-10-10 起**已不作为奖励项**
     （`extra_distance` 被删除），所以它目前未接入奖励、只保留供复用。
@@ -628,11 +624,9 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
                 f"STOP 触发点 {action.stop_distance_m} m 必须越过坡面出口 "
                 f"{FLAT_OUT_START_M} m，否则停车段落在坡上/坡中")
         minimum_speed = self.events.reset_work_condition.params["speed_range"][0]
-        # 速度头把 `task_vx + 有界偏移` 裁进任务包络 `amp_vx_range`（默认 −1.0…1.0）。
-        # 该包络必须落在冻结低层的训练包络内（AMP −1.0…1.5 / PPO −1.5…3.0，见
-        # `utils/policy_cfg.py`；`effective_vx_clip` 在构造时报错），并且必须
-        # **覆盖整个脚本速度范围**：否则零偏移时脚本自己就被裁掉，退化性（偏移=0 时与旧口径
-        # 逐位一致）直接失效，而且奖励参考量 `task_command` 与实际送策略的指令会分叉。
+        # 脚本 vx 被裁进任务包络 `amp_vx_range`（默认 −1.0…1.0）。该包络必须落在冻结
+        # 低层训练包络内，并且覆盖整个脚本速度范围（0.5–1.0）；否则奖励参考量
+        # `task_command` 与实际送策略的 `loco_command` 会分叉。
         amp_vx_min, amp_vx_max = action.amp_vx_range
         speed_min, speed_max = self.events.reset_work_condition.params["speed_range"]
         if not (amp_vx_min <= speed_min and speed_max <= amp_vx_max):

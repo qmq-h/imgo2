@@ -167,27 +167,20 @@ class VxEnvelopeTests(unittest.TestCase):
 
 class UpperLogicTests(unittest.TestCase):
     def test_actor_contract_matches_paper_plan(self):
-        """双头契约 **v5**：**58** 维单帧 + **5** 维 estimate = **79** 维 actor 输入；动作 **13**。
+        """v6 契约：**57** 维单帧 + **5** 维 estimate = **78** 维 actor 输入；动作 **12**。
 
-        2026-10-10 由单头（帧 57 / actor 79 / 动作 12）迁移而来：`last_action` 由 12 维
-        关节残差变成 13 维（1 维 vx 偏移 + 12 维关节残差），故帧 +1、actor +1。
-        命令项 `loco_command` 现在是「任务指令 + 有界偏移」（策略看得见自己下了什么指令），
-        奖励参考量改读 `task_command`（防作弊红线）。
-
-        2026-10-16（契约 v3 → v4）：decoder 去掉显式质量预测（准则「只建模与四足机器人直接
-        相关的量，质量用 latent 假定」）⇒ estimate 6 → 5、actor 80 → **79**。
+        2026-10-24 去掉 1 维 vx 偏移头：`last_action` 13 → 12，帧 58 → 57，actor 79 → 78。
+        命令项 `loco_command` 只由脚本/PD 给出；奖励仍读 `task_command`。
         """
         spec = logic.UpperObservationSpec()
         self.assertEqual([name for name, _ in spec.terms],
                          ["loco_command", "last_action", "base_ang_vel", "projected_gravity",
                           "last_loco_action", "joint_pos", "joint_vel"])
-        self.assertEqual(spec.frame_dim, 58)
+        self.assertEqual(spec.frame_dim, 57)
         self.assertEqual(spec.decoder_dim, 5)
-        self.assertEqual(spec.actor_dim, 79)
+        self.assertEqual(spec.actor_dim, 78)
         self.assertEqual(dict(spec.terms)["loco_command"], 3)
-        self.assertEqual(dict(spec.terms)["last_action"], 13)
-        # 动作布局常量：13 = 1（vx 偏移）+ 12（关节残差），切分点唯一定义在 upper_logic
-        self.assertEqual(logic.CMD_ACTION_DIM, 1)
+        self.assertEqual(dict(spec.terms)["last_action"], 12)
 
     def test_work_domain_ranges_do_not_touch_the_contract(self):
         """工作域常量（质量 5–30 kg、速度 0.5–1.0 m/s）**不得**改动契约。
@@ -200,7 +193,7 @@ class UpperLogicTests(unittest.TestCase):
         **2026-10-16 变更**：decoder 去掉显式质量预测（契约 v3 → v4），`DecoderSpec.mass_range`
         随之删除——质量不再是 decoder 的目标，工作域的权威位置只剩**环境 cfg**（
         `reset_work_condition.mass_range`）与**测量台** `TRAINING_MASS_RANGE_KG`，两处必须一致；
-        契约维数 **58 / 5 / 79 / 动作 13** 与 `towing_contract v4` 与这些范围无关。
+        契约维数 **57 / 5 / 78 / 动作 12** 与 `towing_contract v6` 与这些范围无关。
         """
         geometry = load("towing_episode_geometry_contract_test",
                         PKG / "mdp/episode_geometry.py")
@@ -220,11 +213,10 @@ class UpperLogicTests(unittest.TestCase):
 
         # 契约：工作域改了也不许动这些维数/版本
         spec = logic.UpperObservationSpec()
-        self.assertEqual((spec.frame_dim, spec.decoder_dim, spec.actor_dim), (58, 5, 79))
-        self.assertEqual(dict(spec.terms)["last_action"], 13)
-        self.assertEqual(logic.CMD_ACTION_DIM, 1)
+        self.assertEqual((spec.frame_dim, spec.decoder_dim, spec.actor_dim), (57, 5, 78))
+        self.assertEqual(dict(spec.terms)["last_action"], 12)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 5", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 6", runtime_src)
 
     def test_decoder_targets_are_physical_units(self):
         """2026-09-23 改为物理量：target 不再归一化，head 也不再带 tanh。
@@ -249,18 +241,16 @@ class UpperLogicTests(unittest.TestCase):
             logic.normalize_decoder_targets((0, 0, 0, 0))  # 维数不符仍要报错
 
     def test_upper_action_is_a_scaled_clipped_joint_residual(self):
-        """动作 = 13 维（1 维 vx 偏移 + 12 维归一化关节残差）。
+        """动作 = **12 维归一化关节残差**（v6；没有 vx 偏移头）。
 
-        关节头映射为 `residual_scale ⊙ clip(u_joint, ±1)`；残差尺度取冻结策略契约的
-        `action_scale`，因此幅值受底层动作范围界定。偏移头是**加性 + 有界**：
-        `offset = clip(u_cmd, ±1) × cmd_offset_scale`，再限在 `[offset_min, offset_max]`。
-        旧的 3 维加速度映射／参考速度积分已删除，不能留下任何可用入口。
+        映射为 `residual_scale ⊙ clip(u, ±1)`；残差尺度取冻结策略契约的 `action_scale`，
+        因此幅值受底层动作范围界定。旧的 3 维加速度映射／参考速度积分已删除。
         """
         scale = (0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25)
         spec = logic.UpperActionSpec(residual_scale=scale, control_dt=0.05)
         spec.validate()
         self.assertEqual(spec.joint_action_dim, 12)
-        self.assertEqual(spec.action_dim, 13)
+        self.assertEqual(spec.action_dim, 12)
         self.assertEqual(spec.delta_joint_pos([0.0] * 12), (0.0,) * 12)
         self.assertEqual(spec.delta_joint_pos([1.0] * 12), (0.25,) * 12)
         self.assertEqual(spec.delta_joint_pos([-1.0] * 12), (-0.25,) * 12)
@@ -279,80 +269,6 @@ class UpperLogicTests(unittest.TestCase):
         # 已删除的旧入口不能复活
         self.assertFalse(hasattr(logic, "normalized_acceleration"))
         self.assertFalse(hasattr(logic, "integrate_reference_speed"))
-
-    def test_action_split_is_one_command_plus_twelve_joints(self):
-        """动作切分：`u = cat(u_cmd(1), u_joint(12))`，两头各自 clamp 到 ±1。
-
-        这是双头契约最容易静默错位的地方（差一位 ⇒ 偏移头吃掉了第一个关节的残差），
-        所以切分必须只有**一个**定义处（`UpperActionSpec.split_action` / `CMD_ACTION_DIM`），
-        并且维数写错时必须硬报错而不是静默截断。
-        """
-        spec = logic.UpperActionSpec(residual_scale=(0.25,) * 12)
-        command, joint = spec.split_action([0.5] + [0.1] * 12)
-        self.assertEqual((command, joint), ((0.5,), (0.1,) * 12))
-        # 越界逐维裁剪（不是整体裁剪、不是线性外推）
-        command, joint = spec.split_action([5.0] + [-5.0] * 12)
-        self.assertEqual(command, (1.0,))
-        self.assertEqual(joint, (-1.0,) * 12)
-        # 维数不符必须报错：11/12/14 维都不行
-        for bad in ([0.0] * 11, [0.0] * 12, [0.0] * 14):
-            with self.assertRaises(ValueError):
-                spec.split_action(bad)
-        # `delta_joint_pos` 只吃 12 维关节头；把 13 维整动作喂进去必须报错（防切分写错）
-        with self.assertRaises(ValueError):
-            spec.delta_joint_pos([0.0] * 13)
-
-    def test_command_offset_is_bounded_additive_and_gated_off_at_spawn(self):
-        """偏移头：加性 + 有界，且出生段（`elapsed < tow_start`）不生效。
-
-        2026-10-10 从源码核对后的**两层限幅**（顺序不能反）：
-
-        1. `offset = clip(u_cmd, ±1) × cmd_offset_scale`，再限在头权限 `[offset_min, offset_max]`；
-        2. **和**再限在冻结 AMP 策略的训练包络 `amp_vx_range = (−1.0, 1.5)`
-           （`amp_env_cfg` 的 `lin_vel_x`）—— 超出即 OOD、步态退化。
-
-        ⚠ 绝不能把和裁到 `[−0.2, +0.6]`：脚本速度 0.5–1.5，牵引段本来就顶在 AMP 上界 1.5，
-        那样会把正常牵引指令压成 0.6 而奖励参考仍是 1.5。**退化性**：`u_cmd = 0` 或
-        `apply_offset=False` 时脚本值落在包络内 ⇒ 裁剪恒等 ⇒ 与旧口径逐位一致。
-        """
-        spec = logic.UpperActionSpec(
-            residual_scale=(0.25,) * 12, cmd_offset_scale=0.5, offset_min=-0.2, offset_max=0.6,
-            amp_vx_range=(-1.0, 1.5))
-        # 尺度与头权限
-        self.assertAlmostEqual(spec.command_offset([0.6] + [0.0] * 12), 0.3)
-        self.assertAlmostEqual(spec.bounded_command_offset([1.0] + [0.0] * 12), 0.5)
-        self.assertAlmostEqual(spec.bounded_command_offset([-1.0] + [0.0] * 12), -0.2)
-        self.assertAlmostEqual(spec.bounded_command_offset([-5.0] + [0.0] * 12), -0.2)
-        # 牵引段顶在上界：1.5 + 0.5 被包络裁回 1.5（正半轴在高速时无梯度，只能减速）
-        self.assertAlmostEqual(spec.loco_command_vx([1.0] + [0.0] * 12, 1.5), 1.5)
-        self.assertAlmostEqual(spec.loco_command_vx([-1.0] + [0.0] * 12, 1.5), 1.3)
-        # STOP 后 task_vx = 0：偏移头给出 ±0.5（含倒走），且不越包络
-        self.assertAlmostEqual(spec.loco_command_vx([1.0] + [0.0] * 12, 0.0), 0.5)
-        self.assertAlmostEqual(spec.loco_command_vx([-1.0] + [0.0] * 12, 0.0), -0.2)
-        # 低速段的加性（不会被 [-0.2,0.6] 那种错误口径砍掉）
-        self.assertAlmostEqual(spec.loco_command_vx([1.0] + [0.0] * 12, 0.4), 0.9)
-        # 出生段门控：偏移不生效，且脚本值在包络内 ⇒ 逐位不变
-        for scripted in (0.0, 0.4, 0.7, 1.5):
-            self.assertEqual(spec.loco_command_vx([1.0] + [0.0] * 12, scripted,
-                                                  apply_offset=False), scripted)
-        # 退化性：u_cmd = 0 时逐位等于脚本值（== 旧口径）
-        for scripted in (0.0, 0.4, 0.7, 1.5):
-            self.assertEqual(spec.loco_command_vx([0.0] * 13, scripted), scripted)
-        # 非法尺度/限幅/包络要报错，不能静默
-        with self.assertRaises(ValueError):
-            logic.UpperActionSpec(residual_scale=(0.25,) * 12, cmd_offset_scale=0.0).validate()
-        with self.assertRaises(ValueError):
-            logic.UpperActionSpec(residual_scale=(0.25,) * 12, offset_min=0.6,
-                                  offset_max=-0.2).validate()
-        with self.assertRaises(ValueError):
-            logic.UpperActionSpec(residual_scale=(0.25,) * 12,
-                                  offset_min=float("nan")).validate()
-        with self.assertRaises(ValueError):
-            logic.UpperActionSpec(residual_scale=(0.25,) * 12,
-                                  amp_vx_range=(0.4, 1.5)).validate()   # 不含 0
-        with self.assertRaises(ValueError):
-            logic.UpperActionSpec(residual_scale=(0.25,) * 12,
-                                  amp_vx_range=(1.5, -1.0)).validate()  # 反序
 
     def test_amp_vx_range_covers_the_task_domain(self):
         """`amp_vx_range` 必须**覆盖任务速度域**，且上界 = 任务域上界（2026-10-17 起 0.5–1.0）。
@@ -646,10 +562,10 @@ class UpperLogicTests(unittest.TestCase):
 
     @unittest.skipIf(torch is None, "PyTorch is not installed in the offline-check interpreter")
     def test_towing_network_forward_contract_and_zero_init(self):
-        """端到端数值契约：58 帧 → 5 维估计(GRU 128) → 79 维 actor(GRU 256) → 13 维动作；critic 73 → 1。
+        """端到端数值契约：57 帧 → 5 维估计(GRU 128) → 78 维 actor(GRU 256) → 12 维动作；critic 72 → 1。
 
         这条用**真实网络类**跑一次前向，锁住三件事：
-        1. 各层宽度与 `upper_logic` 契约一致（frame 58 / decoder 5 / actor 79 / action 13）；
+        1. 各层宽度与 `upper_logic` 契约一致（frame 57 / decoder 5 / actor 78 / action 12）；
         2. `augment_actor_observation` 的拼接结果能直接喂进 `ActorCriticRecurrent`；
         3. towing runner 的**零初始化**语义：零初始化后首拍残差必须精确为 0（实测未初始化时
            为 |a|max ≈ 0.149 归一化，即约 ±0.04 rad 的系统性关节偏置），保证起点等于冻结策略自身的步态。
@@ -689,11 +605,11 @@ class UpperLogicTests(unittest.TestCase):
             obs = logic.UpperObservationSpec()
             dec_spec = logic.DecoderSpec()
             actor_dim = obs.actor_dim
-            # critic 特权组：58 帧 + 机器人速度 2 + 小车速度 2 + 绳状态 4 + 机体系三维拉力 3
-            #              + 质量/摩擦/轮阻/有无小车 4 = 73
+            # critic 特权组：57 帧 + 机器人速度 2 + 小车速度 2 + 绳状态 4 + 机体系三维拉力 3
+            #              + 质量/摩擦/轮阻/有无小车 4 = 72
             critic_dim = obs.frame_dim + 2 + 2 + 4 + 3 + 4
-            self.assertEqual(critic_dim, 73)
-            action_dim = 13
+            self.assertEqual(critic_dim, 72)
+            action_dim = 12
 
             decoder = decoder_module.TowingDynamicsDecoder(
                 frame_dim=obs.frame_dim, feature_dim=128, hidden_dim=128, num_layers=1)
@@ -1451,96 +1367,14 @@ class UpperLogicTests(unittest.TestCase):
         self.assertTrue(reads_task, "velocity_tracking_exp 必须读 task_command 当参考量")
 
     def test_task_and_loco_command_are_decoupled_in_the_action_term(self):
-        """两个命令必须**分成两个张量**，且偏移只在 `elapsed_s >= tow_start_s` 后生效。
-
-        源码级守卫（本机没有 Isaac Lab，跑不了 `process_actions`）：
-
-        - `task_command`（脚本，只给奖励）与 `loco_command`（送策略）是两份状态；
-        - `loco_command` 由 `task_command` 拷贝 + **有界**偏移组成；
-        - 偏移读取的是**本拍** `_processed`（顺序上 `_processed` 必须先更新）；
-        - 门控是 `elapsed_s >= self.tow_start_s`（出生段不许推机器人），且 STOP 之后
-          偏移仍然生效（`_was_stopped` 不参与门控）——这正是「停机后继续走两步」的口。
-        """
+        """``task_command`` 只给奖励，``loco_command`` 给冻结策略；v6 二者只差包络裁剪。"""
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
-        body = mdp[mdp.index("    def process_actions(self, actions):"):]
-        body = body[:body.index("\n    def ")]
-        # 两份状态
-        self.assertIn("self.task_command = torch.zeros(env.num_envs, 3", mdp)
-        self.assertIn("self.loco_command = torch.zeros(env.num_envs, 3", mdp)
-        self.assertIn("self.task_command.zero_()", body)
-        self.assertIn("self.loco_command.copy_(self.task_command)", body)
-        # 偏移：有界 + 只加在 vx 通道
-        self.assertIn("offset = self._processed[:, :CMD_ACTION_DIM] * self.cfg.cmd_offset_scale",
-                      body)
-        self.assertIn("offset = offset.clamp(self.cfg.offset_min, self.cfg.offset_max)", body)
-        self.assertIn("self.loco_command[:, :CMD_ACTION_DIM] += torch.where(", body)
-        # 出生段门控（不是 STOP 门控）
-        self.assertIn("offset_active = (elapsed_s >= self.tow_start_s).unsqueeze(1)", body)
-        self.assertIn("torch.zeros_like(offset))", body)
-        # 顺序：`_processed` 必须先于偏移合成被更新（否则偏移用的是上一拍动作）
-        self.assertLess(body.index("self._processed.copy_(actions.clamp(-1.0, 1.0))"),
-                        body.index("offset = self._processed[:, :CMD_ACTION_DIM]"))
-        # 关节残差只吃后 12 维
-        self.assertIn("self._processed[:, CMD_ACTION_DIM:] * self._residual_scale", body)
-        # cfg 字段齐备且默认值 = 用户建议值 / 关闭
-        for fragment in ("cmd_offset_scale: float = 0.5", "offset_min: float = -0.2",
-                         "offset_max: float = 0.6", "stop_command_ramp_s: float = 0.0"):
-            self.assertIn(fragment, mdp)
-        # 偏移头在 `UpperActionsCfg` 里没有第二份默认值（唯一来源是 action term cfg）
-        self.assertNotIn("cmd_offset_scale", cfg)
-
-    def test_two_new_knobs_default_off_so_v3_reduces_to_v2_behaviour(self):
-        """**退化性（源码级）**：新开关默认关闭 ⇒ 行为与单头口径逐位一致。
-
-        本轮用户明确要求「只加字段、不偷偷改语义」：`stop_command_ramp_s = 0.0` 必须是默认值，
-        且**只有**显式 >0 时才走新分支。同批落地的 `post_stop_allowance_m`（默认 0.0）在
-        2026-10-10 随 `extra_distance` 一起从奖励表移除，现在**只保留为
-        `mdp.post_stop_distance` 的形参**（未接入奖励，见
-        `test_extra_distance_reward_term_is_removed_but_helper_survives`）。
-        纯函数层面的逐位对照见 `test_command_offset_is_bounded_additive_and_gated_off_at_spawn`
-        与 `test_scheduled_vx_matches_the_old_schedule_when_ramp_is_off`；这条守的是训练侧
-        `process_actions` 真的按这个门控执行（ramp 代码块在 `> 0.0` 里，不能被无条件执行）。
-        """
-        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
-        body = mdp[mdp.index("    def process_actions(self, actions):"):]
-        body = body[:body.index("\n    def ")]
-        # ramp 只在 > 0 时启用（默认 0.0 时整段不执行 ⇒ 与旧口径一致）
-        self.assertIn("if self.cfg.stop_command_ramp_s > 0.0:", body)
-        self.assertIn("stop_command_ramp_s: float = 0.0", mdp)
-        # 旧口径的脚本项原样保留（settle 0 → tow speed → STOP 0）
-        self.assertIn(
-            "scripted_vx = torch.where(towing, self.tow_speed, torch.zeros_like(self.tow_speed))",
-            body)
-        # STOP 之后偏移头仍然生效（`_was_stopped` 不进偏移门控）——这是「停机续走」的表达口
-        self.assertNotIn("offset_active = towing", body)
-        self.assertNotIn("offset_active = (elapsed_s >= self.tow_start_s) & ~self._was_stopped",
-                         body)
-        # allowance 默认 0.0 只留在函数形参上（不是 cfg 默认值、也不再是奖励 params）
-        self.assertNotIn('params={"post_stop_allowance_m": 0.0}', cfg)
-        self.assertNotIn("post_stop_allowance_m: float", cfg)
-        self.assertIn("def post_stop_distance(env, post_stop_allowance_m=0.0):", mdp)
-        # `__post_init__` 必须断言 AMP 包络覆盖脚本速度范围（否则零偏移退化性失效）
-        self.assertIn("amp_vx_range {(amp_vx_min, amp_vx_max)} 必须覆盖脚本速度范围", cfg)
-
-    def test_amp_envelope_clamp_is_the_last_step_in_process_actions(self):
-        """源码级：裁剪的顺序必须是「先限偏移、再裁和进 AMP 包络」。
-
-        若顺序反了（先裁和到包络、再叠偏移），叠完的 vx 会重新越界；若用偏移头的
-        `[offset_min, offset_max]` 去裁和，牵引段（0.5–1.5）会被砍成 ≤0.6。
-        """
-        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        body = mdp[mdp.index("    def process_actions(self, actions):"):]
-        body = body[:body.index("\n    def ")]
-        offset_clamp = body.index("offset = offset.clamp(self.cfg.offset_min, self.cfg.offset_max)")
-        envelope = body.index("vx_min, vx_max = self._vx_clip")
-        final_clamp = body.index("clamp(\n            vx_min, vx_max)")
-        self.assertLess(offset_clamp, envelope)
-        self.assertLess(envelope, final_clamp)
-        # 不得拿偏移头的界限去裁 `loco_command`
-        self.assertNotIn("self.loco_command[:, :CMD_ACTION_DIM].clamp(\n            "
-                         "self.cfg.offset_min", body)
+        self.assertIn("self.task_command.zero_()", mdp)
+        self.assertIn("self.task_command[:, 0] = scripted_vx", mdp)
+        self.assertIn("self.loco_command.copy_(self.task_command)", mdp)
+        self.assertNotIn("cmd_offset_scale", mdp)
+        self.assertNotIn("offset_min", mdp)
+        self.assertNotIn("offset_max", mdp)
 
     def test_reset_clears_the_task_command_too(self):
         """复位必须同时清 `task_command` 与 `loco_command`（漏一个会让下一回合带着旧指令）。"""
@@ -1551,31 +1385,18 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("self.loco_command[env_ids] = 0", body)
 
     def test_upper_action_is_applied_as_a_residual_on_frozen_joint_targets(self):
-        """残差必须加在**冻结策略的关节位置目标**上，且不能污染冻结策略自己的观测。
-
-        四件事一起守：
-        1. 动作总维数 = 1（vx 偏移头）+ 冻结策略契约的关节数（12），不是写死的 3；
-        2. 每次底层刷新都用当前 `delta_joint_pos` 重算 `joint_targets + 残差`
-           （残差 50 ms 变、底层输出 20 ms 变，只在 50 ms 处算一次会用错值）；
-        3. `FrozenLowLevelPolicy` 的输入仍只有 `loco_command` 与本体状态——残差若进了
-           它自己的 45 维观测（尤其 `last_action`），冻结契约就被改写成另一个策略了；
-        4. 残差只取 13 维动作的**后 12 维**（前 1 维是 vx 偏移，不许混进关节）。
-        """
+        """12 维残差加在冻结策略的关节目标上，且不污染冻结策略自己的观测。"""
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
-        self.assertIn("return CMD_ACTION_DIM + self._joint_action_dim", mdp)
+        self.assertIn("return self._joint_action_dim", mdp)
         self.assertIn("self._joint_action_dim = len(self._policy_cfg.joint_names)", mdp)
         self.assertIn("residual_scale=tuple(self._policy_cfg.action_scale)", mdp)
-        self.assertIn("self._processed[:, CMD_ACTION_DIM:] * self._residual_scale", mdp)
+        self.assertIn("self._processed * self._residual_scale", mdp)
         self.assertIn("output.joint_targets + self.delta_joint_pos", mdp)
         self.assertIn("velocity_command=self.loco_command", mdp)
-        # **两层串联的顺序**：偏移进的是底层**输入**（`velocity_command`，推理之前），
-        # 残差加的是底层**输出**（`joint_targets`，推理之后）。顺序反了就等于把偏移变成
-        # 输出侧扰动，与训练/部署契约都不符（部署待办同此顺序要求，见落地记录 §6）。
         apply_actions = mdp[mdp.index("    def apply_actions(self):"):]
         apply_actions = apply_actions[:apply_actions.index("\n    @staticmethod")]
         self.assertLess(apply_actions.index("velocity_command=self.loco_command"),
                         apply_actions.index("output.joint_targets + self.delta_joint_pos"))
-        # 残差只允许出现在加法与自身状态更新处，不能出现在冻结策略的观测部件里
         parts_call = mdp[mdp.index("output = self._policy.step(parts_from_robot_state("):
                          mdp.index("self.last_loco_action.copy_(output.action)")]
         self.assertNotIn("delta_joint_pos", parts_call)
@@ -1593,7 +1414,7 @@ class UpperLogicTests(unittest.TestCase):
         dec = logic.DecoderSpec()
         self.assertIn(f"self.num_obs != {obs.frame_dim}", wrapper)
         self.assertIn(f"self.num_decoder_obs != {dec.dim}", wrapper)
-        self.assertIn('"""decoder 的回归目标（**5 维**：vel 2 + force 3，契约 v4 起不再含质量）。"""',
+        self.assertIn('"""decoder 的回归目标（**5 维**：vel 2 + force 3，契约 v6 起不再含质量）。"""',
                       wrapper)
         self.assertNotIn("mass", wrapper.split("def get_decoder_supervision")[1].split("def step")[0])
         # runner 的 actor 输入维数必须由 decoder 的输出维数推导，而不是硬编码 +5/+6
@@ -1615,14 +1436,14 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIsNotNone(default_frame, "找不到 decoder 的 frame_dim 默认值")
         self.assertEqual(int(default_frame.group(1)), obs.frame_dim)
         self.assertEqual(dec.dim, 5)
-        self.assertEqual(obs.frame_dim, 58)
+        self.assertEqual(obs.frame_dim, 57)
         self.assertEqual(obs.actor_dim, obs.frame_dim + dec.dim + obs.latent_dim)
-        self.assertEqual(obs.actor_dim, 79)
-        # 训练侧 runner 的契约版本 = 运行时 = 4（v3 的 explicit 6 / actor 80 已失效）
-        self.assertIn("TOWING_CONTRACT_VERSION = 5", runner)
+        self.assertEqual(obs.actor_dim, 78)
+        # 训练侧 runner 的契约版本 = 运行时 = 6（v5 58/13 已失效）
+        self.assertIn("TOWING_CONTRACT_VERSION = 6", runner)
         self.assertIn('"version": TOWING_CONTRACT_VERSION', runner)
         runtime_src = (RL / "scripts/towing/upper_policy_runtime.py").read_text("utf-8")
-        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 5", runtime_src)
+        self.assertIn("CHECKPOINT_CONTRACT_VERSION = 6", runtime_src)
         self.assertIn("EXPLICIT_DIM = 5", runtime_src)
 
     def test_towing_runner_zero_inits_actor_output_layer(self):
