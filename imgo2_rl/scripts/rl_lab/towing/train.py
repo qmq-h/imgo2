@@ -34,8 +34,10 @@ parser.add_argument("--compact-log", action="store_true", default=False,
 # 部署目录里的 ppo 参考策略，不是 2500 那一份。
 parser.add_argument("--policy", choices=("amp", "ppo"), default=None,
                     help="冻结低层策略名（默认取 env cfg 的 amp）；ppo 需配合 --policy_checkpoint。")
-parser.add_argument("--policy_checkpoint", type=str, default=None,
-                    help="覆盖冻结低层权重（play.py 导出的 TorchScript policy.pt）；契约仍按 --policy。")
+parser.add_argument("--policy_checkpoint", "--policy-checkpoint", dest="policy_checkpoint",
+                    type=str, default=None,
+                    help="覆盖冻结低层权重（play.py 导出的 TorchScript policy.pt）；"
+                         "契约仍按 --policy。下划线/连字符两种写法都接受。")
 # 质量域覆盖：默认用 env cfg 的 5–30 kg；做重车专项时用 `--mass-range 25 30`
 # （或 `30 30` 固定 30 kg）。范围必须落在训练工作域 [5, 30] kg 内。
 parser.add_argument("--mass-range", type=float, nargs=2, default=None,
