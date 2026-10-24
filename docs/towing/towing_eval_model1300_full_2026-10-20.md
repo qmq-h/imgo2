@@ -89,3 +89,16 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
     --upper-checkpoint="$CKPT" \
     --output-dir=imgo2_rl/logs/towing/play_test/model1300_full
 ```
+
+## 8. 部署目录归档（2026-10-24）
+
+按用户要求把本次评测对应的训练权重归档到
+`imgo2_deploy/policy/imgo2/towing/model_1300.pt`：
+
+- 源：`logs/towing_rl_lab/towing_upper/2026-10-19_17-44-30_reward_20261019_ppo2500/model_1300.pt`
+- 大小：10,245,431 B
+- sha256：`a54780813029b2764fc651593e2b20b87bef8e060b524eba67ce1195697f9e05`
+- 内容：训练态 v5 checkpoint（actor/decoder/optimizer/normalizer），**不是** `play.py` 导出的
+  TorchScript；**不覆盖**旧占位 `policy.pt`。
+- 仍缺：`towing/play.py` 的导出分支、`config.yaml` 与 FSM 接线；因此 TOW-05 仍为未完成，
+  不能把 `model_1300.pt` 当部署 `policy.pt` 加载。

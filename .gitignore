@@ -47,6 +47,8 @@ logs/
 # 否则部署配置在任何新机器上都加载不到网络。当前有 amp/（model_9000.pt 导出）
 # 与 ppo/（imgo2_flat 2026-06-21_23-24-09 导出）。
 !imgo2_deploy/policy/imgo2/**/policy.pt
+# 2026-10-24：towing model_1300 训练 checkpoint 留档（不是部署 policy.pt）
+!imgo2_deploy/policy/imgo2/towing/model_1300.pt
 *.pth
 *.ckpt
 *.onnx
