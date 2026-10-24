@@ -590,6 +590,44 @@ class CheckpointContractTests(unittest.TestCase):
                                        spec=self.spec, network_modules=network_modules())
 
 
+@_NEEDS_TORCH
+class TowingPolicyExportTests(unittest.TestCase):
+    """2026-10-24：`--export` 产出的 stateful TorchScript 必须可加载、可 reset、58→13。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.spec = runtime.UpperNetworkSpec.from_agent_cfg(registered_agent_cfg_stub())
+        self.actor = build_actor(self.spec)
+        self.decoder = build_decoder(self.spec)
+        self.checkpoint = write_checkpoint(
+            self._tmp.name, actor=self.actor, decoder=self.decoder,
+            contract=runtime.expected_towing_contract(self.spec))
+
+    def test_export_writes_loadable_stateful_policy(self):
+        output = Path(self._tmp.name) / "exported" / "policy.pt"
+        written = runtime.export_towing_policy(self.checkpoint, output, device="cpu")
+        self.assertEqual(written, output)
+        self.assertTrue(output.is_file())
+        loaded = torch.jit.load(str(output), map_location="cpu")
+        self.assertTrue(hasattr(loaded, "reset"))
+        loaded.reset()
+        frame = torch.zeros(1, runtime.FRAME_DIM)
+        frame[0, 19:22] = torch.tensor([0.0, 0.0, -1.0])
+        with torch.no_grad():
+            first = loaded(frame)
+            second = loaded(frame)
+        self.assertEqual(tuple(first.shape), (1, runtime.ACTION_DIM))
+        self.assertTrue(bool(torch.isfinite(first).all()))
+        self.assertTrue(bool(torch.isfinite(second).all()))
+
+    def test_play_exposes_export_entry_point(self):
+        source = (RL / "scripts/rl_lab/towing/play.py").read_text(encoding="utf-8")
+        self.assertIn('"--export"', source)
+        self.assertIn("export_towing_policy", source)
+        self.assertIn("exported", source)
+
+
 class OfflineImportTests(unittest.TestCase):
     """运行时要保持「纯 torch + 标准库、惰性 import rl_lab」——否则 --dry-run 会失去可运行性。"""
 

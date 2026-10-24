@@ -67,12 +67,35 @@ parser.add_argument("--max-steps", type=int, default=0,
 # 周期性落盘摘要，避免必须等进程结束才有文件可读。
 parser.add_argument("--summary-every-s", type=float, default=30.0,
                     help="Rewrite the summary file every N seconds (0 disables).")
+# 2026-10-24：导出分支。只跑 checkpoint 的 actor/decoder 推理子图，不启动 Isaac Sim；
+# 产物是 58 维 frame → 13 维归一化动作的 stateful TorchScript（decoder/actor 两套 GRU
+# hidden 在模块内部），默认写到 checkpoint 同级 `exported/policy.pt`。
+parser.add_argument("--export", action="store_true", default=False,
+                    help="只把 checkpoint 导出为 TorchScript（58→13），不启动仿真/回放。")
+parser.add_argument("--export-dir", type=str, default=None,
+                    help="--export 的输出目录（默认 <checkpoint 同级>/exported）。")
 cli_args.add_towing_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
 if args_cli.video:
     args_cli.enable_cameras = True
+
+# 导出分支必须在 import isaaclab.envs / 启动 AppLauncher **之前** 处理：
+# 它只需要 CPU torch + checkpoint，不能因为没 GPU 就卡在 SimulationApp。
+if args_cli.export:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "towing"))
+    from upper_policy_runtime import export_towing_policy
+    if not args_cli.checkpoint:
+        parser.error("--export 需要显式 --checkpoint（不自动猜最新 run）")
+    checkpoint = Path(args_cli.checkpoint).expanduser().resolve()
+    if args_cli.export_dir:
+        export_path = Path(args_cli.export_dir).expanduser().resolve() / "policy.pt"
+    else:
+        export_path = checkpoint.parent / "exported" / "policy.pt"
+    export_towing_policy(checkpoint, export_path, device="cpu")
+    print(f"[INFO] 导出完成：{export_path}", flush=True)
+    sys.exit(0)
 
 sys.argv = [sys.argv[0]] + hydra_args
 
@@ -322,4 +345,5 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
 
 if __name__ == "__main__":
     main()
-    simulation_app.close()
+    if simulation_app is not None:
+        simulation_app.close()

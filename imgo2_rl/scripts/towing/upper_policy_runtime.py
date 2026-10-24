@@ -338,6 +338,87 @@ def _validate_action_scale(action_scale: Sequence[float], *, num_actions: int) -
     return torch.tensor(values, dtype=torch.float32)
 
 
+class TowingPolicyExport(torch.nn.Module):
+    """部署用 TorchScript 外壳：**58 维 frame → 13 维归一化动作**。
+
+    为什么不是直接导出 actor：部署侧只送 `policy_frame`（58 维），而 actor 需要
+    `frame + decoder 的 5 维 estimate + 16 维 latent`（79 维）。这里把 decoder 与 actor
+    的 GRU 隐状态作为**模块内部 buffer** 持有，`forward` 每次推进一拍：
+    decoder GRU → (velocity, force, mu) → actor GRU → 13 维动作。
+    `reset()` 清空两套 hidden；导出后 TorchScript 仍可调用它，但 C++ `Model::forward`
+    没有 reset 入口，部署侧需按「一个 episode 一个进程」或另加重置通道使用。
+
+    输入固定 batch=1（部署运行时一次一个观测向量）；动作是 **clamp 到 ±1 的归一化动作**，
+    不是关节残差；部署侧仍需乘 `action_scale` 并做 vx 偏移头接线。
+    """
+
+    def __init__(self, actor, decoder):
+        super().__init__()
+        # 只挂标准 nn 模块；不要把 ActorCriticRecurrent/Memory 整个挂进来，
+        # 否则 torch.jit.script 会去编译 Memory 的 batch 分支（依赖 unpad_trajectories）。
+        self.encoder = decoder.encoder
+        self.decoder_gru = decoder.gru
+        self.fc_mu = decoder.fc_mu
+        self.velocity_head = decoder.velocity_head
+        self.force_head = decoder.force_head
+        self.actor_gru = actor.memory_a.rnn
+        self.actor_mlp = actor.actor
+        self.register_buffer("decoder_hidden",
+                             torch.zeros(1, 1, decoder.gru.hidden_size))
+        self.register_buffer("actor_hidden",
+                             torch.zeros(1, 1, actor.memory_a.rnn.hidden_size))
+
+    @torch.jit.export
+    def reset(self) -> None:
+        # 不用 zero_()：TorchScript 会把 buffer 当 leaf Variable，原地操作报
+        # "a leaf Variable that requires grad is being used in an in-place operation"。
+        self.decoder_hidden = torch.zeros_like(self.decoder_hidden)
+        self.actor_hidden = torch.zeros_like(self.actor_hidden)
+
+    def forward(self, frame: torch.Tensor) -> torch.Tensor:
+        if frame.dim() != 2 or frame.shape[0] != 1:
+            raise ValueError("TowingPolicyExport expects a [1, 58] frame")
+        dec_out, self.decoder_hidden = self.decoder_gru(
+            self.encoder(frame).unsqueeze(0), self.decoder_hidden)
+        dec_out = dec_out.squeeze(0)
+        prediction = torch.cat((self.velocity_head(dec_out),
+                                self.force_head(dec_out)), dim=-1)
+        latent = self.fc_mu(dec_out)
+        actor_obs = torch.cat((frame, prediction.detach(), latent.detach()), dim=-1)
+        act_out, self.actor_hidden = self.actor_gru(
+            actor_obs.unsqueeze(0), self.actor_hidden)
+        return torch.clamp(self.actor_mlp(act_out.squeeze(0)), -1.0, 1.0)
+
+
+def export_towing_policy(checkpoint, output_path, *, device: str = "cpu") -> Path:
+    """把 v5 checkpoint 导出成部署用的 stateful TorchScript（58 → 13）。
+
+    产物只含 actor/decoder 的推理子图与两套 GRU hidden；不含 optimizer/normalizer。
+    `action_scale` 不参与导出（模块输出归一化动作），运行时构造只用占位值。
+    """
+    runtime = UpperPolicyRuntime(
+        checkpoint, num_envs=1, action_scale=(1.0,) * (ACTION_DIM - CMD_ACTION_DIM),
+        device=device)
+    module = TowingPolicyExport(runtime.actor, runtime.decoder).eval()
+    scripted = torch.jit.script(module)
+    output = Path(output_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    scripted.save(str(output))
+    # 导出后立刻加载并跑一拍，防止写出一个当前 torch 能 script、加载却失败的半成品。
+    loaded = torch.jit.load(str(output), map_location=device)
+    loaded.reset()
+    probe = torch.zeros(1, FRAME_DIM, dtype=torch.float32, device=device)
+    probe[0, 19:22] = torch.tensor([0.0, 0.0, -1.0], dtype=torch.float32, device=device)
+    with torch.no_grad():
+        action = loaded(probe)
+    if tuple(action.shape) != (1, ACTION_DIM) or not bool(torch.isfinite(action).all()):
+        raise RuntimeError(f"导出的 policy 输出形状/数值异常：{tuple(action.shape)} {action}")
+    print(f"[export] wrote {output} ({output.stat().st_size} B); "
+          f"contract v{CHECKPOINT_CONTRACT_VERSION} frame={FRAME_DIM} action={ACTION_DIM} "
+          f"stateful=True; probe_action={action.tolist()}", flush=True)
+    return output
+
+
 class UpperPolicyRuntime:
     """从 checkpoint 恢复的「58 维帧 → 13 维动作（12 维关节残差 + 1 维 vx 偏移）」运行时。
 

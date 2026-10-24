@@ -90,15 +90,31 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
     --output-dir=imgo2_rl/logs/towing/play_test/model1300_full
 ```
 
-## 8. 部署目录归档（2026-10-24）
+## 8. 部署目录归档与导出（2026-10-24）
 
-按用户要求把本次评测对应的训练权重归档到
-`imgo2_deploy/policy/imgo2/towing/model_1300.pt`：
+### 8.1 `play.py --export` 与 `policy.pt`
 
-- 源：`logs/towing_rl_lab/towing_upper/2026-10-19_17-44-30_reward_20261019_ppo2500/model_1300.pt`
-- 大小：10,245,431 B
-- sha256：`a54780813029b2764fc651593e2b20b87bef8e060b524eba67ce1195697f9e05`
-- 内容：训练态 v5 checkpoint（actor/decoder/optimizer/normalizer），**不是** `play.py` 导出的
-  TorchScript；**不覆盖**旧占位 `policy.pt`。
-- 仍缺：`towing/play.py` 的导出分支、`config.yaml` 与 FSM 接线；因此 TOW-05 仍为未完成，
-  不能把 `model_1300.pt` 当部署 `policy.pt` 加载。
+用户要求把本次评测对应的 towing policy 放到部署目录并用 play 导出替换。核查后全仓只有
+`imgo2_rl/scripts/rl_lab/towing/play.py`，原本没有 export 分支；本次新增：
+
+- `--export` / `--export-dir`：在 import Isaac Sim 之前用纯 CPU torch 执行，不启动 AppLauncher；
+- `upper_policy_runtime.TowingPolicyExport`：把 decoder/actor 两套 GRU hidden 作为模块 buffer，
+  `@torch.jit.export reset()` 清零；`forward` 输入 `[1,58]` frame，输出 `[1,13]` clamp 后的
+  归一化动作；
+- `export_towing_policy()`：从 checkpoint 构网、`torch.jit.script`、落盘并立即重载/前向自检。
+
+产物：
+
+- `imgo2_deploy/policy/imgo2/towing/policy.pt`：1,941,632 B，
+  sha256 `36313d2a132c3253602f6841dd2e7e4f71b0297d55f5c579e622636af5b0550d`；
+- 同目录 `model_1300.pt`：10,245,431 B，
+  sha256 `a54780813029b2764fc651593e2b20b87bef8e060b524eba67ce1195697f9e05`（训练态 checkpoint 留档）。
+
+### 8.2 验证与限制
+
+- `play.py --export` 在本机 CPU 跑通；`torch.jit.load` + `reset()` + `[1,13]` 前向通过；
+- 与 checkpoint 的 actor/decoder 在同一批 5 帧上逐拍对照，max diff = **0**；
+- `pytest imgo2_rl/tests/test_towing_upper_policy_runtime.py` **30 passed**；
+- **仍未完成**：`config.yaml` 缺失、FSM 没有 towing 状态、C++ `Model::forward` 没有 reset 入口、
+  libtorch 实载未验证、action_scale/偏移头接线未做。因此 TOW-05 仍是未完成；`policy.pt`
+  是可加载的导出件，不是已接入部署的策略。
