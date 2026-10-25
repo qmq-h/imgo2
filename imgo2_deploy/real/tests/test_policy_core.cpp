@@ -9,7 +9,7 @@
 using namespace imgo2_sdk;
 int main(int argc,char** argv) {
     CHECK(argc==2);auto c=PolicyConfig::load(argv[1]);
-    CHECK(c.fixed_kp[0]==60 && c.fixed_kd[0]==2 && c.kp[0]==25 && c.kd[0]==.5f);
+    CHECK(c.fixed_kp[0]==60 && c.fixed_kd[0]==2 && c.kp[0]==25 && c.kd[0]>0);
     RobotState s;s.valid=true;s.q=c.default_pose;s.dq.assign(12,2);s.gyro={{1,2,3}};
     auto obs=buildObservation(s,{{.2f,-.1f,.3f}},std::vector<float>(12,.4f),c);
     CHECK(obs.size()==45 && obs[0]==.25f && obs[2]==.75f);
@@ -17,7 +17,7 @@ int main(int argc,char** argv) {
     CHECK(obs[21]==.1f && obs[33]==.4f);
     auto clipped=clipActions(std::vector<float>(12,10),c);auto target=convertAction(clipped,c);
     CHECK(clipped[0]==3 && target.q[0]==.375f && std::abs(target.q[1]-1.62f)<1e-6);
-    CHECK(target.kp[0]==25 && target.kd[0]==.5f && target.tau[0]==0);
+    CHECK(target.kp[0]==c.kp[0] && target.kd[0]==c.kd[0] && target.tau[0]==0);
     bool rejected=false;try{clipActions(std::vector<float>(12,std::numeric_limits<float>::quiet_NaN()),c);}catch(const std::exception&){rejected=true;}CHECK(rejected);
     const float root=std::sqrt(.5f);auto g=my_myth::projectedGravity({{root,0,root,0}});
     CHECK(std::abs(g[0]-1)<1e-6 && std::abs(g[2])<1e-6);

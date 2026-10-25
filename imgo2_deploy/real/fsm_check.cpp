@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------------
  * 用法
- *   ./fsm_check [--policy-dir dir] [--config file] [--duration 秒]
+ *   ./fsm_check [--policy-dir dir] [--config file] [--duration 秒] [--controller-device path]
  *               [--imu-rpy roll,pitch,yaw(deg)] [--imu-gyro x,y,z(rad/s)]
  *   纯软件：模拟反馈走一遍 FSM / 键盘 / PPO，不打开任何硬件。
  *   0/1/2/9 + 回车 = 站起 / PPO / 占位 / 趴下；WASDQE 速度；空格清零；Ctrl+C 退出。
@@ -13,6 +13,7 @@
 #include "display/terminal_display.hpp"
 #include "fsm/deployment_states.h"
 #include "function/my_myth.h"
+#include "input/controller_input.h"
 #include "sdk/inference_worker.h"
 #include <array>
 #include <cmath>
@@ -75,7 +76,7 @@ const char* stateName(const go_fsm::RobotFSM& fsm) {
 
 std::string panel(const go_fsm::RobotFSM& fsm,const go::Targets& target,
                   uint64_t sequence,go::ClampResult limit,const std::string& message,
-                  const std::vector<float>& actions) {
+                  const std::vector<float>& actions,bool gamepad) {
     std::ostringstream out;
     out<<"State: "<<stateName(fsm)<<" | OFFLINE\n";
     out<<"Target(rad)       Hip         Thigh         Shank\n";
@@ -104,7 +105,8 @@ std::string panel(const go_fsm::RobotFSM& fsm,const go::Targets& target,
     out<<std::setprecision(2)<<"cmd: "<<v[0]<<" "<<v[1]<<" "<<v[2]
        <<" | seq="<<sequence<<" | PD="<<target.kp[0]<<"/"<<target.kd[0]<<'\n';
     out<<"Limit: "<<(limit==go::ClampResult::Clamped?"CLAMP":"OK")<<" | "<<message<<'\n';
-    out<<"0/1/2/9 + Enter | WASDQE / Space | Ctrl+C exits\n";
+    out<<(gamepad?"A stand | B lie | Y PPO | left/right sticks | Ctrl+C exits\n"
+                  :"0/1/2/9 + Enter | WASDQE / Space | Ctrl+C exits\n");
     return out.str();
 }
 }
@@ -113,10 +115,12 @@ int main(int argc,char** argv) try {
     auto policy_root=go_app::executableDirectory()/"policy";
     auto config_file=go_app::executableDirectory()/"config/deployment.yaml";
     double duration_s=0;
+    std::string controller_device;
     for(int i=1;i<argc;++i) {
         const std::string arg=argv[i];
         if(arg=="--help") {
             std::cout<<"fsm_check [--policy-dir directory] [--config file] [--duration seconds]\n"
+                         "          [--controller-device path]\n"
                          "          [--imu-rpy roll,pitch,yaw(deg)] [--imu-gyro x,y,z(rad/s)]\n"
                          "Deployment FSM/keyboard/PPO with simulated feedback; no hardware opened.\n"
                          "0/1/2/9 + Enter: stand/PPO/AMP placeholder/crouch then unload.\n"
@@ -127,6 +131,7 @@ int main(int argc,char** argv) try {
         }
         if(arg=="--policy-dir" && i+1<argc) policy_root=argv[++i];
         else if(arg=="--config" && i+1<argc) config_file=argv[++i];
+        else if(arg=="--controller-device" && i+1<argc) controller_device=argv[++i];
         else if(arg=="--duration" && i+1<argc) {
             const std::string value=argv[++i];size_t used=0;duration_s=std::stod(value,&used);
             if(used!=value.size() || !std::isfinite(duration_s) || duration_s<0)
@@ -175,6 +180,17 @@ int main(int argc,char** argv) try {
         simulated_q.insert(simulated_q.end(),bus.start_pose_rad.begin(),bus.start_pose_rad.end());
     imgo2_sdk::PolicyRunner runner(policy);runner.load(deployment.torch_threads);runner.warmup();
     const auto start=Clock::now();
+    const bool gamepad=deployment.input_source==imgo2_sdk::InputSource::Gamepad;
+    auto hw=real_config::makeHardwareConfig();
+    if(!controller_device.empty()) hw.controller.device=controller_device;
+    hw.controller.validate();
+    imgo2_input::ControllerInput controller;
+    if(gamepad) {
+        std::string controller_error;
+        if(!controller.open(hw.controller.device,hw.controller.deadzone,controller_error))
+            throw std::runtime_error("gamepad: "+controller_error);
+        std::cout<<"gamepad: "<<hw.controller.device<<"\n";
+    }
     go_fsm::RobotFSM fsm(policy,deployment,motors,adapter,simulated_q,start);
     imgo2_sdk::InferenceWorker worker(
         [&](const auto& s,const auto& v,uint64_t generation){return runner.infer(s,v,generation);},
@@ -196,17 +212,27 @@ int main(int argc,char** argv) try {
         // policy output is never fed back as joint feedback, so this is an open-loop fixed point.
         auto raw=feedback(fsm.policyActive()?deployment.stand_pose:simulated_q,
                           fsm.policyActive()?std::vector<float>(12,0):simulated_dq,now);
-        for(int n=0;n<64;++n) {
-            char c=0;const auto status=go_app::readDeploymentChar(c);
-            if(status==go_app::InputStatus::Waiting) break;
-            if(status==go_app::InputStatus::Closed) {go_app::stopFlag()=1;break;}
-            const auto event=input.feed(c);
-            if(event.kind==go_app::KeyEvent::Kind::State) {
-                const auto reply=fsm.request(event.digit,raw,now);
-                if(!reply.empty()) {message=reply;refresh=now;}
-            } else if(event.kind==go_app::KeyEvent::Kind::Velocity) fsm.velocity(event.key);
+        if(gamepad) {
+            imgo2_input::GamepadCommand command;
+            if(controller.poll(command)!=imgo2_input::ControllerPoll::Ok)
+                command.connected=false;
+            const auto reply=fsm.gamepad(command,raw,now);
+            if(!reply.empty()) {message=reply;refresh=now;}
             // Also use stand feedback on the very first PPO observation after switching.
             if(fsm.policyActive()) raw=feedback(deployment.stand_pose,std::vector<float>(12,0),now);
+        } else {
+            for(int n=0;n<64;++n) {
+                char c=0;const auto status=go_app::readDeploymentChar(c);
+                if(status==go_app::InputStatus::Waiting) break;
+                if(status==go_app::InputStatus::Closed) {go_app::stopFlag()=1;break;}
+                const auto event=input.feed(c);
+                if(event.kind==go_app::KeyEvent::Kind::State) {
+                    const auto reply=fsm.request(event.digit,raw,now);
+                    if(!reply.empty()) {message=reply;refresh=now;}
+                } else if(event.kind==go_app::KeyEvent::Kind::Velocity) fsm.velocity(event.key);
+                // Also use stand feedback on the very first PPO observation after switching.
+                if(fsm.policyActive()) raw=feedback(deployment.stand_pose,std::vector<float>(12,0),now);
+            }
         }
         if(signals.requested()) break;
         const auto result=worker.latest();
@@ -222,7 +248,8 @@ int main(int argc,char** argv) try {
         if(now>=refresh) {
             const bool fresh=fsm.policyActive() && result.generation==fsm.generation();
             const uint64_t sequence=fresh?result.sequence:0;
-            display.Show(panel(fsm,target,sequence,limit,message,fresh?result.actions:std::vector<float>{}));
+            display.Show(panel(fsm,target,sequence,limit,message,
+                               fresh?result.actions:std::vector<float>{},gamepad));
             refresh=now+std::chrono::milliseconds(100);
         }
         next+=std::chrono::milliseconds(deployment.control_ms);

@@ -39,9 +39,9 @@ int main(int argc,char** argv) {
     PolicyResult r;r.generation=fsm.generation();r.sequence=1;r.generated=enter;r.observed=enter;r.actions.assign(12,0);r.command=convertAction(r.actions,p);
     CHECK(fsm.update(h,r,enter).kp[0]==60); // no gain jump at handover
     r.generated=enter+std::chrono::milliseconds(500);r.sequence=2;r.observed=r.generated;
-    CHECK(fsm.update(h,r,r.generated).kp[0]==25);
+    CHECK(fsm.update(h,r,r.generated).kp[0]==p.kp[0]);
     fsm.request(9,h,r.generated);CHECK(fsm.mode()==Mode::Crouching && fsm.velocityCommand()[0]==0);
-    CHECK(fsm.update(h,r,r.generated).kp[0]==25); // starts from policy gains
+    CHECK(fsm.update(h,r,r.generated).kp[0]==p.kp[0]); // starts from policy gains
     auto end_time=r.generated+std::chrono::seconds(8);
     auto down=fsm.update(h,{},end_time);CHECK(fsm.mode()==Mode::Crouching && down.q==initial && down.kp[0]==60);
     // Trajectory time alone cannot release. Actual measured arrival must persist.
@@ -109,7 +109,7 @@ int main(int argc,char** argv) {
         fresh.command.q[2]+=.2f;fresh.generated=clock;fresh.observed=clock;
         repeat.update(h,fresh,clock); // Reset first_result on each entry.
         clock+=std::chrono::milliseconds(500);fresh.generated=clock;fresh.observed=clock;++fresh.sequence;
-        auto active=repeat.update(h,fresh,clock);CHECK(active.kp[0]==25 && active.kd[0]==.5f);
+        auto active=repeat.update(h,fresh,clock);CHECK(active.kp[0]==p.kp[0] && active.kd[0]==p.kd[0]);
         repeat.velocity('w');CHECK(repeat.velocityCommand()[0]>.0f);
         // Real motion must start from measured feedback, rather than the last policy target.
         auto actual=active.q;actual[2]+=.03f;h=hardware(actual);
@@ -117,9 +117,10 @@ int main(int argc,char** argv) {
         CHECK(!repeat.request(0,h,clock).empty());CHECK(repeat.mode()==Mode::Standing);
         CHECK(repeat.generation()>generation && repeat.velocityCommand()[0]==0);
         auto start_command=repeat.update(h,fresh,clock);
-        CHECK(start_command.q==actual && start_command.kp[0]==25 && start_command.kd[0]==.5f);
+        CHECK(start_command.q==actual && start_command.kp[0]==p.kp[0] && start_command.kd[0]==p.kd[0]);
         auto middle=repeat.update(h,fresh,clock+std::chrono::milliseconds(250));
-        CHECK(std::abs(middle.kp[0]-42.5f)<1e-5 && std::abs(middle.kd[0]-1.25f)<1e-5);
+        CHECK(std::abs(middle.kp[0]-(p.fixed_kp[0]+p.kp[0])*.5f)<1e-5 &&
+              std::abs(middle.kd[0]-(p.fixed_kd[0]+p.kd[0])*.5f)<1e-5);
         CHECK(middle.q[2]<actual[2] && middle.q[2]>repeat_settings.stand_pose[2]);
         auto fixed=repeat.update(h,fresh,clock+std::chrono::milliseconds(500));
         CHECK(fixed.kp[0]==60 && fixed.kd[0]==2 && fixed.dq[2]<0);
@@ -136,6 +137,31 @@ int main(int argc,char** argv) {
         CHECK(repeat.generation()!=fresh.generation);
         auto waiting=repeat.update(h,fresh,clock);
         CHECK(repeat.mode()==Mode::PPO && waiting.q==repeat_settings.stand_pose && waiting.kp[0]==60);
+    }
+    // 手柄：A/B/Y 与摇杆映射（摇杆只在 PPO 下生效，断线清零）。
+    {
+        go_fsm::RobotFSM pad(p,d,motor,adapter,initial,t);
+        imgo2_input::GamepadCommand g;
+        g.connected=true;g.stand=true;
+        CHECK(!pad.gamepad(g,hardware(initial),t).empty());
+        CHECK(pad.mode()==Mode::Standing);
+        pad.update(hardware(initial),{},t+std::chrono::seconds(8));
+        CHECK(pad.mode()==Mode::StandHold);
+        auto gh=hardware(p.default_pose);
+        g=imgo2_input::GamepadCommand{};g.connected=true;g.enter_ppo=true;
+        CHECK(!pad.gamepad(g,gh,t+std::chrono::seconds(9)).empty());
+        CHECK(pad.mode()==Mode::PPO);
+        g=imgo2_input::GamepadCommand{};g.connected=true;g.vx=1.f;g.vy=-.5f;g.wz=.25f;
+        pad.gamepad(g,gh,t+std::chrono::seconds(9));
+        CHECK(pad.velocityCommand()[0]==d.velocity_limits[0]);
+        CHECK(pad.velocityCommand()[1]==-.5f*d.velocity_limits[1]);
+        CHECK(pad.velocityCommand()[2]==.25f*d.velocity_limits[2]);
+        g.connected=false;
+        pad.gamepad(g,gh,t+std::chrono::seconds(9));
+        for(float v:pad.velocityCommand()) CHECK(v==0);
+        g=imgo2_input::GamepadCommand{};g.connected=true;g.lie_down=true;
+        CHECK(!pad.gamepad(g,gh,t+std::chrono::seconds(9)).empty());
+        CHECK(pad.mode()==Mode::Crouching);
     }
     std::cout<<"robot FSM transitions/gains/generation/timeouts passed\n";
 }

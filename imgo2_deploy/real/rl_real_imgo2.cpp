@@ -6,6 +6,7 @@
  * 参数（默认值）
  *   --config <yaml>     部署配置（默认 <exe 目录>/config/deployment.yaml）
  *   --policy-dir <dir>  策略目录，下含 ppo/config.yaml（默认 policy）
+ *   --controller-device <path>  覆盖 real_config 里的手柄设备名（仅 gamepad 模式）
  *   --check-policy      只校验策略/配置，不打开硬件
  *   --log               写日志：robot.csv(200Hz) / policy.csv(50Hz) / events.log / meta.json / trace
  *   --log-dir <dir>     日志根目录（默认 ./log）
@@ -24,6 +25,7 @@
 #include "apps/log_writer.h"
 #include "config/deployment_config.h"
 #include "fsm/deployment_states.h"
+#include "input/controller_input.h"
 #include "sdk/inference_worker.h"
 #include "sdk/rl_sdk.h"
 #include <algorithm>
@@ -146,6 +148,11 @@ std::string configJson(const imgo2_sdk::PolicyConfig& p,const imgo2_sdk::Deploym
                   double(p.ang_vel_scale),double(p.dof_pos_scale),double(p.dof_vel_scale),double(p.clip_obs));
     out+=buf;
     out+=",\"velocity_limits\": "+vecJson(d.velocity_limits);
+    out+=",\"input_source\": ";
+    out+=d.input_source==imgo2_sdk::InputSource::Gamepad?"\"gamepad\"":"\"keyboard\"";
+    out+=",\"controller_device\": \""+hw.controller.device+"\"";
+    std::snprintf(buf,sizeof buf,",\"controller_deadzone\": %.3f",double(hw.controller.deadzone));
+    out+=buf;
     std::snprintf(buf,sizeof buf,
         ",\"timing\": {\"control_ms\": %d, \"policy_ms\": %d, \"result_timeout_ms\": %d,"
         " \"io_timeout_us\": %zu, \"command_timeout_ms\": %zu, \"period_ms\": %.3f,"
@@ -188,15 +195,18 @@ int main(int argc,char** argv) try {
     bool bus_stats=false;
     bool log_on=false;
     std::string trace_file;
+    std::string controller_device;
     std::string log_dir="log";
     int log_every=1,log_max_mb=200;
     for(int i=1;i<argc;++i) {
         const std::string arg=argv[i];
         if(arg=="--help") {
             std::puts("rl_real_imgo2 [--policy-dir directory] [--config deployment.yaml] [--check-policy]\n"
+                      "             [--controller-device path]\n"
                       "             [--bus-stats] [--trace prefix] [--log] [--log-dir dir]\n"
                       "             [--log-every N] [--log-max-mb N]\n"
                       "0/1/2/9 + Enter: stand/PPO/AMP placeholder/crouch. WASDQE immediate; Space zero; Ctrl+C exits.\n"
+                      "gamepad (input_source: 2): left stick = vx/vy (up/left +), right stick = wz (right +), A/B/Y = stand/crouch/PPO.\n"
                       "--bus-stats: 每秒打印每条总线的轮询耗时(last/max)、线程最坏值(gap/body)与 IMU age。\n"
                       "--trace P: 逐事务时间线，故障时写 P.fault.csv、退出时写 P.exit.csv（含判读摘要）。\n"
                       "--log: 写 log/<时间>_<pid>/{robot.csv,policy.csv,events.log,meta.json,trace.*.csv}；\n"
@@ -215,6 +225,7 @@ int main(int argc,char** argv) try {
         else if(arg=="--log-max-mb" && i+1<argc) log_max_mb=go_app::integer(argv[++i],0,100000,"--log-max-mb");
         else if(arg=="--trace" && i+1<argc) trace_file=argv[++i];
         else if(arg=="--policy-dir" && i+1<argc) policy_root=argv[++i];
+        else if(arg=="--controller-device" && i+1<argc) controller_device=argv[++i];
         else if(arg=="--config" && i+1<argc) deployment_file=argv[++i];
         else throw std::invalid_argument("unknown/missing argument: "+arg);
     }
@@ -231,6 +242,8 @@ int main(int argc,char** argv) try {
     }
     auto hardware_config=real_config::makeHardwareConfig();
     hardware_config.joint_mapping_confirmed=deployment.mapping_confirmed;
+    if(!controller_device.empty()) hardware_config.controller.device=controller_device;
+    hardware_config.controller.validate();
 #ifdef GO_RL_PTY_TEST
     // Test executable only: never opens configured device names; production has no env override.
     std::string test_error;
@@ -260,6 +273,16 @@ int main(int argc,char** argv) try {
         [&]{runner.reset();},deployment.policy_ms,deployment.result_timeout_ms);
     worker.start();
     StopOnExit cleanup{hardware}; // Constructed last; on any unwind unloads before worker destructor.
+    const bool gamepad=deployment.input_source==imgo2_sdk::InputSource::Gamepad;
+    imgo2_input::ControllerInput controller;
+    if(gamepad) {
+        std::string controller_error;
+        if(!controller.open(hardware_config.controller.device,hardware_config.controller.deadzone,
+                            controller_error))
+            throw std::runtime_error("gamepad: "+controller_error);
+        std::printf("手柄: %s（死区 %.2f）\n",controller.device().c_str(),
+                    double(hardware_config.controller.deadzone));
+    }
     // 日志：打开失败只提示，不影响控制。控制线程只入队，格式化/写盘在 RunLogger 自己的线程。
     go_app::RunLogger logger;
     if(log_on) {
@@ -299,6 +322,8 @@ int main(int argc,char** argv) try {
     long long imu_age_max=-1;
     long long ctrl_late_max_us=0;
     std::string last_name=fsm.name();bool reported_fault=false;int result=0;
+    imgo2_sdk::Clock::time_point next_controller_retry{};
+    bool controller_down=false;
     while(!signals.requested()) {
         const auto now=imgo2_sdk::Clock::now();
         ++tick;
@@ -306,29 +331,60 @@ int main(int argc,char** argv) try {
             ctrl_late_max_us=std::max(ctrl_late_max_us,
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::microseconds>(now-next).count()));
         const auto raw=hardware.readState();
-        char c=0;
-        // Bound input work per cycle; key repeats cannot starve motor target refresh.
-        for(int n=0;n<64;++n) {
-            const auto input_status=go_app::readDeploymentChar(c);
-            if(input_status==go_app::InputStatus::Waiting) break;
-            if(input_status==go_app::InputStatus::Closed) {
-                hardware.requestStop("keyboard input closed");
-                go_app::stopFlag()=1;result=2;break;
+        if(gamepad) {
+            imgo2_input::GamepadCommand command;
+            const auto controller_status=controller.poll(command);
+            if(controller_status!=imgo2_input::ControllerPoll::Ok) {
+                if(!controller_down) {
+                    std::fprintf(stderr,"手柄断开/不可用: %s（速度清零，等待重连）\n",
+                                 controller.lastError().c_str());
+                    controller_down=true;
+                }
+                command.connected=false;
+                if(now>=next_controller_retry) {
+                    std::string controller_error;
+                    if(controller.open(hardware_config.controller.device,
+                                       hardware_config.controller.deadzone,controller_error)) {
+                        std::printf("手柄已连接: %s\n",controller.device().c_str());
+                        controller_down=false;
+                    }
+                    next_controller_retry=now+std::chrono::seconds(1);
+                }
             }
-            const auto event=input.feed(c);
-            if(event.kind==go_app::KeyEvent::Kind::State) {
-                const auto message=fsm.request(event.digit,raw,now);
-                if(!message.empty()) {std::puts(message.c_str());std::fflush(stdout);}
-            } else if(event.kind==go_app::KeyEvent::Kind::Velocity) {
-                const auto previous=fsm.velocityCommand();fsm.velocity(event.key);
-                if(previous!=fsm.velocityCommand()) {
-                    const auto& v=fsm.velocityCommand();
-                    std::printf("cmd vx=%.2f vy=%.2f yaw=%.2f\n",v[0],v[1],v[2]);std::fflush(stdout);
-                    if(logger.enabled()) {
-                        char buf[160];
-                        std::snprintf(buf,sizeof buf,"%.3f\tcmd vx=%.2f vy=%.2f yaw=%.2f",
-                            msSince(log_start),v[0],v[1],v[2]);
-                        logger.event(buf);
+            const auto message=fsm.gamepad(command,raw,now);
+            if(!message.empty()) {
+                std::puts(message.c_str());std::fflush(stdout);
+                if(logger.enabled()) {
+                    char buf[512];
+                    std::snprintf(buf,sizeof buf,"%.3f\t%s",msSince(log_start),message.c_str());
+                    logger.event(buf);
+                }
+            }
+        } else {
+            char c=0;
+            // Bound input work per cycle; key repeats cannot starve motor target refresh.
+            for(int n=0;n<64;++n) {
+                const auto input_status=go_app::readDeploymentChar(c);
+                if(input_status==go_app::InputStatus::Waiting) break;
+                if(input_status==go_app::InputStatus::Closed) {
+                    hardware.requestStop("keyboard input closed");
+                    go_app::stopFlag()=1;result=2;break;
+                }
+                const auto event=input.feed(c);
+                if(event.kind==go_app::KeyEvent::Kind::State) {
+                    const auto message=fsm.request(event.digit,raw,now);
+                    if(!message.empty()) {std::puts(message.c_str());std::fflush(stdout);}
+                } else if(event.kind==go_app::KeyEvent::Kind::Velocity) {
+                    const auto previous=fsm.velocityCommand();fsm.velocity(event.key);
+                    if(previous!=fsm.velocityCommand()) {
+                        const auto& v=fsm.velocityCommand();
+                        std::printf("cmd vx=%.2f vy=%.2f yaw=%.2f\n",v[0],v[1],v[2]);std::fflush(stdout);
+                        if(logger.enabled()) {
+                            char buf[160];
+                            std::snprintf(buf,sizeof buf,"%.3f\tcmd vx=%.2f vy=%.2f yaw=%.2f",
+                                msSince(log_start),v[0],v[1],v[2]);
+                            logger.event(buf);
+                        }
                     }
                 }
             }

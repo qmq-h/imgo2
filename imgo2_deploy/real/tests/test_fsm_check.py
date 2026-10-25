@@ -18,6 +18,18 @@ exe, policy, config = sys.argv[1:]
 ansi = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
 
 
+def policy_gain(field):
+    """Read the first value of rl_kp/rl_kd from policy/ppo/config.yaml."""
+    text = (Path(policy) / 'ppo' / 'config.yaml').read_text()
+    match = re.search(rf'{field}:\s*\[([^]]+)\]', text)
+    assert match, f'{field} missing from policy config'
+    return float(match.group(1).split(',')[0])
+
+
+KP = policy_gain('rl_kp')
+KD = policy_gain('rl_kd')
+
+
 class Session:
     def __init__(self, directory, columns=80):
         self.master, self.slave = pty.openpty()
@@ -117,7 +129,7 @@ with tempfile.TemporaryDirectory(prefix='fsm_check_') as tmp:
         session.send('1\n')
         session.wait(lambda t: 'State: PPO |' in t[offset:])
         session.pump(.8)
-        assert 'PD=25.00/0.50' in session.text()[offset:]
+        assert f'PD={KP:.2f}/{KD:.2f}' in session.text()[offset:]
         session.send('9\n')
         session.wait(lambda t: 'State: Passive / Unloaded |' in t, 11)
         crouching = session.rows('Passive / Crouching')

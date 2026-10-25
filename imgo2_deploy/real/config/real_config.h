@@ -87,11 +87,22 @@ namespace real_config
         std::vector<float> mount_quaternion = {1, 0, 0, 0}; // wxyz元数据；本轮不应用旋转。
     };
     ImuConfig makeImuConfig();
-    // 组合两种配置；电机和IMU参数不在这里重复定义。
+    // 手柄输入（evdev）。device 通常是 udev 别名（见 docs/deployment/xbox_controller_demo_2026-10-23.md），
+    // 例如 /dev/input/imgo2_joystick 或 /dev/input/by-id/...-event-joystick。
+    class ControllerConfig
+    {
+    public:
+        ControllerConfig() = default;
+        void validate() const; // 不打开设备，非法参数抛invalid_argument。
+        std::string device = "/dev/imgo2_joystick";
+        float deadzone = 0.08f; // 0..0.95，摇杆死区
+    };
+    // 组合配置；电机和IMU参数不在这里重复定义。
     struct HardwareConfig
     {
         go::MotorConfig motors;
         ImuConfig imu;
+        ControllerConfig controller;
         int imu_ready_timeout_ms = 2000;
         int motor_stale_after_ms = 100;
         bool joint_mapping_confirmed = false;

@@ -53,5 +53,12 @@ namespace real_config
             throw std::invalid_argument("zero IMU mount quaternion");
     }
     ImuConfig makeImuConfig() { return ImuConfig{}; }
+    void ControllerConfig::validate() const
+    {
+        if (device.empty())
+            throw std::invalid_argument("controller device is empty");
+        if (!std::isfinite(deadzone) || deadzone < 0.f || deadzone >= 0.95f)
+            throw std::invalid_argument("controller deadzone must be in [0, 0.95)");
+    }
     HardwareConfig makeHardwareConfig() { return HardwareConfig{}; }
 }

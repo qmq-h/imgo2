@@ -40,8 +40,11 @@ RobotFSM::RobotFSM(const imgo2_sdk::PolicyConfig& policy,const imgo2_sdk::Deploy
     machine_.start(now);
 }
 void RobotFSM::change(Mode mode,const char* name,Clock::time_point now) {
-    c_.previous=c_.command;++c_.generation;velocity_={{0,0,0}};settling_=false;
-    mode_=mode;machine_.switchTo(name,now);
+    c_.previous=c_.command;++c_.generation;
+    velocity_={{0,0,0}};
+    settling_=false;
+    mode_=mode;
+    machine_.switchTo(name,now);
 }
 bool RobotFSM::beginMotion(Mode mode,const char* name,const std::vector<float>& target,double duration,
                            const real_hardware::HardwareState& h,Clock::time_point now,std::string& error) {
@@ -164,6 +167,28 @@ const go::Targets& RobotFSM::update(const real_hardware::HardwareState& h,const 
     }
     return c_.command;
 }
+std::string RobotFSM::gamepad(const imgo2_input::GamepadCommand& command,
+                              const real_hardware::HardwareState& h,Clock::time_point now) {
+    if(!command.connected) {
+        if(mode_==Mode::PPO) velocity_={{0,0,0}}; // 断线/未连接时不允许残留速度
+        return {};
+    }
+    std::string message;
+    // 一次只处理一个状态键；A/B/Y 同时按下时按 站起 > 趴下 > PPO 的优先级。
+    if(command.stand) message=request(0,h,now);
+    else if(command.lie_down) message=request(9,h,now);
+    else if(command.enter_ppo) message=request(1,h,now);
+    if(mode_==Mode::PPO) {
+        const auto& limits=c_.settings.velocity_limits;
+        const auto scale=[&](float value,float limit) {
+            return std::isfinite(value)?my_myth::clamp(value*limit,-limit,limit):0.f;
+        };
+        velocity_={{scale(command.vx,limits[0]),scale(command.vy,limits[1]),
+                    scale(command.wz,limits[2])}};
+    }
+    return message;
+}
+
 void RobotFSM::velocity(char key) {
     if(mode_!=Mode::PPO) return;
     if(key==' ') {velocity_={{0,0,0}};return;}

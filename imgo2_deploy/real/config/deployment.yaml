@@ -1,4 +1,9 @@
 deployment:
+  # 输入源：1 = 键盘；2 = 手柄。
+  # 手柄设备名/死区在 config/real_config.h 的 ControllerConfig（默认 /dev/imgo2_joystick）。
+  # 手柄映射：左摇杆前后/左右 = vx/vy（上/左为正），右摇杆水平 = wz（右为正），
+  #           A = 站起，B = 趴下，Y = 进入 PPO；整个摇杆行程映射到下面的 velocity_limits。
+  input_source: 2
   # 控制环周期(ms)：FSM + 安全限幅 + 下发指令的主循环节拍。5 = 200Hz。
   control_ms: 5
   # 策略推理周期(ms)：InferenceWorker 调 runner.infer() 的节拍。20 = 50Hz
@@ -27,7 +32,7 @@ deployment:
   # 站立稳定判据的速度容差(rad/s)：12 个关节实测 dq 的绝对值都要 <= 该值（0.5 ≈ 28.6°/s）。
   velocity_tolerance: 0.5
   # WASDQE 速度指令上限 [vx, vy, yaw]（m/s, m/s, rad/s）：每按一次键 ±0.1，空格清零。
-  velocity_limits: [0.5, 0.2, 0.5]
+  velocity_limits: [0.8, 0.4, 1.0]
   # IMU轴已由用户确认；无安装旋转。仅关节物理对应待确认。
   mapping_confirmed: true
   policy_to_hardware: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

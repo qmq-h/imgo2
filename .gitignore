@@ -140,6 +140,9 @@ Thumbs.db
 # ---------- 2026-10-20 real / ros2_ws 布局 ----------
 /imgo2_deploy/real/build*/
 /imgo2_deploy/ros2_ws/build*/
+# MuJoCo 的 out-of-source 构建目录（2c62fc5 误把 Makefile 与 4 个二进制一起提交；
+# 只忽略目录，源码 rl_sim_mujoco.cpp 等仍在 src/ 下正常跟踪）。
+/imgo2_deploy/ros2_ws/cmake_build*/
 /imgo2_deploy/**/CMakeFiles/
 /imgo2_deploy/**/Testing/
 /imgo2_deploy/**/CMakeCache.txt

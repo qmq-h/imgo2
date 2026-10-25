@@ -106,6 +106,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # 单事务诊断：按一次键发一条全零指令，打印 flush/write/reply 三段耗时
     add_executable(single_monitor single_monitor.cpp)
     target_link_libraries(single_monitor PRIVATE go_motor_array)
+    # 手柄输入核对：只读 /dev/input/event*，打印每个按键/轴的 evdev 名称与值
+    add_executable(controller_demo controller_demo.cpp)
   endif()
   if(BUILD_TESTING)
     add_executable(test_shared_serial tests/test_shared_serial.cpp)
@@ -239,7 +241,8 @@ if(GO_IMU_BUILD_RL)
   endif()
   add_library(go_rl_core STATIC
     sdk/policy_config.cpp sdk/rl_sdk.cpp sdk/inference_worker.cpp
-    config/deployment_config.cpp hardware/robot_adapter.cpp fsm/deployment_states.cpp
+    config/deployment_config.cpp hardware/robot_adapter.cpp input/controller_input.cpp
+    fsm/deployment_states.cpp
     fsm/states/hold_state.cpp fsm/states/passive_state.cpp
     fsm/states/ppo_state.cpp fsm/states/fault_state.cpp)
   target_link_libraries(go_rl_core PUBLIC real_hardware go_stand_fsm go_math yaml-cpp)
@@ -254,6 +257,15 @@ if(GO_IMU_BUILD_RL)
   target_link_libraries(rl_real_imgo2 PRIVATE go_policy_runner)
   # Keep the external runtime discoverable after installation; sibling lib also permits packaging it.
   set_target_properties(rl_real_imgo2 fsm_check PROPERTIES INSTALL_RPATH "$ORIGIN/../lib" INSTALL_RPATH_USE_LINK_PATH TRUE)
+  # 改 config/deployment.yaml 后，普通 `cmake --build build` 也会同步到 build/config/。
+  # （POST_BUILD 只在可执行文件重新链接时跑，单改 YAML 不会触发。）
+  add_custom_target(sync_config ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/config
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/config/deployment.yaml
+            ${CMAKE_CURRENT_BINARY_DIR}/config/deployment.yaml
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/config/deployment.yaml
+    COMMENT "同步 config/deployment.yaml 到 build/config/")
   foreach(app rl_real_imgo2 fsm_check)
   add_custom_command(TARGET ${app} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/policy $<TARGET_FILE_DIR:${app}>/policy

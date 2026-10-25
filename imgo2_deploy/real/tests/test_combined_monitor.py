@@ -117,7 +117,10 @@ class CombinedTest(unittest.TestCase):
         time.sleep(.1)
         text=rig.output.decode()
         self.assertIn('RECEIVING',text)
-        self.assertRegex(text,r'RPY \(deg\)\s+1\.182\s+-0\.307\s+-57\.670')
+        # 2026-10-23: ImuMonitor now averages the first 50 valid attitudes and
+        # subtracts them, so the panel shows ~0 after the warm-up. The fake sensor
+        # sends a constant (1.182, -0.307, -57.670) deg, hence exactly 0.000 here.
+        self.assertRegex(text,r'RPY \(deg\)\s+0\.000\s+0\.000\s+0\.000')
         rates=[float(x) for x in re.findall(r'RX: ([\d.]+) Hz',text)]
         self.assertTrue(any(70 < rate < 130 for rate in rates),rates)
         self.assertNotIn('\x1b',text)

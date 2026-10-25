@@ -3,6 +3,7 @@
 #include "states/stand_state.h"
 #include "states/passive_state.h"
 #include "hardware/robot_adapter.h"
+#include "input/controller_input.h"
 #include "sdk/rl_sdk.h"
 namespace go_fsm {
 class RobotFSM {
@@ -15,6 +16,10 @@ public:
     const go::Targets& update(const real_hardware::HardwareState&,const PolicyResult&,Clock::time_point now);
     void fault(const std::string&,Clock::time_point now);
     void velocity(char key);
+    // 手柄：A=站起(0)、B=趴下(9)、Y=进入PPO(1)；左/右摇杆在 PPO 下映射到速度。
+    // 返回给用户看的提示（空 = 无状态切换）。command.connected=false 时速度清零。
+    std::string gamepad(const imgo2_input::GamepadCommand& command,
+                        const real_hardware::HardwareState& h,Clock::time_point now);
     Mode mode() const {return mode_;}
     const char* name() const {return machine_.name();}
     bool policyActive() const {return mode_==Mode::PPO;}

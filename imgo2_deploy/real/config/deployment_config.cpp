@@ -52,6 +52,13 @@ DeploymentConfig DeploymentConfig::load(const std::filesystem::path& path) {
         if(v.size()!=3) throw std::invalid_argument("velocity_limits requires xyz commands");
         std::copy(v.begin(),v.end(),c.velocity_limits.begin());
     }
+    if(root["input_source"]) {
+        // 1 = 键盘，2 = 手柄；同时兼容旧的 keyboard/gamepad 写法。
+        const auto source=root["input_source"].as<std::string>();
+        if(source=="1" || source=="keyboard") c.input_source=InputSource::Keyboard;
+        else if(source=="2" || source=="gamepad") c.input_source=InputSource::Gamepad;
+        else throw std::invalid_argument("input_source must be 1 (keyboard) or 2 (gamepad)");
+    }
     c.validate();return c;
 }
 }
