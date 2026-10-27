@@ -1,0 +1,233 @@
+{
+  "date": "2026-10-27",
+  "scope": "Static source review only; production settings untouched; no new training or rollout",
+  "interpreter": "/usr/bin/python3",
+  "local_source_sha256": {
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/rough_env_cfg.py": "44dc9e3e12856ed451043684c604f744510a843b90346246330656dde3f3e4bb",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py": "6c42992a140dd356dd4d20b88e602afae509ac748f6305a9340513a12937b992",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/rewards.py": "b68b22e52305ee2b43d2f147308a742a0689939918536ef32d3eeb7249111a69",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/commands.py": "c36a86840b57bece7f21e04f5f128f89b7039084d32bac886aeec2db044fc609",
+    "imgo2_description/urdf/imgo2_real.urdf": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2"
+  },
+  "local_literal_assignments": {
+    "self.rewards.action_rate_l2.weight": {
+      "value": -0.01,
+      "line": 137
+    },
+    "self.rewards.base_height_l2.weight": {
+      "value": -10.0,
+      "line": 140
+    },
+    "self.rewards.feet_air_time.weight": {
+      "value": 1.2,
+      "line": 146
+    },
+    "self.rewards.feet_air_time_variance.weight": {
+      "value": -8.0,
+      "line": 152
+    },
+    "self.rewards.feet_slide.weight": {
+      "value": -0.05,
+      "line": 157
+    },
+    "self.rewards.stand_still.weight": {
+      "value": -0.1,
+      "line": 161
+    },
+    "self.rewards.feet_height_body.weight": {
+      "value": -6.0,
+      "line": 165
+    },
+    "self.rewards.feet_height.weight": {
+      "value": -0.0,
+      "line": 171
+    },
+    "self.rewards.joint_mirror.weight": {
+      "value": -1.0,
+      "line": 175
+    },
+    "self.rewards.contact_forces.weight": {
+      "value": -0.02,
+      "line": 182
+    },
+    "self.rewards.lin_vel_z_l2.weight": {
+      "value": -2.0,
+      "line": 188
+    },
+    "self.rewards.ang_vel_xy_l2.weight": {
+      "value": -0.05,
+      "line": 190
+    },
+    "self.rewards.track_lin_vel_xy_exp.weight": {
+      "value": 1.5,
+      "line": 193
+    },
+    "self.rewards.track_ang_vel_z_exp.weight": {
+      "value": 0.6,
+      "line": 194
+    },
+    "self.rewards.undesired_contacts.weight": {
+      "value": -0.5,
+      "line": 197
+    },
+    "self.rewards.joint_torques_l2.weight": {
+      "value": -2.5e-06,
+      "line": 203
+    },
+    "self.rewards.joint_acc_l2.weight": {
+      "value": -5e-09,
+      "line": 204
+    },
+    "self.rewards.joint_deviation_l1.weight": {
+      "value": 0.0,
+      "line": 206
+    },
+    "self.rewards.joint_pos_penalty.weight": {
+      "value": -0.5,
+      "line": 208
+    },
+    "self.rewards.joint_power.weight": {
+      "value": -2e-05,
+      "line": 211
+    },
+    "self.rewards.flat_orientation_l2.weight": {
+      "value": -5.0,
+      "line": 213
+    },
+    "self.commands.base_velocity.ranges.lin_vel_x": {
+      "value": [
+        -1.2,
+        1.2
+      ],
+      "line": 230
+    },
+    "self.commands.base_velocity.ranges.lin_vel_y": {
+      "value": [
+        -0.8,
+        0.8
+      ],
+      "line": 231
+    },
+    "self.commands.base_velocity.ranges.ang_vel_z": {
+      "value": [
+        -1.0,
+        1.0
+      ],
+      "line": 232
+    }
+  },
+  "public_source_downloads": {
+    "isaac_go2": {
+      "url": "https://raw.githubusercontent.com/isaac-sim/IsaacLab/v2.3.2/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/config/go2/rough_env_cfg.py",
+      "sha256": "6adc46503db2594000889e532064268921c54562576e780c01f0b82f5337bba2",
+      "bytes": 3464
+    },
+    "isaac_base": {
+      "url": "https://raw.githubusercontent.com/isaac-sim/IsaacLab/v2.3.2/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py",
+      "sha256": "8bc788ece76116f238e4469542a9320710090d8dc2801f4380134158aa64cc6a",
+      "bytes": 11100
+    },
+    "him_base": {
+      "url": "https://raw.githubusercontent.com/InternRobotics/HIMLoco/main/legged_gym/legged_gym/envs/base/legged_robot_config.py",
+      "sha256": "a0230fa99691a3dd28f077bf30a2432efb998def950b2be98f623fd1b303d55b",
+      "bytes": 11067
+    },
+    "him_a1": {
+      "url": "https://raw.githubusercontent.com/InternRobotics/HIMLoco/main/legged_gym/legged_gym/envs/a1/a1_config.py",
+      "sha256": "d8bd2f1bf10e64e0a4c2778f6d082b2be19a65164ecd329f95911ced2b2ecf78",
+      "bytes": 5598
+    },
+    "him_robot": {
+      "url": "https://raw.githubusercontent.com/InternRobotics/HIMLoco/main/legged_gym/legged_gym/envs/base/legged_robot.py",
+      "sha256": "a4d17f05c52d41c1b60583b0155f3452bb48351864e3b5ea0654f517c684190b",
+      "bytes": 67446
+    },
+    "unitree_go2": {
+      "url": "https://raw.githubusercontent.com/unitreerobotics/unitree_rl_gym/main/legged_gym/envs/go2/go2_config.py",
+      "sha256": "fcfbdfc35ad0145af69a470bee28ee2e6a07e2c771608c047dd867f474351d0f",
+      "bytes": 2052
+    },
+    "unitree_base": {
+      "url": "https://raw.githubusercontent.com/unitreerobotics/unitree_rl_gym/main/legged_gym/envs/base/legged_robot_config.py",
+      "sha256": "009677a88e2cca66feae457a90679c32fc8676272045a29649a125fb59f2ef56",
+      "bytes": 8413
+    },
+    "unitree_robot": {
+      "url": "https://raw.githubusercontent.com/unitreerobotics/unitree_rl_gym/main/legged_gym/envs/base/legged_robot.py",
+      "sha256": "255c67339be0c8e98332a632330d62d56c61de4c2e93c43bd30402e9d76eac3d",
+      "bytes": 37792
+    },
+    "legged_base": {
+      "url": "https://raw.githubusercontent.com/leggedrobotics/legged_gym/master/legged_gym/envs/base/legged_robot_config.py",
+      "sha256": "65ce2d1b647a291b4ae2bdaed7af569fcdf7a764da6d6b80d47a9ebd3a8a0f4c",
+      "bytes": 10058
+    },
+    "mpc": {
+      "url": "https://raw.githubusercontent.com/mit-biomimetics/Cheetah-Software/master/user/MIT_Controller/Controllers/convexMPC/ConvexMPCLocomotion.cpp",
+      "sha256": "58b418dc7959e966375bae1847030cb697cea9eeb438e04f6c060bb8e9aef404",
+      "bytes": 24038
+    }
+  },
+  "resolved_unitree_go2_scales": {
+    "termination": -0.0,
+    "tracking_lin_vel": 1.0,
+    "tracking_ang_vel": 0.5,
+    "lin_vel_z": -2.0,
+    "ang_vel_xy": -0.05,
+    "orientation": -0.0,
+    "torques": -0.0002,
+    "dof_vel": -0.0,
+    "dof_acc": -2.5e-07,
+    "base_height": -0.0,
+    "feet_air_time": 1.0,
+    "collision": -1.0,
+    "feet_stumble": -0.0,
+    "action_rate": -0.01,
+    "stand_still": -0.0,
+    "dof_pos_limits": -10.0
+  },
+  "him_a1_scales": {
+    "termination": -0.0,
+    "tracking_lin_vel": 1.0,
+    "tracking_ang_vel": 0.5,
+    "lin_vel_z": -2.0,
+    "ang_vel_xy": -0.05,
+    "orientation": -0.2,
+    "dof_acc": -2.5e-07,
+    "joint_power": -2e-05,
+    "base_height": -1.0,
+    "foot_clearance": -0.01,
+    "action_rate": -0.01,
+    "smoothness": -0.01,
+    "feet_air_time": 0.0,
+    "collision": -0.0,
+    "feet_stumble": -0.0,
+    "stand_still": -0.0,
+    "torques": -0.0,
+    "dof_vel": -0.0,
+    "dof_pos_limits": -0.0,
+    "dof_vel_limits": -0.0,
+    "torque_limits": -0.0
+  },
+  "equal_input_clearance_coefficient_example": {
+    "relative_speed_mps": 0.5,
+    "local": 4.569564935734589,
+    "him": 0.005,
+    "ratio": 913.9129871469178
+  },
+  "checks": {
+    "local_expected_current_values": true,
+    "public_inherited_scales": true,
+    "public_files_parse": [
+      "isaac_go2",
+      "isaac_base",
+      "him_base",
+      "him_a1",
+      "him_robot",
+      "unitree_go2",
+      "unitree_base",
+      "unitree_robot",
+      "legged_base"
+    ]
+  }
+}

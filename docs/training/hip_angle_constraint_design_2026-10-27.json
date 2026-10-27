@@ -1,0 +1,345 @@
+{
+  "scope": "Source inspection and isolated CPU tensor evaluation; proposed reward only, not registered, no training/model/deployment changes.",
+  "source_sha256": "b68b22e52305ee2b43d2f147308a742a0689939918536ef32d3eeb7249111a69",
+  "current_function_source": "def joint_pos_penalty(\n    env: ManagerBasedRLEnv,\n    command_name: str,\n    asset_cfg: SceneEntityCfg,\n    stand_still_scale: float,\n    velocity_threshold: float,\n    command_threshold: float,\n) -> torch.Tensor:\n    \"\"\"Penalize joint position error from default on the articulation.\"\"\"\n    # extract the used quantities (to enable type-hinting)\n    asset: Articulation = env.scene[asset_cfg.name]\n    cmd = torch.linalg.norm(env.command_manager.get_command(command_name), dim=1)\n    body_vel = torch.linalg.norm(asset.data.root_lin_vel_b[:, :2], dim=1)\n    running_reward = torch.linalg.norm(\n        (asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]), dim=1\n    )\n    reward = torch.where(\n        torch.logical_or(cmd > command_threshold, body_vel > velocity_threshold),\n        running_reward,\n        stand_still_scale * running_reward,\n    )\n    reward *= torch.clamp(-env.scene[\"robot\"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7\n    return reward",
+  "prototype_function_source": "def hip_angle_soft_constraint(\n    env,\n    asset_cfg,\n    command_name=\"base_velocity\",\n    stand_tolerance=0.08726646259971647,\n    move_tolerance=0.17453292519943295,\n    error_scale=0.17453292519943295,\n    centering_ratio=0.05,\n    linear_command_threshold=0.05,\n    yaw_command_threshold=0.05,\n):\n    \"\"\"Return a nonnegative cost; RewardManager supplies a negative weight and dt.\"\"\"\n    if error_scale <= 0 or stand_tolerance < 0 or move_tolerance < stand_tolerance:\n        raise ValueError(\"Invalid angular scales\")\n    if centering_ratio < 0 or linear_command_threshold < 0 or yaw_command_threshold < 0:\n        raise ValueError(\"Invalid penalty or command thresholds\")\n    robot = env.scene[asset_cfg.name]\n    command = env.command_manager.get_command(command_name)\n    standing = (torch.linalg.vector_norm(command[:, :2], dim=1) <= linear_command_threshold) & (\n        torch.abs(command[:, 2]) <= yaw_command_threshold\n    )\n    tolerance = torch.where(standing, stand_tolerance, move_tolerance)\n    error = robot.data.joint_pos[:, asset_cfg.joint_ids] - robot.data.default_joint_pos[:, asset_cfg.joint_ids]\n    excess = torch.relu(torch.abs(error) - tolerance[:, None])\n    return torch.sum(\n        centering_ratio * torch.square(error / error_scale) + torch.square(excess / error_scale),\n        dim=1,\n    )\n",
+  "prototype_parameters": {
+    "stand_tolerance_deg": 5,
+    "move_tolerance_deg": 10,
+    "error_scale_deg": 10,
+    "centering_ratio": 0.05,
+    "suggested_initial_weight": -0.2,
+    "dt": 0.02
+  },
+  "examples": [
+    {
+      "two_rear_hip_deviation_deg": 0,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.0,
+      "prototype_weighted_rate": -0.0,
+      "prototype_per_step": -0.0,
+      "current_joint_pos_penalty_cost": 0.0,
+      "current_joint_pos_penalty_weighted_rate": -0.0,
+      "current_per_step": -0.0
+    },
+    {
+      "two_rear_hip_deviation_deg": 0,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.0,
+      "prototype_weighted_rate": -0.0,
+      "prototype_per_step": -0.0,
+      "current_joint_pos_penalty_cost": 0.0,
+      "current_joint_pos_penalty_weighted_rate": -0.0,
+      "current_per_step": -0.0
+    },
+    {
+      "two_rear_hip_deviation_deg": 0,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 0.0,
+      "prototype_weighted_rate": -0.0,
+      "prototype_per_step": -0.0,
+      "current_joint_pos_penalty_cost": 0.0,
+      "current_joint_pos_penalty_weighted_rate": -0.0,
+      "current_per_step": -0.0
+    },
+    {
+      "two_rear_hip_deviation_deg": 4,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.01600000075995922,
+      "prototype_weighted_rate": -0.003200000151991844,
+      "prototype_per_step": -6.400000303983688e-05,
+      "current_joint_pos_penalty_cost": 0.49365368485450745,
+      "current_joint_pos_penalty_weighted_rate": -0.04936536848545075,
+      "current_per_step": -0.000987307369709015
+    },
+    {
+      "two_rear_hip_deviation_deg": 4,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.01600000075995922,
+      "prototype_weighted_rate": -0.003200000151991844,
+      "prototype_per_step": -6.400000303983688e-05,
+      "current_joint_pos_penalty_cost": 0.49365368485450745,
+      "current_joint_pos_penalty_weighted_rate": -0.04936536848545075,
+      "current_per_step": -0.000987307369709015
+    },
+    {
+      "two_rear_hip_deviation_deg": 4,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 0.01600000075995922,
+      "prototype_weighted_rate": -0.003200000151991844,
+      "prototype_per_step": -6.400000303983688e-05,
+      "current_joint_pos_penalty_cost": 0.09873073548078537,
+      "current_joint_pos_penalty_weighted_rate": -0.009873073548078537,
+      "current_per_step": -0.00019746147096157075
+    },
+    {
+      "two_rear_hip_deviation_deg": 5,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.02500000037252903,
+      "prototype_weighted_rate": -0.005000000074505806,
+      "prototype_per_step": -0.00010000000149011613,
+      "current_joint_pos_penalty_cost": 0.6170670986175537,
+      "current_joint_pos_penalty_weighted_rate": -0.061706709861755374,
+      "current_per_step": -0.0012341341972351074
+    },
+    {
+      "two_rear_hip_deviation_deg": 5,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.02500000037252903,
+      "prototype_weighted_rate": -0.005000000074505806,
+      "prototype_per_step": -0.00010000000149011613,
+      "current_joint_pos_penalty_cost": 0.6170670986175537,
+      "current_joint_pos_penalty_weighted_rate": -0.061706709861755374,
+      "current_per_step": -0.0012341341972351074
+    },
+    {
+      "two_rear_hip_deviation_deg": 5,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 0.02500000037252903,
+      "prototype_weighted_rate": -0.005000000074505806,
+      "prototype_per_step": -0.00010000000149011613,
+      "current_joint_pos_penalty_cost": 0.12341341376304626,
+      "current_joint_pos_penalty_weighted_rate": -0.012341341376304627,
+      "current_per_step": -0.00024682682752609253
+    },
+    {
+      "two_rear_hip_deviation_deg": 10,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.6000000238418579,
+      "prototype_weighted_rate": -0.12000000476837158,
+      "prototype_per_step": -0.0024000000953674316,
+      "current_joint_pos_penalty_cost": 1.2341341972351074,
+      "current_joint_pos_penalty_weighted_rate": -0.12341341972351075,
+      "current_per_step": -0.0024682683944702148
+    },
+    {
+      "two_rear_hip_deviation_deg": 10,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.10000000149011612,
+      "prototype_weighted_rate": -0.020000000298023225,
+      "prototype_per_step": -0.0004000000059604645,
+      "current_joint_pos_penalty_cost": 1.2341341972351074,
+      "current_joint_pos_penalty_weighted_rate": -0.12341341972351075,
+      "current_per_step": -0.0024682683944702148
+    },
+    {
+      "two_rear_hip_deviation_deg": 10,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 0.10000000149011612,
+      "prototype_weighted_rate": -0.020000000298023225,
+      "prototype_per_step": -0.0004000000059604645,
+      "current_joint_pos_penalty_cost": 0.24682682752609253,
+      "current_joint_pos_penalty_weighted_rate": -0.024682682752609254,
+      "current_per_step": -0.0004936536550521851
+    },
+    {
+      "two_rear_hip_deviation_deg": 15,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 2.2250006198883057,
+      "prototype_weighted_rate": -0.44500012397766114,
+      "prototype_per_step": -0.008900002479553222,
+      "current_joint_pos_penalty_cost": 1.8512012958526611,
+      "current_joint_pos_penalty_weighted_rate": -0.18512012958526614,
+      "current_per_step": -0.0037024025917053224
+    },
+    {
+      "two_rear_hip_deviation_deg": 15,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 0.7250001430511475,
+      "prototype_weighted_rate": -0.1450000286102295,
+      "prototype_per_step": -0.00290000057220459,
+      "current_joint_pos_penalty_cost": 1.8512012958526611,
+      "current_joint_pos_penalty_weighted_rate": -0.18512012958526614,
+      "current_per_step": -0.0037024025917053224
+    },
+    {
+      "two_rear_hip_deviation_deg": 15,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 0.7250001430511475,
+      "prototype_weighted_rate": -0.1450000286102295,
+      "prototype_per_step": -0.00290000057220459,
+      "current_joint_pos_penalty_cost": 0.3702402710914612,
+      "current_joint_pos_penalty_weighted_rate": -0.03702402710914612,
+      "current_per_step": -0.0007404805421829224
+    },
+    {
+      "two_rear_hip_deviation_deg": 20,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 4.900001049041748,
+      "prototype_weighted_rate": -0.9800002098083497,
+      "prototype_per_step": -0.019600004196166993,
+      "current_joint_pos_penalty_cost": 2.468268394470215,
+      "current_joint_pos_penalty_weighted_rate": -0.2468268394470215,
+      "current_per_step": -0.0049365367889404295
+    },
+    {
+      "two_rear_hip_deviation_deg": 20,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 2.4000000953674316,
+      "prototype_weighted_rate": -0.48000001907348633,
+      "prototype_per_step": -0.009600000381469726,
+      "current_joint_pos_penalty_cost": 2.468268394470215,
+      "current_joint_pos_penalty_weighted_rate": -0.2468268394470215,
+      "current_per_step": -0.0049365367889404295
+    },
+    {
+      "two_rear_hip_deviation_deg": 20,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 2.4000000953674316,
+      "prototype_weighted_rate": -0.48000001907348633,
+      "prototype_per_step": -0.009600000381469726,
+      "current_joint_pos_penalty_cost": 0.49365365505218506,
+      "current_joint_pos_penalty_weighted_rate": -0.04936536550521851,
+      "current_per_step": -0.0009873073101043701
+    },
+    {
+      "two_rear_hip_deviation_deg": 21.5,
+      "mode": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 5.907249927520752,
+      "prototype_weighted_rate": -1.1814499855041505,
+      "prototype_per_step": -0.023628999710083008,
+      "current_joint_pos_penalty_cost": 2.653388500213623,
+      "current_joint_pos_penalty_weighted_rate": -0.2653388500213623,
+      "current_per_step": -0.005306777000427246
+    },
+    {
+      "two_rear_hip_deviation_deg": 21.5,
+      "mode": "forward",
+      "command": [
+        0.1,
+        0.0,
+        0.0
+      ],
+      "prototype_cost": 3.1072499752044678,
+      "prototype_weighted_rate": -0.6214499950408936,
+      "prototype_per_step": -0.012428999900817871,
+      "current_joint_pos_penalty_cost": 2.653388500213623,
+      "current_joint_pos_penalty_weighted_rate": -0.2653388500213623,
+      "current_per_step": -0.005306777000427246
+    },
+    {
+      "two_rear_hip_deviation_deg": 21.5,
+      "mode": "turn",
+      "command": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "prototype_cost": 3.1072499752044678,
+      "prototype_weighted_rate": -0.6214499950408936,
+      "prototype_per_step": -0.012428999900817871,
+      "current_joint_pos_penalty_cost": 0.5306776762008667,
+      "current_joint_pos_penalty_weighted_rate": -0.05306776762008667,
+      "current_per_step": -0.0010613553524017334
+    }
+  ],
+  "checks": {
+    "zero_cost_at_default": true,
+    "two_hips_20deg_stand_cost_4p9": true,
+    "two_hips_20deg_move_cost_2p4": true,
+    "zero_command_drift_does_not_relax_proposed_limit": true,
+    "nonhip_deviation_does_not_affect_proposed_term": true,
+    "current_term_drift_speed_over_0p5_reduces_static_multiplier": true
+  },
+  "limitations": [
+    "Weights and tolerances are initial low-speed trial choices, not established anatomical or optimal limits.",
+    "Soft reward does not impose a hard angle bound or directly constrain raw actor mean/std.",
+    "No Isaac RewardManager registration, gradients through a dynamics rollout or learning improvement were tested.",
+    "All examples assume upright gravity gate=1 for the current term and other joints equal defaults unless stated."
+  ]
+}

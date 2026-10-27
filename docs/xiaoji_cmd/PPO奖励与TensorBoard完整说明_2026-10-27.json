@@ -1,0 +1,1105 @@
+{
+  "checked_date": "2026-10-27",
+  "scope": "Current Imgo2-basemove-rough-ppo; static source audit and actual event scalar inventory only",
+  "interpreter": "/usr/bin/python3",
+  "base_reward_term_count": 36,
+  "active_reward_count": 19,
+  "terms": {
+    "is_terminated": {
+      "func": "mdp.is_terminated",
+      "weight": 0.0,
+      "base_config_line": 374,
+      "params_source": "{}",
+      "overrides": []
+    },
+    "lin_vel_z_l2": {
+      "func": "mdp.lin_vel_z_l2",
+      "weight": -2.0,
+      "base_config_line": 377,
+      "params_source": "{}",
+      "overrides": [
+        {
+          "target": "self.rewards.lin_vel_z_l2.weight",
+          "value_source": "-2.0",
+          "line": 188
+        }
+      ]
+    },
+    "ang_vel_xy_l2": {
+      "func": "mdp.ang_vel_xy_l2",
+      "weight": -0.05,
+      "base_config_line": 378,
+      "params_source": "{}",
+      "overrides": [
+        {
+          "target": "self.rewards.ang_vel_xy_l2.weight",
+          "value_source": "-0.05",
+          "line": 190
+        }
+      ]
+    },
+    "flat_orientation_l2": {
+      "func": "mdp.flat_orientation_l2",
+      "weight": -5.0,
+      "base_config_line": 379,
+      "params_source": "{}",
+      "overrides": [
+        {
+          "target": "self.rewards.flat_orientation_l2.weight",
+          "value_source": "-5.0",
+          "line": 213
+        }
+      ]
+    },
+    "base_height_l2": {
+      "func": "mdp.base_height_l2",
+      "weight": -10.0,
+      "base_config_line": 380,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', body_names=''), 'sensor_cfg': SceneEntityCfg('height_scanner_base'), 'target_height': 0.0}",
+      "overrides": [
+        {
+          "target": "self.rewards.base_height_l2.weight",
+          "value_source": "-10.0",
+          "line": 140
+        },
+        {
+          "target": "self.rewards.base_height_l2.params['target_height']",
+          "value_source": "0.3",
+          "line": 141
+        },
+        {
+          "target": "self.rewards.base_height_l2.params['asset_cfg'].body_names",
+          "value_source": "[self.base_link_name]",
+          "line": 142
+        }
+      ]
+    },
+    "body_lin_acc_l2": {
+      "func": "mdp.body_lin_acc_l2",
+      "weight": 0.0,
+      "base_config_line": 389,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', body_names='')}",
+      "overrides": []
+    },
+    "joint_torques_l2": {
+      "func": "mdp.joint_torques_l2",
+      "weight": -2.5e-06,
+      "base_config_line": 396,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_torques_l2.weight",
+          "value_source": "-2.5e-06",
+          "line": 203
+        }
+      ]
+    },
+    "joint_vel_l2": {
+      "func": "mdp.joint_vel_l2",
+      "weight": 0.0,
+      "base_config_line": 399,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": []
+    },
+    "joint_acc_l2": {
+      "func": "mdp.joint_acc_l2",
+      "weight": -5e-09,
+      "base_config_line": 402,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_acc_l2.weight",
+          "value_source": "-5e-09",
+          "line": 204
+        }
+      ]
+    },
+    "joint_deviation_l1": {
+      "func": "mdp.joint_deviation_l1",
+      "weight": 0.0,
+      "base_config_line": 406,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_deviation_l1.weight",
+          "value_source": "0.0",
+          "line": 206
+        },
+        {
+          "target": "self.rewards.joint_deviation_l1.params['asset_cfg'].joint_names",
+          "value_source": "['.*hip.*']",
+          "line": 207
+        }
+      ]
+    },
+    "joint_pos_limits": {
+      "func": "mdp.joint_pos_limits",
+      "weight": 0.0,
+      "base_config_line": 420,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": []
+    },
+    "joint_vel_limits": {
+      "func": "mdp.joint_vel_limits",
+      "weight": 0.0,
+      "base_config_line": 423,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*'), 'soft_ratio': 1.0}",
+      "overrides": []
+    },
+    "joint_power": {
+      "func": "mdp.joint_power",
+      "weight": -2e-05,
+      "base_config_line": 428,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_power.weight",
+          "value_source": "-2e-05",
+          "line": 211
+        }
+      ]
+    },
+    "stand_still": {
+      "func": "mdp.stand_still",
+      "weight": -0.1,
+      "base_config_line": 436,
+      "params_source": "{'command_name': 'base_velocity', 'command_threshold': 0.1, 'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": [
+        {
+          "target": "self.rewards.stand_still.weight",
+          "value_source": "-0.1",
+          "line": 161
+        },
+        {
+          "target": "self.rewards.stand_still.params['asset_cfg'].joint_names",
+          "value_source": "self.joint_names",
+          "line": 162
+        },
+        {
+          "target": "self.rewards.stand_still.params['command_threshold']",
+          "value_source": "0.05",
+          "line": 163
+        }
+      ]
+    },
+    "joint_pos_penalty": {
+      "func": "mdp.joint_pos_penalty",
+      "weight": -0.5,
+      "base_config_line": 446,
+      "params_source": "{'command_name': 'base_velocity', 'asset_cfg': SceneEntityCfg('robot', joint_names='.*'), 'stand_still_scale': 5.0, 'velocity_threshold': 0.5, 'command_threshold': 0.1}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_pos_penalty.weight",
+          "value_source": "-0.5",
+          "line": 208
+        }
+      ]
+    },
+    "wheel_vel_penalty": {
+      "func": "mdp.wheel_vel_penalty",
+      "weight": 0.0,
+      "base_config_line": 458,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names=''), 'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'command_name': 'base_velocity', 'velocity_threshold': 0.5, 'command_threshold': 0.1}",
+      "overrides": []
+    },
+    "joint_mirror": {
+      "func": "mdp.joint_mirror",
+      "weight": -1.0,
+      "base_config_line": 470,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot'), 'mirror_joints': [['FR.*', 'RL.*'], ['FL.*', 'RR.*']]}",
+      "overrides": [
+        {
+          "target": "self.rewards.joint_mirror.weight",
+          "value_source": "-1.0",
+          "line": 175
+        },
+        {
+          "target": "self.rewards.joint_mirror.params['mirror_joints']",
+          "value_source": "[['FR_(hip|thigh|shank).*', 'RL_(hip|thigh|shank).*'], ['FL_(hip|thigh|shank).*', 'RR_(hip|thigh|shank).*']]",
+          "line": 176
+        }
+      ]
+    },
+    "action_mirror": {
+      "func": "mdp.action_mirror",
+      "weight": 0.0,
+      "base_config_line": 479,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot'), 'mirror_joints': [['FR.*', 'RL.*'], ['FL.*', 'RR.*']]}",
+      "overrides": []
+    },
+    "action_sync": {
+      "func": "mdp.action_sync",
+      "weight": 0.0,
+      "base_config_line": 488,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot'), 'joint_groups': [['FR_hip_joint', 'FL_hip_joint', 'RL_hip_joint', 'RR_hip_joint'], ['FR_thigh_joint', 'FL_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint'], ['FR_calf_joint', 'FL_calf_joint', 'RL_calf_joint', 'RR_calf_joint']]}",
+      "overrides": []
+    },
+    "applied_torque_limits": {
+      "func": "mdp.applied_torque_limits",
+      "weight": 0.0,
+      "base_config_line": 502,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', joint_names='.*')}",
+      "overrides": []
+    },
+    "action_rate_l2": {
+      "func": "mdp.action_rate_l2",
+      "weight": -0.01,
+      "base_config_line": 507,
+      "params_source": "{}",
+      "overrides": [
+        {
+          "target": "self.rewards.action_rate_l2.weight",
+          "value_source": "-0.01",
+          "line": 137
+        }
+      ]
+    },
+    "undesired_contacts": {
+      "func": "mdp.undesired_contacts",
+      "weight": -0.5,
+      "base_config_line": 512,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'threshold': 1.0}",
+      "overrides": [
+        {
+          "target": "self.rewards.undesired_contacts.weight",
+          "value_source": "-0.5",
+          "line": 197
+        },
+        {
+          "target": "self.rewards.undesired_contacts.params['sensor_cfg'].body_names",
+          "value_source": "[f'^(?!.*{self.foot_link_name}).*']",
+          "line": 198
+        }
+      ]
+    },
+    "contact_forces": {
+      "func": "mdp.contact_forces",
+      "weight": -0.02,
+      "base_config_line": 520,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'threshold': 100.0}",
+      "overrides": [
+        {
+          "target": "self.rewards.contact_forces.weight",
+          "value_source": "-0.02",
+          "line": 182
+        },
+        {
+          "target": "self.rewards.contact_forces.params['sensor_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 183
+        }
+      ]
+    },
+    "track_lin_vel_xy_exp": {
+      "func": "mdp.track_lin_vel_xy_exp",
+      "weight": 1.5,
+      "base_config_line": 527,
+      "params_source": "{'command_name': 'base_velocity', 'std': math.sqrt(0.25)}",
+      "overrides": [
+        {
+          "target": "self.rewards.track_lin_vel_xy_exp.weight",
+          "value_source": "1.5",
+          "line": 193
+        }
+      ]
+    },
+    "track_ang_vel_z_exp": {
+      "func": "mdp.track_ang_vel_z_exp",
+      "weight": 0.6,
+      "base_config_line": 530,
+      "params_source": "{'command_name': 'base_velocity', 'std': math.sqrt(0.25)}",
+      "overrides": [
+        {
+          "target": "self.rewards.track_ang_vel_z_exp.weight",
+          "value_source": "0.6",
+          "line": 194
+        }
+      ]
+    },
+    "feet_air_time": {
+      "func": "mdp.feet_air_time",
+      "weight": 1.2,
+      "base_config_line": 535,
+      "params_source": "{'command_name': 'base_velocity', 'threshold': 0.5, 'sensor_cfg': SceneEntityCfg('contact_forces', body_names='')}",
+      "overrides": [
+        {
+          "target": "self.rewards.feet_air_time.weight",
+          "value_source": "1.2",
+          "line": 146
+        },
+        {
+          "target": "self.rewards.feet_air_time.params['threshold']",
+          "value_source": "0.5",
+          "line": 147
+        },
+        {
+          "target": "self.rewards.feet_air_time.params['sensor_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 148
+        }
+      ]
+    },
+    "feet_air_time_variance": {
+      "func": "mdp.feet_air_time_variance_penalty",
+      "weight": -8.0,
+      "base_config_line": 545,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names='')}",
+      "overrides": [
+        {
+          "target": "self.rewards.feet_air_time_variance.weight",
+          "value_source": "-8.0",
+          "line": 152
+        },
+        {
+          "target": "self.rewards.feet_air_time_variance.params['sensor_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 153
+        }
+      ]
+    },
+    "feet_gait": {
+      "func": "mdp.GaitReward",
+      "weight": 0.0,
+      "base_config_line": 551,
+      "params_source": "{'std': math.sqrt(0.5), 'command_name': 'base_velocity', 'max_err': 0.2, 'velocity_threshold': 0.5, 'command_threshold': 0.1, 'synced_feet_pair_names': (('', ''), ('', '')), 'asset_cfg': SceneEntityCfg('robot'), 'sensor_cfg': SceneEntityCfg('contact_forces')}",
+      "overrides": []
+    },
+    "feet_contact": {
+      "func": "mdp.feet_contact",
+      "weight": 0.0,
+      "base_config_line": 566,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'command_name': 'base_velocity', 'expect_contact_num': 2}",
+      "overrides": []
+    },
+    "feet_contact_without_cmd": {
+      "func": "mdp.feet_contact_without_cmd",
+      "weight": 0.0,
+      "base_config_line": 576,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'command_name': 'base_velocity'}",
+      "overrides": []
+    },
+    "feet_stumble": {
+      "func": "mdp.feet_stumble",
+      "weight": 0.0,
+      "base_config_line": 585,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names='')}",
+      "overrides": []
+    },
+    "feet_slide": {
+      "func": "mdp.feet_slide",
+      "weight": -0.05,
+      "base_config_line": 593,
+      "params_source": "{'sensor_cfg': SceneEntityCfg('contact_forces', body_names=''), 'asset_cfg': SceneEntityCfg('robot', body_names='')}",
+      "overrides": [
+        {
+          "target": "self.rewards.feet_slide.weight",
+          "value_source": "-0.05",
+          "line": 157
+        },
+        {
+          "target": "self.rewards.feet_slide.params['sensor_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 158
+        },
+        {
+          "target": "self.rewards.feet_slide.params['asset_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 159
+        }
+      ]
+    },
+    "feet_height": {
+      "func": "mdp.feet_height",
+      "weight": -0.0,
+      "base_config_line": 602,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', body_names=''), 'tanh_mult': 2.0, 'target_height': 0.05, 'command_name': 'base_velocity'}",
+      "overrides": [
+        {
+          "target": "self.rewards.feet_height.weight",
+          "value_source": "-0.0",
+          "line": 171
+        },
+        {
+          "target": "self.rewards.feet_height.params['asset_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 172
+        },
+        {
+          "target": "self.rewards.feet_height.params['target_height']",
+          "value_source": "0.1",
+          "line": 173
+        }
+      ]
+    },
+    "feet_height_body": {
+      "func": "mdp.feet_height_body",
+      "weight": -6.0,
+      "base_config_line": 613,
+      "params_source": "{'asset_cfg': SceneEntityCfg('robot', body_names=''), 'tanh_mult': 2.0, 'target_height': -0.3, 'command_name': 'base_velocity'}",
+      "overrides": [
+        {
+          "target": "self.rewards.feet_height_body.weight",
+          "value_source": "-6.0",
+          "line": 165
+        },
+        {
+          "target": "self.rewards.feet_height_body.params['target_height']",
+          "value_source": "-0.2",
+          "line": 166
+        },
+        {
+          "target": "self.rewards.feet_height_body.params['asset_cfg'].body_names",
+          "value_source": "[self.foot_link_name]",
+          "line": 167
+        }
+      ]
+    },
+    "feet_distance_y_exp": {
+      "func": "mdp.feet_distance_y_exp",
+      "weight": 0.0,
+      "base_config_line": 624,
+      "params_source": "{'std': math.sqrt(0.25), 'asset_cfg': SceneEntityCfg('robot', body_names=''), 'stance_width': float}",
+      "overrides": []
+    },
+    "upward": {
+      "func": "mdp.upward",
+      "weight": 0.0,
+      "base_config_line": 645,
+      "params_source": "{}",
+      "overrides": []
+    }
+  },
+  "runs": {
+    "2026-10-26_17-09-42": {
+      "event_path": "imgo2_rl/logs/2026-10-26_17-09-42/events.out.tfevents.1793005807.gpufree-container.5145.0",
+      "event_sha256": "bff4d37d1701c51c2b2cef71098ad0631181d2ab705652881635572937e572c1",
+      "tags": {
+        "Curriculum/terrain_levels": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 5.960723876953125,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/action_rate_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.13491547107696533,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/ang_vel_xy_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.11048849672079086,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/base_height_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.011944428086280823,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/contact_forces": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.21182672679424286,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_air_time": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.1321968287229538,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_air_time_variance": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.06094033643603325,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_height_body": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.030537007376551628,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_slide": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.09259635210037231,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/flat_orientation_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.054945193231105804,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_acc_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.014498814940452576,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_mirror": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.1141764223575592,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_pos_penalty": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.1006895899772644,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_power": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.0036429045721888542,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_torques_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.0011537527898326516,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/lin_vel_z_l2": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.0790967270731926,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/stand_still": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.006987994536757469,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/track_ang_vel_z_exp": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.4329673945903778,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/track_lin_vel_xy_exp": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 1.087062120437622,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/undesired_contacts": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.030732713639736176,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Termination/terrain_out_of_bounds": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.00146484375,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Termination/time_out": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.99853515625,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/entropy": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 17.611339569091797,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/learning_rate": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.00038443360244855285,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/surrogate": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": -0.010316381230950356,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/value_function": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.020848603919148445,
+          "x_axis": "learning_iteration"
+        },
+        "Metrics/base_velocity/error_vel_xy": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.586235523223877,
+          "x_axis": "learning_iteration"
+        },
+        "Metrics/base_velocity/error_vel_yaw": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.4862908720970154,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/collection time": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 2.778430223464966,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/learning_time": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 0.08509016036987305,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/total_fps": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 34329.0,
+          "x_axis": "learning_iteration"
+        },
+        "Policy/mean_noise_std": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 6.1207098960876465,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_episode_length": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 1000.0,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_episode_length/time": {
+          "count": 10000,
+          "first_x": 5,
+          "last_x": 30182,
+          "last_value": 1000.0,
+          "x_axis": "elapsed_training_seconds"
+        },
+        "Train/mean_reward": {
+          "count": 9999,
+          "first_x": 1,
+          "last_x": 9999,
+          "last_value": 6.188751697540283,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_reward/time": {
+          "count": 10000,
+          "first_x": 5,
+          "last_x": 30182,
+          "last_value": 6.188751697540283,
+          "x_axis": "elapsed_training_seconds"
+        }
+      },
+      "saved_nonzero_rewards": {
+        "lin_vel_z_l2": -2.0,
+        "ang_vel_xy_l2": -0.05,
+        "flat_orientation_l2": -5.0,
+        "base_height_l2": -10.0,
+        "joint_torques_l2": -2.5e-06,
+        "joint_acc_l2": -5e-09,
+        "joint_power": -2e-05,
+        "stand_still": -0.1,
+        "joint_pos_penalty": -0.1,
+        "joint_mirror": -1.0,
+        "action_rate_l2": -0.01,
+        "undesired_contacts": -0.5,
+        "contact_forces": -0.02,
+        "track_lin_vel_xy_exp": 1.5,
+        "track_ang_vel_z_exp": 0.6,
+        "feet_air_time": 1.0,
+        "feet_air_time_variance": -8.0,
+        "feet_slide": -0.05,
+        "feet_height_body": -5.0
+      },
+      "command_ranges": {
+        "lin_vel_x": [
+          "-1.5",
+          "1.5"
+        ],
+        "lin_vel_y": [
+          "-0.8",
+          "0.8"
+        ],
+        "ang_vel_z": [
+          "-1.5",
+          "1.5"
+        ],
+        "heading": [
+          "-3.141592653589793",
+          "3.141592653589793"
+        ]
+      },
+      "max_episode_seconds": "20.0",
+      "last_reward_components_sum": 0.3286597545957193,
+      "sum_times_20": 6.573195091914386,
+      "last_train_reward": 6.188751697540283
+    },
+    "2026-10-27_17-42-50": {
+      "event_path": "imgo2_rl/logs/2026-10-27_17-42-50/events.out.tfevents.1793094196.gpufree-container.1566.0",
+      "event_sha256": "6feb17f3b9944bc65dedd0d8ec7b3b00b1217ad9de3d2dad6b23b0006326788a",
+      "tags": {
+        "Curriculum/terrain_levels": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 5.9118452072143555,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/action_rate_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.10747291892766953,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/ang_vel_xy_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.09410514682531357,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/base_height_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.005205028690397739,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/contact_forces": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.1531590074300766,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_air_time": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.18018639087677002,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_air_time_variance": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.06205938383936882,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_height_body": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.047673940658569336,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/feet_slide": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.09155790507793427,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/flat_orientation_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.0473419651389122,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_acc_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.01770445704460144,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_mirror": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.06895437836647034,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_pos_penalty": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.25442132353782654,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_power": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.003036758629605174,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/joint_torques_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.0010177327785640955,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/lin_vel_z_l2": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.06462815403938293,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/stand_still": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.002391053829342127,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/track_ang_vel_z_exp": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.46124157309532166,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/track_lin_vel_xy_exp": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 1.178768515586853,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Reward/undesired_contacts": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.0192350372672081,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Termination/terrain_out_of_bounds": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.0,
+          "x_axis": "learning_iteration"
+        },
+        "Episode_Termination/time_out": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 1.0,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/entropy": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 7.997316360473633,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/learning_rate": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.00038443360244855285,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/surrogate": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": -0.010592419654130936,
+          "x_axis": "learning_iteration"
+        },
+        "Loss/value_function": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.017749330028891563,
+          "x_axis": "learning_iteration"
+        },
+        "Metrics/base_velocity/error_vel_xy": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.4680976867675781,
+          "x_axis": "learning_iteration"
+        },
+        "Metrics/base_velocity/error_vel_yaw": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.46961331367492676,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/collection time": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 2.862971067428589,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/learning_time": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.08913493156433105,
+          "x_axis": "learning_iteration"
+        },
+        "Perf/total_fps": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 33299.0,
+          "x_axis": "learning_iteration"
+        },
+        "Policy/mean_noise_std": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 0.48938173055648804,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_episode_length": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 1000.0,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_episode_length/time": {
+          "count": 3165,
+          "first_x": 5,
+          "last_x": 9523,
+          "last_value": 1000.0,
+          "x_axis": "elapsed_training_seconds"
+        },
+        "Train/mean_reward": {
+          "count": 3164,
+          "first_x": 1,
+          "last_x": 3164,
+          "last_value": 8.151402473449707,
+          "x_axis": "learning_iteration"
+        },
+        "Train/mean_reward/time": {
+          "count": 3165,
+          "first_x": 5,
+          "last_x": 9523,
+          "last_value": 8.151402473449707,
+          "x_axis": "elapsed_training_seconds"
+        }
+      },
+      "saved_nonzero_rewards": {
+        "lin_vel_z_l2": -2.0,
+        "ang_vel_xy_l2": -0.05,
+        "flat_orientation_l2": -5.0,
+        "base_height_l2": -10.0,
+        "joint_torques_l2": -2.5e-06,
+        "joint_acc_l2": -5e-09,
+        "joint_power": -2e-05,
+        "stand_still": -0.1,
+        "joint_pos_penalty": -0.5,
+        "joint_mirror": -1.0,
+        "action_rate_l2": -0.01,
+        "undesired_contacts": -0.5,
+        "contact_forces": -0.02,
+        "track_lin_vel_xy_exp": 1.5,
+        "track_ang_vel_z_exp": 0.6,
+        "feet_air_time": 1.2,
+        "feet_air_time_variance": -8.0,
+        "feet_slide": -0.05,
+        "feet_height_body": -6.0
+      },
+      "command_ranges": {
+        "lin_vel_x": [
+          "-1.2",
+          "1.2"
+        ],
+        "lin_vel_y": [
+          "-0.8",
+          "0.8"
+        ],
+        "ang_vel_z": [
+          "-1.0",
+          "1.0"
+        ],
+        "heading": [
+          "-3.141592653589793",
+          "3.141592653589793"
+        ]
+      },
+      "max_episode_seconds": "20.0",
+      "last_reward_components_sum": 0.41985950572416186,
+      "sum_times_20": 8.397190114483237,
+      "last_train_reward": 8.151402473449707
+    }
+  },
+  "source_sha256": {
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py": "6c42992a140dd356dd4d20b88e602afae509ac748f6305a9340513a12937b992",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/rewards.py": "b68b22e52305ee2b43d2f147308a742a0689939918536ef32d3eeb7249111a69",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/commands.py": "c36a86840b57bece7f21e04f5f128f89b7039084d32bac886aeec2db044fc609",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/rough_env_cfg.py": "44dc9e3e12856ed451043684c604f744510a843b90346246330656dde3f3e4bb",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/flat_env_cfg.py": "7b41d64d523f5ca6c0dac0c55bcf22f4765a7681e3c6a1335ef62af55e22afc2",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/agents/rsl_rl_ppo_cfg.py": "32a835208b8dc95517eb9bad789e4b6078592e7ed1095b7676af0111c7cc875d",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/scripts/rl_lab/ppo/train.py": "fc073dda80c953afd887cb446f46c059f7022b42a49aff218533146a7ac12740",
+    "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "f675b2702d6c521b1fb21c23c75df26dfde66647202abffe7d041f910b5cb452",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/envs/mdp/rewards.py": "918a18c90ecf9815ca646973de05060dbcd90f6615cd93b0fd4e6d629490191d",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/managers/reward_manager.py": "6be44a98df5aed8a0ebac2913ebea33010633e007e816697a6d99f7ccfd731db",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/managers/command_manager.py": "a0f4f2b35a33c9b0d3a5fea514e85b16e3230c7507c653289b68345d1671b69c",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/managers/termination_manager.py": "cb6333f11fa6472f7d8034bae9835714e83ae3edde97894b767f1351a7eea99d",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/envs/mdp/commands/velocity_command.py": "0ff254a375c9ea8d408824c24145e7ac7906cc7b513c52c4dd4ca0834c1ce241",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/assets/articulation/articulation_data.py": "d69495c66c409fb20823e4e467f9d90e63163b2050b77d2ac8e433221d1d208a",
+    "/home/tommy0929/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/rsl_rl/algorithms/ppo.py": "a2d35e7ad7b884c80b7434e7d2ce785a6da1e18d93c96f1179fbd3a208669f8c",
+    "/home/tommy0929/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/rsl_rl/utils/logger.py": "d9822d8317724507a7c817e85399db0db9e56a4eae959435138e75cf92e44b8d"
+  },
+  "checks": {
+    "active_count_19": true,
+    "both_event_tag_counts_36": true,
+    "latest_saved_weights_match_current_source": true
+  },
+  "limitations": [
+    "No Isaac training or policy rollout in this documentation task",
+    "Server historical reward function source not proven identical to local checkout",
+    "TensorBoard histogram/image/tensor records are outside standard-library scalar parser scope",
+    "Local RSL-RL5 logger uses aliases differing from server event labels"
+  ]
+}
