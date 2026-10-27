@@ -29,6 +29,10 @@ parser.add_argument(
 )
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
+    "--export_only", "--export-only", action="store_true",
+    help="Export JIT and ONNX policies, then close the simulator without playback.",
+)
+parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
@@ -162,17 +166,34 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
-    runner.load(resume_path)
+    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+    if version.parse(installed_version) >= version.parse("5.0.0") and agent_cfg.class_name == "OnPolicyRunner":
+        # Isaac Lab provides the legacy combined actor/critic checkpoint migration.
+        # Playback does not restore optimizer state from a different RSL-RL layout.
+        from isaaclab_rl.rsl_rl import handle_deprecated_rsl_rl_checkpoint
+
+        compatible_path = handle_deprecated_rsl_rl_checkpoint(resume_path, installed_version)
+        if compatible_path != resume_path:
+            # Keep export-only migration artifacts out of model_*.pt resume selection.
+            os.makedirs(export_model_dir, exist_ok=True)
+            export_checkpoint = os.path.join(export_model_dir, os.path.basename(compatible_path))
+            os.replace(compatible_path, export_checkpoint)
+            compatible_path = export_checkpoint
+            print(f"[INFO] Playback compatibility checkpoint: {compatible_path}", flush=True)
+        runner.load(compatible_path, load_cfg={"actor": True, "critic": True}, map_location=env.unwrapped.device)
+    else:
+        runner.load(resume_path)
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
 
     # export the trained policy to JIT and ONNX formats
-    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+    print(f"[INFO] Exporting PPO policy to: {export_model_dir}", flush=True)
 
     if version.parse(installed_version) >= version.parse("4.0.0"):
         # use the new export functions for rsl-rl >= 4.0.0
         runner.export_policy_to_jit(path=export_model_dir, filename="policy.pt")
+        print(f"[INFO] JIT export complete: {os.path.join(export_model_dir, 'policy.pt')}", flush=True)
         runner.export_policy_to_onnx(path=export_model_dir, filename="policy.onnx")
     else:
         # extract the neural network for rsl-rl < 4.0.0
@@ -191,7 +212,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         # export to JIT and ONNX
         export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
+        print(f"[INFO] JIT export complete: {os.path.join(export_model_dir, 'policy.pt')}", flush=True)
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+
+    print(f"[INFO] ONNX export complete: {os.path.join(export_model_dir, 'policy.onnx')}", flush=True)
+    if args_cli.export_only:
+        env.close()
+        print("[INFO] Export-only run complete.", flush=True)
+        return
+
+    print("[INFO] Starting PPO playback...", flush=True)
 
     dt = env.unwrapped.step_dt
 

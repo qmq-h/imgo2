@@ -1,5 +1,21 @@
 # AMP 策略导出与 ROS 2 Gazebo 仿真
 
+## 2026-10-27补充：PPO model_8400仅导出
+
+本机已实际验证下面的正式PPO入口。旧checkpoint在RSL-RL5下需先通过IsaacLab-rsl5的兼容函数加载；play.py已接入并新增--export_only，导出后自动退出。实际修复、哈希及三条导出契约结果见 [专项记录](../deployment/ppo_8400_export_2026-10-27.md)。
+
+```bash
+cd /home/tommy0929/Documents/imgo2/imgo2_rl
+export IMGO2_ISAACLAB_PYTHON=/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python
+export PYTHONPATH="$PWD/source/imgo2_rl:$PWD/scripts/rl_lab${PYTHONPATH:+:$PYTHONPATH}"
+bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
+  --task=Imgo2-basemove-rough-ppo \
+  --checkpoint="$PWD/logs/2026-10-26_17-09-42/model_8400.pt" \
+  --num_envs=1 --device=cuda:0 --headless --export_only
+```
+
+产物在 `logs/2026-10-26_17-09-42/exported/policy.pt` 与 `policy.onnx`。看到JIT/ONNX export complete及Export-only run complete即本次导出完成。去掉--export_only会在导出后继续回放；--headless不影响导出。本轮文件已生成，现有部署PPO未替换，8400策略的sim2sim步态仍待评测。以下AMP内容保留各自的历史核对日期。
+
 本机路径示例，核对日期2026-10-20（目录迁移路径已修；历史策略结果不重新判定）。用户称“sim2real”，但此处要求的是导出后启动ROS2仿真，实际为 **sim2sim**；本文不包含真机电机启动。
 
 当前示例使用用户已复制到本机、路径已确认存在的 `2026-10-14_00-20-45_motion_new_model_new/model_25000.pt`。换策略时需同步修改checkpoint、导出目录和复制源；不同运行都会在各自checkpoint同级的exported目录产生文件。它不是2026-10-11滞空微调目录中的同名25000文件。

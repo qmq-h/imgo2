@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-26",
+  "current_rough_config": "step_height_range=(.025,.08); size8x8; tread.3; platform_width config3; border1",
+  "rows": [
+    {
+      "level": 0,
+      "difficulty_range": [
+        0.0,
+        0.1
+      ],
+      "riser_height_cm": [
+        2.5,
+        3.05
+      ]
+    },
+    {
+      "level": 1,
+      "difficulty_range": [
+        0.1,
+        0.2
+      ],
+      "riser_height_cm": [
+        3.05,
+        3.6
+      ]
+    },
+    {
+      "level": 2,
+      "difficulty_range": [
+        0.2,
+        0.3
+      ],
+      "riser_height_cm": [
+        3.6,
+        4.15
+      ]
+    },
+    {
+      "level": 3,
+      "difficulty_range": [
+        0.3,
+        0.4
+      ],
+      "riser_height_cm": [
+        4.15,
+        4.7
+      ]
+    },
+    {
+      "level": 4,
+      "difficulty_range": [
+        0.4,
+        0.5
+      ],
+      "riser_height_cm": [
+        4.7,
+        5.25
+      ]
+    },
+    {
+      "level": 5,
+      "difficulty_range": [
+        0.5,
+        0.6
+      ],
+      "riser_height_cm": [
+        5.25,
+        5.8
+      ]
+    },
+    {
+      "level": 6,
+      "difficulty_range": [
+        0.6,
+        0.7
+      ],
+      "riser_height_cm": [
+        5.8,
+        6.35
+      ]
+    },
+    {
+      "level": 7,
+      "difficulty_range": [
+        0.7,
+        0.8
+      ],
+      "riser_height_cm": [
+        6.35,
+        6.9
+      ]
+    },
+    {
+      "level": 8,
+      "difficulty_range": [
+        0.8,
+        0.9
+      ],
+      "riser_height_cm": [
+        6.9,
+        7.45
+      ]
+    },
+    {
+      "level": 9,
+      "difficulty_range": [
+        0.9,
+        1.0
+      ],
+      "riser_height_cm": [
+        7.45,
+        8.0
+      ]
+    }
+  ],
+  "max_init_level": 5,
+  "max_level_index": 9,
+  "level10_behavior": "random reassignment to 0..9",
+  "construction_at_theoretical_difficulty_1": {
+    "pyramid_stairs_terrain": {
+      "box_count": 29,
+      "origin": [
+        4.0,
+        4.0,
+        0.56
+      ],
+      "middle_box": {
+        "size": [
+          2.4000000000000004,
+          2.4000000000000004,
+          0.64
+        ],
+        "position": [
+          4.0,
+          4.0,
+          0.24
+        ]
+      }
+    },
+    "inverted_pyramid_stairs_terrain": {
+      "box_count": 29,
+      "origin": [
+        4.0,
+        4.0,
+        -0.56
+      ],
+      "middle_box": {
+        "size": [
+          2.4000000000000004,
+          2.4000000000000004,
+          0.08
+        ],
+        "position": [
+          4.0,
+          4.0,
+          -0.6000000000000001
+        ]
+      }
+    }
+  },
+  "geometry_verification": "Executed unmodified source function AST using recording adapters for axis-aligned box dimensions/positions and array origin. No trimesh allocation, Isaac Sim or dynamic simulation.",
+  "sources_sha256": {
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/terrains/trimesh/utils.py": "5fe3a0cc6d103ecaaf27b7a8875513b1912ce26e63ef6df4f5ffb38808872b36",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/terrains/trimesh/mesh_terrains.py": "50c1bbc1b319c71cb9a3305f4c52211be9e8c8db9859949e9784806fc26806c3"
+  }
+}

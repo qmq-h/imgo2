@@ -1,0 +1,376 @@
+{
+  "date": "2026-10-26",
+  "policy_sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+  "isaac": {
+    "isaac_plane": {
+      "terrain": "plane",
+      "task_for_robot_and_observations": "Imgo2-basemove-flat-ppo",
+      "policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt",
+      "policy_sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+      "robot_urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+      "robot_sha256": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2",
+      "gazebo_world": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/imgo2_deploy/worlds/stairs_8cm.world",
+      "world_sha256": "6803e04dd59be0fbdfcdd23a4d66bf006e57f945ce38644147ebd01951a21301",
+      "stairs_geometry": [],
+      "control_dt": 0.02,
+      "physics_dt": 0.005,
+      "speed_command": 0.4,
+      "stand_seconds": 3,
+      "simulated_seconds": 16.0,
+      "obs_noise": false,
+      "disabled_events": [
+        "randomize_rigid_body_material",
+        "randomize_rigid_body_mass_base",
+        "randomize_rigid_body_mass_others",
+        "randomize_com_positions",
+        "randomize_reset_joints",
+        "randomize_actuator_gains",
+        "randomize_reset_base"
+      ],
+      "native_materials": false,
+      "actuator_gains": {
+        "legs": {
+          "kp": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "kd": [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        }
+      },
+      "final_position": [
+        5.198619842529297,
+        0.2731071412563324,
+        0.29119789600372314
+      ],
+      "max_x": 5.198619842529297,
+      "max_base_z": 0.36582738161087036,
+      "max_pitch_abs_deg": 5.977128424755777,
+      "mean_moving_vx": 0.3974774984671519,
+      "resets": 0,
+      "failure": null,
+      "stairs_completed": false,
+      "observation_contract_max_diff": 0.0,
+      "limitations": "Single seed/case, current real URDF, clean observations/disabled randomization; default aligned materials. This is not original training reconstruction or exact PhysX/ODE equivalence.",
+      "final_10s_mean_vx": 0.40323049865083066
+    },
+    "isaac_stairs": {
+      "terrain": "stairs",
+      "task_for_robot_and_observations": "Imgo2-basemove-flat-ppo",
+      "policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt",
+      "policy_sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+      "robot_urdf": "/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.urdf",
+      "robot_sha256": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2",
+      "gazebo_world": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/imgo2_deploy/worlds/stairs_8cm.world",
+      "world_sha256": "6803e04dd59be0fbdfcdd23a4d66bf006e57f945ce38644147ebd01951a21301",
+      "stairs_geometry": [
+        {
+          "name": "step_01",
+          "pos": [
+            1.65,
+            0.0,
+            0.04
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.08
+          ]
+        },
+        {
+          "name": "step_02",
+          "pos": [
+            1.95,
+            0.0,
+            0.08
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.16
+          ]
+        },
+        {
+          "name": "step_03",
+          "pos": [
+            2.25,
+            0.0,
+            0.12
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.24
+          ]
+        },
+        {
+          "name": "step_04",
+          "pos": [
+            2.55,
+            0.0,
+            0.16
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.32
+          ]
+        },
+        {
+          "name": "step_05",
+          "pos": [
+            2.85,
+            0.0,
+            0.2
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.4
+          ]
+        },
+        {
+          "name": "step_06",
+          "pos": [
+            3.15,
+            0.0,
+            0.24
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.48
+          ]
+        },
+        {
+          "name": "step_07",
+          "pos": [
+            3.45,
+            0.0,
+            0.28
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.56
+          ]
+        },
+        {
+          "name": "step_08",
+          "pos": [
+            3.75,
+            0.0,
+            0.32
+          ],
+          "size": [
+            0.3,
+            2.0,
+            0.64
+          ]
+        },
+        {
+          "name": "top_landing",
+          "pos": [
+            4.5,
+            0.0,
+            0.32
+          ],
+          "size": [
+            1.2,
+            2.0,
+            0.64
+          ]
+        }
+      ],
+      "control_dt": 0.02,
+      "physics_dt": 0.005,
+      "speed_command": 0.4,
+      "stand_seconds": 3,
+      "simulated_seconds": 30.0,
+      "obs_noise": false,
+      "disabled_events": [
+        "randomize_rigid_body_material",
+        "randomize_rigid_body_mass_base",
+        "randomize_rigid_body_mass_others",
+        "randomize_com_positions",
+        "randomize_reset_joints",
+        "randomize_actuator_gains",
+        "randomize_reset_base"
+      ],
+      "native_materials": false,
+      "actuator_gains": {
+        "legs": {
+          "kp": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "kd": [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        }
+      },
+      "final_position": [
+        1.288615107536316,
+        0.1505967676639557,
+        0.28328192234039307
+      ],
+      "max_x": 1.317002534866333,
+      "max_base_z": 0.36582738161087036,
+      "max_pitch_abs_deg": 4.952508268586892,
+      "mean_moving_vx": 0.04602509392984252,
+      "resets": 0,
+      "failure": null,
+      "stairs_completed": false,
+      "observation_contract_max_diff": 0.0,
+      "limitations": "Single seed/case, current real URDF, clean observations/disabled randomization; default aligned materials. This is not original training reconstruction or exact PhysX/ODE equivalence.",
+      "final_10s_mean_vx": -0.000180641222649213
+    }
+  },
+  "gazebo": {
+    "summary": {
+      "vx_cmd": 0.4,
+      "vy_cmd": 0.0,
+      "wz_cmd": 0.0,
+      "samples": {
+        "odom": 2998,
+        "joint_states": 29972,
+        "resampled_joint_states": 2998
+      },
+      "time_base": "simulation",
+      "pose": {
+        "z_mean": 0.2833819523763797,
+        "z_min": 0.2524297809100098,
+        "z_max": 0.30278342030327743,
+        "roll_range_deg": 6.824396152202685,
+        "pitch_range_deg": 9.350467484433985,
+        "yaw_drift_deg_per_s": 0.014060743586814795,
+        "dx_m": 1.0772567160133442,
+        "dx_per_s": 0.035944501702146955
+      },
+      "tracking": {
+        "speed_mean": 0.036644472819310984,
+        "lateral_speed_mean": 0.004326334091665604,
+        "world_x_speed_mean": 0.035944501702146955,
+        "coordinate_frame": "body",
+        "error_abs": 0.36335552718068903,
+        "error_pct": 90.83888179517226,
+        "lateral_error_abs": 0.004326334091665604,
+        "yaw_rate_mean": 0.00024540627086859534,
+        "yaw_error_abs": 0.00024540627086859534
+      },
+      "jitter": {
+        "hip": {
+          "mean_abs_ddq": 30.02107594827221,
+          "reversals_per_s": 15.899232565898927
+        },
+        "thigh": {
+          "mean_abs_ddq": 53.13603132216534,
+          "reversals_per_s": 10.602268935602066
+        },
+        "shank": {
+          "mean_abs_ddq": 64.84693591735221,
+          "reversals_per_s": 13.163163163162912
+        }
+      },
+      "periodicity": {
+        "period_s": 0.44750000000006995,
+        "freq_hz": 2.234848484848136,
+        "score": 0.46784378272268345,
+        "FL_FR_phase_deg": 8.181818181818182,
+        "per_leg": {
+          "FL": {
+            "period_s": 0.4400000000000688,
+            "freq_hz": 2.2727272727269177,
+            "score": 0.3839018120593462
+          },
+          "FR": {
+            "period_s": 0.45000000000007034,
+            "freq_hz": 2.222222222221875,
+            "score": 0.17669357459926474
+          },
+          "RL": {
+            "period_s": 0.45000000000007034,
+            "freq_hz": 2.222222222221875,
+            "score": 0.6789757724664082
+          },
+          "RR": {
+            "period_s": 0.45000000000007034,
+            "freq_hz": 2.222222222221875,
+            "score": 0.6318039717657147
+          }
+        }
+      }
+    },
+    "max_x": 1.3376280309671564,
+    "final_position": [
+      1.2706959303062337,
+      0.061329440828555584,
+      0.30278342030327743
+    ],
+    "final_10s_mean_vx": -0.002203295541824784,
+    "max_base_z": 0.30278342030327743,
+    "policy_sim_seconds": 29.97,
+    "stairs_completed": false
+  },
+  "provenance": {
+    "policy_sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "checked_legacy_checkpoints": 59,
+    "tensor_matches": [],
+    "errors": [],
+    "comparison": "exact actor tensor equality for shared export keys or ordered actor tensors; not matching filenames"
+  },
+  "limitations": [
+    "Original exact training task/config unavailable; flat suggested by original filename only",
+    "Same current robot URDF and actor; diagnostic Isaac material .6/zero restitution and clean inputs; not exact PhysX/ODE equivalence",
+    "One .4m/s trial per engine, no policy training or export"
+  ],
+  "validation": {
+    "isaac_actor_observation_max_diff": 0.0,
+    "gazebo_ppo_entry_verified": true,
+    "owned_simulation_processes_stopped": true,
+    "no_training_or_export": true
+  }
+}

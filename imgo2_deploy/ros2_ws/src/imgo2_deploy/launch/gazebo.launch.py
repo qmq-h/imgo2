@@ -167,7 +167,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "wname",
-                description="Gazebo world name (earth / stairs)",
+                description="Gazebo world name (earth / stairs / stairs_8cm / stairs_15cm)",
                 default_value=TextSubstitution(text="earth"),
             ),
             DeclareLaunchArgument(

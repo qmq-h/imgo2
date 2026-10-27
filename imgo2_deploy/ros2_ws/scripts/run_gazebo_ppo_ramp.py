@@ -18,6 +18,14 @@ import time
 REPO = Path(__file__).resolve().parents[3]
 
 
+def commands(t, args):
+    if args.profile == "maneuvers":
+        from ppo_motion_profile import command_at
+        return command_at(t, args.maneuver_low_speed)
+    vx, stage = profile(t, args.ramp_seconds, args.hold_seconds)
+    return vx, 0., stage
+
+
 def profile(t, ramp, hold):
     if t < 0:
         return 0.0, "getup"
@@ -77,11 +85,11 @@ def collect(args):
                 return
             t = self.relative(stamp(msg))
             roll, pitch, yaw = rpy(msg.orientation)
-            vx, stage = profile(t, args.ramp_seconds, args.hold_seconds)
+            vx, wz, stage = commands(t, args)
             self.imu_rows.append([stamp(msg), t, stage, vx, roll, pitch, yaw,
                 msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z,
                 msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z,
-                msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z])
+                msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z, wz])
             if t > 1 and max(abs(roll), abs(pitch)) > math.radians(60):
                 self.fallen = True
 
@@ -97,7 +105,7 @@ def collect(args):
                 return
             self.last_send = self.clock
             t = self.relative(self.clock)
-            vx, stage = profile(t, args.ramp_seconds, args.hold_seconds)
+            vx, wz, stage = commands(t, args)
             joy = Joy()
             joy.buttons = [0]*11
             joy.axes = [0.0]*8
@@ -107,12 +115,16 @@ def collect(args):
                 joy.buttons[5] = 1
                 joy.axes[7] = 1.0  # PPO, key 1
                 joy.axes[1] = vx
+                joy.axes[3] = wz
             self.pub.publish(joy)
-            self.command_rows.append([self.clock, t, stage, vx, 0.0, 0.0])
+            self.command_rows.append([self.clock, t, stage, vx, 0.0, wz])
 
     rclpy.init()
     node = Recorder()
     end_t = 4*args.ramp_seconds + 2*args.hold_seconds
+    if args.profile == "maneuvers":
+        from ppo_motion_profile import TOTAL_SECONDS
+        end_t = TOTAL_SECONDS
     deadline = time.monotonic() + args.wall_timeout
     complete = False
     try:
@@ -129,7 +141,7 @@ def collect(args):
     finally:
         tables = [("imu.csv", ["sim_s", "t_s", "stage", "scheduled_vx_mps", "roll_rad", "pitch_rad", "yaw_rad",
                               "gyro_x_rads", "gyro_y_rads", "gyro_z_rads", "accel_x_mps2", "accel_y_mps2", "accel_z_mps2",
-                              "quat_w", "quat_x", "quat_y", "quat_z"], node.imu_rows),
+                              "quat_w", "quat_x", "quat_y", "quat_z", "scheduled_wz_rads"], node.imu_rows),
                   ("odom.csv", ["sim_s", "t_s", "x_m", "y_m", "z_m", "yaw_rad"], node.odom_rows),
                   ("commands.csv", ["sim_s", "t_s", "stage", "vx_mps", "vy_mps", "wz_rads"], node.command_rows)]
         for name, header, rows in tables:
@@ -161,10 +173,16 @@ def run(args):
                "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml",
                "imgo2_description/urdf/imgo2_real.gazebo.urdf", "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim"]
     meta = {"algorithm": "PPO", "gui": False, "domain": args.domain, "master_port": args.master_port,
+            "profile": args.profile,
             "ramp_seconds": args.ramp_seconds, "hold_seconds": args.hold_seconds,
             "ramp_acceleration_mps2": .5 / args.ramp_seconds,
             "sequence_mps": [0, .5, 0, -.5, 0], "lateral_and_yaw_commands": [0, 0],
             "files": {s: hashlib.sha256((REPO/s).read_bytes()).hexdigest() for s in sources}}
+    if args.profile == "maneuvers":
+        from ppo_motion_profile import schedule
+        meta["schedule"] = schedule(args.maneuver_low_speed)
+        for key in ("ramp_acceleration_mps2", "sequence_mps", "lateral_and_yaw_commands"):
+            meta.pop(key)
     (args.output / "run_metadata.json").write_text(json.dumps(meta, indent=2)+"\n")
     processes, handles = [], []
     try:
@@ -185,9 +203,11 @@ def run(args):
             if time.monotonic() > deadline:
                 raise RuntimeError("Controller startup timed out")
             time.sleep(.5)
-        print("Controller ready; starting six-second getup then PPO speed ramps", flush=True)
+        print(f"Controller ready; starting six-second getup then PPO {args.profile}", flush=True)
         child = launch("recorder", ["/usr/bin/python3", str(Path(__file__).resolve()), "--collect",
             "--output", str(args.output), "--ramp-seconds", str(args.ramp_seconds),
+            "--profile", args.profile,
+            "--maneuver-low-speed", str(args.maneuver_low_speed),
             "--hold-seconds", str(args.hold_seconds), "--wall-timeout", str(args.wall_timeout)])
         while child.poll() is None:
             if any(p.poll() is not None for p in processes[:-1]):
@@ -218,6 +238,8 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--profile", choices=["ramp", "maneuvers"], default="ramp")
+    parser.add_argument("--maneuver-low-speed", type=float, default=.1)
     parser.add_argument("--ramp-seconds", type=float, default=10)
     parser.add_argument("--hold-seconds", type=float, default=5)
     parser.add_argument("--wall-timeout", type=float, default=240)
@@ -227,6 +249,8 @@ def main():
     args = parser.parse_args()
     if args.ramp_seconds <= 0 or args.hold_seconds < 0:
         parser.error("ramp must be positive and hold nonnegative")
+    if not 0 < args.maneuver_low_speed < .8:
+        parser.error("maneuver low speed must lie between 0 and 0.8m/s")
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     collect(args) if args.collect else run(args)

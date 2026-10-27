@@ -1,0 +1,85 @@
+{
+  "checkpoint": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/2026-10-26_17-09-42/model_8400.pt",
+  "samples": 257,
+  "input_dim": 45,
+  "output_dim": 12,
+  "jit_vs_checkpoint_actor_max_diff": 0.0,
+  "files": {
+    "imgo2_rl/logs/2026-10-26_17-09-42/model_8400.pt": {
+      "bytes": 5714869,
+      "sha256": "33395134986947a31359fd92cef674f474d9ce97aebdb6d7e5bcdbe32d4daf0c"
+    },
+    "imgo2_rl/logs/2026-10-26_17-09-42/exported/policy.pt": {
+      "bytes": 770518,
+      "sha256": "fd6d7282b31e5b4cddd3e4273861ef332c7fc241cd461622de9e262a62389514"
+    },
+    "imgo2_rl/logs/2026-10-26_17-09-42/exported/policy.onnx": {
+      "bytes": 758441,
+      "sha256": "88ed2af9ff297946fd153b414fee57f9357e60480063a3966b3d533a3bab6046"
+    },
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": {
+      "bytes": 770326,
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+    }
+  },
+  "observation_contract": {
+    "training_order": [
+      "base_ang_vel",
+      "projected_gravity",
+      "velocity_commands",
+      "joint_pos",
+      "joint_vel",
+      "actions"
+    ],
+    "deployment_order": [
+      "ang_vel",
+      "gravity_vec",
+      "commands",
+      "dof_pos",
+      "dof_vel",
+      "actions"
+    ],
+    "training_scales": [
+      0.25,
+      1.0,
+      1.0,
+      1.0,
+      0.05,
+      1.0
+    ],
+    "dimensions_match": true,
+    "joint_order_matches": true,
+    "action_scale_matches": true,
+    "scope": "Actor interface/order/scales; no sim2sim gait evaluation or model provenance equivalence claim"
+  },
+  "date": "2026-10-27",
+  "root_cause": "Old combined model_state_dict checkpoint loaded by RSL-RL5 runner expecting actor_state_dict; failure precedes export",
+  "official_entry": "imgo2_rl/scripts/rl_lab/ppo/play.py",
+  "export_only_exit_code": 0,
+  "libtorch_load_forward": {
+    "passed": true,
+    "input": [
+      1,
+      45
+    ],
+    "output": [
+      1,
+      12
+    ],
+    "library_dir": "imgo2_deploy/ros2_ws/library/inference_runtime/libtorch/lib"
+  },
+  "deployment_replaced": false,
+  "gait_evaluated": false,
+  "validation_method": {
+    "actor_reference": "torch.nn.Sequential Linear45-512, ELU, Linear512-256, ELU, Linear256-128, ELU, Linear128-12; load original actor.* tensors; compare eval/no-grad on zeros + 256 seed42 Gaussian inputs with single CPU thread",
+    "libtorch_cpp_source": "#include <torch/script.h>\n#include <iostream>\nint main(int argc, char** argv) {\n  if (argc != 2) return 2;\n  torch::NoGradGuard guard;\n  auto model = torch::jit::load(argv[1], torch::kCPU);\n  model.eval();\n  auto result = model.forward({torch::zeros({1, 45})}).toTensor();\n  if (result.sizes() != torch::IntArrayRef({1, 12}) || !torch::isfinite(result).all().item<bool>()) return 3;\n  std::cout << \"Deployment LibTorch load/forward OK: [1,45] -> [1,12]\" << std::endl;\n}\n",
+    "libtorch_link_flags": "-std=c++17 -D_GLIBCXX_USE_CXX11_ABI=1 -ltorch -ltorch_cpu -lc10; headers/libraries from deployment libtorch",
+    "observations": "Safe YAML BaseLoader of saved params/env.yaml compared with deployment PPO observation config and logical joint order"
+  },
+  "artifacts": {
+    "imgo2_rl/scripts/rl_lab/ppo/play.py": "5c265783f81e5c7ba75dc3a862614d677e5496a5b3f585f24fc21b1267134453",
+    "imgo2_rl/logs/2026-10-26_17-09-42/params/agent.yaml": "a1d4972a5b9053ed04eb748efaa78b0ee7670118bb9c62d7336caa746dd3a9c9",
+    "imgo2_rl/logs/2026-10-26_17-09-42/params/env.yaml": "8f118a7a11427db6d3ad0c1fd09ad0d6f21d881dea6a5fc7306d402f6f02a86a"
+  },
+  "compatibility_checkpoint": "imgo2_rl/logs/2026-10-26_17-09-42/exported/model_8400_rslrl5.pt"
+}

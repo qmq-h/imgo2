@@ -1,0 +1,138 @@
+{
+  "date": "2026-10-26",
+  "scope": "PPO rough source review; no Isaac Sim/config runtime instantiation or training",
+  "task": "Imgo2-basemove-rough-ppo",
+  "active_reward_count": 19,
+  "active_rewards": {
+    "lin_vel_z_l2": {
+      "function": "mdp.lin_vel_z_l2",
+      "weight": -2.0
+    },
+    "ang_vel_xy_l2": {
+      "function": "mdp.ang_vel_xy_l2",
+      "weight": -0.05
+    },
+    "flat_orientation_l2": {
+      "function": "mdp.flat_orientation_l2",
+      "weight": -5.0
+    },
+    "base_height_l2": {
+      "function": "mdp.base_height_l2",
+      "weight": -10.0
+    },
+    "joint_torques_l2": {
+      "function": "mdp.joint_torques_l2",
+      "weight": -2.5e-06
+    },
+    "joint_acc_l2": {
+      "function": "mdp.joint_acc_l2",
+      "weight": -5e-09
+    },
+    "joint_power": {
+      "function": "mdp.joint_power",
+      "weight": -2e-05
+    },
+    "stand_still": {
+      "function": "mdp.stand_still",
+      "weight": -0.1
+    },
+    "joint_pos_penalty": {
+      "function": "mdp.joint_pos_penalty",
+      "weight": -0.1
+    },
+    "joint_mirror": {
+      "function": "mdp.joint_mirror",
+      "weight": -1.0
+    },
+    "action_rate_l2": {
+      "function": "mdp.action_rate_l2",
+      "weight": -0.01
+    },
+    "undesired_contacts": {
+      "function": "mdp.undesired_contacts",
+      "weight": -0.5
+    },
+    "contact_forces": {
+      "function": "mdp.contact_forces",
+      "weight": -0.02
+    },
+    "track_lin_vel_xy_exp": {
+      "function": "mdp.track_lin_vel_xy_exp",
+      "weight": 1.5
+    },
+    "track_ang_vel_z_exp": {
+      "function": "mdp.track_ang_vel_z_exp",
+      "weight": 0.6
+    },
+    "feet_air_time": {
+      "function": "mdp.feet_air_time",
+      "weight": 1.0
+    },
+    "feet_air_time_variance": {
+      "function": "mdp.feet_air_time_variance_penalty",
+      "weight": -8.0
+    },
+    "feet_slide": {
+      "function": "mdp.feet_slide",
+      "weight": -0.05
+    },
+    "feet_height_body": {
+      "function": "mdp.feet_height_body",
+      "weight": -5.0
+    }
+  },
+  "zero_weight_terms_disabled": [
+    "is_terminated",
+    "body_lin_acc_l2",
+    "joint_vel_l2",
+    "joint_deviation_l1",
+    "joint_pos_limits",
+    "joint_vel_limits",
+    "wheel_vel_penalty",
+    "action_mirror",
+    "action_sync",
+    "applied_torque_limits",
+    "feet_gait",
+    "feet_contact",
+    "feet_contact_without_cmd",
+    "feet_stumble",
+    "feet_height",
+    "feet_distance_y_exp",
+    "upward"
+  ],
+  "robot_urdf": "imgo2_description/urdf/imgo2_real.urdf",
+  "actor_dim_from_source": 45,
+  "critic_dim_from_source_and_local_ray_pattern": 235,
+  "action_dim": 12,
+  "physics_dt": 0.005,
+  "control_dt": 0.02,
+  "terrain_step_height_range": [
+    0.025,
+    0.08
+  ],
+  "illegal_contact_termination": false,
+  "terrain_curriculum": true,
+  "command_curricula": false,
+  "local_environment": {
+    "python": "/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python",
+    "isaaclab": "0.54.4",
+    "isaaclab_rl": "0.5.2",
+    "rsl_rl_lib": "5.0.1",
+    "imgo2_rl_spec": "namespace at repository outer imgo2_rl, not source package",
+    "rl_lab_spec": "/home/tommy0929/Downloads/Imgo2_rl/scripts/rl_lab/rl_lab/__init__.py",
+    "obs_groups": "runner omits declaration; installed base MISSING; not runtime tested"
+  },
+  "sha256": {
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py": "6c42992a140dd356dd4d20b88e602afae509ac748f6305a9340513a12937b992",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/rough_env_cfg.py": "53738c7f6c32b544e159cbefffcab40fd073463f7a12cd6d66ff572859629e96",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/agents/rsl_rl_ppo_cfg.py": "32a835208b8dc95517eb9bad789e4b6078592e7ed1095b7676af0111c7cc875d",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py": "f33c70448d20805c8d1035b86b3fd5fae7eef96c3d298cdd93938a61f838b07b",
+    "imgo2_description/urdf/imgo2_real.urdf": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2"
+  },
+  "validation": [
+    "AST combined inherited reward weights and rough overrides; 19 nonzero terms",
+    "check_asset_paths.py passed: current URDF and 17 mesh references exist",
+    "read local installed Isaac Lab terrain/reward-manager/pattern/runner config source",
+    "read interpreter metadata and top-level module specs without launching simulator"
+  ]
+}

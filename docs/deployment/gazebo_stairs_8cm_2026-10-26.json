@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-26",
+  "world": "stairs_8cm",
+  "steps": 8,
+  "rise_m": 0.08,
+  "top_height_m": 0.64,
+  "tread_m": 0.3,
+  "width_m": 2,
+  "first_riser_x_m": 1.5,
+  "landing_length_m": 1.2,
+  "geometry_and_install_verified": true,
+  "sdf_check": "Check complete",
+  "world_sha256": "6803e04dd59be0fbdfcdd23a4d66bf006e57f945ce38644147ebd01951a21301",
+  "spawn": true,
+  "runtime_model_query": true,
+  "climbing_tested": false,
+  "gui_tested": false,
+  "owned_processes_stopped": true
+}

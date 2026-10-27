@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-26",
+  "world": "imgo2_deploy/ros2_ws/src/imgo2_deploy/worlds/stairs_15cm.world",
+  "world_sha256": "8c06acacf2c6ea4122bbc997998b2ea72ca49b140f1f4b363ce3a290ac8eeee8",
+  "count": 8,
+  "rise_m": 0.15,
+  "tread_m": 0.3,
+  "width_m": 2,
+  "first_riser_x_m": 1.5,
+  "ascent_axis": "+X",
+  "top_height_m": 1.2,
+  "landing_length_m": 1.2,
+  "steps": [
+    {
+      "index": 1,
+      "front_x_m": 1.5,
+      "back_x_m": 1.8,
+      "top_z_m": 0.15
+    },
+    {
+      "index": 2,
+      "front_x_m": 1.8,
+      "back_x_m": 2.1,
+      "top_z_m": 0.3
+    },
+    {
+      "index": 3,
+      "front_x_m": 2.1,
+      "back_x_m": 2.4,
+      "top_z_m": 0.45
+    },
+    {
+      "index": 4,
+      "front_x_m": 2.4,
+      "back_x_m": 2.7,
+      "top_z_m": 0.6
+    },
+    {
+      "index": 5,
+      "front_x_m": 2.7,
+      "back_x_m": 3.0,
+      "top_z_m": 0.75
+    },
+    {
+      "index": 6,
+      "front_x_m": 3.0,
+      "back_x_m": 3.3,
+      "top_z_m": 0.9
+    },
+    {
+      "index": 7,
+      "front_x_m": 3.3,
+      "back_x_m": 3.6,
+      "top_z_m": 1.05
+    },
+    {
+      "index": 8,
+      "front_x_m": 3.6,
+      "back_x_m": 3.9,
+      "top_z_m": 1.2
+    }
+  ],
+  "physics_identical_to_earth": true,
+  "solid_risers_to_ground": true,
+  "visual_collision_match": true,
+  "installed_symlink_correct": true,
+  "sdf_check": "gz sdf -k: Check complete",
+  "runtime": {
+    "world": "stairs_15cm",
+    "spawn": true,
+    "passive_controller_ready": true,
+    "gui": false,
+    "policy_activated": false,
+    "stairs_runtime_query": true,
+    "owned_processes_stopped": true,
+    "all_steps_and_platform_found": true
+  },
+  "runtime_model_query_sha256": "e9b02703c852a2efa797ec53694b158065d35a64a4e1dbdef19d38437c7d143e"
+}
