@@ -4,6 +4,7 @@ import math
 import os
 import pathlib
 import pty
+import re
 import select
 import signal
 import struct
@@ -22,6 +23,14 @@ def imu_packet():
     return b'YS'+body+bytes([a,b])
 
 exe, policy_root=sys.argv[1:]
+
+
+def policy_gain(field):
+    """Read the first value of rl_kp/fixed_kp from policy/ppo/config.yaml."""
+    text = (pathlib.Path(policy_root) / 'ppo' / 'config.yaml').read_text()
+    match = re.search(rf'{field}:\s*\[([^]]+)\]', text)
+    assert match, f'{field} missing from policy config'
+    return float(match.group(1).split(',')[0])
 
 def scenario(mode):
     pairs=[pty.openpty() for _ in range(5)]
@@ -103,8 +112,9 @@ def scenario(mode):
                     zero=[f for t,f in bus if t>fault_time+.06]
                     assert zero and all(control_is_zero(f) for f in zero),'fault did not unload all buses'
             else:
-                # Fixed 60/2 and policy 25/.5 are encoded at the output-side gains.
-                fixed=int(60/(6.33**2)*1280); policy=int(25/(6.33**2)*1280)
+                # Fixed/policy gains come from the config (they are not constants).
+                fixed=int(policy_gain('fixed_kp')/(6.33**2)*1280)
+                policy=int(policy_gain('rl_kp')/(6.33**2)*1280)
                 assert all(any(int.from_bytes(f[11:13],'little')==fixed for _,f in bus) for bus in frames)
                 if mode=='normal':assert all(any(int.from_bytes(f[11:13],'little')==policy for _,f in bus) for bus in frames)
             if mode in ['locked','normal']:

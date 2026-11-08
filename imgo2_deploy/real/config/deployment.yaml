@@ -32,7 +32,7 @@ deployment:
   # 站立稳定判据的速度容差(rad/s)：12 个关节实测 dq 的绝对值都要 <= 该值（0.5 ≈ 28.6°/s）。
   velocity_tolerance: 0.5
   # WASDQE 速度指令上限 [vx, vy, yaw]（m/s, m/s, rad/s）：每按一次键 ±0.1，空格清零。
-  velocity_limits: [0.8, 0.4, 1.0]
+  velocity_limits: [0.5, 0.4, 1.0]
   # IMU轴已由用户确认；无安装旋转。仅关节物理对应待确认。
   mapping_confirmed: true
   policy_to_hardware: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

@@ -266,11 +266,24 @@ if(GO_IMU_BUILD_RL)
             ${CMAKE_CURRENT_BINARY_DIR}/config/deployment.yaml
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/config/deployment.yaml
     COMMENT "同步 config/deployment.yaml 到 build/config/")
+  # 换策略时也同步 policy/ppo：旧的 POST_BUILD 只在链接时拷，单换 policy.pt/config 不触发。
+  add_custom_target(sync_policy ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/policy/ppo
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/policy/ppo/config.yaml
+            ${CMAKE_CURRENT_BINARY_DIR}/policy/ppo/config.yaml
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/policy/ppo/policy.pt
+            ${CMAKE_CURRENT_BINARY_DIR}/policy/ppo/policy.pt
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/policy/ppo/config.yaml
+            ${CMAKE_CURRENT_SOURCE_DIR}/policy/ppo/policy.pt
+    COMMENT "同步 policy/ppo 到 build/policy/ppo/")
   foreach(app rl_real_imgo2 fsm_check)
   add_custom_command(TARGET ${app} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/policy $<TARGET_FILE_DIR:${app}>/policy
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${app}>/config
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/config/deployment.yaml $<TARGET_FILE_DIR:${app}>/config/deployment.yaml)
+  add_dependencies(${app} sync_config sync_policy)
   endforeach()
   install(TARGETS rl_real_imgo2 fsm_check RUNTIME DESTINATION bin)
   install(DIRECTORY policy DESTINATION bin)
@@ -293,6 +306,7 @@ if(GO_IMU_BUILD_RL AND BUILD_TESTING)
   target_compile_definitions(rl_real_imgo2_pty PRIVATE GO_RL_PTY_TEST)
   target_include_directories(rl_real_imgo2_pty PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_link_libraries(rl_real_imgo2_pty PRIVATE go_policy_runner)
+  add_dependencies(rl_real_imgo2_pty sync_config sync_policy)
   set(GO_IMU_TORCH_PYTHON "" CACHE FILEPATH "Optional Python with torch for numerical reference test")
   if(GO_IMU_TORCH_PYTHON)
     add_test(NAME policy_reference COMMAND ${GO_IMU_TORCH_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_policy_reference.py $<TARGET_FILE:policy_inference_check> ${CMAKE_CURRENT_SOURCE_DIR}/policy/ppo)

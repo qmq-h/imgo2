@@ -12,18 +12,21 @@ struct MonitorSnapshot {
     bool received = false;
     std::string error;
     double receive_hz = 0;
-    // Startup attitude calibration: how many samples were averaged and whether
-    // the correction is active. Consumers that need "raw" data must read this.
+    // Startup calibration: how many samples were averaged and whether the
+    // display-Euler offset is active. The quaternion is always raw; consumers
+    // that need a zeroed yaw must apply their own display-only offset.
     int bias_samples = 0;
     bool bias_ready = false;
 };
 // The worker owns the serial object. Snapshot consumers never wait for serial I/O.
 //
-// Startup attitude bias (2026-10-23): the first kBiasSamples valid samples are
-// averaged and treated as the zero attitude, so RPY is ~0 right after power-on.
-// The quaternion is corrected as q_corrected = q_measured * conj(q_bias) (body-fixed,
-// i.e. the rotation since startup); the gyro is NOT rotated or biased, because the
-// observed yaw offset is a sensor reference offset, not a physical mount rotation.
+// Startup attitude calibration (2026-10-23, corrected 2026-11-08): the first
+// kBiasSamples valid samples are averaged and the *displayed Euler* angles are
+// offset to zero. The quaternion is deliberately NOT rotated: the policy uses
+// its raw gravity direction, and q * conj(q_bias) is a body-fixed rotation that
+// mixes roll/pitch into gravity (yaw -64.6 deg + roll 10 deg would give
+// [-0.157,-0.074,-0.985] instead of [0,-0.174,-0.985]). The gyro is NOT rotated
+// or biased.
 class ImuMonitor {
 public:
     static constexpr int kBiasSamples = 50;
@@ -46,10 +49,7 @@ private:
     int euler_samples_ = 0;
     bool bias_ready_ = false;
     bool euler_bias_ready_ = false;
-    std::array<float, 4> bias_reference_{{1.f, 0.f, 0.f, 0.f}};
-    std::array<double, 4> bias_quaternion_sum_{{0.0, 0.0, 0.0, 0.0}};
     std::array<double, 3> bias_euler_sum_{{0.0, 0.0, 0.0}};
-    std::array<float, 4> bias_quaternion_{{1.f, 0.f, 0.f, 0.f}};
     std::array<float, 3> bias_euler_{{0.f, 0.f, 0.f}};
 };
 } // namespace imu_sensor

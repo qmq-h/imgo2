@@ -9,7 +9,7 @@
 using namespace imgo2_sdk;
 int main(int argc,char** argv) {
     CHECK(argc==2);auto c=PolicyConfig::load(argv[1]);
-    CHECK(c.fixed_kp[0]==60 && c.fixed_kd[0]==2 && c.kp[0]==25 && c.kd[0]>0);
+    CHECK(c.fixed_kp[0]==60 && c.fixed_kd[0]==2 && c.kp[0]>0 && c.kd[0]>0);
     RobotState s;s.valid=true;s.q=c.default_pose;s.dq.assign(12,2);s.gyro={{1,2,3}};
     auto obs=buildObservation(s,{{.2f,-.1f,.3f}},std::vector<float>(12,.4f),c);
     CHECK(obs.size()==45 && obs[0]==.25f && obs[2]==.75f);
@@ -21,6 +21,22 @@ int main(int argc,char** argv) {
     bool rejected=false;try{clipActions(std::vector<float>(12,std::numeric_limits<float>::quiet_NaN()),c);}catch(const std::exception&){rejected=true;}CHECK(rejected);
     const float root=std::sqrt(.5f);auto g=my_myth::projectedGravity({{root,0,root,0}});
     CHECK(std::abs(g[0]-1)<1e-6 && std::abs(g[2])<1e-6);
+    {   // yaw -64.615 deg then a body roll of 10 deg: gravity must be [0,-0.173648,-0.984808].
+        auto mul=[](const std::array<float,4>& a,const std::array<float,4>& b){
+            return std::array<float,4>{{
+                a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],
+                a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],
+                a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],
+                a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]}};
+        };
+        const float half=3.14159265358979323846f/360.0f;
+        const float y=-64.615f*half, r=10.0f*half;
+        const std::array<float,4> qy{{std::cos(y),0,0,std::sin(y)}};
+        const std::array<float,4> qr{{std::cos(r),std::sin(r),0,0}};
+        const auto gy=my_myth::projectedGravity(mul(qy,qr));
+        CHECK(std::abs(gy[0])<1e-6f && std::abs(gy[1]+0.173648f)<1e-5f &&
+              std::abs(gy[2]+0.984808f)<1e-5f);
+    }
     std::vector<int> map={3,4,5,0,1,2,9,10,11,6,7,8};RobotAdapter adapter(map);
     auto raw=real_hardware::HardwareState{};raw.started=true;raw.imu_valid=true;raw.joints.resize(12);
     for(size_t i=0;i<12;++i){raw.joints[i].valid=true;raw.joints[i].feedback.q=float(i);raw.joints[i].feedback.dq=-float(i);}

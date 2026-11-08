@@ -18,6 +18,19 @@ exe, policy, config = sys.argv[1:]
 ansi = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
 
 
+def force_keyboard_config(source):
+    """The test drives the keyboard; ignore the user's current input_source (1/2)."""
+    text = Path(source).read_text()
+    text = re.sub(r'(?m)^(\s*input_source:\s*).*$', r'\1 1', text)
+    directory = Path(tempfile.mkdtemp(prefix='imgo2_fsm_cfg_'))
+    path = directory / 'deployment.yaml'
+    path.write_text(text)
+    return str(path)
+
+
+config = force_keyboard_config(config)
+
+
 def policy_gain(field):
     """Read the first value of rl_kp/rl_kd from policy/ppo/config.yaml."""
     text = (Path(policy) / 'ppo' / 'config.yaml').read_text()

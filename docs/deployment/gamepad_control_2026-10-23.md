@@ -23,6 +23,9 @@ deployment:
 > `build/config/deployment.yaml`（新增 `sync_config` 目标）；也可以直接
 > `--config config/deployment.yaml` 读源文件，完全不依赖 build 里的副本。
 
+> 换策略时 `policy/ppo/config.yaml` 与 `policy.pt` 同理，由 `sync_policy` 同步到
+> `build/policy/ppo/`；细节见 [Gazebo 验证 §环境与构建](new_policy_gazebo_2026-11-06.md)。
+
 ### 1.2 手柄设备名与死区（`config/real_config.h`）
 
 ```cpp
