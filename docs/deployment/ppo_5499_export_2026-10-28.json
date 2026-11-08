@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-28",
+  "official_entry": "imgo2_rl/scripts/rl_lab/ppo/play.py",
+  "command": "bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py --task=Imgo2-basemove-rough-ppo --checkpoint=$PWD/logs/2026-10-28_00-34-30/model_5499.pt --num_envs=1 --device=cuda:0 --headless --export_only",
+  "export_only_exit_code": 0,
+  "checkpoint_format": "pre-RSL-RL5 combined model_state_dict; runner rsl-rl-lib 5.0.1",
+  "checkpoint_migration": "handle_deprecated_rsl_rl_checkpoint -> exported/model_5499_rslrl5.pt",
+  "input_dim": 45,
+  "output_dim": 12,
+  "samples": 256,
+  "jit_vs_checkpoint_actor_max_diff": 0.0,
+  "jit_forward": {
+    "input": [
+      256,
+      45
+    ],
+    "output": [
+      256,
+      12
+    ],
+    "all_finite": true
+  },
+  "files": {
+    "imgo2_rl/logs/2026-10-28_00-34-30/model_5499.pt": {
+      "bytes": 5714869,
+      "sha256": "c73b559c97016c49b10a30858067eff7fa509badfe8d1f861db5692dcf35622e"
+    },
+    "imgo2_rl/logs/2026-10-28_00-34-30/exported/model_5499_rslrl5.pt": {
+      "bytes": 5714107,
+      "sha256": "eceae4ed9e237ee53522e24b8ef1205d602e83fa5debd2c954d0d27d38043cb1"
+    },
+    "imgo2_rl/logs/2026-10-28_00-34-30/exported/policy.pt": {
+      "bytes": 770518,
+      "sha256": "24441c2e386e2e308ddcfc58d61c956afa83e199d7e6be49a0c7f112cabd7068"
+    },
+    "imgo2_rl/logs/2026-10-28_00-34-30/exported/policy.onnx": {
+      "bytes": 758441,
+      "sha256": "30cfcee85f805d865d83d09667618ccb233b828b88df351571782b9c12acc17c"
+    },
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": {
+      "bytes": 770326,
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+    }
+  },
+  "failed_attempts_same_day": [
+    {
+      "outputs_dir": "imgo2_rl/outputs/2026-10-28/14-33-49",
+      "process_start": "2026-10-28T14:33:42.808036+08:00",
+      "process_exit": "2026-10-28T14:34:43.035531+08:00",
+      "exit_context": "library unload",
+      "exported_created": false
+    },
+    {
+      "outputs_dir": "imgo2_rl/outputs/2026-10-28/14-41-01",
+      "process_start": "2026-10-28T14:40:54.249957+08:00",
+      "process_exit": "2026-10-28T14:41:48.190070+08:00",
+      "exit_context": "library unload",
+      "exported_created": false
+    },
+    {
+      "outputs_dir": "imgo2_rl/outputs/2026-10-28/15-06-41",
+      "process_start": "2026-10-28T15:06:34.474319+08:00",
+      "process_exit": "2026-10-28T15:08:08.462379+08:00",
+      "exit_context": "library unload",
+      "exported_created": false
+    },
+    {
+      "outputs_dir": "imgo2_rl/outputs/2026-10-28/15-31-xx",
+      "note": "user retry after first diagnosis; same FileNotFoundError arrow_x.usd (traceback supplied in session)"
+    }
+  ],
+  "successful_run": {
+    "outputs_dir": "imgo2_rl/outputs/2026-10-28/15-21-00",
+    "process_start": "2026-10-28T15:20:52.163007+08:00",
+    "process_exit": "2026-10-28T15:21:09.972765+08:00",
+    "exit_context": "quick framework shutdown",
+    "exported_created": true
+  },
+  "config_equivalence": {
+    "failed": "imgo2_rl/outputs/2026-10-28/15-06-41/.hydra/config.yaml",
+    "previous_success": "imgo2_rl/outputs/2026-10-27/23-31-06/.hydra/config.yaml",
+    "diff_lines": 0
+  },
+  "usd_sources_in_scene": [
+    {
+      "kind": "local_urdf_conversion",
+      "usd_path_pattern": "/tmp/IsaacLab/usd_<timestamp>_<rand>/imgo2_real.usd",
+      "source": "imgo2_description/urdf/imgo2_real.urdf",
+      "usd_dir": null
+    },
+    {
+      "kind": "remote_debug_visualizer",
+      "usd_path": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Props/UIElements/arrow_x.usd",
+      "source": "env.commands.base_velocity.debug_vis=true",
+      "status": "confirmed_failing_source; bypassed in headless by the fix"
+    }
+  ],
+  "root_cause": "CONFIRMED by traceback: env.commands.base_velocity.debug_vis=true (velocity_env_cfg.py:108) makes CommandManager.__init__ call set_debug_vis(True) during scene build; UniformVelocityCommand._set_debug_vis_impl then creates VisualizationMarkers whose prototype usd_path is the remote S3 asset .../UIElements/arrow_x.usd. _spawn_from_usd_file -> check_usd_path_with_timeout -> omni.client.stat fails when the remote is not reachable, raising FileNotFoundError and aborting gym.make(). This happens before runner.load(), so no exported/ directory is created.",
+  "workaround_suggestions": {
+    "automatic": "play_utils.disable_command_debug_visualizers() in ppo/amp/himloco play.py for headless runs (implemented)",
+    "manual_hydra": "env.commands.base_velocity.debug_vis=false",
+    "proxy": "unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy before launching Isaac Sim",
+    "local_urdf_case": "bash scripts/run_isaaclab.sh scripts/tools/convert_urdf.py ../imgo2_description/urdf/imgo2_real.urdf /tmp/imgo2_urdf_check/imgo2_real.usd --merge-joints --headless"
+  },
+  "libtorch_load_forward": {
+    "passed": null,
+    "note": "not executed this round"
+  },
+  "deployment_replaced": false,
+  "gait_evaluated": false,
+  "validation_method": {
+    "actor_reference": "torch.nn.Sequential Linear45-512, ELU, Linear512-256, ELU, Linear256-128, ELU, Linear128-12 loaded from checkpoint model_state_dict actor.* keys",
+    "comparison": "256 standard-normal inputs (torch.Generator seed 42), no_grad, CPU, torch 2.7.0+cu128 in env_isaaclab",
+    "jit": "torch.jit.load(exported/policy.pt, map_location='cpu').eval()"
+  },
+  "scope": "Export pipeline only. JIT/actor equality and IO shape verified twice (pre/post fix); deploy LibTorch load and sim2sim gait for 5499 not evaluated.",
+  "status": "fixed_and_verified",
+  "root_cause_evidence": [
+    "user-supplied traceback ends at FileNotFoundError for arrow_x.usd via command_manager.set_debug_vis",
+    "three failed attempts (14:33/14:41/15:06) produced outputs/ but no exported/",
+    "composed .hydra/config.yaml identical (diff 0 lines) to the successful 2026-10-27 23:31 export",
+    "a 15:20 run succeeded with two '/Visuals/Command/velocity_goal|velocity_current' fabric warnings, proving markers were being spawned"
+  ],
+  "fix": {
+    "files": [
+      {
+        "path": "imgo2_rl/scripts/rl_lab/play_utils.py",
+        "change": "new helper disable_command_debug_visualizers(env_cfg)"
+      },
+      {
+        "path": "imgo2_rl/scripts/rl_lab/ppo/play.py",
+        "change": "call helper when --headless or --export_only"
+      },
+      {
+        "path": "imgo2_rl/scripts/rl_lab/amp/play.py",
+        "change": "call helper when --headless (not executed end-to-end)"
+      },
+      {
+        "path": "imgo2_rl/scripts/rl_lab/himloco/play.py",
+        "change": "call helper when --headless (not executed end-to-end)"
+      }
+    ],
+    "rationale": "VisualizationMarkers only write /Visuals/Command/* display prims; no dynamics, no observation, no reward consumer. Headless has no viewport, so the markers are invisible anyway.",
+    "gui_playback_unchanged": true
+  },
+  "verification": {
+    "helper_unit_check": {
+      "passed": 6,
+      "total": 6,
+      "method": "fake config objects (SimpleNamespace), no isaaclab import"
+    },
+    "py_compile": "pass (4 files)",
+    "git_diff_check": "pass",
+    "end_to_end": {
+      "command": "user's original command, no extra hydra override",
+      "exit_code": 0,
+      "log_lines": [
+        "[INFO] Disabled command debug visualizers: ['base_velocity']",
+        "[INFO] JIT export complete: .../exported/policy.pt",
+        "[INFO] ONNX export complete: .../exported/policy.onnx",
+        "[INFO] Export-only run complete."
+      ],
+      "usd_file_not_found": false,
+      "visuals_command_marker_warnings": false,
+      "marker_warnings_absent_note": "the pre-fix successful run at 15:20 printed two /Visuals/Command warnings; this run printed none",
+      "runs": 3,
+      "log_file": "imgo2_rl/logs/2026-10-28_00-34-30/export_run_arrowfix.log",
+      "log_grep_arrow_x_hits": 0
+    },
+    "jit_vs_checkpoint_actor_max_diff": 0.0,
+    "onnx_bytes_identical_to_prefix_run": true,
+    "policy_pt_bytes_stable": false,
+    "policy_pt_note": "TorchScript .pt is a zip archive written by torch.jit.save; byte hash is not a stable identity (three exports of the same weights produced 24441c2e, da0af8c6, 24441c2e). Compare size/numerics.",
+    "policy_pt_observed_hashes": [
+      "24441c2e...",
+      "da0af8c6...",
+      "24441c2e..."
+    ]
+  },
+  "remaining_gaps": [
+    "amp/play.py and himloco/play.py guard not executed end-to-end (only py_compile + helper unit check)",
+    "deploy LibTorch load probe for 5499 not run",
+    "deployment policy not replaced",
+    "5499 sim2sim gait not evaluated",
+    "network to arrow_x.usd was reachable again (HTTP 200) during the verification run, so offline robustness relies on the code path + absent marker warnings"
+  ]
+}

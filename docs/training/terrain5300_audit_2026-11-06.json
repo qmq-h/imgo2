@@ -1,0 +1,713 @@
+{
+  "env_diff_from_original5300": [
+    {
+      "path": ".curriculum.terrain_levels",
+      "old": "null",
+      "new": {
+        "func": "isaaclab_tasks.manager_based.locomotion.velocity.mdp.curriculums:terrain_levels_vel",
+        "params": {}
+      }
+    },
+    {
+      "path": ".log_dir",
+      "old": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_15-19-20",
+      "new": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_15-10-00"
+    },
+    {
+      "path": ".rewards.feet_air_time_variance.weight",
+      "old": "-8.0",
+      "new": "-4.0"
+    },
+    {
+      "path": ".rewards.joint_mirror.weight",
+      "old": "-1.0",
+      "new": "-0.4"
+    },
+    {
+      "path": ".scene.terrain.max_init_terrain_level",
+      "old": "5",
+      "new": "0"
+    },
+    {
+      "path": ".scene.terrain.terrain_generator",
+      "old": "null",
+      "new": {
+        "class_type": "isaaclab.terrains.terrain_generator:TerrainGenerator",
+        "seed": "null",
+        "curriculum": "true",
+        "size": [
+          "8.0",
+          "8.0"
+        ],
+        "border_width": "20.0",
+        "border_height": "1.0",
+        "num_rows": "10",
+        "num_cols": "20",
+        "color_scheme": "none",
+        "horizontal_scale": "0.1",
+        "vertical_scale": "0.005",
+        "slope_threshold": "0.75",
+        "sub_terrains": {
+          "pyramid_stairs": {
+            "function": "isaaclab.terrains.trimesh.mesh_terrains:pyramid_stairs_terrain",
+            "proportion": "0.2",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "border_width": "1.0",
+            "step_height_range": [
+              "0.025",
+              "0.08"
+            ],
+            "step_width": "0.3",
+            "platform_width": "3.0",
+            "holes": "false"
+          },
+          "pyramid_stairs_inv": {
+            "function": "isaaclab.terrains.trimesh.mesh_terrains:inverted_pyramid_stairs_terrain",
+            "proportion": "0.2",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "border_width": "1.0",
+            "step_height_range": [
+              "0.025",
+              "0.08"
+            ],
+            "step_width": "0.3",
+            "platform_width": "3.0",
+            "holes": "false"
+          },
+          "boxes": {
+            "function": "isaaclab.terrains.trimesh.mesh_terrains:random_grid_terrain",
+            "proportion": "0.2",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "grid_width": "0.45",
+            "grid_height_range": [
+              "0.025",
+              "0.1"
+            ],
+            "platform_width": "2.0",
+            "holes": "false"
+          },
+          "random_rough": {
+            "function": "isaaclab.terrains.height_field.hf_terrains:random_uniform_terrain",
+            "proportion": "0.2",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "border_width": "0.25",
+            "horizontal_scale": "0.1",
+            "vertical_scale": "0.005",
+            "slope_threshold": "0.75",
+            "noise_range": [
+              "0.01",
+              "0.06"
+            ],
+            "noise_step": "0.01",
+            "downsampled_scale": "null"
+          },
+          "hf_pyramid_slope": {
+            "function": "isaaclab.terrains.height_field.hf_terrains:pyramid_sloped_terrain",
+            "proportion": "0.1",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "border_width": "0.25",
+            "horizontal_scale": "0.1",
+            "vertical_scale": "0.005",
+            "slope_threshold": "0.75",
+            "slope_range": [
+              "0.0",
+              "0.4"
+            ],
+            "platform_width": "2.0",
+            "inverted": "false"
+          },
+          "hf_pyramid_slope_inv": {
+            "function": "isaaclab.terrains.height_field.hf_terrains:pyramid_sloped_terrain",
+            "proportion": "0.1",
+            "size": [
+              "8.0",
+              "8.0"
+            ],
+            "flat_patch_sampling": "null",
+            "border_width": "0.25",
+            "horizontal_scale": "0.1",
+            "vertical_scale": "0.005",
+            "slope_threshold": "0.75",
+            "slope_range": [
+              "0.0",
+              "0.4"
+            ],
+            "platform_width": "2.0",
+            "inverted": "true"
+          }
+        },
+        "difficulty_range": [
+          "0.0",
+          "1.0"
+        ],
+        "use_cache": "false",
+        "cache_dir": "/tmp/isaaclab/terrains"
+      }
+    },
+    {
+      "path": ".scene.terrain.terrain_type",
+      "old": "plane",
+      "new": "generator"
+    }
+  ],
+  "windows": {
+    "5300-5499": {
+      "Episode_Reward/lin_vel_z_l2": -0.05220269460929558,
+      "Episode_Reward/ang_vel_xy_l2": -0.11778675560839474,
+      "Episode_Reward/flat_orientation_l2": -0.021996678507421166,
+      "Episode_Reward/base_height_l2": -0.020891259934142,
+      "Episode_Reward/joint_torques_l2": -0.0005583208620737423,
+      "Episode_Reward/joint_acc_l2": -0.009616353898163652,
+      "Episode_Reward/joint_deviation_l1": -0.10081967984267975,
+      "Episode_Reward/joint_power": -0.0013469185108897364,
+      "Episode_Reward/stand_still": -0.00408403845554858,
+      "Episode_Reward/joint_mirror": -0.0072040148070664145,
+      "Episode_Reward/action_rate_l2": -0.022800964504422153,
+      "Episode_Reward/undesired_contacts": -0.0018953821703144057,
+      "Episode_Reward/contact_forces": -0.025487148872052785,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.2125600741570814,
+      "Episode_Reward/track_ang_vel_z_exp": 0.9708768478548154,
+      "Episode_Reward/feet_air_time": -0.09136060329619795,
+      "Episode_Reward/feet_air_time_variance": -0.05676607518224046,
+      "Episode_Reward/feet_slide": -0.047862142958911134,
+      "Episode_Reward/feet_height_body": -0.006558594782400178,
+      "Curriculum/terrain_levels": 0.521998051404953,
+      "Metrics/base_velocity/error_vel_xy": 0.2402286932989955,
+      "Metrics/base_velocity/error_vel_yaw": 0.22917077247286216,
+      "Episode_Termination/time_out": 0.8958441698318347,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.010401389154139906,
+      "Loss/surrogate": -0.00494334674323909,
+      "Loss/entropy": -2.312909533381462,
+      "Loss/learning_rate": 0.0002832203136131284,
+      "Policy/mean_noise_std": 0.20370996996760368,
+      "Perf/total_fps": 36263.905,
+      "Perf/collection time": 2.6283487212657928,
+      "Perf/learning_time": 0.0884217631816864,
+      "Train/mean_reward": 31.87433126270771,
+      "Train/mean_episode_length": 895.868281955719
+    },
+    "6000-6499": {
+      "Episode_Reward/lin_vel_z_l2": -0.05158798756450415,
+      "Episode_Reward/ang_vel_xy_l2": -0.11798474442958831,
+      "Episode_Reward/flat_orientation_l2": -0.016454815663397314,
+      "Episode_Reward/base_height_l2": -0.024230460304766895,
+      "Episode_Reward/joint_torques_l2": -0.0005990280845435337,
+      "Episode_Reward/joint_acc_l2": -0.008890373754315077,
+      "Episode_Reward/joint_deviation_l1": -0.11965821161866189,
+      "Episode_Reward/joint_power": -0.0014484348073601722,
+      "Episode_Reward/stand_still": -0.004548958394698275,
+      "Episode_Reward/joint_mirror": -0.010076480362564325,
+      "Episode_Reward/action_rate_l2": -0.02443733321130276,
+      "Episode_Reward/undesired_contacts": -0.0010571238176617043,
+      "Episode_Reward/contact_forces": -0.018579431982710958,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.400712958574295,
+      "Episode_Reward/track_ang_vel_z_exp": 1.1072495067119599,
+      "Episode_Reward/feet_air_time": -0.0908469555079937,
+      "Episode_Reward/feet_air_time_variance": -0.05945383539795875,
+      "Episode_Reward/feet_slide": -0.04664365831017494,
+      "Episode_Reward/feet_height_body": -0.006558774807490409,
+      "Curriculum/terrain_levels": 0.6758438111543655,
+      "Metrics/base_velocity/error_vel_xy": 0.22424605453014373,
+      "Metrics/base_velocity/error_vel_yaw": 0.2325826815366745,
+      "Episode_Termination/time_out": 1.0,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.004023361905477941,
+      "Loss/surrogate": -0.005206842282626895,
+      "Loss/entropy": -3.029005163669586,
+      "Loss/learning_rate": 0.00028021253974293357,
+      "Policy/mean_noise_std": 0.19177997294068336,
+      "Perf/total_fps": 36813.138,
+      "Perf/collection time": 2.5822544384002684,
+      "Perf/learning_time": 0.08825092315673828,
+      "Train/mean_reward": 38.11703589630127,
+      "Train/mean_episode_length": 1000.0
+    },
+    "7000-7499": {
+      "Episode_Reward/lin_vel_z_l2": -0.0479544724971056,
+      "Episode_Reward/ang_vel_xy_l2": -0.10978387217223644,
+      "Episode_Reward/flat_orientation_l2": -0.01522524829953909,
+      "Episode_Reward/base_height_l2": -0.023233970187604428,
+      "Episode_Reward/joint_torques_l2": -0.000610844875103794,
+      "Episode_Reward/joint_acc_l2": -0.008830370773561299,
+      "Episode_Reward/joint_deviation_l1": -0.12252437771856785,
+      "Episode_Reward/joint_power": -0.0014803545004688204,
+      "Episode_Reward/stand_still": -0.004150297881171127,
+      "Episode_Reward/joint_mirror": -0.010514430625364184,
+      "Episode_Reward/action_rate_l2": -0.023761983174830675,
+      "Episode_Reward/undesired_contacts": -0.0009844045850877592,
+      "Episode_Reward/contact_forces": -0.015745815854519604,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.4079309797286987,
+      "Episode_Reward/track_ang_vel_z_exp": 1.1129697351455687,
+      "Episode_Reward/feet_air_time": -0.07861761704087257,
+      "Episode_Reward/feet_air_time_variance": -0.06200793731212616,
+      "Episode_Reward/feet_slide": -0.04298153917491436,
+      "Episode_Reward/feet_height_body": -0.00590745687764138,
+      "Curriculum/terrain_levels": 0.7008357737064361,
+      "Metrics/base_velocity/error_vel_xy": 0.21599350693821906,
+      "Metrics/base_velocity/error_vel_yaw": 0.22462915191054345,
+      "Episode_Termination/time_out": 1.0,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.0033244579527527095,
+      "Loss/surrogate": -0.005231020405270101,
+      "Loss/entropy": -3.551545946121216,
+      "Loss/learning_rate": 0.00026474976541067006,
+      "Policy/mean_noise_std": 0.1833865539431572,
+      "Perf/total_fps": 36861.124,
+      "Perf/collection time": 2.5794176592826843,
+      "Perf/learning_time": 0.08760458850860596,
+      "Train/mean_reward": 38.91648193359375,
+      "Train/mean_episode_length": 1000.0
+    },
+    "8800-9299": {
+      "Episode_Reward/lin_vel_z_l2": -0.04645768509060144,
+      "Episode_Reward/ang_vel_xy_l2": -0.10527314753830433,
+      "Episode_Reward/flat_orientation_l2": -0.014448073053732514,
+      "Episode_Reward/base_height_l2": -0.02165218348056078,
+      "Episode_Reward/joint_torques_l2": -0.0006153127822326497,
+      "Episode_Reward/joint_acc_l2": -0.008276387217920273,
+      "Episode_Reward/joint_deviation_l1": -0.1197056744992733,
+      "Episode_Reward/joint_power": -0.0014722572488244624,
+      "Episode_Reward/stand_still": -0.00405516921839444,
+      "Episode_Reward/joint_mirror": -0.010951788697391749,
+      "Episode_Reward/action_rate_l2": -0.023772674076259135,
+      "Episode_Reward/undesired_contacts": -0.001094079882677761,
+      "Episode_Reward/contact_forces": -0.01454811385832727,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.4110146243572235,
+      "Episode_Reward/track_ang_vel_z_exp": 1.1139406988620757,
+      "Episode_Reward/feet_air_time": -0.07392507909238338,
+      "Episode_Reward/feet_air_time_variance": -0.06140924891084432,
+      "Episode_Reward/feet_slide": -0.041316564098000524,
+      "Episode_Reward/feet_height_body": -0.005814084975980223,
+      "Curriculum/terrain_levels": 0.7204864691495896,
+      "Metrics/base_velocity/error_vel_xy": 0.21214634802937507,
+      "Metrics/base_velocity/error_vel_yaw": 0.22334490430355072,
+      "Episode_Termination/time_out": 1.0,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.0031221749004907906,
+      "Loss/surrogate": -0.005413536770036444,
+      "Loss/entropy": -3.736119240283966,
+      "Loss/learning_rate": 0.00025712226544419536,
+      "Policy/mean_noise_std": 0.18056555116176606,
+      "Perf/total_fps": 35926.71,
+      "Perf/collection time": 2.6455473771095277,
+      "Perf/learning_time": 0.09104632329940796,
+      "Train/mean_reward": 39.38676421356201,
+      "Train/mean_episode_length": 1000.0
+    }
+  },
+  "models": [
+    {
+      "file": "model_5300.pt",
+      "finite": true,
+      "std_mean": 0.15858659148216248,
+      "std_max": 0.19348867237567902
+    },
+    {
+      "file": "model_5400.pt",
+      "finite": true,
+      "std_mean": 0.2139396071434021,
+      "std_max": 0.26574477553367615
+    },
+    {
+      "file": "model_5500.pt",
+      "finite": true,
+      "std_mean": 0.20893502235412598,
+      "std_max": 0.2635010778903961
+    },
+    {
+      "file": "model_5600.pt",
+      "finite": true,
+      "std_mean": 0.2040921449661255,
+      "std_max": 0.25933191180229187
+    },
+    {
+      "file": "model_5700.pt",
+      "finite": true,
+      "std_mean": 0.2005084753036499,
+      "std_max": 0.258565217256546
+    },
+    {
+      "file": "model_5800.pt",
+      "finite": true,
+      "std_mean": 0.1984921246767044,
+      "std_max": 0.2571316361427307
+    },
+    {
+      "file": "model_5900.pt",
+      "finite": true,
+      "std_mean": 0.1959560066461563,
+      "std_max": 0.2543122470378876
+    },
+    {
+      "file": "model_6000.pt",
+      "finite": true,
+      "std_mean": 0.19888103008270264,
+      "std_max": 0.2569408714771271
+    },
+    {
+      "file": "model_6100.pt",
+      "finite": true,
+      "std_mean": 0.19324494898319244,
+      "std_max": 0.24706490337848663
+    },
+    {
+      "file": "model_6200.pt",
+      "finite": true,
+      "std_mean": 0.1926870346069336,
+      "std_max": 0.2496577799320221
+    },
+    {
+      "file": "model_6300.pt",
+      "finite": true,
+      "std_mean": 0.1893058866262436,
+      "std_max": 0.24063988029956818
+    },
+    {
+      "file": "model_6400.pt",
+      "finite": true,
+      "std_mean": 0.19101840257644653,
+      "std_max": 0.24476519227027893
+    },
+    {
+      "file": "model_6500.pt",
+      "finite": true,
+      "std_mean": 0.18909966945648193,
+      "std_max": 0.2478843480348587
+    },
+    {
+      "file": "model_6600.pt",
+      "finite": true,
+      "std_mean": 0.19071893393993378,
+      "std_max": 0.24801105260849
+    },
+    {
+      "file": "model_6700.pt",
+      "finite": true,
+      "std_mean": 0.19014203548431396,
+      "std_max": 0.24816472828388214
+    },
+    {
+      "file": "model_6800.pt",
+      "finite": true,
+      "std_mean": 0.1880103200674057,
+      "std_max": 0.2457250952720642
+    },
+    {
+      "file": "model_6900.pt",
+      "finite": true,
+      "std_mean": 0.18520861864089966,
+      "std_max": 0.231550931930542
+    },
+    {
+      "file": "model_7000.pt",
+      "finite": true,
+      "std_mean": 0.1849796026945114,
+      "std_max": 0.22930555045604706
+    },
+    {
+      "file": "model_7100.pt",
+      "finite": true,
+      "std_mean": 0.1839781552553177,
+      "std_max": 0.23215533792972565
+    },
+    {
+      "file": "model_7200.pt",
+      "finite": true,
+      "std_mean": 0.1824275255203247,
+      "std_max": 0.22573906183242798
+    },
+    {
+      "file": "model_7300.pt",
+      "finite": true,
+      "std_mean": 0.18282978236675262,
+      "std_max": 0.2288830429315567
+    },
+    {
+      "file": "model_7400.pt",
+      "finite": true,
+      "std_mean": 0.18195755779743195,
+      "std_max": 0.23341576755046844
+    },
+    {
+      "file": "model_7500.pt",
+      "finite": true,
+      "std_mean": 0.18501263856887817,
+      "std_max": 0.2317822128534317
+    },
+    {
+      "file": "model_7600.pt",
+      "finite": true,
+      "std_mean": 0.18474306166172028,
+      "std_max": 0.23321714997291565
+    },
+    {
+      "file": "model_7700.pt",
+      "finite": true,
+      "std_mean": 0.184123232960701,
+      "std_max": 0.23079733550548553
+    },
+    {
+      "file": "model_7800.pt",
+      "finite": true,
+      "std_mean": 0.18257279694080353,
+      "std_max": 0.2331559658050537
+    },
+    {
+      "file": "model_7900.pt",
+      "finite": true,
+      "std_mean": 0.18112117052078247,
+      "std_max": 0.22397340834140778
+    },
+    {
+      "file": "model_8000.pt",
+      "finite": true,
+      "std_mean": 0.18116259574890137,
+      "std_max": 0.2268265187740326
+    },
+    {
+      "file": "model_8100.pt",
+      "finite": true,
+      "std_mean": 0.17808938026428223,
+      "std_max": 0.22241543233394623
+    },
+    {
+      "file": "model_8200.pt",
+      "finite": true,
+      "std_mean": 0.17738912999629974,
+      "std_max": 0.22114665806293488
+    },
+    {
+      "file": "model_8300.pt",
+      "finite": true,
+      "std_mean": 0.17921806871891022,
+      "std_max": 0.22085008025169373
+    },
+    {
+      "file": "model_8400.pt",
+      "finite": true,
+      "std_mean": 0.1797572523355484,
+      "std_max": 0.22834588587284088
+    },
+    {
+      "file": "model_8500.pt",
+      "finite": true,
+      "std_mean": 0.18025504052639008,
+      "std_max": 0.22232230007648468
+    },
+    {
+      "file": "model_8600.pt",
+      "finite": true,
+      "std_mean": 0.18011601269245148,
+      "std_max": 0.22351528704166412
+    },
+    {
+      "file": "model_8700.pt",
+      "finite": true,
+      "std_mean": 0.18212036788463593,
+      "std_max": 0.22825059294700623
+    },
+    {
+      "file": "model_8800.pt",
+      "finite": true,
+      "std_mean": 0.18215787410736084,
+      "std_max": 0.2223455309867859
+    },
+    {
+      "file": "model_8900.pt",
+      "finite": true,
+      "std_mean": 0.18714284896850586,
+      "std_max": 0.23537206649780273
+    },
+    {
+      "file": "model_9000.pt",
+      "finite": true,
+      "std_mean": 0.17994743585586548,
+      "std_max": 0.22288405895233154
+    },
+    {
+      "file": "model_9100.pt",
+      "finite": true,
+      "std_mean": 0.17800407111644745,
+      "std_max": 0.2233370989561081
+    },
+    {
+      "file": "model_9200.pt",
+      "finite": true,
+      "std_mean": 0.17775405943393707,
+      "std_max": 0.22091716527938843
+    },
+    {
+      "file": "model_9299.pt",
+      "finite": true,
+      "std_mean": 0.17854487895965576,
+      "std_max": 0.2248542308807373
+    }
+  ],
+  "event_ranges": {
+    "Episode_Reward/lin_vel_z_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/ang_vel_xy_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/flat_orientation_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/base_height_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/joint_torques_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/joint_acc_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/joint_deviation_l1": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/joint_power": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/stand_still": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/joint_mirror": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/action_rate_l2": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/undesired_contacts": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/contact_forces": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/track_lin_vel_xy_exp": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/track_ang_vel_z_exp": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/feet_air_time": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/feet_air_time_variance": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/feet_slide": [
+      5300,
+      9299
+    ],
+    "Episode_Reward/feet_height_body": [
+      5300,
+      9299
+    ],
+    "Curriculum/terrain_levels": [
+      5300,
+      9299
+    ],
+    "Metrics/base_velocity/error_vel_xy": [
+      5300,
+      9299
+    ],
+    "Metrics/base_velocity/error_vel_yaw": [
+      5300,
+      9299
+    ],
+    "Episode_Termination/time_out": [
+      5300,
+      9299
+    ],
+    "Episode_Termination/terrain_out_of_bounds": [
+      5300,
+      9299
+    ],
+    "Loss/value_function": [
+      5300,
+      9299
+    ],
+    "Loss/surrogate": [
+      5300,
+      9299
+    ],
+    "Loss/entropy": [
+      5300,
+      9299
+    ],
+    "Loss/learning_rate": [
+      5300,
+      9299
+    ],
+    "Policy/mean_noise_std": [
+      5300,
+      9299
+    ],
+    "Perf/total_fps": [
+      5300,
+      9299
+    ],
+    "Perf/collection time": [
+      5300,
+      9299
+    ],
+    "Perf/learning_time": [
+      5300,
+      9299
+    ],
+    "Train/mean_reward": [
+      5300,
+      9299
+    ],
+    "Train/mean_episode_length": [
+      5300,
+      9299
+    ],
+    "Train/mean_reward/time": [
+      5,
+      10772
+    ],
+    "Train/mean_episode_length/time": [
+      5,
+      10772
+    ]
+  }
+}

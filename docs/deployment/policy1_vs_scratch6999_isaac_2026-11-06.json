@@ -1,0 +1,548 @@
+{
+  "policy_1": {
+    "task": "Imgo2-basemove-rough-ppo",
+    "policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy_1.pt",
+    "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "dt": 0.02,
+    "history_frames": 1,
+    "body_names": [
+      "base",
+      "FL_HIP",
+      "FR_HIP",
+      "RL_HIP",
+      "RR_HIP",
+      "FL_THIGH",
+      "FR_THIGH",
+      "RL_THIGH",
+      "RR_THIGH",
+      "FL_SHANK",
+      "FR_SHANK",
+      "RL_SHANK",
+      "RR_SHANK",
+      "FL_FOOT",
+      "FR_FOOT",
+      "RL_FOOT",
+      "RR_FOOT"
+    ],
+    "joint_names": [
+      "FL_hip_joint",
+      "FR_hip_joint",
+      "RL_hip_joint",
+      "RR_hip_joint",
+      "FL_thigh_joint",
+      "FR_thigh_joint",
+      "RL_thigh_joint",
+      "RR_thigh_joint",
+      "FL_shank_joint",
+      "FR_shank_joint",
+      "RL_shank_joint",
+      "RR_shank_joint"
+    ],
+    "default_joint_pos": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.8700000047683716,
+      0.8700000047683716,
+      0.8700000047683716,
+      0.8700000047683716,
+      -1.8200000524520874,
+      -1.8200000524520874,
+      -1.8200000524520874,
+      -1.8200000524520874
+    ],
+    "stiffness": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "damping": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "fixed_reset": true,
+    "actuator_gains": {
+      "legs": {
+        "stiffness": [
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ]
+        ],
+        "damping": [
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        ]
+      }
+    },
+    "terrain": "plane",
+    "terrain_names": [],
+    "terrain_difficulty": null,
+    "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+    "cases": [
+      {
+        "case": "stand",
+        "command": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": -0.0018683137432180957,
+        "mean_vy": 0.0005571611983601769,
+        "mean_wz": -0.0008347741193501861,
+        "mean_z": 0.28116365998983384,
+        "gyro_xy_rms": 0.03401355769996764,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "forward03",
+        "command": [
+          0.3,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": 0.268006453871727,
+        "mean_vy": 0.00966822386608692,
+        "mean_wz": -0.009112809184240176,
+        "mean_z": 0.2995894694328308,
+        "gyro_xy_rms": 0.20642534753634492,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "backward03",
+        "command": [
+          -0.3,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": -0.2676961082816124,
+        "mean_vy": 0.0063421294087092975,
+        "mean_wz": -0.006216299008345231,
+        "mean_z": 0.29544373726844786,
+        "gyro_xy_rms": 0.18944900507249554,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "turn_left03",
+        "command": [
+          0.0,
+          0.0,
+          0.3
+        ],
+        "resets": 0,
+        "mean_vx": 0.0007478554337944842,
+        "mean_vy": 0.002685231104414925,
+        "mean_wz": -0.00419848433916377,
+        "mean_z": 0.2799813373684883,
+        "gyro_xy_rms": 0.1112954237258367,
+        "upright_fraction": 1.0
+      }
+    ]
+  },
+  "scratch6999": {
+    "task": "Imgo2-basemove-rough-ppo",
+    "policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/grouped_scratch_compare_2026-11-06/scratch6999.pt",
+    "sha256": "c39e17de05f7332355664918092e3d8b4ea0acab79e5bbdafb7e7f94e6b762a0",
+    "dt": 0.02,
+    "history_frames": 1,
+    "body_names": [
+      "base",
+      "FL_HIP",
+      "FR_HIP",
+      "RL_HIP",
+      "RR_HIP",
+      "FL_THIGH",
+      "FR_THIGH",
+      "RL_THIGH",
+      "RR_THIGH",
+      "FL_SHANK",
+      "FR_SHANK",
+      "RL_SHANK",
+      "RR_SHANK",
+      "FL_FOOT",
+      "FR_FOOT",
+      "RL_FOOT",
+      "RR_FOOT"
+    ],
+    "joint_names": [
+      "FL_hip_joint",
+      "FR_hip_joint",
+      "RL_hip_joint",
+      "RR_hip_joint",
+      "FL_thigh_joint",
+      "FR_thigh_joint",
+      "RL_thigh_joint",
+      "RR_thigh_joint",
+      "FL_shank_joint",
+      "FR_shank_joint",
+      "RL_shank_joint",
+      "RR_shank_joint"
+    ],
+    "default_joint_pos": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.8700000047683716,
+      0.8700000047683716,
+      0.8700000047683716,
+      0.8700000047683716,
+      -1.8200000524520874,
+      -1.8200000524520874,
+      -1.8200000524520874,
+      -1.8200000524520874
+    ],
+    "stiffness": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "damping": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "fixed_reset": true,
+    "actuator_gains": {
+      "legs": {
+        "stiffness": [
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ]
+        ],
+        "damping": [
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        ]
+      }
+    },
+    "terrain": "plane",
+    "terrain_names": [],
+    "terrain_difficulty": null,
+    "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+    "cases": [
+      {
+        "case": "stand",
+        "command": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": -0.0018719215303426608,
+        "mean_vy": 0.0004390351055408246,
+        "mean_wz": -0.00047596860126964205,
+        "mean_z": 0.271330888569355,
+        "gyro_xy_rms": 0.015166538605867088,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "forward03",
+        "command": [
+          0.3,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": 0.273866974323988,
+        "mean_vy": -0.010912371377635281,
+        "mean_wz": 0.010471624151978175,
+        "mean_z": 0.29758971732854844,
+        "gyro_xy_rms": 0.2969140643848354,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "backward03",
+        "command": [
+          -0.3,
+          0.0,
+          0.0
+        ],
+        "resets": 0,
+        "mean_vx": -0.2421039952635765,
+        "mean_vy": -0.0221195327618625,
+        "mean_wz": 0.0024295229122508317,
+        "mean_z": 0.2991553809642792,
+        "gyro_xy_rms": 0.2287397859432893,
+        "upright_fraction": 1.0
+      },
+      {
+        "case": "turn_left03",
+        "command": [
+          0.0,
+          0.0,
+          0.3
+        ],
+        "resets": 0,
+        "mean_vx": 0.021389215430710463,
+        "mean_vy": -0.004392792521743104,
+        "mean_wz": 0.19916246152063832,
+        "mean_z": 0.2996575500369072,
+        "gyro_xy_rms": 0.23343863886425079,
+        "upright_fraction": 1.0
+      }
+    ]
+  },
+  "common_contract_match": {
+    "dt": true,
+    "joint_names": true,
+    "default_joint_pos": true,
+    "actuator_gains": true,
+    "fixed_reset": true,
+    "terrain": true
+  }
+}

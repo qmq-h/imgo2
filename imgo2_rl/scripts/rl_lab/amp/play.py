@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from isaaclab.app import AppLauncher
 
 import cli_args  # isort: skip
+import play_utils  # isort: skip
 
 parser = argparse.ArgumentParser(description="Play a checkpoint with AMP RSL-RL agent.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during playback.")
@@ -69,6 +70,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: AMPOnPolicyRunnerCfg):
     """Play with AMP RSL-RL agent."""
     agent_cfg = cli_args.update_amp_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+
+    # headless 没有视口：关掉指令箭头，避免为看不到的 marker 去拉远端 USD
+    # （断网时会在建场景阶段抛 USD file not found，见 docs/deployment/ppo_5499_export_2026-10-28.md）
+    if args_cli.headless:
+        print(f"[INFO] Disabled command debug visualizers: {play_utils.disable_command_debug_visualizers(env_cfg)}")
+
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     agent_cfg.device = env_cfg.sim.device

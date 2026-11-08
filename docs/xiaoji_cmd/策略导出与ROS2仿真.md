@@ -14,7 +14,32 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
   --num_envs=1 --device=cuda:0 --headless --export_only
 ```
 
+```
+bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
+  --task=Imgo2-basemove-rough-ppo \
+  --checkpoint="$PWD/logs/2026-10-27_17-42-50/model_4999.pt" \
+  --num_envs=1 \
+  --device=cuda:0 \
+  --headless \
+  --export_only
+```
+
 产物在 `logs/2026-10-26_17-09-42/exported/policy.pt` 与 `policy.onnx`。看到JIT/ONNX export complete及Export-only run complete即本次导出完成。去掉--export_only会在导出后继续回放；--headless不影响导出。本轮文件已生成，现有部署PPO未替换，8400策略的sim2sim步态仍待评测。以下AMP内容保留各自的历史核对日期。
+
+### 2026-10-28：model_5499 导出与「USD 文件找不到」
+
+同一条命令换成 `--checkpoint="$PWD/logs/2026-10-28_00-34-30/model_5499.pt"` 已在本机跑通（退出码 0，产物 `logs/2026-10-28_00-34-30/exported/policy.pt`/`policy.onnx`，与 checkpoint Actor 在同一批输入上 max diff 0）。
+
+**同日修掉的一个真因**：用户拿到完整 traceback 后确认，是 `commands.base_velocity.debug_vis=true` 让 `CommandManager.__init__` 在**建场景时**就创建速度指令可视化箭头，其 marker 原型是远端资产 `.../Isaac/Props/UIElements/arrow_x.usd`；`omni.client.stat` 判定不可用就抛 `FileNotFoundError: USD file not found at path at: 'https://...arrow_x.usd'`，建场景中断。这步早于 `runner.load()`，所以失败时连 `exported/` 都不会生成。修复：新增 [play_utils.py](../../imgo2_rl/scripts/rl_lab/play_utils.py) 的 `disable_command_debug_visualizers()`，ppo/amp/himloco 三个 `play.py` 在 `--headless`（ppo 另含 `--export_only`）时自动关掉指令 debug_vis，GUI 回放不受影响；每次会打印 `Disabled command debug visualizers: [...]`。PPO 已实跑验证，amp/himloco 同一行改动尚未实跑。完整依据、哈希与剩余项见 [5499导出记录](../deployment/ppo_5499_export_2026-10-28.md)。
+
+再遇到 USD 报错时先看路径：
+
+- `https://...`（远端）：已在 headless 路径自动规避；若要手动处理，可追加 Hydra 覆盖 `env.commands.base_velocity.debug_vis=false`，或先 `unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy` 让远端可达（Isaac Sim 会读这些变量）。
+- `/tmp/IsaacLab/usd_.../imgo2_real.usd`（本地转换）：用 `scripts/tools/convert_urdf.py` 单独转一次，才能看到真正的导入错误。
+
+另外：`policy.pt` 是 TorchScript 的 zip 归档，**字节哈希每次导出都会变**（`torch.jit.save` 写时间戳），判断「是不是同一份」要比大小和数值（Actor max diff），不要比 SHA256；`policy.onnx` 则跨次一致。
+
+命令前那两条 `export` 不能省：启动器不读已激活的 conda 环境，缺 `IMGO2_ISAACLAB_PYTHON` 会去找本机不存在的 `/opt/conda/envs/isaaclab/bin/python`，缺 `PYTHONPATH` 会 `import cli_args` 失败。
 
 本机路径示例，核对日期2026-10-20（目录迁移路径已修；历史策略结果不重新判定）。用户称“sim2real”，但此处要求的是导出后启动ROS2仿真，实际为 **sim2sim**；本文不包含真机电机启动。
 
@@ -98,7 +123,10 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 
 export IMGO2_GAZEBO_URDF=/home/tommy0929/Documents/imgo2/imgo2_description/urdf/imgo2_real.gazebo.urdf
+
 ros2 launch imgo2_deploy gazebo.launch.py gui:=true
+#  开启地形课程
+ros2 launch imgo2_deploy gazebo.launch.py wname:=terrain_course 
 ```
 
 先等待机器人生成。gui:=false为无界面；本机历史GLX问题未确认解决，有界面失败时需按显示环境排查，不把策略导出成功当作GUI成功。unset仅清掉当前终端给ROS Python带来的路径覆盖，不删除文件；它只在结束Isaac回放后用于ROS终端。

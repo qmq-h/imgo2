@@ -1,0 +1,24 @@
+{
+  "deploy_before_sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+  "deploy_path": "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt",
+  "exports": [
+    {
+      "checkpoint": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_21-49-38/model_6300.pt",
+      "jit_sha256": "b2de15d71b902d60edf9cd29e067b079bc3999d96eb3f0e602e2eab61eed42b2",
+      "actor_tensors_equal": true,
+      "actor_input_dim": 45,
+      "critic_input_dim": 235,
+      "inference_1024_maxdiff": 0.0
+    },
+    {
+      "checkpoint": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_21-49-38/model_9299.pt",
+      "jit_sha256": "56d6d0432e54a53126375834d7ab34750f139d7057e0a583b71ea7068bc67123",
+      "actor_tensors_equal": true,
+      "actor_input_dim": 45,
+      "critic_input_dim": 235,
+      "inference_1024_maxdiff": 0.0
+    }
+  ],
+  "deploy_after_sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+  "production_deploy_unchanged": true
+}

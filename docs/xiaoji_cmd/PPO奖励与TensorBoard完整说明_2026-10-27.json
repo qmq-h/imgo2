@@ -1089,17 +1089,131 @@
     "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/envs/mdp/commands/velocity_command.py": "0ff254a375c9ea8d408824c24145e7ac7906cc7b513c52c4dd4ca0834c1ce241",
     "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/assets/articulation/articulation_data.py": "d69495c66c409fb20823e4e467f9d90e63163b2050b77d2ac8e433221d1d208a",
     "/home/tommy0929/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/rsl_rl/algorithms/ppo.py": "a2d35e7ad7b884c80b7434e7d2ce785a6da1e18d93c96f1179fbd3a208669f8c",
-    "/home/tommy0929/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/rsl_rl/utils/logger.py": "d9822d8317724507a7c817e85399db0db9e56a4eae959435138e75cf92e44b8d"
+    "/home/tommy0929/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/rsl_rl/utils/logger.py": "d9822d8317724507a7c817e85399db0db9e56a4eae959435138e75cf92e44b8d",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab/isaaclab/envs/mdp/actions/joint_actions.py": "6bbf0f7837636eb7d6b17db3e8d25a433e8a69ba671dde0e993b0a0b2025cf55",
+    "/home/tommy0929/Documents/IsaacLab-rsl5/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py": "1d27c1a7ac75d6bc62ce5376bceb23cac08c168a1343930a72073acddaf76693",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py": "f33c70448d20805c8d1035b86b3fd5fae7eef96c3d298cdd93938a61f838b07b",
+    "/home/tommy0929/Documents/imgo2/imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/curriculums.py": "48027333295fa59a701c91c1d4c394fbf413b17cadb0db65f8b5a961fb56ca74"
   },
   "checks": {
     "active_count_19": true,
     "both_event_tag_counts_36": true,
-    "latest_saved_weights_match_current_source": true
+    "latest_saved_weights_match_current_source": true,
+    "all_36_config_names_explained": true,
+    "all_36_actual_tags_explained": true,
+    "both_tag_sets_equal": true,
+    "local_links_exist": true,
+    "production_source_and_policy_hashes_unchanged": true,
+    "formula_examples_verified": true,
+    "event_hashes_unchanged": true
   },
   "limitations": [
     "No Isaac training or policy rollout in this documentation task",
     "Server historical reward function source not proven identical to local checkout",
     "TensorBoard histogram/image/tensor records are outside standard-library scalar parser scope",
     "Local RSL-RL5 logger uses aliases differing from server event labels"
-  ]
+  ],
+  "latest_run_trend_500_iteration_windows": [
+    {
+      "iteration_min": 1665,
+      "iteration_max": 2164,
+      "means": {
+        "Train/mean_reward": 6.606292672157288,
+        "Train/mean_episode_length": 999.9932000732422,
+        "Metrics/base_velocity/error_vel_xy": 0.48876660072803496,
+        "Metrics/base_velocity/error_vel_yaw": 0.4722732216119766,
+        "Curriculum/terrain_levels": 5.987648280143738,
+        "Policy/mean_noise_std": 0.5102454831600189,
+        "Loss/value_function": 0.018882518373429774,
+        "Loss/surrogate": -0.010720032471232117,
+        "Loss/entropy": 8.508788539886474,
+        "Episode_Reward/track_lin_vel_xy_exp": 1.1640975506305695,
+        "Episode_Reward/track_ang_vel_z_exp": 0.4583329545259476,
+        "Episode_Reward/flat_orientation_l2": -0.04599047053605318,
+        "Episode_Reward/base_height_l2": -0.006242385294288397,
+        "Episode_Reward/ang_vel_xy_l2": -0.10205876211822033,
+        "Episode_Reward/joint_pos_penalty": -0.27876212853193283,
+        "Episode_Reward/feet_air_time": -0.17853781047463418,
+        "Episode_Reward/feet_height_body": -0.04322915329039097,
+        "Episode_Reward/action_rate_l2": -0.11708733351528644,
+        "Episode_Termination/terrain_out_of_bounds": 0.00011619059258373455
+      }
+    },
+    {
+      "iteration_min": 2165,
+      "iteration_max": 2664,
+      "means": {
+        "Train/mean_reward": 7.330551390647888,
+        "Train/mean_episode_length": 999.9852799072265,
+        "Metrics/base_velocity/error_vel_xy": 0.4789323827624321,
+        "Metrics/base_velocity/error_vel_yaw": 0.4643462826609612,
+        "Curriculum/terrain_levels": 5.967736319541931,
+        "Policy/mean_noise_std": 0.5019051221609115,
+        "Loss/value_function": 0.018539753284305335,
+        "Loss/surrogate": -0.01097030900325626,
+        "Loss/entropy": 8.306571319580078,
+        "Episode_Reward/track_lin_vel_xy_exp": 1.1738164587020874,
+        "Episode_Reward/track_ang_vel_z_exp": 0.46165682858228685,
+        "Episode_Reward/flat_orientation_l2": -0.04444161900877953,
+        "Episode_Reward/base_height_l2": -0.006278888622298836,
+        "Episode_Reward/ang_vel_xy_l2": -0.0988078791797161,
+        "Episode_Reward/joint_pos_penalty": -0.27700447058677674,
+        "Episode_Reward/feet_air_time": -0.1780672064423561,
+        "Episode_Reward/feet_height_body": -0.04244724501669407,
+        "Episode_Reward/action_rate_l2": -0.11480302846431732,
+        "Episode_Termination/terrain_out_of_bounds": 0.0001627604168261314
+      }
+    },
+    {
+      "iteration_min": 2665,
+      "iteration_max": 3164,
+      "means": {
+        "Train/mean_reward": 7.940758199691772,
+        "Train/mean_episode_length": 999.9961198730468,
+        "Metrics/base_velocity/error_vel_xy": 0.46867474126815795,
+        "Metrics/base_velocity/error_vel_yaw": 0.45648804408311844,
+        "Curriculum/terrain_levels": 5.980669538497925,
+        "Policy/mean_noise_std": 0.4933628832101822,
+        "Loss/value_function": 0.01784014143422246,
+        "Loss/surrogate": -0.010956698765046895,
+        "Loss/entropy": 8.072636765480041,
+        "Episode_Reward/track_lin_vel_xy_exp": 1.1839617459774017,
+        "Episode_Reward/track_ang_vel_z_exp": 0.4648543802499771,
+        "Episode_Reward/flat_orientation_l2": -0.04514069554954767,
+        "Episode_Reward/base_height_l2": -0.006214884988963604,
+        "Episode_Reward/ang_vel_xy_l2": -0.09679530903697015,
+        "Episode_Reward/joint_pos_penalty": -0.27404894337058067,
+        "Episode_Reward/feet_air_time": -0.17678930562734604,
+        "Episode_Reward/feet_height_body": -0.0431300372928381,
+        "Episode_Reward/action_rate_l2": -0.11251029951870442,
+        "Episode_Termination/terrain_out_of_bounds": 8.138020837213844e-05
+      }
+    }
+  ],
+  "version_note_2026-10-28": "本清单的 active_reward_count=19 与 weights 是 4999 快照。最新 5499 run（imgo2_rl/logs/2026-10-28_00-34-30）关闭 joint_pos_penalty、feet_air_time=1.8，是 18 项/35 个 TensorBoard 标签；步态与离线奖励见 docs/training/ppo_rough_gait_reward_audit_2026-10-28.md 及其 JSON。",
+  "run_5499_snapshot": {
+    "run_dir": "imgo2_rl/logs/2026-10-28_00-34-30",
+    "checkpoint": "model_5499.pt",
+    "checkpoint_sha256": "c73b559c97016c49b10a30858067eff7fa509badfe8d1f861db5692dcf35622e",
+    "official_export": "imgo2_rl/logs/2026-10-28_00-34-30/exported/policy.pt",
+    "official_export_sha256": "24441c2e386e2e308ddcfc58d61c956afa83e199d7e6be49a0c7f112cabd7068",
+    "active_reward_count": 18,
+    "tensorboard_label_count": 35,
+    "weights": {
+      "feet_air_time": 1.8,
+      "joint_pos_penalty": null,
+      "feet_height_body": -6.0,
+      "feet_air_time_variance": -8.0,
+      "joint_mirror": -1.0,
+      "stand_still": -0.1,
+      "base_height_l2": -10.0,
+      "feet_slide": -0.05
+    },
+    "note": "从 4999 续训 500 轮；MuJoCo +.3 步频 3.57→2.27Hz、净空 2.01→5.92cm、机身 28.3→24.2cm；见 docs/training/ppo_rough_gait_reward_audit_2026-10-28.md"
+  },
+  "policy_file_identity_2026-10-28": {
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf (old policy_flat; 10/27 report called it policy_1.pt)",
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy_2.pt": "45a8ff211f056dfb706542e7ca64f7636d3bc2ea64124432c5cf8ec0351e0ed7 (4999)",
+    "policy_1.pt": "已不存在"
+  }
 }

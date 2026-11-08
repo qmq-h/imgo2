@@ -1,0 +1,214 @@
+{
+  "date": "2026-10-30T20:52+08:00",
+  "scope": "sim2sim check of latest policy ce77 vs previous 791021 and policy_1; Gazebo headless + MuJoCo",
+  "policies": {
+    "new": {
+      "sha256": "ce77ab5596809147bcfed97a8cce2602e3ce33c1661d93185ae0430855160a86",
+      "source": "logs/rsl_rl/base_move_rough/2026-10-30_17-37-05_resume/exported/policy.pt",
+      "checkpoint": "model_6900.pt",
+      "iter": 6900,
+      "actor_match": "max diff 0"
+    },
+    "previous": {
+      "sha256": "79102100236b109e3e59000046e94b8e69a63613fdc9c85a887f351abd7b2e3b",
+      "note": "policy_latest.pt, 10/30 17:14"
+    },
+    "policy_1": {
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+    }
+  },
+  "new_config": {
+    "base_height_l2": -20,
+    "feet_height_body": 0,
+    "feet_air_time": 2.0,
+    "joint_deviation_l1": -1.0,
+    "joint_pos_penalty": -0.1,
+    "joint_mirror": "thigh/shank only",
+    "stand_still": -0.1
+  },
+  "gazebo": {
+    "new": {
+      "stand": {
+        "z": 0.307,
+        "vx": 0.0,
+        "hip_front": 1.7,
+        "hip_rear": 1.7
+      },
+      "+0.3": {
+        "z": 0.28,
+        "vx": 0.348,
+        "freq": 1.93,
+        "hip_front": 1.0,
+        "hip_rear": -1.1
+      },
+      "-0.3": {
+        "z": 0.282,
+        "vx": -0.185,
+        "freq": 2.04,
+        "hip_front": -0.4,
+        "hip_rear": -0.9
+      },
+      "+0.5": {
+        "z": 0.276,
+        "vx": 0.513,
+        "freq": 2.13,
+        "hip_front": 0.9,
+        "hip_rear": -1.2
+      }
+    },
+    "previous": {
+      "stand": {
+        "z": 0.297
+      },
+      "+0.3": {
+        "z": 0.26,
+        "vx": 0.332,
+        "freq": 2.08
+      },
+      "+0.5": {
+        "z": 0.256,
+        "vx": 0.508,
+        "freq": 2.27
+      },
+      "-0.3": {
+        "z": 0.261,
+        "vx": -0.223,
+        "freq": 2.27
+      }
+    },
+    "policy_1": {
+      "stand": {
+        "z": 0.302
+      },
+      "+0.3": {
+        "z": 0.29,
+        "vx": 0.292,
+        "freq": 2.08,
+        "hip_front": 0.2,
+        "hip_rear": -0.2
+      },
+      "+0.5": {
+        "z": 0.288,
+        "vx": 0.468,
+        "freq": 2.33
+      }
+    }
+  },
+  "mujoco": {
+    "new": {
+      "stand": {
+        "z": 0.308
+      },
+      "+0.2": {
+        "z": 0.308,
+        "vx": 0.0
+      },
+      "+0.3": {
+        "z": 0.28,
+        "vx": 0.348,
+        "freq": 1.92,
+        "clearance_cm": 7.52,
+        "hip_front": 0.9,
+        "hip_front_ptp": 3.3,
+        "hip_rear": -1.0
+      },
+      "+0.35": {
+        "z": 0.279,
+        "vx": 0.386,
+        "freq": 1.94,
+        "clearance_cm": 8.18
+      },
+      "+0.5": {
+        "z": 0.276,
+        "vx": 0.509,
+        "freq": 2.08,
+        "clearance_cm": 9.79,
+        "hip_front": 0.8,
+        "hip_front_ptp": 3.6,
+        "hip_rear": -1.0
+      },
+      "-0.3": {
+        "z": 0.282,
+        "vx": -0.179,
+        "freq": 2.0,
+        "clearance_cm": 4.6,
+        "hip_front": -0.3,
+        "hip_rear": -1.0
+      }
+    },
+    "previous": {
+      "stand": {
+        "z": 0.299
+      },
+      "+0.2": {
+        "z": 0.262,
+        "vx": 0.245,
+        "freq": 2.04
+      },
+      "+0.3": {
+        "z": 0.259,
+        "vx": 0.326,
+        "freq": 2.11,
+        "clearance_cm": 8.0
+      },
+      "+0.5": {
+        "z": 0.256,
+        "vx": 0.505,
+        "freq": 2.33,
+        "clearance_cm": 9.46
+      },
+      "-0.3": {
+        "z": 0.261,
+        "vx": -0.224
+      }
+    },
+    "policy_1": {
+      "stand": {
+        "z": 0.303
+      },
+      "+0.2": {
+        "z": 0.297,
+        "vx": 0.0
+      },
+      "+0.3": {
+        "z": 0.289,
+        "vx": 0.288,
+        "freq": 2.02,
+        "clearance_cm": 3.97
+      },
+      "+0.5": {
+        "z": 0.287,
+        "vx": 0.465,
+        "freq": 2.33,
+        "clearance_cm": 4.23
+      },
+      "-0.3": {
+        "z": 0.289,
+        "vx": -0.243,
+        "freq": 2.08
+      }
+    }
+  },
+  "improvements": [
+    "walking height +2.0-2.1cm vs previous 791021 (Gazebo .260->.280, .256->.276)",
+    "stand .307-.308, slightly above policy_1 .302-.303",
+    "hips neutral +1.0/-1.1 at .3 and +0.9/-1.2 at .5",
+    "frequency 1.92-2.13, slower than policy_1 2.02-2.33",
+    "action saturation 0-1%, lower than previous 1.7-3.4%",
+    "height gap to policy_1 reduced to ~1cm walking"
+  ],
+  "remaining": [
+    "+0.2 stands in MuJoCo (previous 791021 walked .245); low-speed .2 regressed",
+    "backward speed -0.179 vs policy_1 -0.243",
+    "+.3 overshoot .348 (+16%)",
+    "clearance 7.5-9.8cm vs policy_1 4cm",
+    "repo rough_env_cfg.py base -16/air 1.8 does not match run base -20/air 2.0"
+  ],
+  "retrain_recommendation": "No retrain. Candidate for deployment. Optional 300-500 single-variable fine-tunes: if .2 needed, command .15-.5 or air 2.0->1.8; if backward, add negative samples; if overshoot, track 1.5->1.7; if more height, base -20->-22 or jpp -0.12, but current gain is small.",
+  "limitations": [
+    "single 20s run per case, one seed",
+    "Gazebo/MuJoCo differ; +0.2 Gazebo not tested",
+    "no stairs/slopes/hardware",
+    "repo config mismatch"
+  ]
+}

@@ -1,0 +1,383 @@
+{
+  "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_13-55-41",
+  "checkpoints": [
+    {
+      "file": "model_0.pt",
+      "iter": 0,
+      "model_finite": true,
+      "std_mean": 0.9937244057655334,
+      "std_max": 0.9987392425537109
+    },
+    {
+      "file": "model_100.pt",
+      "iter": 100,
+      "model_finite": true,
+      "std_mean": 0.46148717403411865,
+      "std_max": 0.5537404417991638
+    },
+    {
+      "file": "model_200.pt",
+      "iter": 200,
+      "model_finite": true,
+      "std_mean": 0.3062746822834015,
+      "std_max": 0.39267417788505554
+    },
+    {
+      "file": "model_300.pt",
+      "iter": 300,
+      "model_finite": true,
+      "std_mean": 0.24942733347415924,
+      "std_max": 0.325762540102005
+    },
+    {
+      "file": "model_400.pt",
+      "iter": 400,
+      "model_finite": true,
+      "std_mean": 0.22163118422031403,
+      "std_max": 0.29941871762275696
+    },
+    {
+      "file": "model_500.pt",
+      "iter": 500,
+      "model_finite": true,
+      "std_mean": 0.20655007660388947,
+      "std_max": 0.28355613350868225
+    },
+    {
+      "file": "model_600.pt",
+      "iter": 600,
+      "model_finite": true,
+      "std_mean": 0.1983739584684372,
+      "std_max": 0.2735671103000641
+    },
+    {
+      "file": "model_700.pt",
+      "iter": 700,
+      "model_finite": true,
+      "std_mean": 0.19544337689876556,
+      "std_max": 0.27001914381980896
+    },
+    {
+      "file": "model_800.pt",
+      "iter": 800,
+      "model_finite": true,
+      "std_mean": 0.1888207644224167,
+      "std_max": 0.2644583582878113
+    },
+    {
+      "file": "model_900.pt",
+      "iter": 900,
+      "model_finite": true,
+      "std_mean": 0.18919533491134644,
+      "std_max": 0.26064589619636536
+    },
+    {
+      "file": "model_1000.pt",
+      "iter": 1000,
+      "model_finite": true,
+      "std_mean": 0.18843422830104828,
+      "std_max": 0.25961488485336304
+    },
+    {
+      "file": "model_1100.pt",
+      "iter": 1100,
+      "model_finite": true,
+      "std_mean": 0.189278706908226,
+      "std_max": 0.26487842202186584
+    },
+    {
+      "file": "model_1200.pt",
+      "iter": 1200,
+      "model_finite": true,
+      "std_mean": 0.18765044212341309,
+      "std_max": 0.2680404484272003
+    },
+    {
+      "file": "model_1300.pt",
+      "iter": 1300,
+      "model_finite": true,
+      "std_mean": 0.18906907737255096,
+      "std_max": 0.2659432888031006
+    },
+    {
+      "file": "model_1400.pt",
+      "iter": 1400,
+      "model_finite": true,
+      "std_mean": 0.19058527052402496,
+      "std_max": 0.26488831639289856
+    },
+    {
+      "file": "model_1500.pt",
+      "iter": 1500,
+      "model_finite": true,
+      "std_mean": 0.19002939760684967,
+      "std_max": 0.26981768012046814
+    },
+    {
+      "file": "model_1600.pt",
+      "iter": 1600,
+      "model_finite": true,
+      "std_mean": 0.18961888551712036,
+      "std_max": 0.2625279128551483
+    },
+    {
+      "file": "model_1700.pt",
+      "iter": 1700,
+      "model_finite": true,
+      "std_mean": 0.18845756351947784,
+      "std_max": 0.2641293406486511
+    },
+    {
+      "file": "model_1800.pt",
+      "iter": 1800,
+      "model_finite": true,
+      "std_mean": 0.18723909556865692,
+      "std_max": 0.25718602538108826
+    },
+    {
+      "file": "model_1900.pt",
+      "iter": 1900,
+      "model_finite": true,
+      "std_mean": 0.19048112630844116,
+      "std_max": 0.2657974362373352
+    },
+    {
+      "file": "model_2000.pt",
+      "iter": 2000,
+      "model_finite": true,
+      "std_mean": 0.1861323118209839,
+      "std_max": 0.25658199191093445
+    },
+    {
+      "file": "model_2100.pt",
+      "iter": 2100,
+      "model_finite": true,
+      "std_mean": 0.1878843456506729,
+      "std_max": 0.25846391916275024
+    },
+    {
+      "file": "model_2200.pt",
+      "iter": 2200,
+      "model_finite": true,
+      "std_mean": 0.18669463694095612,
+      "std_max": 0.25347086787223816
+    },
+    {
+      "file": "model_2300.pt",
+      "iter": 2300,
+      "model_finite": true,
+      "std_mean": 0.1859227418899536,
+      "std_max": 0.2543123960494995
+    },
+    {
+      "file": "model_2400.pt",
+      "iter": 2400,
+      "model_finite": true,
+      "std_mean": 0.18472814559936523,
+      "std_max": 0.25361180305480957
+    },
+    {
+      "file": "model_2500.pt",
+      "iter": 2500,
+      "model_finite": true,
+      "std_mean": 0.1833832859992981,
+      "std_max": 0.2549668550491333
+    },
+    {
+      "file": "model_2600.pt",
+      "iter": 2600,
+      "model_finite": true,
+      "std_mean": 0.18251441419124603,
+      "std_max": 0.25242388248443604
+    },
+    {
+      "file": "model_2700.pt",
+      "iter": 2700,
+      "model_finite": true,
+      "std_mean": 0.18331073224544525,
+      "std_max": 0.25433850288391113
+    },
+    {
+      "file": "model_2800.pt",
+      "iter": 2800,
+      "model_finite": true,
+      "std_mean": 0.18303830921649933,
+      "std_max": 0.2534976601600647
+    },
+    {
+      "file": "model_2900.pt",
+      "iter": 2900,
+      "model_finite": true,
+      "std_mean": 0.18313229084014893,
+      "std_max": 0.2494591623544693
+    },
+    {
+      "file": "model_3000.pt",
+      "iter": 3000,
+      "model_finite": true,
+      "std_mean": 0.18169862031936646,
+      "std_max": 0.24483239650726318
+    },
+    {
+      "file": "model_3100.pt",
+      "iter": 3100,
+      "model_finite": true,
+      "std_mean": 0.182291641831398,
+      "std_max": 0.25038981437683105
+    },
+    {
+      "file": "model_3200.pt",
+      "iter": 3200,
+      "model_finite": true,
+      "std_mean": 0.18222175538539886,
+      "std_max": 0.25345784425735474
+    },
+    {
+      "file": "model_3300.pt",
+      "iter": 3300,
+      "model_finite": true,
+      "std_mean": 0.17950747907161713,
+      "std_max": 0.24271255731582642
+    },
+    {
+      "file": "model_3400.pt",
+      "iter": 3400,
+      "model_finite": true,
+      "std_mean": 0.18088220059871674,
+      "std_max": 0.24705378711223602
+    },
+    {
+      "file": "model_3500.pt",
+      "iter": 3500,
+      "model_finite": true,
+      "std_mean": 0.18268685042858124,
+      "std_max": 0.24533866345882416
+    },
+    {
+      "file": "model_3600.pt",
+      "iter": 3600,
+      "model_finite": true,
+      "std_mean": 0.17960529029369354,
+      "std_max": 0.2480020523071289
+    },
+    {
+      "file": "model_3700.pt",
+      "iter": 3700,
+      "model_finite": true,
+      "std_mean": 0.18050158023834229,
+      "std_max": 0.24211668968200684
+    },
+    {
+      "file": "model_3800.pt",
+      "iter": 3800,
+      "model_finite": true,
+      "std_mean": 0.18376018106937408,
+      "std_max": 0.2506605386734009
+    },
+    {
+      "file": "model_3900.pt",
+      "iter": 3900,
+      "model_finite": true,
+      "std_mean": 0.17927201092243195,
+      "std_max": 0.24029679596424103
+    },
+    {
+      "file": "model_4000.pt",
+      "iter": 4000,
+      "model_finite": true,
+      "std_mean": 0.1809089183807373,
+      "std_max": 0.24252007901668549
+    }
+  ],
+  "env_sha256": "586eac84e4277db82ab39f383fb175b599d9430a09344fed372e685f8f0bf077",
+  "agent_sha256": "132c987b69e62b503fb4c4a92efba6b61772d72eacd45c31942e4cddbd36d130",
+  "env_diff_vs_previous": [
+    "--- \n",
+    "+++ \n",
+    "@@ -1097,7 +1097,7 @@\n",
+    " teleop_devices:",
+    "   devices: {}",
+    " export_io_descriptors: false",
+    "-log_dir: /root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_01-38-11",
+    "+log_dir: /root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_13-55-41",
+    " is_finite_horizon: false",
+    " episode_length_s: 20.0",
+    " rewards:",
+    "@@ -1165,7 +1165,7 @@\n",
+    "         - null",
+    "         preserve_order: false",
+    "       target_height: 0.3",
+    "-    weight: -40.0",
+    "+    weight: -35.0",
+    "   body_lin_acc_l2: null",
+    "   joint_torques_l2:",
+    "     func: isaaclab.envs.mdp.rewards:joint_torques_l2",
+    "@@ -1544,9 +1544,10 @@\n",
+    "         - null",
+    "         - null",
+    "         preserve_order: false",
+    "-    weight: -0.05",
+    "-  feet_height:",
+    "-    func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:feet_height",
+    "+    weight: -0.15",
+    "+  feet_height: null",
+    "+  feet_height_body:",
+    "+    func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:feet_height_body",
+    "     params:",
+    "       asset_cfg:",
+    "         name: robot",
+    "@@ -1573,40 +1574,9 @@\n",
+    "         - null",
+    "         preserve_order: false",
+    "       tanh_mult: 2.0",
+    "-      target_height: 0.1",
+    "-      command_name: base_velocity",
+    "-    weight: -3.0",
+    "-  feet_height_body:",
+    "-    func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:feet_height_body",
+    "-    params:",
+    "-      asset_cfg:",
+    "-        name: robot",
+    "-        joint_names: null",
+    "-        joint_ids: !!python/object/apply:builtins.slice",
+    "-        - null",
+    "-        - null",
+    "-        - null",
+    "-        fixed_tendon_names: null",
+    "-        fixed_tendon_ids: !!python/object/apply:builtins.slice",
+    "-        - null",
+    "-        - null",
+    "-        - null",
+    "-        body_names:",
+    "-        - .*_FOOT",
+    "-        body_ids: !!python/object/apply:builtins.slice",
+    "-        - null",
+    "-        - null",
+    "-        - null",
+    "-        object_collection_names: null",
+    "-        object_collection_ids: !!python/object/apply:builtins.slice",
+    "-        - null",
+    "-        - null",
+    "-        - null",
+    "-        preserve_order: false",
+    "-      tanh_mult: 2.0",
+    "       target_height: -0.2",
+    "       command_name: base_velocity",
+    "-    weight: -2.0",
+    "+    weight: -4.0",
+    "   feet_distance_y_exp: null",
+    "   upward: null",
+    " terminations:"
+  ],
+  "server_git_files": [],
+  "new_export": {
+    "actor_tensors": 8,
+    "max_tensor_diff": 0.0,
+    "sha256": "bafdf4dd9f41af88f7a20faae9898c775bcc51107d2d79651a214dc58ac06c78"
+  },
+  "previous_export": {
+    "actor_tensors": 8,
+    "max_tensor_diff": 0.0,
+    "sha256": "84b82801b224178c3dfca3ff4cbb82e15fba29428d3120b5ff54be8ce4084c79"
+  }
+}

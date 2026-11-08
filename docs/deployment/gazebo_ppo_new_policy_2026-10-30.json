@@ -1,0 +1,202 @@
+{
+  "date": "2026-10-30T13:39+08:00",
+  "scope": "sim2sim comparison of new from-scratch 5000 policy (17b0049b) vs policy_1 (53a57f); Gazebo headless + MuJoCo",
+  "policy_hashes": {
+    "new_policy": "17b0049b762e2e9a6ac1d8854c81cf72c6d2ee455485ab3307e862f4075de9a9",
+    "policy_1": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+  },
+  "new_run": {
+    "run": "imgo2_rl/logs/2026-10-30_00-53-27",
+    "checkpoint": "model_4999.pt",
+    "from_scratch": true,
+    "iterations": 5000,
+    "saved_config": {
+      "base_height_l2": -12,
+      "feet_height_body": -1.5,
+      "feet_air_time": 1.8,
+      "feet_air_time_variance": -8,
+      "joint_deviation_l1": -0.2,
+      "joint_mirror": "thigh/shank only",
+      "joint_pos_penalty": null,
+      "stand_still": -0.1,
+      "feet_height": null
+    }
+  },
+  "repo_config_mismatch": "current rough_env_cfg.py is base -10/FHB -6/air 1.2/jpp -0.5/mirror hips; not the run config; use saved params/env.yaml",
+  "correction": "previous policy_1 stand .073/walk .239 result was invalid; clean rerun policy_1 stand .302/+0.3 .290/+0.5 .288, hips ~0",
+  "gazebo": {
+    "new_policy": {
+      "stand": {
+        "z": 0.284,
+        "vx": 0.0,
+        "hip_front": 1.5,
+        "hip_rear": 1.0
+      },
+      "+0.3": {
+        "z": 0.237,
+        "vx": 0.312,
+        "freq": 1.61,
+        "hip_front": -3.0,
+        "hip_rear": -3.2
+      },
+      "-0.3": {
+        "z": 0.236,
+        "vx": -0.214,
+        "freq": 1.92,
+        "hip_front": -0.6,
+        "hip_rear": -7.1
+      },
+      "+0.5": {
+        "z": 0.239,
+        "vx": 0.499,
+        "freq": 1.96,
+        "hip_front": -1.6,
+        "hip_rear": -6.0
+      }
+    },
+    "policy_1": {
+      "stand": {
+        "z": 0.302,
+        "vx": 0.0,
+        "hip_front": 1.8,
+        "hip_rear": 1.8
+      },
+      "+0.3": {
+        "z": 0.29,
+        "vx": 0.291,
+        "freq": 2.08,
+        "hip_front": 0.2,
+        "hip_rear": -0.2
+      },
+      "-0.3": {
+        "z": 0.29,
+        "vx": -0.239,
+        "freq": 2.08,
+        "hip_front": 0.3,
+        "hip_rear": -0.2
+      },
+      "+0.5": {
+        "z": 0.288,
+        "vx": 0.467,
+        "freq": 2.33,
+        "hip_front": 0.5,
+        "hip_rear": 0.0
+      }
+    }
+  },
+  "mujoco": {
+    "new_policy": {
+      "stand": {
+        "z": 0.28,
+        "vx": 0.0,
+        "hip_front_mean": 0.0,
+        "hip_front_std": 0.0,
+        "hip_front_ptp": 0.1,
+        "hip_rear_mean": -0.3
+      },
+      "+0.2": {
+        "z": 0.292,
+        "vx": 0.0
+      },
+      "+0.3": {
+        "z": 0.238,
+        "vx": 0.313,
+        "freq": 1.8,
+        "clearance_cm": 7.62,
+        "hip_front_mean": -5.8,
+        "hip_front_std": 1.4,
+        "hip_front_ptp": 5.6,
+        "hip_rear_mean": -2.2
+      },
+      "+0.35": {
+        "z": 0.238,
+        "vx": 0.363,
+        "freq": 1.9,
+        "clearance_cm": 7.83,
+        "hip_front_mean": -5.9,
+        "hip_front_std": 1.5,
+        "hip_front_ptp": 5.7,
+        "hip_rear_mean": -2.7
+      },
+      "+0.5": {
+        "z": 0.237,
+        "vx": 0.497,
+        "freq": 1.98,
+        "clearance_cm": 8.09,
+        "hip_front_mean": -3.1,
+        "hip_front_std": 1.6,
+        "hip_front_ptp": 6.4,
+        "hip_rear_mean": -4.7
+      },
+      "-0.3": {
+        "z": 0.236,
+        "vx": -0.21,
+        "freq": 1.96,
+        "clearance_cm": 6.38,
+        "hip_front_mean": -0.6,
+        "hip_front_std": 0.5,
+        "hip_front_ptp": 2.2,
+        "hip_rear_mean": -7.4
+      }
+    },
+    "policy_1": {
+      "stand": {
+        "z": 0.303,
+        "vx": 0.0,
+        "hip_front_mean": 0.2,
+        "hip_rear_mean": 0.1
+      },
+      "+0.3": {
+        "z": 0.289,
+        "vx": 0.288,
+        "freq": 2.02,
+        "clearance_cm": 3.97,
+        "hip_front_mean": 0.3,
+        "hip_front_std": 0.5,
+        "hip_front_ptp": 2.0,
+        "hip_rear_mean": -0.1
+      },
+      "+0.5": {
+        "z": 0.287,
+        "vx": 0.465,
+        "freq": 2.33,
+        "clearance_cm": 4.23,
+        "hip_front_mean": 0.6,
+        "hip_front_std": 0.5,
+        "hip_front_ptp": 2.0,
+        "hip_rear_mean": 0.0
+      },
+      "-0.3": {
+        "z": 0.289,
+        "vx": -0.243,
+        "freq": 2.08,
+        "clearance_cm": 3.72,
+        "hip_front_mean": 0.1,
+        "hip_front_std": 0.6,
+        "hip_front_ptp": 2.2,
+        "hip_rear_mean": -0.1
+      }
+    }
+  },
+  "issues": [
+    "new policy stand .284 vs target .30; walk .237-.239, drop 4.5-4.7cm",
+    "hips adducted inward 3-7 deg during walking, std 1.4-1.6/ptp 5-6 vs policy_1 ~0.5/2.0",
+    "policy_1 is taller (.302 stand/.288-.290 walk) and hips neutral (~0)",
+    "new policy frequency 1.61-1.98 vs policy_1 2.08-2.33; slower but low",
+    "+0.2 still stands in MuJoCo; +0.3 walks in Gazebo"
+  ],
+  "suggestions": [
+    "set feet_height_body=0/-0.5 first, 300-500 iters LR 3e-4",
+    "increase joint_deviation_l1 hip from -0.2 to -0.5/-1.0; monitor roll/lateral",
+    "if height still low: base_height -12 -> -15, then small joint_pos_penalty -0.05..-0.1 (not -0.5)",
+    "if hips still inward: hip soft range/deadband; check rear hip in backward",
+    "if two rounds no improvement, retrain with FHB=0, hip L1 -0.5, jpp -0.05..-0.1, base -15; keep mirror thigh/shank; low-speed .2-.6 curriculum"
+  ],
+  "limitations": [
+    "single 20s run per case, one seed",
+    "Gazebo/MuJoCo differ; +0.3 behavior differs",
+    "previous policy_1 .073 result invalid; corrected",
+    "no stairs/slopes/hardware; no training started",
+    "repo rough_env_cfg.py does not match saved run config"
+  ]
+}

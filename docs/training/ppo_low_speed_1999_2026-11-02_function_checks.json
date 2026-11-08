@@ -1,0 +1,17 @@
+{
+  "actor_jit_batch1024_max_difference": 0.0,
+  "existing_GaitReward_unit_scores": {
+    "0.7071067811865476": {
+      "ideal_diagonal_phase_point1": 1.0,
+      "front_pair_rear_pair_phase_point1": 0.8930282592773438,
+      "all_stance_point5": 0.6360054016113281,
+      "all_stance_point001": 0.9999887943267822
+    },
+    "0.03": {
+      "ideal_diagonal_phase_point1": 1.0,
+      "front_pair_rear_pair_phase_point1": 0.06948341429233551,
+      "all_stance_point5": 2.33090922847623e-05,
+      "all_stance_point001": 0.9997334480285645
+    }
+  }
+}

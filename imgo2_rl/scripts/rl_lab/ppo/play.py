@@ -14,6 +14,7 @@ from isaaclab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
+import play_utils  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
@@ -108,6 +109,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # override configurations with non-hydra CLI arguments
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+
+    # headless / 仅导出时没有视口：关掉指令箭头，避免为看不到的 marker 去拉远端 USD
+    # （断网时会在建场景阶段抛 USD file not found，连 exported/ 都不会生成）
+    if args_cli.headless or args_cli.export_only:
+        print(f"[INFO] Disabled command debug visualizers: {play_utils.disable_command_debug_visualizers(env_cfg)}")
 
     # handle deprecated configurations
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)

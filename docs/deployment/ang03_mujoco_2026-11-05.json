@@ -1,0 +1,4214 @@
+{
+  "scope": "Headless MuJoCo current model, production PD/feedback adapters, fixed simulation-time policy/control ticks; not GUI/FSM scheduling equivalence",
+  "metadata": {
+    "scope": "Headless MuJoCo current model, production PD/feedback adapters, fixed simulation-time policy/control ticks; not GUI/FSM scheduling equivalence",
+    "warmup": "2s fixed default stance followed by 3s zero-command PPO; independent reset for every case",
+    "seconds_per_case": 20.0,
+    "source_sha256": {
+      "imgo2_deploy/ros2_ws/scripts/mujoco_policy_benchmark.cpp": "b7ef3c38963a63cc82bb6ec26d0ec91560810559be1df7ef6141701bbacb0ae0",
+      "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_motor_pd.hpp": "5ffda21a1ae41306ee6e673f75aa29b5bb5644eeffea373f1f444f614d4587c8",
+      "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_feedback.hpp": "3cad4601da73785918cae8a7a0b047a8857db4764c88abf931ac08a5e344c0a0",
+      "imgo2_description/mjcf/scene.xml": "1a804190f8de66b85d7ef004c2c776a16fab46f9f3522856710f4a5580b77b68",
+      "imgo2_description/mjcf/imgo2.xml": "33940d2af2d0936d7a348941f5f13094edced1ea738c60aa49fc22b915732622",
+      "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "b8e903d8e77b11c09affee4650740168851d11a8e7aeeea17d23609a51ea1118",
+      "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "30e4ee576f943a1e9d7408996a872db0a1c90d638a7724dc62801ad4db4b8429",
+      "imgo2_rl/logs/ang03_compare_2026-11-05/new5300.pt": "8fb8c0045f086cc95fb0a9f1e8ba760b6bc2b6bdc5f35c3cdd312fb237b6b470",
+      "imgo2_rl/logs/slide15_compare_2026-11-05/new4000.pt": "bafdf4dd9f41af88f7a20faae9898c775bcc51107d2d79651a214dc58ac06c78",
+      "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy_1.pt": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+    },
+    "compile_command": [
+      "c++",
+      "-O1",
+      "-std=c++17",
+      "-D_GLIBCXX_USE_CXX11_ABI=1",
+      "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/scripts/mujoco_policy_benchmark.cpp",
+      "-I/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch/include",
+      "-I/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch/include/torch/csrc/api/include",
+      "-I/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/mujoco/include",
+      "-I/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/src/imgo2_deploy/include",
+      "-L/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch/lib",
+      "-L/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/mujoco/lib",
+      "-Wl,-rpath,/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/inference_runtime/libtorch/lib",
+      "-Wl,-rpath,/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/library/mujoco/lib",
+      "-ltorch",
+      "-ltorch_cpu",
+      "-lc10",
+      "-lmujoco",
+      "-lyaml-cpp",
+      "-pthread",
+      "-o",
+      "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/benchmark"
+    ],
+    "cases": [
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "stand",
+        "command": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_stand.csv",
+        "wall_seconds": 2.988785903999087
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "forward03",
+        "command": [
+          0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_forward03.csv",
+        "wall_seconds": 2.97271662699859
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "forward05",
+        "command": [
+          0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_forward05.csv",
+        "wall_seconds": 3.0351203179998265
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "backward03",
+        "command": [
+          -0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_backward03.csv",
+        "wall_seconds": 3.383281929000077
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "backward05",
+        "command": [
+          -0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_backward05.csv",
+        "wall_seconds": 3.2827304050006205
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "left03",
+        "command": [
+          0.0,
+          0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_left03.csv",
+        "wall_seconds": 3.255585181999777
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "right03",
+        "command": [
+          0.0,
+          -0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_right03.csv",
+        "wall_seconds": 3.4009241909989214
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "turn_left03",
+        "command": [
+          0.0,
+          0.0,
+          0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_turn_left03.csv",
+        "wall_seconds": 3.3062508209986845
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new5300.pt",
+        "case": "turn_right03",
+        "command": [
+          0.0,
+          0.0,
+          -0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new5300_turn_right03.csv",
+        "wall_seconds": 3.0747012889987673
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "stand",
+        "command": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_stand.csv",
+        "wall_seconds": 2.8938908999989508
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "forward03",
+        "command": [
+          0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_forward03.csv",
+        "wall_seconds": 3.0182313160003105
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "forward05",
+        "command": [
+          0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_forward05.csv",
+        "wall_seconds": 3.157728631998907
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "backward03",
+        "command": [
+          -0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_backward03.csv",
+        "wall_seconds": 2.9936065670008247
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "backward05",
+        "command": [
+          -0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_backward05.csv",
+        "wall_seconds": 3.1131155019975267
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "left03",
+        "command": [
+          0.0,
+          0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_left03.csv",
+        "wall_seconds": 3.3451460120013508
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "right03",
+        "command": [
+          0.0,
+          -0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_right03.csv",
+        "wall_seconds": 3.4686915499987663
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "turn_left03",
+        "command": [
+          0.0,
+          0.0,
+          0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_turn_left03.csv",
+        "wall_seconds": 3.3482692440011306
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "new4000.pt",
+        "case": "turn_right03",
+        "command": [
+          0.0,
+          0.0,
+          -0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/new4000_turn_right03.csv",
+        "wall_seconds": 3.304769774000306
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "stand",
+        "command": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_stand.csv",
+        "wall_seconds": 2.986897239999962
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "forward03",
+        "command": [
+          0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_forward03.csv",
+        "wall_seconds": 2.7214418969997496
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "forward05",
+        "command": [
+          0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_forward05.csv",
+        "wall_seconds": 2.739293357000861
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "backward03",
+        "command": [
+          -0.3,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_backward03.csv",
+        "wall_seconds": 2.7006976530028624
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "backward05",
+        "command": [
+          -0.5,
+          0.0,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_backward05.csv",
+        "wall_seconds": 2.7502958689983643
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "left03",
+        "command": [
+          0.0,
+          0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_left03.csv",
+        "wall_seconds": 2.822387839001749
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "right03",
+        "command": [
+          0.0,
+          -0.3,
+          0.0
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_right03.csv",
+        "wall_seconds": 2.8441821100022935
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "turn_left03",
+        "command": [
+          0.0,
+          0.0,
+          0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_turn_left03.csv",
+        "wall_seconds": 2.752348013000301
+      },
+      {
+        "mujoco_version": "3.2.7",
+        "rows": 4000,
+        "physics_dt": 0.0005,
+        "policy_dt": 0.02,
+        "motor_delay_ms": 10,
+        "imu_delay_ms": 0,
+        "failure": "",
+        "policy": "policy_1.pt",
+        "case": "turn_right03",
+        "command": [
+          0.0,
+          0.0,
+          -0.3
+        ],
+        "csv": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/ang03_compare_2026-11-05/mujoco/policy_1_turn_right03.csv",
+        "wall_seconds": 2.98189424100201
+      }
+    ],
+    "source_and_policy_files_unchanged": true
+  },
+  "skip_seconds": 4.0,
+  "results": [
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 6.4559230057845e-06,
+      "vx_mae": 0.000236407193722176,
+      "vx_rmse": 0.00029238893184317633,
+      "vy_mean": 1.9120427727338755e-06,
+      "vy_mae": 0.0004257648787810263,
+      "vy_rmse": 0.0005460303376233483,
+      "wz_mean": 1.5177449811649376e-05,
+      "wz_mae": 0.002044570492718882,
+      "wz_rmse": 0.0025740369256021987,
+      "height_mean_m": 0.2968306165758125,
+      "height_std_m": 6.342310156633204e-05,
+      "height_min_m": 0.2967156699,
+      "roll_mean_deg": 0.09943114812347457,
+      "roll_std_deg": 0.005196171575957045,
+      "roll_ptp_deg": 0.03470774951533144,
+      "pitch_mean_deg": -0.8646814226937283,
+      "pitch_std_deg": 0.007849531844127358,
+      "pitch_ptp_deg": 0.04467810753237378,
+      "gyro_xy_rms_rads": 0.004455651014560439,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.004520311124736142,
+      "joint_dq_rms_rads": 0.004442126561053422,
+      "joint_acc_difference_rms_rads2": 0.24440475838017103,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.2967275406585763,
+          "foot_outward_from_hip_mean_m": 0.09979375287296875
+        },
+        "FR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.14078774963933266,
+          "foot_outward_from_hip_mean_m": 0.10593339632390625
+        },
+        "RL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.1540687339375142,
+          "foot_outward_from_hip_mean_m": 0.099081395539875
+        },
+        "RR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.24862528139966455,
+          "foot_outward_from_hip_mean_m": 0.1064280433205
+        }
+      },
+      "stride_period_median_s": null,
+      "stride_frequency_hz": null,
+      "air_time_mean_s": null,
+      "swing_clearance_peak_mean_m": null,
+      "front_hip_outward_mean_deg": 0.2187576451489545,
+      "rear_hip_outward_mean_deg": 0.20134700766858937,
+      "front_feet_width_mean_m": 0.339727149196875,
+      "rear_feet_width_mean_m": 0.339509438860375,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.0051788725658375,
+        "FL_thigh_joint": 1.00600309488875,
+        "FL_shank_joint": -1.8230143271934376,
+        "FR_hip_joint": -0.002457209777679814,
+        "FR_thigh_joint": 0.99820555706075,
+        "FR_shank_joint": -1.8306323429184375,
+        "RL_hip_joint": 0.00268900668158875,
+        "RL_thigh_joint": 1.02266231155875,
+        "RL_shank_joint": -1.865829873446875,
+        "RR_hip_joint": -0.004339329764121562,
+        "RR_thigh_joint": 1.0227786500246876,
+        "RR_shank_joint": -1.8686660050028125
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.17766790447175,
+          0.16679375287296874,
+          -0.27828083320721875
+        ],
+        "FR": [
+          0.18106104426984376,
+          -0.17293339632390625,
+          -0.27775634013696876
+        ],
+        "RL": [
+          -0.2610984960839375,
+          0.166081395539875,
+          -0.27162141934003126
+        ],
+        "RR": [
+          -0.2606840239981875,
+          -0.1734280433205,
+          -0.27100487060971873
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.306960401735,
+      "vx_mae": 0.0187303669095,
+      "vx_rmse": 0.02395470668606328,
+      "vy_mean": -0.00504017627363305,
+      "vy_mae": 0.020495247116491557,
+      "vy_rmse": 0.024153603295131828,
+      "wz_mean": -0.027743307247751144,
+      "wz_mae": 0.07747827294894323,
+      "wz_rmse": 0.08618865416225366,
+      "height_mean_m": 0.3025048793101875,
+      "height_std_m": 0.002434696827981021,
+      "height_min_m": 0.2979040769,
+      "roll_mean_deg": 0.5005166643926704,
+      "roll_std_deg": 0.21240355217104967,
+      "roll_ptp_deg": 0.7961837786836766,
+      "pitch_mean_deg": 0.2147376750085553,
+      "pitch_std_deg": 0.11139453034542908,
+      "pitch_ptp_deg": 0.4908721643902085,
+      "gyro_xy_rms_rads": 0.09968881802610272,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.08893233410215301,
+      "joint_dq_rms_rads": 1.403494584171783,
+      "joint_acc_difference_rms_rads2": 83.73295647776493,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 28,
+          "period_median_s": 0.5599999999999996,
+          "freq_hz": 1.785714285714287,
+          "air_time_mean_s": 0.18642857142856745,
+          "swing_clearance_peak_mean_m": 0.042114355303214286,
+          "swing_clearance_peak_median_m": 0.042167456980000004,
+          "stance_fraction": 0.665,
+          "hip_outward_mean_deg": -0.622457800937334,
+          "foot_outward_from_hip_mean_m": 0.09516638696103125
+        },
+        "FR": {
+          "landing_count": 28,
+          "period_median_s": 0.5599999999999996,
+          "freq_hz": 1.785714285714287,
+          "air_time_mean_s": 0.2308928571428522,
+          "swing_clearance_peak_mean_m": 0.041914335014285715,
+          "swing_clearance_peak_median_m": 0.04193149262,
+          "stance_fraction": 0.5890625,
+          "hip_outward_mean_deg": -0.8901359766128872,
+          "foot_outward_from_hip_mean_m": 0.10101381235534375
+        },
+        "RL": {
+          "landing_count": 28,
+          "period_median_s": 0.5600000000000005,
+          "freq_hz": 1.785714285714284,
+          "air_time_mean_s": 0.22964285714285224,
+          "swing_clearance_peak_mean_m": 0.056038583289285716,
+          "swing_clearance_peak_median_m": 0.056094684864999994,
+          "stance_fraction": 0.59125,
+          "hip_outward_mean_deg": 1.6696646639400996,
+          "foot_outward_from_hip_mean_m": 0.1060807977603125
+        },
+        "RR": {
+          "landing_count": 28,
+          "period_median_s": 0.5600000000000005,
+          "freq_hz": 1.785714285714284,
+          "air_time_mean_s": 0.16982142857142496,
+          "swing_clearance_peak_mean_m": 0.04249713636178572,
+          "swing_clearance_peak_median_m": 0.042555270565,
+          "stance_fraction": 0.6940625,
+          "hip_outward_mean_deg": 1.1265026183999411,
+          "foot_outward_from_hip_mean_m": 0.11050882129190624
+        }
+      },
+      "stride_period_median_s": 0.5600000000000005,
+      "stride_frequency_hz": 1.785714285714284,
+      "air_time_mean_s": 0.20419642857142423,
+      "swing_clearance_peak_mean_m": 0.04564110249214286,
+      "front_hip_outward_mean_deg": -0.7562968887751107,
+      "rear_hip_outward_mean_deg": 1.3980836411700204,
+      "front_feet_width_mean_m": 0.330180199316375,
+      "rear_feet_width_mean_m": 0.35058961905221875,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.010863938081079926,
+        "FL_thigh_joint": 0.9292034023417187,
+        "FL_shank_joint": -1.8643027743909375,
+        "FR_hip_joint": 0.015535803582350126,
+        "FR_thigh_joint": 0.8425738202245,
+        "FR_shank_joint": -1.9034043080996874,
+        "RL_hip_joint": 0.029141145789959376,
+        "RL_thigh_joint": 0.8132599121684062,
+        "RL_shank_joint": -1.8599226110421876,
+        "RR_hip_joint": -0.01966117972341623,
+        "RR_thigh_joint": 0.9218938016244063,
+        "RR_shank_joint": -1.8460226785984375
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.2040783883031875,
+          0.16216638696103125,
+          -0.2728145988942812
+        ],
+        "FR": [
+          0.233028201124375,
+          -0.16801381235534374,
+          -0.26728541092996877
+        ],
+        "RL": [
+          -0.205760823838,
+          0.1730807977603125,
+          -0.2699536924495
+        ],
+        "RR": [
+          -0.2372521299453125,
+          -0.17750882129190626,
+          -0.273123555036125
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "forward03",
+      "command": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.49561812891596874,
+      "vx_mae": 0.02928005905090625,
+      "vx_rmse": 0.031874515817471374,
+      "vy_mean": -0.010987767815132434,
+      "vy_mae": 0.025236593694874934,
+      "vy_rmse": 0.028623308819146813,
+      "wz_mean": -0.0249701638177908,
+      "wz_mae": 0.06188239098135314,
+      "wz_rmse": 0.07150273892912883,
+      "height_mean_m": 0.303499682499375,
+      "height_std_m": 0.0022776168034830116,
+      "height_min_m": 0.2983562503,
+      "roll_mean_deg": 0.5738253602403082,
+      "roll_std_deg": 0.2534919740582569,
+      "roll_ptp_deg": 1.1078700235445789,
+      "pitch_mean_deg": 0.8097563481005183,
+      "pitch_std_deg": 0.17242873592122168,
+      "pitch_ptp_deg": 0.8605250942673592,
+      "gyro_xy_rms_rads": 0.13409860293676515,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.12240132616810227,
+      "joint_dq_rms_rads": 2.215413526660419,
+      "joint_acc_difference_rms_rads2": 131.47743689619503,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 32,
+          "period_median_s": 0.4900000000000002,
+          "freq_hz": 2.0408163265306114,
+          "air_time_mean_s": 0.18078124999999615,
+          "swing_clearance_peak_mean_m": 0.0594399200871875,
+          "swing_clearance_peak_median_m": 0.059207378975,
+          "stance_fraction": 0.6340625,
+          "hip_outward_mean_deg": 0.17137728383336692,
+          "foot_outward_from_hip_mean_m": 0.098849384084
+        },
+        "FR": {
+          "landing_count": 32,
+          "period_median_s": 0.4900000000000002,
+          "freq_hz": 2.0408163265306114,
+          "air_time_mean_s": 0.18953124999999596,
+          "swing_clearance_peak_mean_m": 0.060188017063125,
+          "swing_clearance_peak_median_m": 0.06067558734,
+          "stance_fraction": 0.61375,
+          "hip_outward_mean_deg": 0.13925465141364027,
+          "foot_outward_from_hip_mean_m": 0.10584515976
+        },
+        "RL": {
+          "landing_count": 32,
+          "period_median_s": 0.4900000000000002,
+          "freq_hz": 2.0408163265306114,
+          "air_time_mean_s": 0.20078124999999572,
+          "swing_clearance_peak_mean_m": 0.07406674025875,
+          "swing_clearance_peak_median_m": 0.07489278335499999,
+          "stance_fraction": 0.59,
+          "hip_outward_mean_deg": 0.61599550328708,
+          "foot_outward_from_hip_mean_m": 0.10091867138812499
+        },
+        "RR": {
+          "landing_count": 32,
+          "period_median_s": 0.49499999999999744,
+          "freq_hz": 2.0202020202020305,
+          "air_time_mean_s": 0.17218749999999633,
+          "swing_clearance_peak_mean_m": 0.057076120362812496,
+          "swing_clearance_peak_median_m": 0.057084390195,
+          "stance_fraction": 0.651875,
+          "hip_outward_mean_deg": 0.38785328716522655,
+          "foot_outward_from_hip_mean_m": 0.10680630250906249
+        }
+      },
+      "stride_period_median_s": 0.49000000000000155,
+      "stride_frequency_hz": 2.0408163265306056,
+      "air_time_mean_s": 0.18582031249999603,
+      "swing_clearance_peak_mean_m": 0.06269269944296875,
+      "front_hip_outward_mean_deg": 0.15531596762350358,
+      "rear_hip_outward_mean_deg": 0.5019243952261533,
+      "front_feet_width_mean_m": 0.338694543844,
+      "rear_feet_width_mean_m": 0.3417249738971875,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.002991097866017102,
+        "FL_thigh_joint": 0.8690570455617812,
+        "FL_shank_joint": -1.881198542330625,
+        "FR_hip_joint": -0.002430452165884999,
+        "FR_thigh_joint": 0.8096256292551876,
+        "FR_shank_joint": -1.90692476687125,
+        "RL_hip_joint": 0.010751149709839099,
+        "RL_thigh_joint": 0.788478095501375,
+        "RL_shank_joint": -1.8574525010971874,
+        "RR_hip_joint": -0.006769316875716268,
+        "RR_thigh_joint": 0.8645352402791875,
+        "RR_shank_joint": -1.850144919373125
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.22162331909571875,
+          0.165849384084,
+          -0.26694792608059376
+        ],
+        "FR": [
+          0.2412311170873125,
+          -0.17284515976,
+          -0.261495234576875
+        ],
+        "RL": [
+          -0.20038765723859375,
+          0.167918671388125,
+          -0.2686578337125938
+        ],
+        "RR": [
+          -0.221468988335,
+          -0.1738063025090625,
+          -0.2721383401913125
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "forward05",
+      "command": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.248381165897875,
+      "vx_mae": 0.05161883410212499,
+      "vx_rmse": 0.055980197032330474,
+      "vy_mean": 0.00445277652151924,
+      "vy_mae": 0.054323369730970926,
+      "vy_rmse": 0.06334155224378869,
+      "wz_mean": 0.0013120010456178937,
+      "wz_mae": 0.06357418951545551,
+      "wz_rmse": 0.078608803662764,
+      "height_mean_m": 0.29496114299690623,
+      "height_std_m": 0.0029870996603325838,
+      "height_min_m": 0.2886641641,
+      "roll_mean_deg": 0.44765196778313215,
+      "roll_std_deg": 0.2619201928695583,
+      "roll_ptp_deg": 1.1730189663415163,
+      "pitch_mean_deg": -1.0398493148887582,
+      "pitch_std_deg": 0.4551769824806385,
+      "pitch_ptp_deg": 1.6699160225267737,
+      "gyro_xy_rms_rads": 0.18427527681841543,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.1428316348367131,
+      "joint_dq_rms_rads": 1.4520505926519498,
+      "joint_acc_difference_rms_rads2": 92.16909550992038,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 28,
+          "period_median_s": 0.5700000000000003,
+          "freq_hz": 1.7543859649122797,
+          "air_time_mean_s": 0.16124999999999656,
+          "swing_clearance_peak_mean_m": 0.03848145780392857,
+          "swing_clearance_peak_median_m": 0.03846487559,
+          "stance_fraction": 0.7178125,
+          "hip_outward_mean_deg": -0.20489759756952527,
+          "foot_outward_from_hip_mean_m": 0.09728448619821875
+        },
+        "FR": {
+          "landing_count": 27,
+          "period_median_s": 0.5700000000000003,
+          "freq_hz": 1.7543859649122797,
+          "air_time_mean_s": 0.1155555555555531,
+          "swing_clearance_peak_mean_m": 0.032125590225925926,
+          "swing_clearance_peak_median_m": 0.03202996502,
+          "stance_fraction": 0.7975,
+          "hip_outward_mean_deg": -0.544475763103218,
+          "foot_outward_from_hip_mean_m": 0.10262919684015624
+        },
+        "RL": {
+          "landing_count": 27,
+          "period_median_s": 0.5749999999999993,
+          "freq_hz": 1.7391304347826109,
+          "air_time_mean_s": 0.20870370370369926,
+          "swing_clearance_peak_mean_m": 0.03916231602333333,
+          "swing_clearance_peak_median_m": 0.0391965656,
+          "stance_fraction": 0.63875,
+          "hip_outward_mean_deg": -1.3471508105337164,
+          "foot_outward_from_hip_mean_m": 0.09192429448371875
+        },
+        "RR": {
+          "landing_count": 28,
+          "period_median_s": 0.5700000000000003,
+          "freq_hz": 1.7543859649122797,
+          "air_time_mean_s": 0.24267857142856625,
+          "swing_clearance_peak_mean_m": 0.028706273402142858,
+          "swing_clearance_peak_median_m": 0.02864263288,
+          "stance_fraction": 0.5753125,
+          "hip_outward_mean_deg": -0.7525646474906292,
+          "foot_outward_from_hip_mean_m": 0.1017082279608125
+        }
+      },
+      "stride_period_median_s": 0.5700000000000003,
+      "stride_frequency_hz": 1.7543859649122797,
+      "air_time_mean_s": 0.18240909090908702,
+      "swing_clearance_peak_mean_m": 0.03460027220454545,
+      "front_hip_outward_mean_deg": -0.37468668033637165,
+      "rear_hip_outward_mean_deg": -1.049857729012173,
+      "front_feet_width_mean_m": 0.333913683038375,
+      "rear_feet_width_mean_m": 0.3276325224445312,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.003576137707014547,
+        "FL_thigh_joint": 1.1411149782385936,
+        "FL_shank_joint": -1.80955041903,
+        "FR_hip_joint": 0.009502894763459812,
+        "FR_thigh_joint": 1.0707759551159688,
+        "FR_shank_joint": -1.845889182691875,
+        "RL_hip_joint": -0.02351221716472366,
+        "RL_thigh_joint": 1.0800243970274688,
+        "RL_shank_joint": -1.9159129969875,
+        "RR_hip_joint": 0.013134730932821963,
+        "RR_thigh_joint": 1.199435544685625,
+        "RR_shank_joint": -1.8810967329096875
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.13821048582530626,
+          0.16428448619821875,
+          -0.2709215613921875
+        ],
+        "FR": [
+          0.16352417005609374,
+          -0.16962919684015626,
+          -0.27116434846384374
+        ],
+        "RL": [
+          -0.2684417758040312,
+          0.15892429448371875,
+          -0.262081458299
+        ],
+        "RR": [
+          -0.3054386325601875,
+          -0.1687082279608125,
+          -0.25870579875465627
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "backward03",
+      "command": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.43189203621525,
+      "vx_mae": 0.06810796378475,
+      "vx_rmse": 0.07513913812309905,
+      "vy_mean": -0.009224570995199135,
+      "vy_mae": 0.038607649527558956,
+      "vy_rmse": 0.045904779537911916,
+      "wz_mean": 0.0022673279171581935,
+      "wz_mae": 0.04865048369869453,
+      "wz_rmse": 0.055438818509321176,
+      "height_mean_m": 0.291722327064375,
+      "height_std_m": 0.002123049870502205,
+      "height_min_m": 0.2868325513,
+      "roll_mean_deg": 0.49472254620323974,
+      "roll_std_deg": 0.26512511573021263,
+      "roll_ptp_deg": 1.1669136563618525,
+      "pitch_mean_deg": -1.7571446465407528,
+      "pitch_std_deg": 0.39524528725684976,
+      "pitch_ptp_deg": 1.5326490591637039,
+      "gyro_xy_rms_rads": 0.2092045227663632,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.18617206303651485,
+      "joint_dq_rms_rads": 2.1227421679478704,
+      "joint_acc_difference_rms_rads2": 120.58216642839548,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 29,
+          "period_median_s": 0.5449999999999999,
+          "freq_hz": 1.8348623853211012,
+          "air_time_mean_s": 0.18896551724137528,
+          "swing_clearance_peak_mean_m": 0.05855272622551724,
+          "swing_clearance_peak_median_m": 0.05903461822,
+          "stance_fraction": 0.6575,
+          "hip_outward_mean_deg": 0.23176860729178095,
+          "foot_outward_from_hip_mean_m": 0.09921727568196875
+        },
+        "FR": {
+          "landing_count": 29,
+          "period_median_s": 0.5450000000000008,
+          "freq_hz": 1.8348623853210981,
+          "air_time_mean_s": 0.14586206896551412,
+          "swing_clearance_peak_mean_m": 0.04769749887275862,
+          "swing_clearance_peak_median_m": 0.04810625067,
+          "stance_fraction": 0.733125,
+          "hip_outward_mean_deg": -0.3020502810669284,
+          "foot_outward_from_hip_mean_m": 0.10375255355640625
+        },
+        "RL": {
+          "landing_count": 29,
+          "period_median_s": 0.5499999999999989,
+          "freq_hz": 1.8181818181818217,
+          "air_time_mean_s": 0.2222413793103401,
+          "swing_clearance_peak_mean_m": 0.04747213776172414,
+          "swing_clearance_peak_median_m": 0.0473898212,
+          "stance_fraction": 0.5934375,
+          "hip_outward_mean_deg": 0.5918346314984388,
+          "foot_outward_from_hip_mean_m": 0.10095835682878125
+        },
+        "RR": {
+          "landing_count": 29,
+          "period_median_s": 0.5449999999999999,
+          "freq_hz": 1.8348623853211012,
+          "air_time_mean_s": 0.23379310344827087,
+          "swing_clearance_peak_mean_m": 0.03352092213275862,
+          "swing_clearance_peak_median_m": 0.03348676272,
+          "stance_fraction": 0.574375,
+          "hip_outward_mean_deg": 1.042737636672451,
+          "foot_outward_from_hip_mean_m": 0.10979016167490624
+        }
+      },
+      "stride_period_median_s": 0.5450000000000017,
+      "stride_frequency_hz": 1.8348623853210952,
+      "air_time_mean_s": 0.1977155172413751,
+      "swing_clearance_peak_mean_m": 0.04681082124818966,
+      "front_hip_outward_mean_deg": -0.03514083688757372,
+      "rear_hip_outward_mean_deg": 0.8172861340854449,
+      "front_feet_width_mean_m": 0.336969829238375,
+      "rear_feet_width_mean_m": 0.3447485185036875,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.004045125300003316,
+        "FL_thigh_joint": 1.1796490158540625,
+        "FL_shank_joint": -1.8146594042278126,
+        "FR_hip_joint": 0.005271771911192191,
+        "FR_thigh_joint": 1.0831445062055312,
+        "FR_shank_joint": -1.849867130328125,
+        "RL_hip_joint": 0.010329462946975098,
+        "RL_thigh_joint": 1.1062359398242811,
+        "RL_shank_joint": -1.9288094978753125,
+        "RR_hip_joint": -0.01819920499439864,
+        "RR_thigh_joint": 1.2331624680118125,
+        "RR_shank_joint": -1.8849545395059375
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.12884549039370313,
+          0.16621727568196876,
+          -0.26380486004346876
+        ],
+        "FR": [
+          0.16003594199647186,
+          -0.17075255355640626,
+          -0.26594616035840624
+        ],
+        "RL": [
+          -0.27360117190484373,
+          0.16795835682878124,
+          -0.25274515896746874
+        ],
+        "RR": [
+          -0.31344433729321874,
+          -0.17679016167490624,
+          -0.249777327150375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "backward05",
+      "command": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.007452581722200656,
+      "vx_mae": 0.012658057524035237,
+      "vx_rmse": 0.016815583530760667,
+      "vy_mean": 0.25484813012865626,
+      "vy_mae": 0.04534555868734374,
+      "vy_rmse": 0.052336824732646496,
+      "wz_mean": -0.0018877901024188938,
+      "wz_mae": 0.02360992200509336,
+      "wz_rmse": 0.03136721200437758,
+      "height_mean_m": 0.2985518599263125,
+      "height_std_m": 0.0020362553663377217,
+      "height_min_m": 0.295102254,
+      "roll_mean_deg": -0.32311084076229474,
+      "roll_std_deg": 0.23899180034870932,
+      "roll_ptp_deg": 0.9890555501361691,
+      "pitch_mean_deg": -0.8324371721538907,
+      "pitch_std_deg": 0.34608508708672303,
+      "pitch_ptp_deg": 1.2647246588445833,
+      "gyro_xy_rms_rads": 0.21937606755091288,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.20096878770582874,
+      "joint_dq_rms_rads": 1.7212020319565084,
+      "joint_acc_difference_rms_rads2": 130.90339277213593,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 36,
+          "period_median_s": 0.4399999999999995,
+          "freq_hz": 2.272727272727275,
+          "air_time_mean_s": 0.14736111111110797,
+          "swing_clearance_peak_mean_m": 0.04992986386361111,
+          "swing_clearance_peak_median_m": 0.0500080669,
+          "stance_fraction": 0.6684375,
+          "hip_outward_mean_deg": 1.8149199858747755,
+          "foot_outward_from_hip_mean_m": 0.106784640301375
+        },
+        "FR": {
+          "landing_count": 36,
+          "period_median_s": 0.4399999999999995,
+          "freq_hz": 2.272727272727275,
+          "air_time_mean_s": 0.13638888888888598,
+          "swing_clearance_peak_mean_m": 0.04509443610277778,
+          "swing_clearance_peak_median_m": 0.04511460474,
+          "stance_fraction": 0.685625,
+          "hip_outward_mean_deg": -0.5234903930818005,
+          "foot_outward_from_hip_mean_m": 0.10306472531637499
+        },
+        "RL": {
+          "landing_count": 36,
+          "period_median_s": 0.4399999999999995,
+          "freq_hz": 2.272727272727275,
+          "air_time_mean_s": 0.17499999999999627,
+          "swing_clearance_peak_mean_m": 0.04904588371388889,
+          "swing_clearance_peak_median_m": 0.048949164315,
+          "stance_fraction": 0.59875,
+          "hip_outward_mean_deg": 1.6687105880652904,
+          "foot_outward_from_hip_mean_m": 0.10600653098815625
+        },
+        "RR": {
+          "landing_count": 36,
+          "period_median_s": 0.4399999999999995,
+          "freq_hz": 2.272727272727275,
+          "air_time_mean_s": 0.1804166666666628,
+          "swing_clearance_peak_mean_m": 0.03133612124027778,
+          "swing_clearance_peak_median_m": 0.031396670975,
+          "stance_fraction": 0.59375,
+          "hip_outward_mean_deg": 0.22952842374376117,
+          "foot_outward_from_hip_mean_m": 0.1064615632574375
+        }
+      },
+      "stride_period_median_s": 0.4399999999999995,
+      "stride_frequency_hz": 2.272727272727275,
+      "air_time_mean_s": 0.15979166666666325,
+      "swing_clearance_peak_mean_m": 0.04385157623013889,
+      "front_hip_outward_mean_deg": 0.6457147963964875,
+      "rear_hip_outward_mean_deg": 0.9491195059045258,
+      "front_feet_width_mean_m": 0.34384936561775,
+      "rear_feet_width_mean_m": 0.34646809424559377,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.03167632941376381,
+        "FL_thigh_joint": 1.0410559215991562,
+        "FL_shank_joint": -1.85251546569375,
+        "FR_hip_joint": 0.009136630961836763,
+        "FR_thigh_joint": 1.0373204338819688,
+        "FR_shank_joint": -1.8545366071340625,
+        "RL_hip_joint": 0.02912449402463011,
+        "RL_thigh_joint": 1.0669829174959375,
+        "RL_shank_joint": -1.90073421503875,
+        "RR_hip_joint": -0.004006026721241362,
+        "RR_thigh_joint": 1.0913424167546875,
+        "RR_shank_joint": -1.8765387575821875
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.17236176147071874,
+          0.173784640301375,
+          -0.268450647014
+        ],
+        "FR": [
+          0.173612712635,
+          -0.170064725316375,
+          -0.27210317681340623
+        ],
+        "RL": [
+          -0.26828696082109377,
+          0.17300653098815624,
+          -0.26009113607303125
+        ],
+        "RR": [
+          -0.27820791448396875,
+          -0.1734615632574375,
+          -0.265534430002625
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "left03",
+      "command": [
+        0.0,
+        0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.031184725375574703,
+      "vx_mae": 0.03170540520244719,
+      "vx_rmse": 0.03603209031778976,
+      "vy_mean": -0.25530134190596876,
+      "vy_mae": 0.04885797266428124,
+      "vy_rmse": 0.055905670319920914,
+      "wz_mean": 0.0015642303878450718,
+      "wz_mae": 0.047457289619651864,
+      "wz_rmse": 0.054317029218285615,
+      "height_mean_m": 0.30043819062890625,
+      "height_std_m": 0.0009542195136942833,
+      "height_min_m": 0.2978930762,
+      "roll_mean_deg": 0.7252073079805058,
+      "roll_std_deg": 0.2837113954929634,
+      "roll_ptp_deg": 1.3018031174368825,
+      "pitch_mean_deg": -0.4099875320779793,
+      "pitch_std_deg": 0.3378831401650113,
+      "pitch_ptp_deg": 1.3000535085327112,
+      "gyro_xy_rms_rads": 0.20660402658724267,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.19373215841002175,
+      "joint_dq_rms_rads": 1.684594102962291,
+      "joint_acc_difference_rms_rads2": 132.51633348290386,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 35,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.16514285714285362,
+          "swing_clearance_peak_mean_m": 0.049663515734857146,
+          "swing_clearance_peak_median_m": 0.04948553666,
+          "stance_fraction": 0.63875,
+          "hip_outward_mean_deg": -0.6198285168559574,
+          "foot_outward_from_hip_mean_m": 0.09559539239884375
+        },
+        "FR": {
+          "landing_count": 34,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.15867647058823192,
+          "swing_clearance_peak_mean_m": 0.049610419418235296,
+          "swing_clearance_peak_median_m": 0.04925682519,
+          "stance_fraction": 0.6559375,
+          "hip_outward_mean_deg": 0.8141471832588063,
+          "foot_outward_from_hip_mean_m": 0.10907516911290624
+        },
+        "RL": {
+          "landing_count": 34,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.19485294117646643,
+          "swing_clearance_peak_mean_m": 0.05046379486617647,
+          "swing_clearance_peak_median_m": 0.050533552445,
+          "stance_fraction": 0.5778125,
+          "hip_outward_mean_deg": 1.1625788531949632,
+          "foot_outward_from_hip_mean_m": 0.1038673525295
+        },
+        "RR": {
+          "landing_count": 35,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.17499999999999627,
+          "swing_clearance_peak_mean_m": 0.04072537116942857,
+          "swing_clearance_peak_median_m": 0.04068604481,
+          "stance_fraction": 0.6171875,
+          "hip_outward_mean_deg": 1.3734543546020812,
+          "foot_outward_from_hip_mean_m": 0.11174476514278124
+        }
+      },
+      "stride_period_median_s": 0.45999999999999996,
+      "stride_frequency_hz": 2.173913043478261,
+      "air_time_mean_s": 0.1733695652173876,
+      "swing_clearance_peak_mean_m": 0.047580683531304346,
+      "front_hip_outward_mean_deg": 0.09715933320142445,
+      "rear_hip_outward_mean_deg": 1.268016603898522,
+      "front_feet_width_mean_m": 0.33867056151175,
+      "rear_feet_width_mean_m": 0.34961211767228123,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.010818048416889627,
+        "FL_thigh_joint": 1.0526315049447188,
+        "FL_shank_joint": -1.8515841001846876,
+        "FR_hip_joint": -0.014209548943703828,
+        "FR_thigh_joint": 0.9495378915015,
+        "FR_shank_joint": -1.88760636413625,
+        "RL_hip_joint": 0.020290828802311905,
+        "RL_thigh_joint": 0.9480618714583126,
+        "RL_shank_joint": -1.8984525128221874,
+        "RR_hip_joint": -0.02397130061366005,
+        "RR_thigh_joint": 1.0902529812053126,
+        "RR_shank_joint": -1.8638961888653125
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.1687600437001875,
+          0.16259539239884374,
+          -0.2718072683282188
+        ],
+        "FR": [
+          0.20229334000225,
+          -0.17607516911290624,
+          -0.2676746235503125
+        ],
+        "RL": [
+          -0.237342765046875,
+          0.1708673525295,
+          -0.2651923841144375
+        ],
+        "RR": [
+          -0.2798834313117188,
+          -0.17874476514278126,
+          -0.2648688283345
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "right03",
+      "command": [
+        0.0,
+        -0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.017264046159344338,
+      "vx_mae": 0.025090838451037243,
+      "vx_rmse": 0.029286468138692692,
+      "vy_mean": -0.006532659268014613,
+      "vy_mae": 0.025353141371578465,
+      "vy_rmse": 0.029154565052939445,
+      "wz_mean": 0.2762077507836875,
+      "wz_mae": 0.0693784435416875,
+      "wz_rmse": 0.0797433037991115,
+      "height_mean_m": 0.2968793134308125,
+      "height_std_m": 0.0020811659130628565,
+      "height_min_m": 0.2925795762,
+      "roll_mean_deg": 0.15848646166725178,
+      "roll_std_deg": 0.19252150937129844,
+      "roll_ptp_deg": 0.8394186180205956,
+      "pitch_mean_deg": -0.9440236276031583,
+      "pitch_std_deg": 0.24563356825712537,
+      "pitch_ptp_deg": 1.0410555613067234,
+      "gyro_xy_rms_rads": 0.15327958633168776,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.14793346305169142,
+      "joint_dq_rms_rads": 0.9189261326960106,
+      "joint_acc_difference_rms_rads2": 74.57621080414708,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 31,
+          "period_median_s": 0.5100000000000016,
+          "freq_hz": 1.9607843137254841,
+          "air_time_mean_s": 0.12306451612902963,
+          "swing_clearance_peak_mean_m": 0.01832911955451613,
+          "swing_clearance_peak_median_m": 0.0186636859,
+          "stance_fraction": 0.7578125,
+          "hip_outward_mean_deg": -0.4395294482514329,
+          "foot_outward_from_hip_mean_m": 0.09617621713428125
+        },
+        "FR": {
+          "landing_count": 31,
+          "period_median_s": 0.5150000000000006,
+          "freq_hz": 1.9417475728155318,
+          "air_time_mean_s": 0.15516129032257733,
+          "swing_clearance_peak_mean_m": 0.03504366615903226,
+          "swing_clearance_peak_median_m": 0.03503571181,
+          "stance_fraction": 0.699375,
+          "hip_outward_mean_deg": -1.0492850075319773,
+          "foot_outward_from_hip_mean_m": 0.10029176090565625
+        },
+        "RL": {
+          "landing_count": 31,
+          "period_median_s": 0.5150000000000006,
+          "freq_hz": 1.9417475728155318,
+          "air_time_mean_s": 0.18548387096773797,
+          "swing_clearance_peak_mean_m": 0.0371088096316129,
+          "swing_clearance_peak_median_m": 0.03698263465,
+          "stance_fraction": 0.640625,
+          "hip_outward_mean_deg": 0.7482684481249275,
+          "foot_outward_from_hip_mean_m": 0.10181062938581249
+        },
+        "RR": {
+          "landing_count": 31,
+          "period_median_s": 0.5150000000000006,
+          "freq_hz": 1.9417475728155318,
+          "air_time_mean_s": 0.16145161290322235,
+          "swing_clearance_peak_mean_m": 0.019172848424193548,
+          "swing_clearance_peak_median_m": 0.01904590407,
+          "stance_fraction": 0.6834375,
+          "hip_outward_mean_deg": 0.10601542073710699,
+          "foot_outward_from_hip_mean_m": 0.10563765933253125
+        }
+      },
+      "stride_period_median_s": 0.5150000000000006,
+      "stride_frequency_hz": 1.9417475728155318,
+      "air_time_mean_s": 0.15629032258064182,
+      "swing_clearance_peak_mean_m": 0.02741361094233871,
+      "front_hip_outward_mean_deg": -0.7444072278917051,
+      "rear_hip_outward_mean_deg": 0.4271419344310173,
+      "front_feet_width_mean_m": 0.3304679780399375,
+      "rear_feet_width_mean_m": 0.34144828871834376,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.007671236031461538,
+        "FL_thigh_joint": 1.0643767451921875,
+        "FL_shank_joint": -1.8265994128421874,
+        "FR_hip_joint": 0.0183134781732465,
+        "FR_thigh_joint": 1.0079566113154061,
+        "FR_shank_joint": -1.87692268073875,
+        "RL_hip_joint": 0.013059748108568376,
+        "RL_thigh_joint": 1.0331602790014687,
+        "RL_shank_joint": -1.9062222443284376,
+        "RR_hip_joint": -0.0018503181497495907,
+        "RR_thigh_joint": 1.06938491651625,
+        "RR_shank_joint": -1.884800900750625
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.16201288081953125,
+          0.16317621713428124,
+          -0.27595256869103124
+        ],
+        "FR": [
+          0.185284943484875,
+          -0.16729176090565626,
+          -0.2721700466993125
+        ],
+        "RL": [
+          -0.25807233245565625,
+          0.1688106293858125,
+          -0.2636251460961562
+        ],
+        "RR": [
+          -0.27070155997553125,
+          -0.17263765933253125,
+          -0.26656190744284375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "turn_left03",
+      "command": [
+        0.0,
+        0.0,
+        0.3
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.0199214231536094,
+      "vx_mae": 0.02009668894215425,
+      "vx_rmse": 0.024617558110311,
+      "vy_mean": 0.006582781964067425,
+      "vy_mae": 0.033518044525445226,
+      "vy_rmse": 0.03867861337559568,
+      "wz_mean": -0.28612149163384376,
+      "wz_mae": 0.06562160142421875,
+      "wz_rmse": 0.07522436488406374,
+      "height_mean_m": 0.2974170906440625,
+      "height_std_m": 0.002733543877528653,
+      "height_min_m": 0.2913357408,
+      "roll_mean_deg": 0.41646459725982743,
+      "roll_std_deg": 0.2805547182782347,
+      "roll_ptp_deg": 1.016991213189021,
+      "pitch_mean_deg": -0.8771110209818254,
+      "pitch_std_deg": 0.3952133766443966,
+      "pitch_ptp_deg": 1.4364995557916347,
+      "gyro_xy_rms_rads": 0.18108395707267752,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.14892643277647777,
+      "joint_dq_rms_rads": 0.9172952742604226,
+      "joint_acc_difference_rms_rads2": 73.42840781807833,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 32,
+          "period_median_s": 0.5,
+          "freq_hz": 2.0,
+          "air_time_mean_s": 0.1545312499999967,
+          "swing_clearance_peak_mean_m": 0.0341334854896875,
+          "swing_clearance_peak_median_m": 0.034005852155,
+          "stance_fraction": 0.6909375,
+          "hip_outward_mean_deg": -0.7683300365839637,
+          "foot_outward_from_hip_mean_m": 0.0946330465606875
+        },
+        "FR": {
+          "landing_count": 31,
+          "period_median_s": 0.5,
+          "freq_hz": 2.0,
+          "air_time_mean_s": 0.1140322580645137,
+          "swing_clearance_peak_mean_m": 0.019625307115161292,
+          "swing_clearance_peak_median_m": 0.01976595474,
+          "stance_fraction": 0.7746875,
+          "hip_outward_mean_deg": -0.820039559331094,
+          "foot_outward_from_hip_mean_m": 0.10126438401684375
+        },
+        "RL": {
+          "landing_count": 31,
+          "period_median_s": 0.5,
+          "freq_hz": 2.0,
+          "air_time_mean_s": 0.14145161290322278,
+          "swing_clearance_peak_mean_m": 0.02856030226870968,
+          "swing_clearance_peak_median_m": 0.02880750872,
+          "stance_fraction": 0.719375,
+          "hip_outward_mean_deg": -0.34992106220151636,
+          "foot_outward_from_hip_mean_m": 0.09647730969040624
+        },
+        "RR": {
+          "landing_count": 32,
+          "period_median_s": 0.5,
+          "freq_hz": 2.0,
+          "air_time_mean_s": 0.19124999999999592,
+          "swing_clearance_peak_mean_m": 0.0257480827590625,
+          "swing_clearance_peak_median_m": 0.0254392271,
+          "stance_fraction": 0.6175,
+          "hip_outward_mean_deg": -0.4622990476424462,
+          "foot_outward_from_hip_mean_m": 0.10308567608346875
+        }
+      },
+      "stride_period_median_s": 0.5,
+      "stride_frequency_hz": 2.0,
+      "air_time_mean_s": 0.15067460317459996,
+      "swing_clearance_peak_mean_m": 0.027063206943333334,
+      "front_hip_outward_mean_deg": -0.7941847979575288,
+      "rear_hip_outward_mean_deg": -0.40611005492198127,
+      "front_feet_width_mean_m": 0.32989743057753124,
+      "rear_feet_width_mean_m": 0.333562985773875,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.013409888880358652,
+        "FL_thigh_joint": 1.046400700989375,
+        "FL_shank_joint": -1.8533016059840626,
+        "FR_hip_joint": 0.014312390306930978,
+        "FR_thigh_joint": 1.0157783318456564,
+        "FR_shank_joint": -1.8562544134171874,
+        "RL_hip_joint": -0.006107274657492338,
+        "RL_thigh_joint": 1.0404003433296876,
+        "RL_shank_joint": -1.883758362715,
+        "RR_hip_joint": 0.008068640510194815,
+        "RR_thigh_joint": 1.11499675140875,
+        "RR_shank_joint": -1.8951281214578124
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.17113122843021875,
+          0.1616330465606875,
+          -0.27342643915825
+        ],
+        "FR": [
+          0.180222382777875,
+          -0.16826438401684374,
+          -0.27494947338196873
+        ],
+        "RL": [
+          -0.26326160311103125,
+          0.16347730969040625,
+          -0.268632601774125
+        ],
+        "RR": [
+          -0.28112883297303126,
+          -0.17008567608346875,
+          -0.26366494828375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new5300.pt",
+      "case": "turn_right03",
+      "command": [
+        0.0,
+        0.0,
+        -0.3
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 7.865401710683406e-06,
+      "vx_mae": 0.0002795118077901312,
+      "vx_rmse": 0.00033507185465431503,
+      "vy_mean": -9.541466323512437e-06,
+      "vy_mae": 0.00033932533133868486,
+      "vy_rmse": 0.00043194050513008063,
+      "wz_mean": 3.656752740340632e-05,
+      "wz_mae": 0.0019885865035908566,
+      "wz_rmse": 0.0024947214096692387,
+      "height_mean_m": 0.28293600085528126,
+      "height_std_m": 4.567192482927188e-05,
+      "height_min_m": 0.2828507349,
+      "roll_mean_deg": 0.25596317207368974,
+      "roll_std_deg": 0.007684431265128585,
+      "roll_ptp_deg": 0.041635254503965685,
+      "pitch_mean_deg": -1.1214334776567185,
+      "pitch_std_deg": 0.00585280593474816,
+      "pitch_ptp_deg": 0.03573384788499623,
+      "gyro_xy_rms_rads": 0.003972642860869419,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.004004321111675937,
+      "joint_dq_rms_rads": 0.0038661164811375328,
+      "joint_acc_difference_rms_rads2": 0.2076181791374998,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": -0.04627738384752644,
+          "foot_outward_from_hip_mean_m": 0.09813552979253125
+        },
+        "FR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.8385519955014368,
+          "foot_outward_from_hip_mean_m": 0.10913011134909374
+        },
+        "RL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 1.1697993525724641,
+          "foot_outward_from_hip_mean_m": 0.103626534007375
+        },
+        "RR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": -0.11899294279242446,
+          "foot_outward_from_hip_mean_m": 0.10471950191084374
+        }
+      },
+      "stride_period_median_s": null,
+      "stride_frequency_hz": null,
+      "air_time_mean_s": null,
+      "swing_clearance_peak_mean_m": null,
+      "front_hip_outward_mean_deg": 0.39613730582695517,
+      "rear_hip_outward_mean_deg": 0.5254032048900198,
+      "front_feet_width_mean_m": 0.341265641141625,
+      "rear_feet_width_mean_m": 0.34234603591821877,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.0008076927173485779,
+        "FL_thigh_joint": 1.111581449545625,
+        "FL_shank_joint": -1.88057007821875,
+        "FR_hip_joint": -0.01463549327066875,
+        "FR_thigh_joint": 1.057109985598125,
+        "FR_shank_joint": -1.8982586512803126,
+        "RL_hip_joint": 0.0204168502900875,
+        "RL_thigh_joint": 1.03922613461375,
+        "RL_shank_joint": -1.94520465161375,
+        "RR_hip_joint": 0.0020768186383650624,
+        "RR_thigh_joint": 1.119561587036875,
+        "RR_shank_joint": -1.9498793117203126
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.15838607803790625,
+          0.16513552979253124,
+          -0.26531284626690627
+        ],
+        "FR": [
+          0.17574628804990625,
+          -0.17613011134909376,
+          -0.26407991816571874
+        ],
+        "RL": [
+          -0.25337579355621875,
+          0.170626534007375,
+          -0.25715074137825
+        ],
+        "RR": [
+          -0.273344801765,
+          -0.17171950191084376,
+          -0.255278837506125
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.31005521909415623,
+      "vx_mae": 0.019681467213968754,
+      "vx_rmse": 0.021742322049342032,
+      "vy_mean": 0.0070766000409446346,
+      "vy_mae": 0.02254251137185097,
+      "vy_rmse": 0.026087778046064623,
+      "wz_mean": -0.008244439943200874,
+      "wz_mae": 0.059610022335694,
+      "wz_rmse": 0.06996581813794069,
+      "height_mean_m": 0.28217438955690627,
+      "height_std_m": 0.003234720718831798,
+      "height_min_m": 0.2746801592,
+      "roll_mean_deg": 0.09116039790128758,
+      "roll_std_deg": 0.29823195852666073,
+      "roll_ptp_deg": 1.2462554199527431,
+      "pitch_mean_deg": 0.2581911942160933,
+      "pitch_std_deg": 0.35289828564953873,
+      "pitch_ptp_deg": 1.6177162864678634,
+      "gyro_xy_rms_rads": 0.2095181997745651,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.19707503524517808,
+      "joint_dq_rms_rads": 1.4423960573825176,
+      "joint_acc_difference_rms_rads2": 93.16444366999157,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 32,
+          "period_median_s": 0.495000000000001,
+          "freq_hz": 2.0202020202020163,
+          "air_time_mean_s": 0.14781249999999685,
+          "swing_clearance_peak_mean_m": 0.039213995501875,
+          "swing_clearance_peak_median_m": 0.039075530785,
+          "stance_fraction": 0.704375,
+          "hip_outward_mean_deg": -0.8122886757894625,
+          "foot_outward_from_hip_mean_m": 0.09459886721209375
+        },
+        "FR": {
+          "landing_count": 31,
+          "period_median_s": 0.49500000000000055,
+          "freq_hz": 2.020202020202018,
+          "air_time_mean_s": 0.20935483870967295,
+          "swing_clearance_peak_mean_m": 0.03249130754741936,
+          "swing_clearance_peak_median_m": 0.03259558059,
+          "stance_fraction": 0.5728125,
+          "hip_outward_mean_deg": -0.4115471269185789,
+          "foot_outward_from_hip_mean_m": 0.10334098866856249
+        },
+        "RL": {
+          "landing_count": 32,
+          "period_median_s": 0.495000000000001,
+          "freq_hz": 2.0202020202020163,
+          "air_time_mean_s": 0.17703124999999623,
+          "swing_clearance_peak_mean_m": 0.0492456397196875,
+          "swing_clearance_peak_median_m": 0.04953163906,
+          "stance_fraction": 0.638125,
+          "hip_outward_mean_deg": 1.780700968072576,
+          "foot_outward_from_hip_mean_m": 0.10605988849865625
+        },
+        "RR": {
+          "landing_count": 32,
+          "period_median_s": 0.495000000000001,
+          "freq_hz": 2.0202020202020163,
+          "air_time_mean_s": 0.13812499999999706,
+          "swing_clearance_peak_mean_m": 0.0346367804946875,
+          "swing_clearance_peak_median_m": 0.03464225977,
+          "stance_fraction": 0.72375,
+          "hip_outward_mean_deg": 1.3491981516421818,
+          "foot_outward_from_hip_mean_m": 0.11117802241021875
+        }
+      },
+      "stride_period_median_s": 0.495000000000001,
+      "stride_frequency_hz": 2.0202020202020163,
+      "air_time_mean_s": 0.16775590551180744,
+      "swing_clearance_peak_mean_m": 0.03894736879440945,
+      "front_hip_outward_mean_deg": -0.6119179013540207,
+      "rear_hip_outward_mean_deg": 1.564949559857379,
+      "front_feet_width_mean_m": 0.3319398558806563,
+      "rear_feet_width_mean_m": 0.351237910908875,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.01417711186919087,
+        "FL_thigh_joint": 0.9369693640147813,
+        "FL_shank_joint": -1.9878557988909376,
+        "FR_hip_joint": 0.007182852391852188,
+        "FR_thigh_joint": 0.8616602362980625,
+        "FR_shank_joint": -1.9996889301684375,
+        "RL_hip_joint": 0.031079094886316876,
+        "RL_thigh_joint": 0.8277934921539375,
+        "RL_shank_joint": -1.9628955842428124,
+        "RR_hip_joint": -0.02354795000797781,
+        "RR_thigh_joint": 0.9058504780751563,
+        "RR_shank_joint": -1.9532080519790624
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21875200194675,
+          0.16159886721209374,
+          -0.25277308422646877
+        ],
+        "FR": [
+          0.23950348826371876,
+          -0.1703409886685625,
+          -0.24972840232490626
+        ],
+        "RL": [
+          -0.19735742155875,
+          0.17305988849865625,
+          -0.251685381002
+        ],
+        "RR": [
+          -0.2182845909330625,
+          -0.17817802241021874,
+          -0.2552066768055313
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "forward03",
+      "command": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.4709679201272812,
+      "vx_mae": 0.02915496902921875,
+      "vx_rmse": 0.032756480491761004,
+      "vy_mean": 0.026117656052386147,
+      "vy_mae": 0.03582969483787754,
+      "vy_rmse": 0.04326982117195079,
+      "wz_mean": -0.014196698636482537,
+      "wz_mae": 0.039288866931812036,
+      "wz_rmse": 0.04813468292001177,
+      "height_mean_m": 0.27763203275521875,
+      "height_std_m": 0.004259821785632277,
+      "height_min_m": 0.2681848576,
+      "roll_mean_deg": 0.4663737831375764,
+      "roll_std_deg": 0.21565332695177664,
+      "roll_ptp_deg": 1.258129615080292,
+      "pitch_mean_deg": 0.5683004125093649,
+      "pitch_std_deg": 0.3853357163875175,
+      "pitch_ptp_deg": 1.7775853777726518,
+      "gyro_xy_rms_rads": 0.29292614225310887,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.28625086298477503,
+      "joint_dq_rms_rads": 2.1711091776164992,
+      "joint_acc_difference_rms_rads2": 142.0156377608129,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 38,
+          "period_median_s": 0.41000000000000014,
+          "freq_hz": 2.4390243902439015,
+          "air_time_mean_s": 0.14368421052631272,
+          "swing_clearance_peak_mean_m": 0.044574355976578946,
+          "swing_clearance_peak_median_m": 0.044531218405,
+          "stance_fraction": 0.651875,
+          "hip_outward_mean_deg": -0.313474245425906,
+          "foot_outward_from_hip_mean_m": 0.09691756225574999
+        },
+        "FR": {
+          "landing_count": 39,
+          "period_median_s": 0.41000000000000014,
+          "freq_hz": 2.4390243902439015,
+          "air_time_mean_s": 0.17243589743589377,
+          "swing_clearance_peak_mean_m": 0.034429831630512824,
+          "swing_clearance_peak_median_m": 0.03413281677,
+          "stance_fraction": 0.5796875,
+          "hip_outward_mean_deg": 0.5479499134345915,
+          "foot_outward_from_hip_mean_m": 0.10763026470425
+        },
+        "RL": {
+          "landing_count": 39,
+          "period_median_s": 0.41000000000000014,
+          "freq_hz": 2.4390243902439015,
+          "air_time_mean_s": 0.1458974358974328,
+          "swing_clearance_peak_mean_m": 0.06829794031923077,
+          "swing_clearance_peak_median_m": 0.06830251204,
+          "stance_fraction": 0.644375,
+          "hip_outward_mean_deg": 2.8650877581105805,
+          "foot_outward_from_hip_mean_m": 0.11087785520315624
+        },
+        "RR": {
+          "landing_count": 38,
+          "period_median_s": 0.41000000000000014,
+          "freq_hz": 2.4390243902439015,
+          "air_time_mean_s": 0.11802631578947116,
+          "swing_clearance_peak_mean_m": 0.029575838947105262,
+          "swing_clearance_peak_median_m": 0.02955943697,
+          "stance_fraction": 0.7146875,
+          "hip_outward_mean_deg": 2.067718189618299,
+          "foot_outward_from_hip_mean_m": 0.1143903971818125
+        }
+      },
+      "stride_period_median_s": 0.41000000000000014,
+      "stride_frequency_hz": 2.4390243902439015,
+      "air_time_mean_s": 0.1451948051948021,
+      "swing_clearance_peak_mean_m": 0.04431227605935065,
+      "front_hip_outward_mean_deg": 0.11723783400434276,
+      "rear_hip_outward_mean_deg": 2.4664029738644397,
+      "front_feet_width_mean_m": 0.33854782696,
+      "rear_feet_width_mean_m": 0.35926825238496873,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.005471157702886834,
+        "FL_thigh_joint": 0.8737953163314063,
+        "FL_shank_joint": -2.0134166536571874,
+        "FR_hip_joint": -0.009563530125451532,
+        "FR_thigh_joint": 0.8301430196905,
+        "FR_shank_joint": -2.0183027208325,
+        "RL_hip_joint": 0.0500052147376125,
+        "RL_thigh_joint": 0.78384558708875,
+        "RL_shank_joint": -1.9672945425334376,
+        "RR_hip_joint": -0.03608849041221575,
+        "RR_thigh_joint": 0.8326176136180625,
+        "RR_shank_joint": -1.955268794160625
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.23721712627171876,
+          0.16391756225575,
+          -0.2457086986971875
+        ],
+        "FR": [
+          0.2491956356996875,
+          -0.17463026470425,
+          -0.2422369854318125
+        ],
+        "RL": [
+          -0.18638994643815626,
+          0.17787785520315624,
+          -0.24552300159353124
+        ],
+        "RR": [
+          -0.1992799687086875,
+          -0.1813903971818125,
+          -0.25147366919209374
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "forward05",
+      "command": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.25312285623,
+      "vx_mae": 0.051766718303062495,
+      "vx_rmse": 0.06023491774652877,
+      "vy_mean": -0.005597877434409866,
+      "vy_mae": 0.043669791060239965,
+      "vy_rmse": 0.04993249355918998,
+      "wz_mean": -0.0257190284328219,
+      "wz_mae": 0.052621058364162164,
+      "wz_rmse": 0.06563218745866367,
+      "height_mean_m": 0.2784177651411875,
+      "height_std_m": 0.0018831160757583438,
+      "height_min_m": 0.2749580891,
+      "roll_mean_deg": -0.2319029538483308,
+      "roll_std_deg": 0.3115435095545525,
+      "roll_ptp_deg": 1.5172361641645156,
+      "pitch_mean_deg": -1.439811935051139,
+      "pitch_std_deg": 0.3409371989602103,
+      "pitch_ptp_deg": 1.4163275572075447,
+      "gyro_xy_rms_rads": 0.21347142810079928,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.19573550121813132,
+      "joint_dq_rms_rads": 1.528046861582197,
+      "joint_acc_difference_rms_rads2": 97.03711179888093,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 30,
+          "period_median_s": 0.5250000000000004,
+          "freq_hz": 1.9047619047619035,
+          "air_time_mean_s": 0.1423333333333303,
+          "swing_clearance_peak_mean_m": 0.048522160954,
+          "swing_clearance_peak_median_m": 0.048438354475,
+          "stance_fraction": 0.730625,
+          "hip_outward_mean_deg": -0.9447596283029647,
+          "foot_outward_from_hip_mean_m": 0.0939873108959375
+        },
+        "FR": {
+          "landing_count": 30,
+          "period_median_s": 0.5250000000000004,
+          "freq_hz": 1.9047619047619035,
+          "air_time_mean_s": 0.140999999999997,
+          "swing_clearance_peak_mean_m": 0.03835641920866666,
+          "swing_clearance_peak_median_m": 0.03856741750999999,
+          "stance_fraction": 0.73125,
+          "hip_outward_mean_deg": -0.2556262439852353,
+          "foot_outward_from_hip_mean_m": 0.1041264347625
+        },
+        "RL": {
+          "landing_count": 30,
+          "period_median_s": 0.5250000000000004,
+          "freq_hz": 1.9047619047619035,
+          "air_time_mean_s": 0.18949999999999595,
+          "swing_clearance_peak_mean_m": 0.039684614066,
+          "swing_clearance_peak_median_m": 0.039788912845,
+          "stance_fraction": 0.63875,
+          "hip_outward_mean_deg": 0.7799772761241417,
+          "foot_outward_from_hip_mean_m": 0.101486196118
+        },
+        "RR": {
+          "landing_count": 30,
+          "period_median_s": 0.5250000000000004,
+          "freq_hz": 1.9047619047619035,
+          "air_time_mean_s": 0.2204999999999953,
+          "swing_clearance_peak_mean_m": 0.03788133286433333,
+          "swing_clearance_peak_median_m": 0.03755268719,
+          "stance_fraction": 0.5840625,
+          "hip_outward_mean_deg": -0.6524921532267847,
+          "foot_outward_from_hip_mean_m": 0.10231556221053124
+        }
+      },
+      "stride_period_median_s": 0.5250000000000004,
+      "stride_frequency_hz": 1.9047619047619035,
+      "air_time_mean_s": 0.17333333333332965,
+      "swing_clearance_peak_mean_m": 0.04111113177325,
+      "front_hip_outward_mean_deg": -0.6001929361441,
+      "rear_hip_outward_mean_deg": 0.06374256144867851,
+      "front_feet_width_mean_m": 0.3321137456584375,
+      "rear_feet_width_mean_m": 0.33780175832853127,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.01648916615380454,
+        "FL_thigh_joint": 1.1966338878390625,
+        "FL_shank_joint": -1.928459765873125,
+        "FR_hip_joint": 0.0044615196120487075,
+        "FR_thigh_joint": 1.1036418227134375,
+        "FR_shank_joint": -1.940365818230625,
+        "RL_hip_joint": 0.01361317155910323,
+        "RL_thigh_joint": 1.0830180904680313,
+        "RL_shank_joint": -2.0280297827434377,
+        "RR_hip_joint": 0.011388136417234735,
+        "RR_thigh_joint": 1.2324451842721875,
+        "RR_shank_joint": -2.0008027020365624
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.14446377753675624,
+          0.1609873108959375,
+          -0.252742950189375
+        ],
+        "FR": [
+          0.16998237409175,
+          -0.1711264347625,
+          -0.2559553934239063
+        ],
+        "RL": [
+          -0.25267413508846875,
+          0.168486196118,
+          -0.24169834800290624
+        ],
+        "RR": [
+          -0.2929884679718125,
+          -0.16931556221053126,
+          -0.24063780515846875
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "backward03",
+      "command": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.437369990479125,
+      "vx_mae": 0.063293902473,
+      "vx_rmse": 0.07050759842316973,
+      "vy_mean": -0.01294748789492857,
+      "vy_mae": 0.04163868074822518,
+      "vy_rmse": 0.04836175649739787,
+      "wz_mean": -0.012679050816501924,
+      "wz_mae": 0.0406204521233118,
+      "wz_rmse": 0.049788167881148405,
+      "height_mean_m": 0.2761002509436875,
+      "height_std_m": 0.0022868484246371407,
+      "height_min_m": 0.2711937487,
+      "roll_mean_deg": -0.45090756780308294,
+      "roll_std_deg": 0.23322337308482347,
+      "roll_ptp_deg": 1.0560672896497059,
+      "pitch_mean_deg": -1.7881761981235273,
+      "pitch_std_deg": 0.3668763574725944,
+      "pitch_ptp_deg": 1.5391005662287078,
+      "gyro_xy_rms_rads": 0.22501564109230485,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.2046079931508756,
+      "joint_dq_rms_rads": 2.2799011620332186,
+      "joint_acc_difference_rms_rads2": 135.0897371282667,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 33,
+          "period_median_s": 0.47500000000000053,
+          "freq_hz": 2.1052631578947345,
+          "air_time_mean_s": 0.14303030303029998,
+          "swing_clearance_peak_mean_m": 0.06027308596363636,
+          "swing_clearance_peak_median_m": 0.05999847223,
+          "stance_fraction": 0.70375,
+          "hip_outward_mean_deg": -0.7239372393592786,
+          "foot_outward_from_hip_mean_m": 0.09499395499128124
+        },
+        "FR": {
+          "landing_count": 34,
+          "period_median_s": 0.4750000000000014,
+          "freq_hz": 2.1052631578947305,
+          "air_time_mean_s": 0.16338235294117298,
+          "swing_clearance_peak_mean_m": 0.05522700295529412,
+          "swing_clearance_peak_median_m": 0.05504471843,
+          "stance_fraction": 0.6528125,
+          "hip_outward_mean_deg": 0.15388004662445737,
+          "foot_outward_from_hip_mean_m": 0.1059060614875
+        },
+        "RL": {
+          "landing_count": 34,
+          "period_median_s": 0.47499999999999964,
+          "freq_hz": 2.1052631578947385,
+          "air_time_mean_s": 0.2026470588235251,
+          "swing_clearance_peak_mean_m": 0.049979873439411765,
+          "swing_clearance_peak_median_m": 0.049961191235,
+          "stance_fraction": 0.569375,
+          "hip_outward_mean_deg": 1.2364782844419384,
+          "foot_outward_from_hip_mean_m": 0.10333451994453124
+        },
+        "RR": {
+          "landing_count": 33,
+          "period_median_s": 0.4750000000000014,
+          "freq_hz": 2.1052631578947305,
+          "air_time_mean_s": 0.191060606060602,
+          "swing_clearance_peak_mean_m": 0.03784396687393939,
+          "swing_clearance_peak_median_m": 0.03768759144,
+          "stance_fraction": 0.6046875,
+          "hip_outward_mean_deg": -0.5703893056997238,
+          "foot_outward_from_hip_mean_m": 0.10279673269225
+        }
+      },
+      "stride_period_median_s": 0.475000000000001,
+      "stride_frequency_hz": 2.1052631578947327,
+      "air_time_mean_s": 0.17514925373133955,
+      "swing_clearance_peak_mean_m": 0.05085743687358209,
+      "front_hip_outward_mean_deg": -0.2850285963674106,
+      "rear_hip_outward_mean_deg": 0.3330444893711073,
+      "front_feet_width_mean_m": 0.33490001647878126,
+      "rear_feet_width_mean_m": 0.34013125263678123,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.012635088404617694,
+        "FL_thigh_joint": 1.2218562207115,
+        "FL_shank_joint": -1.9314417977334375,
+        "FR_hip_joint": -0.0026857134667191674,
+        "FR_thigh_joint": 1.1265940329403126,
+        "FR_shank_joint": -1.9535811108390626,
+        "RL_hip_joint": 0.021580617192922803,
+        "RL_thigh_joint": 1.1025862256393437,
+        "RL_shank_joint": -2.0582315809009377,
+        "RR_hip_joint": 0.009955171402624639,
+        "RR_thigh_joint": 1.2428091108725938,
+        "RR_shank_joint": -2.002455861083125
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.1383306892459625,
+          0.16199395499128125,
+          -0.24759963490346876
+        ],
+        "FR": [
+          0.16573666530940312,
+          -0.1729060614875,
+          -0.24972333629828125
+        ],
+        "RL": [
+          -0.25362547665459373,
+          0.17033451994453125,
+          -0.23344546770903124
+        ],
+        "RR": [
+          -0.29528771475721877,
+          -0.16979673269225,
+          -0.23758702051615624
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "backward05",
+      "command": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.03446352613469531,
+      "vx_mae": 0.03880380438620031,
+      "vx_rmse": 0.04896514187843932,
+      "vy_mean": 0.26427816980590624,
+      "vy_mae": 0.03576286632403124,
+      "vy_rmse": 0.040575689482103876,
+      "wz_mean": 0.02170662977310036,
+      "wz_mae": 0.03809901729802439,
+      "wz_rmse": 0.042753867867436575,
+      "height_mean_m": 0.28264209269678126,
+      "height_std_m": 0.0010117087954708954,
+      "height_min_m": 0.280188003,
+      "roll_mean_deg": 0.20356295827822218,
+      "roll_std_deg": 0.3596035687017216,
+      "roll_ptp_deg": 1.473977625459725,
+      "pitch_mean_deg": -1.038110845563188,
+      "pitch_std_deg": 0.5079577996173148,
+      "pitch_ptp_deg": 1.6437853055071128,
+      "gyro_xy_rms_rads": 0.25353982355309684,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.22508548997061953,
+      "joint_dq_rms_rads": 1.6000411996707053,
+      "joint_acc_difference_rms_rads2": 124.84324295805757,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 37,
+          "period_median_s": 0.41999999999999993,
+          "freq_hz": 2.3809523809523814,
+          "air_time_mean_s": 0.16540540540540188,
+          "swing_clearance_peak_mean_m": 0.04399300500378378,
+          "swing_clearance_peak_median_m": 0.04396863434,
+          "stance_fraction": 0.605,
+          "hip_outward_mean_deg": 0.37063944061037163,
+          "foot_outward_from_hip_mean_m": 0.09974049798971875
+        },
+        "FR": {
+          "landing_count": 38,
+          "period_median_s": 0.41999999999999993,
+          "freq_hz": 2.3809523809523814,
+          "air_time_mean_s": 0.1449999999999969,
+          "swing_clearance_peak_mean_m": 0.042659803429210524,
+          "swing_clearance_peak_median_m": 0.04318002017,
+          "stance_fraction": 0.655625,
+          "hip_outward_mean_deg": -0.5732673812623125,
+          "foot_outward_from_hip_mean_m": 0.10279261453484374
+        },
+        "RL": {
+          "landing_count": 38,
+          "period_median_s": 0.41999999999999993,
+          "freq_hz": 2.3809523809523814,
+          "air_time_mean_s": 0.16263157894736496,
+          "swing_clearance_peak_mean_m": 0.05333465407421053,
+          "swing_clearance_peak_median_m": 0.05290362217,
+          "stance_fraction": 0.61375,
+          "hip_outward_mean_deg": 2.0948458385206687,
+          "foot_outward_from_hip_mean_m": 0.10751874929140624
+        },
+        "RR": {
+          "landing_count": 37,
+          "period_median_s": 0.41999999999999993,
+          "freq_hz": 2.3809523809523814,
+          "air_time_mean_s": 0.17135135135134769,
+          "swing_clearance_peak_mean_m": 0.03406971774675676,
+          "swing_clearance_peak_median_m": 0.03417036782,
+          "stance_fraction": 0.5903125,
+          "hip_outward_mean_deg": -0.28602175971628574,
+          "foot_outward_from_hip_mean_m": 0.10407315733318749
+        }
+      },
+      "stride_period_median_s": 0.41999999999999993,
+      "stride_frequency_hz": 2.3809523809523814,
+      "air_time_mean_s": 0.16099999999999656,
+      "swing_clearance_peak_mean_m": 0.04357406751266667,
+      "front_hip_outward_mean_deg": -0.10131397032597042,
+      "rear_hip_outward_mean_deg": 0.9044120394021915,
+      "front_feet_width_mean_m": 0.3365331125245625,
+      "rear_feet_width_mean_m": 0.34559190662459377,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.006468878576400966,
+        "FL_thigh_joint": 1.0939694049103126,
+        "FL_shank_joint": -1.953298920535,
+        "FR_hip_joint": 0.010005403297313,
+        "FR_thigh_joint": 0.9759447926465312,
+        "FR_shank_joint": -1.9745915976025,
+        "RL_hip_joint": 0.03656195720388713,
+        "RL_thigh_joint": 0.985701816010875,
+        "RL_shank_joint": -2.0067821564246877,
+        "RR_hip_joint": 0.004992021439397269,
+        "RR_thigh_joint": 1.0922619337515624,
+        "RR_shank_joint": -2.0096625621928124
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.174402396695625,
+          0.16674049798971874,
+          -0.254041052937
+        ],
+        "FR": [
+          0.20702205027375,
+          -0.16979261453484376,
+          -0.255113886348875
+        ],
+        "RL": [
+          -0.23252916780875,
+          0.17451874929140626,
+          -0.24463221694909376
+        ],
+        "RR": [
+          -0.25773408206975,
+          -0.1710731573331875,
+          -0.24672111006496875
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "left03",
+      "command": [
+        0.0,
+        0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.008726574711034125,
+      "vx_mae": 0.014432135843234738,
+      "vx_rmse": 0.017578379173565275,
+      "vy_mean": -0.26022676103109377,
+      "vy_mae": 0.03992744356940624,
+      "vy_rmse": 0.04397749609171883,
+      "wz_mean": 0.008023119583969831,
+      "wz_mae": 0.03711119940725154,
+      "wz_rmse": 0.04560874629468964,
+      "height_mean_m": 0.2817842647589687,
+      "height_std_m": 0.001997917986690775,
+      "height_min_m": 0.2784724293,
+      "roll_mean_deg": -0.0678628458917295,
+      "roll_std_deg": 0.2700874671253459,
+      "roll_ptp_deg": 1.4268124195789795,
+      "pitch_mean_deg": -0.517098855376628,
+      "pitch_std_deg": 0.5990733535091339,
+      "pitch_ptp_deg": 2.0225703386145213,
+      "gyro_xy_rms_rads": 0.2706630154264496,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.23554329481095476,
+      "joint_dq_rms_rads": 1.7079148766414565,
+      "joint_acc_difference_rms_rads2": 140.81530838014228,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 39,
+          "period_median_s": 0.4049999999999998,
+          "freq_hz": 2.469135802469137,
+          "air_time_mean_s": 0.12320512820512558,
+          "swing_clearance_peak_mean_m": 0.04555368414410257,
+          "swing_clearance_peak_median_m": 0.04520576367,
+          "stance_fraction": 0.6940625,
+          "hip_outward_mean_deg": -0.2153260703286089,
+          "foot_outward_from_hip_mean_m": 0.09761257931915625
+        },
+        "FR": {
+          "landing_count": 39,
+          "period_median_s": 0.4050000000000007,
+          "freq_hz": 2.4691358024691317,
+          "air_time_mean_s": 0.15128205128204805,
+          "swing_clearance_peak_mean_m": 0.04183553284128205,
+          "swing_clearance_peak_median_m": 0.04200200522,
+          "stance_fraction": 0.63,
+          "hip_outward_mean_deg": 0.6665239292075301,
+          "foot_outward_from_hip_mean_m": 0.10816563753365624
+        },
+        "RL": {
+          "landing_count": 39,
+          "period_median_s": 0.4049999999999998,
+          "freq_hz": 2.469135802469137,
+          "air_time_mean_s": 0.18115384615384228,
+          "swing_clearance_peak_mean_m": 0.04843575125307692,
+          "swing_clearance_peak_median_m": 0.04830083892,
+          "stance_fraction": 0.5565625,
+          "hip_outward_mean_deg": 1.330112796631878,
+          "foot_outward_from_hip_mean_m": 0.10390682725071874
+        },
+        "RR": {
+          "landing_count": 39,
+          "period_median_s": 0.40749999999999975,
+          "freq_hz": 2.453987730061351,
+          "air_time_mean_s": 0.1544871794871762,
+          "swing_clearance_peak_mean_m": 0.04322452115307692,
+          "swing_clearance_peak_median_m": 0.04318542155,
+          "stance_fraction": 0.6184375,
+          "hip_outward_mean_deg": 0.3877901199479462,
+          "foot_outward_from_hip_mean_m": 0.10680212691575
+        }
+      },
+      "stride_period_median_s": 0.40500000000000025,
+      "stride_frequency_hz": 2.4691358024691343,
+      "air_time_mean_s": 0.15253205128204803,
+      "swing_clearance_peak_mean_m": 0.04476237234788462,
+      "front_hip_outward_mean_deg": 0.2255989294394606,
+      "rear_hip_outward_mean_deg": 0.858951458289912,
+      "front_feet_width_mean_m": 0.3397782168528125,
+      "rear_feet_width_mean_m": 0.34470895416646874,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.0037581488926150936,
+        "FL_thigh_joint": 1.123661249940625,
+        "FL_shank_joint": -1.95422384081375,
+        "FR_hip_joint": -0.011633037108001,
+        "FR_thigh_joint": 1.006294036726875,
+        "FR_shank_joint": -1.97418059273625,
+        "RL_hip_joint": 0.023214847724136012,
+        "RL_thigh_joint": 0.977527523954625,
+        "RL_shank_joint": -2.01642975324625,
+        "RR_hip_joint": -0.006768214399795403,
+        "RR_thigh_joint": 1.1279229747515624,
+        "RR_shank_joint": -1.9817473697740624
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.16682385761140625,
+          0.16461257931915624,
+          -0.253106039545875
+        ],
+        "FR": [
+          0.19982433057690624,
+          -0.17516563753365624,
+          -0.2530985187240313
+        ],
+        "RL": [
+          -0.2290321543215,
+          0.17090682725071876,
+          -0.2449569147563125
+        ],
+        "RR": [
+          -0.270930826402625,
+          -0.17380212691575,
+          -0.2479746934755
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "right03",
+      "command": [
+        0.0,
+        -0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.03377006822348062,
+      "vx_mae": 0.03377006822348062,
+      "vx_rmse": 0.038968246526303985,
+      "vy_mean": 0.008602861254157464,
+      "vy_mae": 0.019063289181108747,
+      "vy_rmse": 0.025007567925215815,
+      "wz_mean": 0.291080006335375,
+      "wz_mae": 0.0536699605654375,
+      "wz_rmse": 0.05999170605808398,
+      "height_mean_m": 0.28123976088471875,
+      "height_std_m": 0.0016432342734796466,
+      "height_min_m": 0.278290571,
+      "roll_mean_deg": -0.14095156761005415,
+      "roll_std_deg": 0.2280974527666928,
+      "roll_ptp_deg": 0.8258192025103828,
+      "pitch_mean_deg": -0.9373266908999794,
+      "pitch_std_deg": 0.16605237106833462,
+      "pitch_ptp_deg": 0.877389118958613,
+      "gyro_xy_rms_rads": 0.1755918084059691,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.1760310202910445,
+      "joint_dq_rms_rads": 0.8402326546273353,
+      "joint_acc_difference_rms_rads2": 70.76651124978031,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 34,
+          "period_median_s": 0.46000000000000085,
+          "freq_hz": 2.1739130434782568,
+          "air_time_mean_s": 0.11338235294117405,
+          "swing_clearance_peak_mean_m": 0.02057488241764706,
+          "swing_clearance_peak_median_m": 0.020290906925,
+          "stance_fraction": 0.7590625,
+          "hip_outward_mean_deg": -0.7873897909681935,
+          "foot_outward_from_hip_mean_m": 0.0947205366358125
+        },
+        "FR": {
+          "landing_count": 35,
+          "period_median_s": 0.4600000000000004,
+          "freq_hz": 2.173913043478259,
+          "air_time_mean_s": 0.1291428571428544,
+          "swing_clearance_peak_mean_m": 0.022566950268571428,
+          "swing_clearance_peak_median_m": 0.02280694551,
+          "stance_fraction": 0.7175,
+          "hip_outward_mean_deg": -0.7948537870016352,
+          "foot_outward_from_hip_mean_m": 0.10170760276765625
+        },
+        "RL": {
+          "landing_count": 34,
+          "period_median_s": 0.46000000000000085,
+          "freq_hz": 2.1739130434782568,
+          "air_time_mean_s": 0.17147058823529046,
+          "swing_clearance_peak_mean_m": 0.02639233212735294,
+          "swing_clearance_peak_median_m": 0.026460585085000002,
+          "stance_fraction": 0.6246875,
+          "hip_outward_mean_deg": 1.4079490184911518,
+          "foot_outward_from_hip_mean_m": 0.10453078943196875
+        },
+        "RR": {
+          "landing_count": 34,
+          "period_median_s": 0.46000000000000085,
+          "freq_hz": 2.1739130434782568,
+          "air_time_mean_s": 0.14411764705882046,
+          "swing_clearance_peak_mean_m": 0.02689227692970588,
+          "swing_clearance_peak_median_m": 0.02617229737,
+          "stance_fraction": 0.69375,
+          "hip_outward_mean_deg": -0.3347866551196288,
+          "foot_outward_from_hip_mean_m": 0.1036094303386875
+        }
+      },
+      "stride_period_median_s": 0.46000000000000085,
+      "stride_frequency_hz": 2.1739130434782568,
+      "air_time_mean_s": 0.13945255474452256,
+      "swing_clearance_peak_mean_m": 0.024095372040437955,
+      "front_hip_outward_mean_deg": -0.7911217889849144,
+      "rear_hip_outward_mean_deg": 0.5365811816857615,
+      "front_feet_width_mean_m": 0.33042813940346877,
+      "rear_feet_width_mean_m": 0.34214021977065623,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.013742544348984887,
+        "FL_thigh_joint": 1.13082559988375,
+        "FL_shank_joint": -1.924210798660625,
+        "FR_hip_joint": 0.013872815655124241,
+        "FR_thigh_joint": 0.9993138359185938,
+        "FR_shank_joint": -1.954857679516875,
+        "RL_hip_joint": 0.024573346072893125,
+        "RL_thigh_joint": 0.990943383028875,
+        "RL_shank_joint": -1.9950777908646875,
+        "RR_hip_joint": 0.005843129423576253,
+        "RR_thigh_joint": 1.1050613324771874,
+        "RR_shank_joint": -1.9843255817809375
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.16051505091734375,
+          0.1617205366358125,
+          -0.25923862462921876
+        ],
+        "FR": [
+          0.1990172991203125,
+          -0.16870760276765626,
+          -0.25962870427428125
+        ],
+        "RL": [
+          -0.234318045531,
+          0.17153078943196876,
+          -0.24940036575134375
+        ],
+        "RR": [
+          -0.26437589831665625,
+          -0.1706094303386875,
+          -0.25086910388109374
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "turn_left03",
+      "command": [
+        0.0,
+        0.0,
+        0.3
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.026790142012127812,
+      "vx_mae": 0.026790142012127812,
+      "vx_rmse": 0.029577474293867454,
+      "vy_mean": 0.005455287951551263,
+      "vy_mae": 0.024169862167422056,
+      "vy_rmse": 0.028857693722988,
+      "wz_mean": -0.287992807345125,
+      "wz_mae": 0.051928673569562496,
+      "wz_rmse": 0.060078653501606114,
+      "height_mean_m": 0.2805314155861875,
+      "height_std_m": 0.0020129000753904953,
+      "height_min_m": 0.2763433571,
+      "roll_mean_deg": -0.18693496139982657,
+      "roll_std_deg": 0.2184182411566129,
+      "roll_ptp_deg": 1.0636584191084375,
+      "pitch_mean_deg": -1.4275609709375956,
+      "pitch_std_deg": 0.13368037891137852,
+      "pitch_ptp_deg": 0.7241688991093049,
+      "gyro_xy_rms_rads": 0.1419694531863215,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.14147125856797618,
+      "joint_dq_rms_rads": 0.9580377676097228,
+      "joint_acc_difference_rms_rads2": 79.48980620665392,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 35,
+          "period_median_s": 0.45499999999999874,
+          "freq_hz": 2.1978021978022038,
+          "air_time_mean_s": 0.13299999999999718,
+          "swing_clearance_peak_mean_m": 0.038004141586857144,
+          "swing_clearance_peak_median_m": 0.03801350764,
+          "stance_fraction": 0.7090625,
+          "hip_outward_mean_deg": -2.0785858499492176,
+          "foot_outward_from_hip_mean_m": 0.08901740574090625
+        },
+        "FR": {
+          "landing_count": 36,
+          "period_median_s": 0.4500000000000002,
+          "freq_hz": 2.2222222222222214,
+          "air_time_mean_s": 0.10791666666666437,
+          "swing_clearance_peak_mean_m": 0.016366763475833334,
+          "swing_clearance_peak_median_m": 0.016506592405,
+          "stance_fraction": 0.7571875,
+          "hip_outward_mean_deg": -2.1871583869801183,
+          "foot_outward_from_hip_mean_m": 0.09524016666040624
+        },
+        "RL": {
+          "landing_count": 36,
+          "period_median_s": 0.4500000000000002,
+          "freq_hz": 2.2222222222222214,
+          "air_time_mean_s": 0.11499999999999755,
+          "swing_clearance_peak_mean_m": 0.020575048078333335,
+          "swing_clearance_peak_median_m": 0.02089075985,
+          "stance_fraction": 0.74125,
+          "hip_outward_mean_deg": 1.1373709703780028,
+          "foot_outward_from_hip_mean_m": 0.10325442591159374
+        },
+        "RR": {
+          "landing_count": 35,
+          "period_median_s": 0.45000000000000107,
+          "freq_hz": 2.222222222222217,
+          "air_time_mean_s": 0.15714285714285378,
+          "swing_clearance_peak_mean_m": 0.03256800174228571,
+          "swing_clearance_peak_median_m": 0.03284361868,
+          "stance_fraction": 0.65625,
+          "hip_outward_mean_deg": 0.733180034387512,
+          "foot_outward_from_hip_mean_m": 0.1083996824486875
+        }
+      },
+      "stride_period_median_s": 0.45000000000000107,
+      "stride_frequency_hz": 2.222222222222217,
+      "air_time_mean_s": 0.1280281690140818,
+      "swing_clearance_peak_mean_m": 0.026760072059647887,
+      "front_hip_outward_mean_deg": -2.132872118464668,
+      "rear_hip_outward_mean_deg": 0.9352755023827575,
+      "front_feet_width_mean_m": 0.3182575724013125,
+      "rear_feet_width_mean_m": 0.34565410836028126,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.036278166866978656,
+        "FL_thigh_joint": 1.0984815532665626,
+        "FL_shank_joint": -1.9677644467171875,
+        "FR_hip_joint": 0.03817311511541134,
+        "FR_thigh_joint": 1.0363244443628126,
+        "FR_shank_joint": -1.9513248486365624,
+        "RL_hip_joint": 0.019850868249699043,
+        "RL_thigh_joint": 1.041475023512,
+        "RL_shank_joint": -1.9923337650096875,
+        "RR_hip_joint": -0.01279640560994733,
+        "RR_thigh_joint": 1.111306852411875,
+        "RR_shank_joint": -2.0007464262484373
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.1754737721548125,
+          0.15601740574090625,
+          -0.2564165503622188
+        ],
+        "FR": [
+          0.1892384131509375,
+          -0.16224016666040625,
+          -0.2620388292933125
+        ],
+        "RL": [
+          -0.24726744398053124,
+          0.17025442591159376,
+          -0.24933091033434374
+        ],
+        "RR": [
+          -0.26347752260184376,
+          -0.1753996824486875,
+          -0.246143043718625
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "new4000.pt",
+      "case": "turn_right03",
+      "command": [
+        0.0,
+        0.0,
+        -0.3
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 2.0281286468510314e-06,
+      "vx_mae": 0.0002512068784866896,
+      "vx_rmse": 0.000308636146555204,
+      "vy_mean": 5.727616564052155e-07,
+      "vy_mae": 0.000301688515321617,
+      "vy_rmse": 0.0003853615969182957,
+      "wz_mean": -9.238925807323218e-06,
+      "wz_mae": 0.0021854453616605312,
+      "wz_rmse": 0.0027465597537967624,
+      "height_mean_m": 0.3031765622059687,
+      "height_std_m": 3.657580218445951e-05,
+      "height_min_m": 0.3030977505,
+      "roll_mean_deg": 0.04999179138027246,
+      "roll_std_deg": 0.007004333123624753,
+      "roll_ptp_deg": 0.04913992332506822,
+      "pitch_mean_deg": 0.017969329604193153,
+      "pitch_std_deg": 0.00646601659198694,
+      "pitch_ptp_deg": 0.04308988601037,
+      "gyro_xy_rms_rads": 0.004659840567551151,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.004687029295322991,
+      "joint_dq_rms_rads": 0.00444833469473491,
+      "joint_acc_difference_rms_rads2": 0.27009900326248687,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": -0.31587655935286313,
+          "foot_outward_from_hip_mean_m": 0.0967974365470625
+        },
+        "FR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.6558571775598384,
+          "foot_outward_from_hip_mean_m": 0.10848146726687499
+        },
+        "RL": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": 0.7496563037537907,
+          "foot_outward_from_hip_mean_m": 0.1020499055678125
+        },
+        "RR": {
+          "landing_count": 0,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": null,
+          "swing_clearance_peak_mean_m": null,
+          "swing_clearance_peak_median_m": null,
+          "stance_fraction": 1,
+          "hip_outward_mean_deg": -0.4704220414541652,
+          "foot_outward_from_hip_mean_m": 0.10294053002309375
+        }
+      },
+      "stride_period_median_s": null,
+      "stride_frequency_hz": null,
+      "air_time_mean_s": null,
+      "swing_clearance_peak_mean_m": null,
+      "front_hip_outward_mean_deg": 0.16999030910348764,
+      "rear_hip_outward_mean_deg": 0.13961713114981272,
+      "front_feet_width_mean_m": 0.3392789038139375,
+      "rear_feet_width_mean_m": 0.33899043559090625,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.00551308599057875,
+        "FL_thigh_joint": 0.9016321851991562,
+        "FL_shank_joint": -1.8270655518221874,
+        "FR_hip_joint": -0.01144686717125625,
+        "FR_thigh_joint": 0.9113044591800312,
+        "FR_shank_joint": -1.816225830043125,
+        "RL_hip_joint": 0.013083970758834374,
+        "RL_thigh_joint": 0.89843361166525,
+        "RL_shank_joint": -1.8141655122978124,
+        "RR_hip_joint": 0.008210413497328437,
+        "RR_thigh_joint": 0.9178476331955,
+        "RR_shank_joint": -1.8286014629771874
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.20756043416634376,
+          0.1637974365470625,
+          -0.28163033868478127
+        ],
+        "FR": [
+          0.203243592400875,
+          -0.175481467266875,
+          -0.28143711899728124
+        ],
+        "RL": [
+          -0.23441507578746876,
+          0.1690499055678125,
+          -0.2818742431319375
+        ],
+        "RR": [
+          -0.2377734820570625,
+          -0.16994053002309376,
+          -0.2814586677233125
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "stand",
+      "command": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.28760498902971876,
+      "vx_mae": 0.016664207916468745,
+      "vx_rmse": 0.02154096743528305,
+      "vy_mean": -0.011036812707379834,
+      "vy_mae": 0.01719883741875506,
+      "vy_rmse": 0.02087571806324354,
+      "wz_mean": -0.015434259810016391,
+      "wz_mae": 0.07973204165686534,
+      "wz_rmse": 0.09159207313644804,
+      "height_mean_m": 0.28906293089153123,
+      "height_std_m": 0.0045622678011225035,
+      "height_min_m": 0.2793676611,
+      "roll_mean_deg": 0.44980321130214335,
+      "roll_std_deg": 0.3086757462785949,
+      "roll_ptp_deg": 1.1647917528323217,
+      "pitch_mean_deg": -0.06927266664470502,
+      "pitch_std_deg": 0.1913471137821833,
+      "pitch_ptp_deg": 0.9102089705336363,
+      "gyro_xy_rms_rads": 0.1510624519314288,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.14067943672459193,
+      "joint_dq_rms_rads": 1.3364332097920364,
+      "joint_acc_difference_rms_rads2": 92.64338034553151,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 32,
+          "period_median_s": 0.4949999999999992,
+          "freq_hz": 2.0202020202020234,
+          "air_time_mean_s": 0.1835937499999961,
+          "swing_clearance_peak_mean_m": 0.0422878136890625,
+          "swing_clearance_peak_median_m": 0.042270530865,
+          "stance_fraction": 0.6284375,
+          "hip_outward_mean_deg": -0.2063674705323793,
+          "foot_outward_from_hip_mean_m": 0.09730707143049999
+        },
+        "FR": {
+          "landing_count": 32,
+          "period_median_s": 0.4949999999999992,
+          "freq_hz": 2.0202020202020234,
+          "air_time_mean_s": 0.18906249999999597,
+          "swing_clearance_peak_mean_m": 0.0411148936528125,
+          "swing_clearance_peak_median_m": 0.041597554435,
+          "stance_fraction": 0.6171875,
+          "hip_outward_mean_deg": 0.7794026176224796,
+          "foot_outward_from_hip_mean_m": 0.108685172548875
+        },
+        "RL": {
+          "landing_count": 32,
+          "period_median_s": 0.4949999999999992,
+          "freq_hz": 2.0202020202020234,
+          "air_time_mean_s": 0.1929687499999959,
+          "swing_clearance_peak_mean_m": 0.037395751096875,
+          "swing_clearance_peak_median_m": 0.037759110675,
+          "stance_fraction": 0.6090625,
+          "hip_outward_mean_deg": -1.121740786926004,
+          "foot_outward_from_hip_mean_m": 0.09314395800046875
+        },
+        "RR": {
+          "landing_count": 32,
+          "period_median_s": 0.4949999999999992,
+          "freq_hz": 2.0202020202020234,
+          "air_time_mean_s": 0.19859374999999577,
+          "swing_clearance_peak_mean_m": 0.037840131909375,
+          "swing_clearance_peak_median_m": 0.0376853734,
+          "stance_fraction": 0.5984375,
+          "hip_outward_mean_deg": 0.9262528601085643,
+          "foot_outward_from_hip_mean_m": 0.10919231708018749
+        }
+      },
+      "stride_period_median_s": 0.4949999999999992,
+      "stride_frequency_hz": 2.0202020202020234,
+      "air_time_mean_s": 0.19105468749999593,
+      "swing_clearance_peak_mean_m": 0.03965964758703125,
+      "front_hip_outward_mean_deg": 0.28651757354505014,
+      "rear_hip_outward_mean_deg": -0.09774396340871988,
+      "front_feet_width_mean_m": 0.339992243979375,
+      "rear_feet_width_mean_m": 0.3363362750806563,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.003601791829802394,
+        "FL_thigh_joint": 0.9331935612611563,
+        "FL_shank_joint": -1.943634263805,
+        "FR_hip_joint": -0.013603141876174648,
+        "FR_thigh_joint": 0.918358027700375,
+        "FR_shank_joint": -1.9478893947996876,
+        "RL_hip_joint": -0.01957807008577093,
+        "RL_thigh_joint": 0.9155979902219687,
+        "RL_shank_joint": -1.9514466300796875,
+        "RR_hip_joint": -0.01616616211490889,
+        "RR_thigh_joint": 0.9222434835565938,
+        "RR_shank_joint": -1.9546219922034376
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21456997266612501,
+          0.1643070714305,
+          -0.26007093207996873
+        ],
+        "FR": [
+          0.21858548924534374,
+          -0.175685172548875,
+          -0.2576852664346562
+        ],
+        "RL": [
+          -0.221379755162,
+          0.16014395800046874,
+          -0.26034654966346876
+        ],
+        "RR": [
+          -0.22218911371028124,
+          -0.1761923170801875,
+          -0.2563393041560625
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "forward03",
+      "command": [
+        0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.464856838179375,
+      "vx_mae": 0.03621072310975,
+      "vx_rmse": 0.04203651048773825,
+      "vy_mean": -0.010283323980177594,
+      "vy_mae": 0.015809844875020882,
+      "vy_rmse": 0.018975319306122413,
+      "wz_mean": -0.008511955872964813,
+      "wz_mae": 0.07066900800483819,
+      "wz_rmse": 0.07825063023859444,
+      "height_mean_m": 0.28710175527715626,
+      "height_std_m": 0.003058392278726293,
+      "height_min_m": 0.2802089355,
+      "roll_mean_deg": 0.21294316219535647,
+      "roll_std_deg": 0.3139257756708026,
+      "roll_ptp_deg": 1.261451947524657,
+      "pitch_mean_deg": -0.0735570151791109,
+      "pitch_std_deg": 0.2972237332388616,
+      "pitch_ptp_deg": 1.158125868222466,
+      "gyro_xy_rms_rads": 0.17042969520289813,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.14445090532770524,
+      "joint_dq_rms_rads": 1.8024081817818698,
+      "joint_acc_difference_rms_rads2": 124.07014955463526,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 37,
+          "period_median_s": 0.4349999999999987,
+          "freq_hz": 2.2988505747126506,
+          "air_time_mean_s": 0.16783783783783426,
+          "swing_clearance_peak_mean_m": 0.04452592184675676,
+          "swing_clearance_peak_median_m": 0.04413539838,
+          "stance_fraction": 0.611875,
+          "hip_outward_mean_deg": 0.23576136929324493,
+          "foot_outward_from_hip_mean_m": 0.09924337328634375
+        },
+        "FR": {
+          "landing_count": 36,
+          "period_median_s": 0.4299999999999997,
+          "freq_hz": 2.3255813953488387,
+          "air_time_mean_s": 0.17499999999999627,
+          "swing_clearance_peak_mean_m": 0.042227427369444445,
+          "swing_clearance_peak_median_m": 0.042298567605000004,
+          "stance_fraction": 0.594375,
+          "hip_outward_mean_deg": 0.9267489001152082,
+          "foot_outward_from_hip_mean_m": 0.10930034915165625
+        },
+        "RL": {
+          "landing_count": 36,
+          "period_median_s": 0.4299999999999997,
+          "freq_hz": 2.3255813953488387,
+          "air_time_mean_s": 0.1719444444444408,
+          "swing_clearance_peak_mean_m": 0.04053907190805556,
+          "swing_clearance_peak_median_m": 0.04025517443,
+          "stance_fraction": 0.6009375,
+          "hip_outward_mean_deg": -1.027394914903333,
+          "foot_outward_from_hip_mean_m": 0.09354545525603125
+        },
+        "RR": {
+          "landing_count": 37,
+          "period_median_s": 0.43000000000000016,
+          "freq_hz": 2.3255813953488365,
+          "air_time_mean_s": 0.1822972972972934,
+          "swing_clearance_peak_mean_m": 0.0417673260427027,
+          "swing_clearance_peak_median_m": 0.04182852606,
+          "stance_fraction": 0.5784375,
+          "hip_outward_mean_deg": 0.9655849974125381,
+          "foot_outward_from_hip_mean_m": 0.10922236360765625
+        }
+      },
+      "stride_period_median_s": 0.4300000000000006,
+      "stride_frequency_hz": 2.325581395348834,
+      "air_time_mean_s": 0.1742808219178045,
+      "swing_clearance_peak_mean_m": 0.0422770146979452,
+      "front_hip_outward_mean_deg": 0.5812551347042265,
+      "rear_hip_outward_mean_deg": -0.03090495874539745,
+      "front_feet_width_mean_m": 0.342543722438,
+      "rear_feet_width_mean_m": 0.3367678188636875,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.00411481214317738,
+        "FL_thigh_joint": 0.9311495737419062,
+        "FL_shank_joint": -1.9537916424859374,
+        "FR_hip_joint": -0.01617481964624644,
+        "FR_thigh_joint": 0.9193929607225625,
+        "FR_shank_joint": -1.9540931944046875,
+        "RL_hip_joint": -0.01793142398331012,
+        "RL_thigh_joint": 0.9080660762498125,
+        "RL_shank_joint": -1.9655565439415625,
+        "RR_hip_joint": -0.016852637412709717,
+        "RR_thigh_joint": 0.9137609242486563,
+        "RR_shank_joint": -1.9639978254440624
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21611799630503126,
+          0.16624337328634375,
+          -0.256227024302
+        ],
+        "FR": [
+          0.21900251398478124,
+          -0.17630034915165624,
+          -0.2552040849914375
+        ],
+        "RL": [
+          -0.21767430927840625,
+          0.16054545525603126,
+          -0.25654049845209376
+        ],
+        "RR": [
+          -0.21917041126215625,
+          -0.17622236360765625,
+          -0.2532792883930625
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "forward05",
+      "command": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.24254857624203124,
+      "vx_mae": 0.05745142375796874,
+      "vx_rmse": 0.05951724195170486,
+      "vy_mean": 0.0061417987344485605,
+      "vy_mae": 0.009734429598796111,
+      "vy_rmse": 0.01190153864777055,
+      "wz_mean": -0.020761601159159888,
+      "wz_mae": 0.07047554628615162,
+      "wz_rmse": 0.07942200202495119,
+      "height_mean_m": 0.28932180726415624,
+      "height_std_m": 0.003870165258195934,
+      "height_min_m": 0.2827301539,
+      "roll_mean_deg": 0.6438822848634321,
+      "roll_std_deg": 0.30740355779161116,
+      "roll_ptp_deg": 1.1220218626155027,
+      "pitch_mean_deg": 0.13956178224355442,
+      "pitch_std_deg": 0.2773959861998662,
+      "pitch_ptp_deg": 1.1165872067251248,
+      "gyro_xy_rms_rads": 0.21273446022345893,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.2063507611787104,
+      "joint_dq_rms_rads": 1.3697115134773887,
+      "joint_acc_difference_rms_rads2": 83.6724393050512,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 33,
+          "period_median_s": 0.4800000000000004,
+          "freq_hz": 2.0833333333333317,
+          "air_time_mean_s": 0.17787878787878408,
+          "swing_clearance_peak_mean_m": 0.033058673613030304,
+          "swing_clearance_peak_median_m": 0.03312223655,
+          "stance_fraction": 0.633125,
+          "hip_outward_mean_deg": -0.3834709694815201,
+          "foot_outward_from_hip_mean_m": 0.09649513781021875
+        },
+        "FR": {
+          "landing_count": 33,
+          "period_median_s": 0.4800000000000004,
+          "freq_hz": 2.0833333333333317,
+          "air_time_mean_s": 0.17515151515151142,
+          "swing_clearance_peak_mean_m": 0.040025788065151516,
+          "swing_clearance_peak_median_m": 0.03998281288,
+          "stance_fraction": 0.63125,
+          "hip_outward_mean_deg": 0.6608843859812075,
+          "foot_outward_from_hip_mean_m": 0.10799326261771874
+        },
+        "RL": {
+          "landing_count": 33,
+          "period_median_s": 0.4800000000000004,
+          "freq_hz": 2.0833333333333317,
+          "air_time_mean_s": 0.1965151515151473,
+          "swing_clearance_peak_mean_m": 0.04111434202121212,
+          "swing_clearance_peak_median_m": 0.04115377677,
+          "stance_fraction": 0.5875,
+          "hip_outward_mean_deg": -0.9001730085287032,
+          "foot_outward_from_hip_mean_m": 0.094028279194
+        },
+        "RR": {
+          "landing_count": 33,
+          "period_median_s": 0.4800000000000004,
+          "freq_hz": 2.0833333333333317,
+          "air_time_mean_s": 0.16621212121211767,
+          "swing_clearance_peak_mean_m": 0.03447052762909091,
+          "swing_clearance_peak_median_m": 0.0344451791,
+          "stance_fraction": 0.6571875,
+          "hip_outward_mean_deg": 0.647956046669859,
+          "foot_outward_from_hip_mean_m": 0.10797646743134375
+        }
+      },
+      "stride_period_median_s": 0.4800000000000004,
+      "stride_frequency_hz": 2.0833333333333317,
+      "air_time_mean_s": 0.17893939393939012,
+      "swing_clearance_peak_mean_m": 0.03716733283212121,
+      "front_hip_outward_mean_deg": 0.13870670824984369,
+      "rear_hip_outward_mean_deg": -0.12610848092942212,
+      "front_feet_width_mean_m": 0.3384884004279375,
+      "rear_feet_width_mean_m": 0.33600474662534374,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.006692831003267219,
+        "FL_thigh_joint": 0.91908141554625,
+        "FL_shank_joint": -1.9395875471803126,
+        "FR_hip_joint": -0.011534608510393125,
+        "FR_thigh_joint": 0.9135682075377187,
+        "FR_shank_joint": -1.955444464320625,
+        "RL_hip_joint": -0.015710982836408868,
+        "RL_thigh_joint": 0.9103144936337187,
+        "RL_shank_joint": -1.9499511966153125,
+        "RR_hip_joint": -0.011308966422595077,
+        "RR_thigh_joint": 0.9133239708479375,
+        "RR_shank_joint": -1.945154228430625
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21808012678415625,
+          0.16349513781021874,
+          -0.261957224037
+        ],
+        "FR": [
+          0.22177084405103126,
+          -0.17499326261771875,
+          -0.25709251947775
+        ],
+        "RL": [
+          -0.21882634522753125,
+          0.161028279194,
+          -0.26076508247125
+        ],
+        "RR": [
+          -0.2207051068433125,
+          -0.17497646743134376,
+          -0.25879200005053127
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "backward03",
+      "command": [
+        -0.3,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": -0.4208039523466875,
+      "vx_mae": 0.07919604765331249,
+      "vx_rmse": 0.0819013940482726,
+      "vy_mean": 0.008587839350513769,
+      "vy_mae": 0.017905605372274386,
+      "vy_rmse": 0.021709161970513587,
+      "wz_mean": -0.023250527076838137,
+      "wz_mae": 0.07186294094525711,
+      "wz_rmse": 0.08313795995545167,
+      "height_mean_m": 0.2883400341880312,
+      "height_std_m": 0.004035356248916201,
+      "height_min_m": 0.2807813963,
+      "roll_mean_deg": 0.6156245777475174,
+      "roll_std_deg": 0.40591903242175337,
+      "roll_ptp_deg": 1.6580938933976006,
+      "pitch_mean_deg": -0.2755799339178463,
+      "pitch_std_deg": 0.3173631717059345,
+      "pitch_ptp_deg": 1.2322103744279576,
+      "gyro_xy_rms_rads": 0.26050703150623,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.2578513562881431,
+      "joint_dq_rms_rads": 1.9296206724061264,
+      "joint_acc_difference_rms_rads2": 115.25467671573479,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 38,
+          "period_median_s": 0.4250000000000007,
+          "freq_hz": 2.3529411764705843,
+          "air_time_mean_s": 0.16749999999999643,
+          "swing_clearance_peak_mean_m": 0.03913150425131579,
+          "swing_clearance_peak_median_m": 0.039228446385,
+          "stance_fraction": 0.6021875,
+          "hip_outward_mean_deg": -0.4941446603321511,
+          "foot_outward_from_hip_mean_m": 0.095975464599875
+        },
+        "FR": {
+          "landing_count": 37,
+          "period_median_s": 0.4249999999999998,
+          "freq_hz": 2.352941176470589,
+          "air_time_mean_s": 0.1689189189189153,
+          "swing_clearance_peak_mean_m": 0.03967739067972973,
+          "swing_clearance_peak_median_m": 0.03966863809,
+          "stance_fraction": 0.606875,
+          "hip_outward_mean_deg": 0.4202819907369575,
+          "foot_outward_from_hip_mean_m": 0.10685764244934375
+        },
+        "RL": {
+          "landing_count": 37,
+          "period_median_s": 0.42500000000000027,
+          "freq_hz": 2.352941176470587,
+          "air_time_mean_s": 0.174729729729726,
+          "swing_clearance_peak_mean_m": 0.042117505879459456,
+          "swing_clearance_peak_median_m": 0.04190452291,
+          "stance_fraction": 0.5934375,
+          "hip_outward_mean_deg": -0.41809986622665996,
+          "foot_outward_from_hip_mean_m": 0.0961700936276875
+        },
+        "RR": {
+          "landing_count": 38,
+          "period_median_s": 0.4250000000000007,
+          "freq_hz": 2.3529411764705843,
+          "air_time_mean_s": 0.15815789473683872,
+          "swing_clearance_peak_mean_m": 0.040217190845,
+          "swing_clearance_peak_median_m": 0.03993572429,
+          "stance_fraction": 0.624375,
+          "hip_outward_mean_deg": 1.1657697634989086,
+          "foot_outward_from_hip_mean_m": 0.11015724384409374
+        }
+      },
+      "stride_period_median_s": 0.4250000000000007,
+      "stride_frequency_hz": 2.3529411764705843,
+      "air_time_mean_s": 0.1672666666666631,
+      "swing_clearance_peak_mean_m": 0.040277743909,
+      "front_hip_outward_mean_deg": -0.036931334797596804,
+      "rear_hip_outward_mean_deg": 0.3738349486361243,
+      "front_feet_width_mean_m": 0.33683310704921876,
+      "rear_feet_width_mean_m": 0.34032733747178123,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.008624451303945053,
+        "FL_thigh_joint": 0.933195535135,
+        "FL_shank_joint": -1.94664208682875,
+        "FR_hip_joint": -0.007335304525196217,
+        "FR_thigh_joint": 0.917772777473125,
+        "FR_shank_joint": -1.950232822585,
+        "RL_hip_joint": -0.007297219267803056,
+        "RL_thigh_joint": 0.9200066957859687,
+        "RL_shank_joint": -1.958744073315625,
+        "RR_hip_joint": -0.020346520693251567,
+        "RR_thigh_joint": 0.923583308323,
+        "RR_shank_joint": -1.958778263115625
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.214983390872375,
+          0.162975464599875,
+          -0.2595039166369375
+        ],
+        "FR": [
+          0.220155776211375,
+          -0.17385764244934376,
+          -0.25716686576171877
+        ],
+        "RL": [
+          -0.22035226898609375,
+          0.1631700936276875,
+          -0.2570692782024375
+        ],
+        "RR": [
+          -0.2218587514413125,
+          -0.17715724384409376,
+          -0.25393038394471873
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "backward05",
+      "command": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.015617726954060227,
+      "vx_mae": 0.01911450735890681,
+      "vx_rmse": 0.022255355265236434,
+      "vy_mean": 0.26269956693803126,
+      "vy_mae": 0.037437193031218736,
+      "vy_rmse": 0.044073654978831894,
+      "wz_mean": -0.017559201377118014,
+      "wz_mae": 0.04128832844303036,
+      "wz_rmse": 0.053101842480886806,
+      "height_mean_m": 0.29227205309525,
+      "height_std_m": 0.004778204495642217,
+      "height_min_m": 0.2867535049,
+      "roll_mean_deg": 0.6707346004635961,
+      "roll_std_deg": 0.2805023075285596,
+      "roll_ptp_deg": 1.154169620029118,
+      "pitch_mean_deg": 0.025309178262876493,
+      "pitch_std_deg": 0.6431952398547883,
+      "pitch_ptp_deg": 2.231471157404662,
+      "gyro_xy_rms_rads": 0.2813493915715185,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.26202100865388295,
+      "joint_dq_rms_rads": 1.3539491047912913,
+      "joint_acc_difference_rms_rads2": 109.46748825631799,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 35,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.17271428571428205,
+          "swing_clearance_peak_mean_m": 0.042379595129142855,
+          "swing_clearance_peak_median_m": 0.04237440848,
+          "stance_fraction": 0.6221875,
+          "hip_outward_mean_deg": -0.12467048671570619,
+          "foot_outward_from_hip_mean_m": 0.0975015186050625
+        },
+        "FR": {
+          "landing_count": 34,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.14558823529411455,
+          "swing_clearance_peak_mean_m": 0.03218989587235294,
+          "swing_clearance_peak_median_m": 0.03223929624,
+          "stance_fraction": 0.685,
+          "hip_outward_mean_deg": 0.6565095923364009,
+          "foot_outward_from_hip_mean_m": 0.10853461062128125
+        },
+        "RL": {
+          "landing_count": 34,
+          "period_median_s": 0.45999999999999996,
+          "freq_hz": 2.173913043478261,
+          "air_time_mean_s": 0.17279411764705513,
+          "swing_clearance_peak_mean_m": 0.03922922171352941,
+          "swing_clearance_peak_median_m": 0.03929400102,
+          "stance_fraction": 0.6259375,
+          "hip_outward_mean_deg": -0.3083269124246959,
+          "foot_outward_from_hip_mean_m": 0.09651418852128124
+        },
+        "RR": {
+          "landing_count": 35,
+          "period_median_s": 0.46000000000000085,
+          "freq_hz": 2.1739130434782568,
+          "air_time_mean_s": 0.17214285714285346,
+          "swing_clearance_peak_mean_m": 0.036246291832857144,
+          "swing_clearance_peak_median_m": 0.03625951277,
+          "stance_fraction": 0.6234375,
+          "hip_outward_mean_deg": 0.37912788717204765,
+          "foot_outward_from_hip_mean_m": 0.10708178533003125
+        }
+      },
+      "stride_period_median_s": 0.45999999999999996,
+      "stride_frequency_hz": 2.173913043478261,
+      "air_time_mean_s": 0.16590579710144573,
+      "swing_clearance_peak_mean_m": 0.03753736262021739,
+      "front_hip_outward_mean_deg": 0.2659195528103474,
+      "rear_hip_outward_mean_deg": 0.035400487373675876,
+      "front_feet_width_mean_m": 0.34003612922634374,
+      "rear_feet_width_mean_m": 0.3375959738513125,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.0021759104732529248,
+        "FL_thigh_joint": 0.9093780680250625,
+        "FL_shank_joint": -1.9316536640840625,
+        "FR_hip_joint": -0.011458253957195928,
+        "FR_thigh_joint": 0.90890259608425,
+        "FR_shank_joint": -1.924961079584375,
+        "RL_hip_joint": -0.005381319794319156,
+        "RL_thigh_joint": 0.9365065301061875,
+        "RL_shank_joint": -1.929320501528125,
+        "RR_hip_joint": -0.006617029917281805,
+        "RR_thigh_joint": 0.881329908076875,
+        "RR_shank_joint": -1.939692045113125
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21958712091240626,
+          0.1645015186050625,
+          -0.26253115750934375
+        ],
+        "FR": [
+          0.21846132813021876,
+          -0.17553461062128126,
+          -0.262173802939375
+        ],
+        "RL": [
+          -0.22905896988840624,
+          0.16351418852128125,
+          -0.2632360431256875
+        ],
+        "RR": [
+          -0.21310324010584375,
+          -0.17408178533003124,
+          -0.2601238032574375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "left03",
+      "command": [
+        0.0,
+        0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.015148803668011787,
+      "vx_mae": 0.016555135280913937,
+      "vx_rmse": 0.019847918471479514,
+      "vy_mean": -0.2781775615820313,
+      "vy_mae": 0.02204996599253124,
+      "vy_rmse": 0.025356937499305694,
+      "wz_mean": -0.01704463069210215,
+      "wz_mae": 0.058316839597828275,
+      "wz_rmse": 0.06654227586138464,
+      "height_mean_m": 0.28976449072265625,
+      "height_std_m": 0.00481818349697578,
+      "height_min_m": 0.2801152786,
+      "roll_mean_deg": 0.11380849246863418,
+      "roll_std_deg": 0.29696826490913586,
+      "roll_ptp_deg": 1.574934523018543,
+      "pitch_mean_deg": 0.3235957587494483,
+      "pitch_std_deg": 0.6132260323847987,
+      "pitch_ptp_deg": 2.3870865621712136,
+      "gyro_xy_rms_rads": 0.27639033166303995,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.24791404573125986,
+      "joint_dq_rms_rads": 1.4087317648648188,
+      "joint_acc_difference_rms_rads2": 101.77679860401734,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 35,
+          "period_median_s": 0.4499999999999993,
+          "freq_hz": 2.222222222222226,
+          "air_time_mean_s": 0.1568571428571395,
+          "swing_clearance_peak_mean_m": 0.03778726960057143,
+          "swing_clearance_peak_median_m": 0.03790231986,
+          "stance_fraction": 0.6540625,
+          "hip_outward_mean_deg": 1.0381551927492598,
+          "foot_outward_from_hip_mean_m": 0.102985195132
+        },
+        "FR": {
+          "landing_count": 35,
+          "period_median_s": 0.4499999999999993,
+          "freq_hz": 2.222222222222226,
+          "air_time_mean_s": 0.17457142857142485,
+          "swing_clearance_peak_mean_m": 0.03860930983142857,
+          "swing_clearance_peak_median_m": 0.03855707982,
+          "stance_fraction": 0.609375,
+          "hip_outward_mean_deg": 0.4800544078167154,
+          "foot_outward_from_hip_mean_m": 0.10676852427087499
+        },
+        "RL": {
+          "landing_count": 35,
+          "period_median_s": 0.44999999999999973,
+          "freq_hz": 2.2222222222222237,
+          "air_time_mean_s": 0.16028571428571087,
+          "swing_clearance_peak_mean_m": 0.033876178475142855,
+          "swing_clearance_peak_median_m": 0.03387223195,
+          "stance_fraction": 0.640625,
+          "hip_outward_mean_deg": -2.0073834417649667,
+          "foot_outward_from_hip_mean_m": 0.08970553453203124
+        },
+        "RR": {
+          "landing_count": 35,
+          "period_median_s": 0.4499999999999993,
+          "freq_hz": 2.222222222222226,
+          "air_time_mean_s": 0.17699999999999622,
+          "swing_clearance_peak_mean_m": 0.03637824341542857,
+          "swing_clearance_peak_median_m": 0.03639519452,
+          "stance_fraction": 0.60875,
+          "hip_outward_mean_deg": 0.30664902252938836,
+          "foot_outward_from_hip_mean_m": 0.1066594975400625
+        }
+      },
+      "stride_period_median_s": 0.4499999999999993,
+      "stride_frequency_hz": 2.222222222222226,
+      "air_time_mean_s": 0.16717857142856787,
+      "swing_clearance_peak_mean_m": 0.036662750330642854,
+      "front_hip_outward_mean_deg": 0.7591048002829877,
+      "rear_hip_outward_mean_deg": -0.8503672096177892,
+      "front_feet_width_mean_m": 0.343753719402875,
+      "rear_feet_width_mean_m": 0.3303650320720937,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.018119226260150948,
+        "FL_thigh_joint": 0.920699400944125,
+        "FL_shank_joint": -1.9356194824775,
+        "FR_hip_joint": -0.008378530005113287,
+        "FR_thigh_joint": 0.8952215318150625,
+        "FR_shank_joint": -1.957929245236875,
+        "RL_hip_joint": -0.03503545040881452,
+        "RL_thigh_joint": 0.8903068759338437,
+        "RL_shank_joint": -1.9505718499809375,
+        "RR_hip_joint": -0.005352035091160097,
+        "RR_thigh_joint": 0.9501607969748125,
+        "RR_shank_joint": -1.9404730037165625
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.21686209718325,
+          0.169985195132,
+          -0.2596745503055938
+        ],
+        "FR": [
+          0.22632893460040626,
+          -0.173768524270875,
+          -0.2565973405109375
+        ],
+        "RL": [
+          -0.21434065567428126,
+          0.15670553453203126,
+          -0.26203720612653125
+        ],
+        "RR": [
+          -0.231113613212875,
+          -0.1736594975400625,
+          -0.260067743556375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "right03",
+      "command": [
+        0.0,
+        -0.3,
+        0.0
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.022365827512863687,
+      "vx_mae": 0.03313167692609017,
+      "vx_rmse": 0.03988608038513463,
+      "vy_mean": -0.003574266958517316,
+      "vy_mae": 0.019979559293435648,
+      "vy_rmse": 0.0256163434670008,
+      "wz_mean": 0.14203556989819374,
+      "wz_mae": 0.16638077605724375,
+      "wz_rmse": 0.17699193223711618,
+      "height_mean_m": 0.3010721351279375,
+      "height_std_m": 0.0036645264646333,
+      "height_min_m": 0.2902368184,
+      "roll_mean_deg": 0.12480147143619466,
+      "roll_std_deg": 0.6908008805898795,
+      "roll_ptp_deg": 2.831693285580741,
+      "pitch_mean_deg": -0.02384770700534744,
+      "pitch_std_deg": 0.36388228802919764,
+      "pitch_ptp_deg": 1.869051668200997,
+      "gyro_xy_rms_rads": 0.14511127034871643,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.12346675191882175,
+      "joint_dq_rms_rads": 0.520730907743977,
+      "joint_acc_difference_rms_rads2": 35.442330373560324,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 7,
+          "period_median_s": 0.379999999999999,
+          "freq_hz": 2.631578947368428,
+          "air_time_mean_s": 0.06714285714285571,
+          "swing_clearance_peak_mean_m": 0.0061524867446271425,
+          "swing_clearance_peak_median_m": 0.008363300004,
+          "stance_fraction": 0.969375,
+          "hip_outward_mean_deg": -6.856773239737633,
+          "foot_outward_from_hip_mean_m": 0.0653250121628875
+        },
+        "FR": {
+          "landing_count": 11,
+          "period_median_s": 0.8475000000000001,
+          "freq_hz": 1.1799410029498523,
+          "air_time_mean_s": 0.13954545454545156,
+          "swing_clearance_peak_mean_m": 0.01746348479721818,
+          "swing_clearance_peak_median_m": 0.02599738818,
+          "stance_fraction": 0.9040625,
+          "hip_outward_mean_deg": 3.1824850287710227,
+          "foot_outward_from_hip_mean_m": 0.1209660574021875
+        },
+        "RL": {
+          "landing_count": 8,
+          "period_median_s": null,
+          "freq_hz": null,
+          "air_time_mean_s": 0.1124999999999976,
+          "swing_clearance_peak_mean_m": 0.007809910148625,
+          "swing_clearance_peak_median_m": 0.011182154385,
+          "stance_fraction": 0.94125,
+          "hip_outward_mean_deg": 4.132046542513792,
+          "foot_outward_from_hip_mean_m": 0.1190629380183125
+        },
+        "RR": {
+          "landing_count": 17,
+          "period_median_s": 0.6850000000000005,
+          "freq_hz": 1.459854014598539,
+          "air_time_mean_s": 0.07147058823529259,
+          "swing_clearance_peak_mean_m": 0.007361477204737059,
+          "swing_clearance_peak_median_m": 0.005102049128,
+          "stance_fraction": 0.9240625,
+          "hip_outward_mean_deg": -3.890818876488535,
+          "foot_outward_from_hip_mean_m": 0.08646958575743749
+        }
+      },
+      "stride_period_median_s": 0.6349999999999998,
+      "stride_frequency_hz": 1.5748031496062997,
+      "air_time_mean_s": 0.09581395348837005,
+      "swing_clearance_peak_mean_m": 0.009832328689565581,
+      "front_hip_outward_mean_deg": -1.837144105483305,
+      "rear_hip_outward_mean_deg": 0.12061383301262851,
+      "front_feet_width_mean_m": 0.320291069565075,
+      "rear_feet_width_mean_m": 0.33953252377575,
+      "joint_mean_rad": {
+        "FL_hip_joint": -0.11967326909606019,
+        "FL_thigh_joint": 0.9224018819698125,
+        "FL_shank_joint": -1.88950192263375,
+        "FR_hip_joint": -0.055544842147480816,
+        "FR_thigh_joint": 0.9498419136513125,
+        "FR_shank_joint": -1.7935787077509375,
+        "RL_hip_joint": 0.07211781701251352,
+        "RL_thigh_joint": 0.8319129686397188,
+        "RL_shank_joint": -1.7873696255834375,
+        "RR_hip_joint": 0.06790759999347153,
+        "RR_thigh_joint": 0.9509038701560938,
+        "RR_shank_joint": -1.8745638359590624
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.2106563143143125,
+          0.1323250121628875,
+          -0.2798312656305625
+        ],
+        "FR": [
+          0.1882204319665,
+          -0.1879660574021875,
+          -0.2775594554548125
+        ],
+        "RL": [
+          -0.2192364166011875,
+          0.1860629380183125,
+          -0.27941689347459375
+        ],
+        "RR": [
+          -0.240204209032,
+          -0.1534695857574375,
+          -0.2787179607424375
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "turn_left03",
+      "command": [
+        0.0,
+        0.0,
+        0.3
+      ],
+      "failure": ""
+    },
+    {
+      "samples": 3200,
+      "start_s": 4.0,
+      "end_s": 19.995,
+      "sample_dt": 0.004999999999999893,
+      "vx_mean": 0.015525314821096784,
+      "vx_mae": 0.05330706392156985,
+      "vx_rmse": 0.06517456868970832,
+      "vy_mean": -0.006447839670587643,
+      "vy_mae": 0.016143632582635268,
+      "vy_rmse": 0.020508084507163894,
+      "wz_mean": -0.1306243507105289,
+      "wz_mae": 0.1698451616972836,
+      "wz_rmse": 0.18674101880750646,
+      "height_mean_m": 0.3005781460996563,
+      "height_std_m": 0.004900948211874979,
+      "height_min_m": 0.2822471203,
+      "roll_mean_deg": 0.9086423638088785,
+      "roll_std_deg": 0.2989986769112694,
+      "roll_ptp_deg": 1.8595316285918435,
+      "pitch_mean_deg": -0.4161927820144017,
+      "pitch_std_deg": 0.26795379842434264,
+      "pitch_ptp_deg": 1.8292847893036819,
+      "gyro_xy_rms_rads": 0.11035906456957283,
+      "gyro_xy_minus_0p2s_mean_rms_rads": 0.1003743182538949,
+      "joint_dq_rms_rads": 0.4447734353565099,
+      "joint_acc_difference_rms_rads2": 31.081430532515647,
+      "action_saturated_fraction": 0.0,
+      "torque_saturated_fraction": 0,
+      "motor_age_mean_ms": 10.5,
+      "imu_age_mean_ms": 1.93734375,
+      "feet": {
+        "FL": {
+          "landing_count": 14,
+          "period_median_s": 0.6149999999999984,
+          "freq_hz": 1.6260162601626058,
+          "air_time_mean_s": 0.0728571428571413,
+          "swing_clearance_peak_mean_m": 0.005538659177494285,
+          "swing_clearance_peak_median_m": 0.001715676803,
+          "stance_fraction": 0.93625,
+          "hip_outward_mean_deg": 3.604464967879418,
+          "foot_outward_from_hip_mean_m": 0.11653975704484375
+        },
+        "FR": {
+          "landing_count": 8,
+          "period_median_s": 0.6349999999999998,
+          "freq_hz": 1.5748031496062997,
+          "air_time_mean_s": 0.05249999999999888,
+          "swing_clearance_peak_mean_m": 0.00011107827936375,
+          "swing_clearance_peak_median_m": 0.000101301493945,
+          "stance_fraction": 0.97375,
+          "hip_outward_mean_deg": -6.2109695868119275,
+          "foot_outward_from_hip_mean_m": 0.07544612155003125
+        },
+        "RL": {
+          "landing_count": 14,
+          "period_median_s": 0.6049999999999986,
+          "freq_hz": 1.6528925619834747,
+          "air_time_mean_s": 0.0707142857142842,
+          "swing_clearance_peak_mean_m": 0.00850690591905,
+          "swing_clearance_peak_median_m": 0.008915177358000001,
+          "stance_fraction": 0.938125,
+          "hip_outward_mean_deg": -3.3501226160001143,
+          "foot_outward_from_hip_mean_m": 0.08209772256893749
+        },
+        "RR": {
+          "landing_count": 7,
+          "period_median_s": 1.1900000000000013,
+          "freq_hz": 0.8403361344537806,
+          "air_time_mean_s": 0.04285714285714194,
+          "swing_clearance_peak_mean_m": 0.0003042573250757143,
+          "swing_clearance_peak_median_m": 0.0001226177869,
+          "stance_fraction": 0.98,
+          "hip_outward_mean_deg": 5.31730549563188,
+          "foot_outward_from_hip_mean_m": 0.1313227563160625
+        }
+      },
+      "stride_period_median_s": 0.6249999999999991,
+      "stride_frequency_hz": 1.6000000000000023,
+      "air_time_mean_s": 0.0634883720930219,
+      "swing_clearance_peak_mean_m": 0.0046431706712106975,
+      "front_hip_outward_mean_deg": -1.3032523094662547,
+      "rear_hip_outward_mean_deg": 0.9835914398158827,
+      "front_feet_width_mean_m": 0.325985878594875,
+      "rear_feet_width_mean_m": 0.347420478885,
+      "joint_mean_rad": {
+        "FL_hip_joint": 0.0629097814622875,
+        "FL_thigh_joint": 0.9646489181012188,
+        "FL_shank_joint": -1.7502245184921874,
+        "FR_hip_joint": 0.10840186903109991,
+        "FR_thigh_joint": 0.9553012402711563,
+        "FR_shank_joint": -1.8968728008125,
+        "RL_hip_joint": -0.05847066999472766,
+        "RL_thigh_joint": 0.964082212368,
+        "RL_shank_joint": -1.858883879260625,
+        "RR_hip_joint": -0.09280448823316526,
+        "RR_thigh_joint": 0.8338174490206562,
+        "RR_shank_joint": -1.80139906807875
+      },
+      "feet_body_mean_m": {
+        "FL": [
+          0.17706582290084374,
+          0.18353975704484374,
+          -0.28290026118565625
+        ],
+        "FR": [
+          0.20273273241234374,
+          -0.14244612155003125,
+          -0.2783055134823125
+        ],
+        "RL": [
+          -0.2462081053691875,
+          0.1490977225689375,
+          -0.2793497135629063
+        ],
+        "RR": [
+          -0.21793927073740624,
+          -0.1983227563160625,
+          -0.27419664180075
+        ]
+      },
+      "hip_action_clip_fraction": {
+        "FL": 0,
+        "FR": 0,
+        "RL": 0,
+        "RR": 0
+      },
+      "policy": "policy_1.pt",
+      "case": "turn_right03",
+      "command": [
+        0.0,
+        0.0,
+        -0.3
+      ],
+      "failure": ""
+    }
+  ],
+  "definitions": {
+    "cadence": "Same-foot repeated landings after 5N/2N hysteresis, 10ms persistence, <20ms chatter removal; complete air runs >=30ms, periods .1..1.5s; pooled median over four feet. Not policy/control Hz.",
+    "clearance": "Collision sphere bottom above flat floor, peak per complete air run; not body/link origin z.",
+    "outward_hip": "Left q_hip / right -q_hip, positive=abducted outward; averaged front/rear. This is not a yaw joint angle.",
+    "foot_width": "Mean left-right collision center separation in base frame.",
+    "jitter": "Physical roll/pitch and angular velocity; desired yaw excluded. Acceleration finite-difference and rapid-motion proxies are not measured hardware vibration."
+  }
+}

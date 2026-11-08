@@ -614,6 +614,7 @@ class RewardsCfg:
         func=mdp.feet_height_body,
         weight=0.0,
         params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_FOOT"),
             "asset_cfg": SceneEntityCfg("robot", body_names=""),
             "tanh_mult": 2.0,
             "target_height": -0.3,

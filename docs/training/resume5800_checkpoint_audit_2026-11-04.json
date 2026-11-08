@@ -1,0 +1,85 @@
+{
+  "checkpoints": [
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_5800.pt",
+      "iter": 5800,
+      "finite": true,
+      "std_mean": 0.38869014382362366,
+      "std_max": 0.5233283042907715
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_5900.pt",
+      "iter": 5900,
+      "finite": true,
+      "std_mean": 0.34119296073913574,
+      "std_max": 0.4495720863342285
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6000.pt",
+      "iter": 6000,
+      "finite": true,
+      "std_mean": 0.3518199026584625,
+      "std_max": 0.46130287647247314
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6100.pt",
+      "iter": 6100,
+      "finite": true,
+      "std_mean": 0.3586476743221283,
+      "std_max": 0.4733150601387024
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6200.pt",
+      "iter": 6200,
+      "finite": true,
+      "std_mean": 0.3605146110057831,
+      "std_max": 0.461826890707016
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6300.pt",
+      "iter": 6300,
+      "finite": true,
+      "std_mean": 0.3681885004043579,
+      "std_max": 0.4725053310394287
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6400.pt",
+      "iter": 6400,
+      "finite": true,
+      "std_mean": 0.3717561662197113,
+      "std_max": 0.477770060300827
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6500.pt",
+      "iter": 6500,
+      "finite": true,
+      "std_mean": 0.36959683895111084,
+      "std_max": 0.47836485505104065
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6600.pt",
+      "iter": 6600,
+      "finite": true,
+      "std_mean": 0.3693288266658783,
+      "std_max": 0.48032519221305847
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6700.pt",
+      "iter": 6700,
+      "finite": true,
+      "std_mean": 0.35844603180885315,
+      "std_max": 0.45672038197517395
+    },
+    {
+      "path": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_22-11-36_resume5800_airtime01/model_6799.pt",
+      "iter": 6799,
+      "finite": true,
+      "std_mean": 0.3619900643825531,
+      "std_max": 0.46703827381134033
+    }
+  ],
+  "baseline_export_actor_tensor_count": 8,
+  "baseline_max_tensor_diff": 0.0,
+  "new_export_actor_tensor_count": 8,
+  "new_export_max_tensor_diff": 0.0
+}

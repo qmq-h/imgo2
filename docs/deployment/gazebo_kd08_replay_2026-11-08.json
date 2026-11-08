@@ -1,0 +1,38 @@
+[
+  {
+    "trace": "imgo2_deploy/logs/gazebo_old9299_kd08_forward05_20261108/policy_raw.csv",
+    "frames": 484,
+    "all_joint_target_clip": false,
+    "actor_max_diff": 2.1457672119140625e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 0.001033057807944715,
+    "raw_over_3_frame_fraction": 0.012396694160997868,
+    "max_abs_raw": 3.0585694313049316,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 0,
+      "affected_frames": 0,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    }
+  },
+  {
+    "trace": "imgo2_deploy/logs/gazebo_old9299_kd08_backward05_20261108/policy_raw.csv",
+    "frames": 483,
+    "all_joint_target_clip": false,
+    "actor_max_diff": 1.6689300537109375e-06,
+    "target_max_diff": 0.0,
+    "last_action_max_diff": 0.0,
+    "raw_over_3_element_fraction": 0.0,
+    "raw_over_3_frame_fraction": 0.0,
+    "max_abs_raw": 2.5930614471435547,
+    "processed_target_clipped_frame_fraction": 0.0,
+    "passed": true,
+    "controller_additional_position_limit": {
+      "affected_elements": 0,
+      "affected_frames": 0,
+      "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+    }
+  }
+]

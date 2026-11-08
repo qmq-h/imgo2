@@ -1,0 +1,32 @@
+[
+  {
+    "iteration": 5800,
+    "model_finite": true,
+    "std_mean": 0.29673564434051514,
+    "std_max": 0.38109105825424194,
+    "jit_actor_tensor_max_diff": 0.0,
+    "jit_1024_input_max_diff": 0.0,
+    "checkpoint_sha256": "8de1d028a66fe2cd40b7ef7fa9e04463bffff8e8ed9b4aa0dd4c1bfec5b91c69",
+    "jit_sha256": "ca349aaad2e6f219694444f141615c901b7ddce9d402c3d6f66116cadb60c792"
+  },
+  {
+    "iteration": 5900,
+    "model_finite": true,
+    "std_mean": 0.29669782519340515,
+    "std_max": 0.38278478384017944,
+    "jit_actor_tensor_max_diff": 0.0,
+    "jit_1024_input_max_diff": 0.0,
+    "checkpoint_sha256": "84c40e638359eccb1e7e2710dc79061190288d8fb414ef1c8ccc042c0ae3bf19",
+    "jit_sha256": "8ce377bfa485bf6a9623c2020a8ad1595289e94a828d933de922c3e8d804aa43"
+  },
+  {
+    "iteration": 6000,
+    "model_finite": true,
+    "std_mean": 0.2933771312236786,
+    "std_max": 0.37586864829063416,
+    "jit_actor_tensor_max_diff": 0.0,
+    "jit_1024_input_max_diff": 0.0,
+    "checkpoint_sha256": "76372117cea1b0390d345b4cc4d2e5f8ed1ebdb356eede160ea4317652d2ab3b",
+    "jit_sha256": "11f3a4ccda6272c2b1f695b1e71ce0bdc96d2165d17d2599a1db1563ae176683"
+  }
+]

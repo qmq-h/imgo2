@@ -1,0 +1,11 @@
+{
+  "source": "/home/tommy0929/.codex/attachments/432f1f80-971a-4a9e-9a55-8b0657e6d36e/已粘贴的文本.txt",
+  "sha256": "5da4402fd0cf09b8ebeaad612c737ec319f2610f3a80068105a9ad346638ad89",
+  "syntax": "AST/compile passed; no import or runtime",
+  "base_height": -10,
+  "feet_air_time": 1,
+  "feet_height_body": -4,
+  "ang_vel_xy": -0.1,
+  "terrain_disable_lines": "commented out; inherits parent",
+  "group_sampling": "not implemented in attachment"
+}

@@ -257,6 +257,15 @@ RL_Sim::RL_Sim(int argc, char **argv)
             for (int i=0; i<12; ++i) this->policy_trace << ",raw_" << i;
             for (int i=0; i<12; ++i) this->policy_trace << ",target_" << i;
             for (int i=0; i<45; ++i) this->policy_trace << ",obs_" << i;
+            // Append-only schema: retain AMP conversion-audit columns above.
+            this->policy_trace << ",host_s,sim_s,cmd_vx,cmd_vy,cmd_wz";
+            for (const auto* name : {"quat_w", "quat_x", "quat_y", "quat_z",
+                                     "gyro_x", "gyro_y", "gyro_z",
+                                     "accel_x", "accel_y", "accel_z"})
+                this->policy_trace << ',' << name;
+            for (const auto* name : {"state_q", "state_dq", "state_tau_est",
+                                     "action_clipped", "output_dq", "diagnostic_tau", "kp", "kd"})
+                for (int i=0; i<12; ++i) this->policy_trace << ',' << name << '_' << i;
             this->policy_trace << '\n' << std::setprecision(10);
         }
     }
@@ -820,7 +829,8 @@ void RL_Sim::RunModel()
                 -this->params.Get<std::vector<float>>("torque_limits"),
                 this->params.Get<std::vector<float>>("torque_limits"));
         }
-        if (this->policy_trace.is_open() && this->policy_trace_fresh && this->config_name == "amp")
+        if (this->policy_trace.is_open() && this->policy_trace_fresh &&
+            (this->config_name == "amp" || this->config_name == "ppo"))
         {
             const double wall = std::chrono::duration<double>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
@@ -829,6 +839,26 @@ void RL_Sim::RunModel()
             for (float value : this->policy_raw_actions) this->policy_trace << ',' << value;
             for (float value : this->output_dof_pos) this->policy_trace << ',' << value;
             for (float value : this->policy_actor_input) this->policy_trace << ',' << value;
+            const double host = std::chrono::duration<double>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+#if defined(USE_ROS2)
+            const double sim = this->ros2_node->get_clock()->now().seconds();
+#elif defined(USE_ROS1)
+            const double sim = ros::Time::now().toSec();
+#endif
+            this->policy_trace << std::setprecision(17) << ',' << host << ',' << sim << std::setprecision(10);
+            for (float value : this->obs.commands) this->policy_trace << ',' << value;
+            for (float value : policy_state.imu.quaternion) this->policy_trace << ',' << value;
+            for (float value : policy_state.imu.gyroscope) this->policy_trace << ',' << value;
+            for (float value : policy_state.imu.accelerometer) this->policy_trace << ',' << value;
+            for (float value : policy_state.motor_state.q) this->policy_trace << ',' << value;
+            for (float value : policy_state.motor_state.dq) this->policy_trace << ',' << value;
+            for (float value : policy_state.motor_state.tau_est) this->policy_trace << ',' << value;
+            for (float value : this->obs.actions) this->policy_trace << ',' << value;
+            for (float value : this->output_dof_vel) this->policy_trace << ',' << value;
+            for (float value : this->output_dof_tau) this->policy_trace << ',' << value;
+            for (float value : this->params.Get<std::vector<float>>("rl_kp")) this->policy_trace << ',' << value;
+            for (float value : this->params.Get<std::vector<float>>("rl_kd")) this->policy_trace << ',' << value;
             this->policy_trace << '\n';
         }
 
@@ -885,7 +915,7 @@ std::vector<float> RL_Sim::Forward()
         actions = this->model->forward({clamped_obs});
     }
 
-    if (this->policy_trace.is_open() && this->config_name == "amp")
+    if (this->policy_trace.is_open() && (this->config_name == "amp" || this->config_name == "ppo"))
     {
         this->policy_actor_input = clamped_obs;
         this->policy_raw_actions = actions;

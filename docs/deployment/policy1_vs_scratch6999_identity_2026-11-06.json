@@ -1,0 +1,12 @@
+{
+  "hashes": {
+    "policy_1": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+    "scratch6999": "c39e17de05f7332355664918092e3d8b4ea0acab79e5bbdafb7e7f94e6b762a0",
+    "deploy_current": "07e1d601bd0b0b0ce620c6c784560c5ae64610f10d88b2950a1486bf38cbfb7f"
+  },
+  "deploy_current_vs_scratch6999_1024_input_max_diff": 0.0,
+  "production_files_unchanged_since_start": {
+    "policy_1": true,
+    "deploy_current": true
+  }
+}

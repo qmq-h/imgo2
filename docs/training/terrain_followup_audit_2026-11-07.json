@@ -1,0 +1,376 @@
+{
+  "diff_from_9299_run": [
+    {
+      "path": ".log_dir",
+      "old": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_15-10-00",
+      "new": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_21-49-38"
+    },
+    {
+      "path": ".rewards.feet_height_body.params.target_height",
+      "old": "-0.2",
+      "new": "-0.23"
+    }
+  ],
+  "windows": {
+    "5300-5499": {
+      "Episode_Reward/lin_vel_z_l2": -0.05165653994074091,
+      "Episode_Reward/ang_vel_xy_l2": -0.1179980694456026,
+      "Episode_Reward/flat_orientation_l2": -0.021132854477036743,
+      "Episode_Reward/base_height_l2": -0.020243578699155478,
+      "Episode_Reward/joint_torques_l2": -0.0005657756930577307,
+      "Episode_Reward/joint_acc_l2": -0.009244491775898495,
+      "Episode_Reward/joint_deviation_l1": -0.10137382198998239,
+      "Episode_Reward/joint_power": -0.0013545855036409193,
+      "Episode_Reward/stand_still": -0.003897080960814492,
+      "Episode_Reward/joint_mirror": -0.007089064451574814,
+      "Episode_Reward/action_rate_l2": -0.02270062699681148,
+      "Episode_Reward/undesired_contacts": -0.001734333004601467,
+      "Episode_Reward/contact_forces": -0.02525314167171018,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.2155936471326276,
+      "Episode_Reward/track_ang_vel_z_exp": 0.9725756221590564,
+      "Episode_Reward/feet_air_time": -0.09014956920407713,
+      "Episode_Reward/feet_air_time_variance": -0.056985178838367574,
+      "Episode_Reward/feet_slide": -0.04764349641045555,
+      "Episode_Reward/feet_height_body": -0.0019732720463071017,
+      "Curriculum/terrain_levels": 0.5059579119086266,
+      "Metrics/base_velocity/error_vel_xy": 0.23784486294724047,
+      "Metrics/base_velocity/error_vel_yaw": 0.22812228386988864,
+      "Episode_Termination/time_out": 0.8958441698318347,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.010048549200873821,
+      "Loss/surrogate": -0.004965983509609941,
+      "Loss/entropy": -2.3522222232818604,
+      "Loss/learning_rate": 0.000288251173478784,
+      "Policy/mean_noise_std": 0.20300872556865215,
+      "Perf/total_fps": 34524.935,
+      "Perf/collection time": 2.7558627307415007,
+      "Perf/learning_time": 0.096784827709198,
+      "Train/mean_reward": 32.12941669121385,
+      "Train/mean_episode_length": 895.868281955719
+    },
+    "5800-6299": {
+      "Episode_Reward/lin_vel_z_l2": -0.05158791260421276,
+      "Episode_Reward/ang_vel_xy_l2": -0.12001140324771405,
+      "Episode_Reward/flat_orientation_l2": -0.016420999398455025,
+      "Episode_Reward/base_height_l2": -0.02155427645519376,
+      "Episode_Reward/joint_torques_l2": -0.0006049544683191926,
+      "Episode_Reward/joint_acc_l2": -0.00917137931007892,
+      "Episode_Reward/joint_deviation_l1": -0.12172564209997654,
+      "Episode_Reward/joint_power": -0.00146215549740009,
+      "Episode_Reward/stand_still": -0.0047926499749301,
+      "Episode_Reward/joint_mirror": -0.010460488691926003,
+      "Episode_Reward/action_rate_l2": -0.024532962158322333,
+      "Episode_Reward/undesired_contacts": -0.0009816405378151104,
+      "Episode_Reward/contact_forces": -0.019944280633702873,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.3988163018226623,
+      "Episode_Reward/track_ang_vel_z_exp": 1.1077683012485504,
+      "Episode_Reward/feet_air_time": -0.08848872210085391,
+      "Episode_Reward/feet_air_time_variance": -0.06403207326680421,
+      "Episode_Reward/feet_slide": -0.04633819951117039,
+      "Episode_Reward/feet_height_body": -0.00279879039991647,
+      "Curriculum/terrain_levels": 0.6695555002689362,
+      "Metrics/base_velocity/error_vel_xy": 0.2262845104932785,
+      "Metrics/base_velocity/error_vel_yaw": 0.2315351977944374,
+      "Episode_Termination/time_out": 1.0,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.004228144417051226,
+      "Loss/surrogate": -0.005137500853394158,
+      "Loss/entropy": -2.9092559099197386,
+      "Loss/learning_rate": 0.0002806185941954027,
+      "Policy/mean_noise_std": 0.19357106032967566,
+      "Perf/total_fps": 35495.65,
+      "Perf/collection time": 2.676592505931854,
+      "Perf/learning_time": 0.09359997892379761,
+      "Train/mean_reward": 38.05147093963623,
+      "Train/mean_episode_length": 1000.0
+    },
+    "8800-9299": {
+      "Episode_Reward/lin_vel_z_l2": -0.04630910284072161,
+      "Episode_Reward/ang_vel_xy_l2": -0.10470368510484696,
+      "Episode_Reward/flat_orientation_l2": -0.013993729239329695,
+      "Episode_Reward/base_height_l2": -0.0202968198210001,
+      "Episode_Reward/joint_torques_l2": -0.0006048597031040117,
+      "Episode_Reward/joint_acc_l2": -0.008473540662787854,
+      "Episode_Reward/joint_deviation_l1": -0.1186771862655878,
+      "Episode_Reward/joint_power": -0.0014496941566467284,
+      "Episode_Reward/stand_still": -0.004042460970580578,
+      "Episode_Reward/joint_mirror": -0.010657140636816621,
+      "Episode_Reward/action_rate_l2": -0.022921866074204444,
+      "Episode_Reward/undesired_contacts": -0.0009733174045177293,
+      "Episode_Reward/contact_forces": -0.014555637126788496,
+      "Episode_Reward/track_lin_vel_xy_exp": 1.4115046746730804,
+      "Episode_Reward/track_ang_vel_z_exp": 1.1153043422698974,
+      "Episode_Reward/feet_air_time": -0.0754468465000391,
+      "Episode_Reward/feet_air_time_variance": -0.060586397722363475,
+      "Episode_Reward/feet_slide": -0.04109060394763946,
+      "Episode_Reward/feet_height_body": -0.0030938035366125404,
+      "Curriculum/terrain_levels": 0.7196093528270722,
+      "Metrics/base_velocity/error_vel_xy": 0.21207619348168374,
+      "Metrics/base_velocity/error_vel_yaw": 0.22194429805874824,
+      "Episode_Termination/time_out": 1.0,
+      "Episode_Termination/terrain_out_of_bounds": 0.0,
+      "Loss/value_function": 0.003013657649513334,
+      "Loss/surrogate": -0.0055086418876599055,
+      "Loss/entropy": -3.840345147609711,
+      "Loss/learning_rate": 0.0002638283983360452,
+      "Policy/mean_noise_std": 0.1790312223136425,
+      "Perf/total_fps": 35872.738,
+      "Perf/collection time": 2.6505077300071718,
+      "Perf/learning_time": 0.09419762563705444,
+      "Train/mean_reward": 39.558686164855956,
+      "Train/mean_episode_length": 1000.0
+    }
+  },
+  "models": [
+    {
+      "file": "model_5300.pt",
+      "finite": true,
+      "std_mean": 0.1586141735315323,
+      "std_max": 0.1935165375471115
+    },
+    {
+      "file": "model_5400.pt",
+      "finite": true,
+      "std_mean": 0.2127676010131836,
+      "std_max": 0.26516616344451904
+    },
+    {
+      "file": "model_5500.pt",
+      "finite": true,
+      "std_mean": 0.21014827489852905,
+      "std_max": 0.2658677399158478
+    },
+    {
+      "file": "model_5600.pt",
+      "finite": true,
+      "std_mean": 0.20282453298568726,
+      "std_max": 0.2578657567501068
+    },
+    {
+      "file": "model_5700.pt",
+      "finite": true,
+      "std_mean": 0.19959215819835663,
+      "std_max": 0.25372591614723206
+    },
+    {
+      "file": "model_5800.pt",
+      "finite": true,
+      "std_mean": 0.19507552683353424,
+      "std_max": 0.24742518365383148
+    },
+    {
+      "file": "model_5900.pt",
+      "finite": true,
+      "std_mean": 0.19704395532608032,
+      "std_max": 0.247528538107872
+    },
+    {
+      "file": "model_6000.pt",
+      "finite": true,
+      "std_mean": 0.19475309550762177,
+      "std_max": 0.24896854162216187
+    },
+    {
+      "file": "model_6100.pt",
+      "finite": true,
+      "std_mean": 0.1928768754005432,
+      "std_max": 0.24009564518928528
+    },
+    {
+      "file": "model_6200.pt",
+      "finite": true,
+      "std_mean": 0.1899164915084839,
+      "std_max": 0.23666444420814514
+    },
+    {
+      "file": "model_6300.pt",
+      "finite": true,
+      "std_mean": 0.18956772983074188,
+      "std_max": 0.24429044127464294
+    },
+    {
+      "file": "model_6400.pt",
+      "finite": true,
+      "std_mean": 0.19311892986297607,
+      "std_max": 0.2525603771209717
+    },
+    {
+      "file": "model_6500.pt",
+      "finite": true,
+      "std_mean": 0.1923537403345108,
+      "std_max": 0.2530408799648285
+    },
+    {
+      "file": "model_6600.pt",
+      "finite": true,
+      "std_mean": 0.1886439323425293,
+      "std_max": 0.23749302327632904
+    },
+    {
+      "file": "model_6700.pt",
+      "finite": true,
+      "std_mean": 0.1912262886762619,
+      "std_max": 0.24380825459957123
+    },
+    {
+      "file": "model_6800.pt",
+      "finite": true,
+      "std_mean": 0.18786698579788208,
+      "std_max": 0.2447470724582672
+    },
+    {
+      "file": "model_6900.pt",
+      "finite": true,
+      "std_mean": 0.18700791895389557,
+      "std_max": 0.23419928550720215
+    },
+    {
+      "file": "model_7000.pt",
+      "finite": true,
+      "std_mean": 0.18860141932964325,
+      "std_max": 0.2377449870109558
+    },
+    {
+      "file": "model_7100.pt",
+      "finite": true,
+      "std_mean": 0.18690864741802216,
+      "std_max": 0.23080085217952728
+    },
+    {
+      "file": "model_7200.pt",
+      "finite": true,
+      "std_mean": 0.18782103061676025,
+      "std_max": 0.23653975129127502
+    },
+    {
+      "file": "model_7300.pt",
+      "finite": true,
+      "std_mean": 0.18497538566589355,
+      "std_max": 0.23388099670410156
+    },
+    {
+      "file": "model_7400.pt",
+      "finite": true,
+      "std_mean": 0.188823863863945,
+      "std_max": 0.24050775170326233
+    },
+    {
+      "file": "model_7500.pt",
+      "finite": true,
+      "std_mean": 0.18717724084854126,
+      "std_max": 0.2330474853515625
+    },
+    {
+      "file": "model_7600.pt",
+      "finite": true,
+      "std_mean": 0.1870342344045639,
+      "std_max": 0.23104697465896606
+    },
+    {
+      "file": "model_7700.pt",
+      "finite": true,
+      "std_mean": 0.18282872438430786,
+      "std_max": 0.228688046336174
+    },
+    {
+      "file": "model_7800.pt",
+      "finite": true,
+      "std_mean": 0.18287332355976105,
+      "std_max": 0.23748192191123962
+    },
+    {
+      "file": "model_7900.pt",
+      "finite": true,
+      "std_mean": 0.18370695412158966,
+      "std_max": 0.22640013694763184
+    },
+    {
+      "file": "model_8000.pt",
+      "finite": true,
+      "std_mean": 0.181671142578125,
+      "std_max": 0.22328191995620728
+    },
+    {
+      "file": "model_8100.pt",
+      "finite": true,
+      "std_mean": 0.1814108043909073,
+      "std_max": 0.2214362919330597
+    },
+    {
+      "file": "model_8200.pt",
+      "finite": true,
+      "std_mean": 0.17890359461307526,
+      "std_max": 0.21912948787212372
+    },
+    {
+      "file": "model_8300.pt",
+      "finite": true,
+      "std_mean": 0.1799219250679016,
+      "std_max": 0.22208625078201294
+    },
+    {
+      "file": "model_8400.pt",
+      "finite": true,
+      "std_mean": 0.1777046173810959,
+      "std_max": 0.22112801671028137
+    },
+    {
+      "file": "model_8500.pt",
+      "finite": true,
+      "std_mean": 0.17725630104541779,
+      "std_max": 0.2165488302707672
+    },
+    {
+      "file": "model_8600.pt",
+      "finite": true,
+      "std_mean": 0.1795825958251953,
+      "std_max": 0.22448791563510895
+    },
+    {
+      "file": "model_8700.pt",
+      "finite": true,
+      "std_mean": 0.17780034244060516,
+      "std_max": 0.22590626776218414
+    },
+    {
+      "file": "model_8800.pt",
+      "finite": true,
+      "std_mean": 0.17892707884311676,
+      "std_max": 0.22129683196544647
+    },
+    {
+      "file": "model_8900.pt",
+      "finite": true,
+      "std_mean": 0.18030081689357758,
+      "std_max": 0.22424916923046112
+    },
+    {
+      "file": "model_9000.pt",
+      "finite": true,
+      "std_mean": 0.1782923936843872,
+      "std_max": 0.22111517190933228
+    },
+    {
+      "file": "model_9100.pt",
+      "finite": true,
+      "std_mean": 0.1783515214920044,
+      "std_max": 0.2224223017692566
+    },
+    {
+      "file": "model_9200.pt",
+      "finite": true,
+      "std_mean": 0.1801237314939499,
+      "std_max": 0.22305795550346375
+    },
+    {
+      "file": "model_9299.pt",
+      "finite": true,
+      "std_mean": 0.17940877377986908,
+      "std_max": 0.2277337908744812
+    }
+  ],
+  "event_step_range": [
+    5300,
+    9299
+  ]
+}

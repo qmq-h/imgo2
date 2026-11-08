@@ -1,0 +1,34 @@
+{
+  "scope": "Offline joint_mirror cost by logical joint names; fixed forward .3 m/s, t>=4s; no new rollout or Isaac runtime selector dump",
+  "formula": "0.5 * sum((q_FR_j-q_RL_j)^2+(q_FL_j-q_RR_j)^2 for j in thigh,shank)",
+  "weight": -1.0,
+  "control_dt": 0.02,
+  "policies": {
+    "policy.pt": {
+      "mean_raw_cost_rad2": 0.015825360841759367,
+      "weighted_per_step": -0.00031650721683518734,
+      "weighted_rate_before_upright": -0.015825360841759367,
+      "fraction_of_max_linear_tracking": 0.010550240561172911,
+      "csv_sha256": "43aae2329fdf9c5879f476b86f86a9cbeeb2e6c04f7d74fd8a0ec1d60babaa3c"
+    },
+    "policy_latest_2.pt": {
+      "mean_raw_cost_rad2": 0.007286806994151364,
+      "weighted_per_step": -0.0001457361398830273,
+      "weighted_rate_before_upright": -0.007286806994151364,
+      "fraction_of_max_linear_tracking": 0.004857871329434243,
+      "csv_sha256": "d252dd1738a89a3686c99166cb495f5c71f8855efe5226557756797926219e0c"
+    },
+    "policy_1.pt": {
+      "mean_raw_cost_rad2": 0.00046840753826803486,
+      "weighted_per_step": -9.368150765360697e-06,
+      "weighted_rate_before_upright": -0.00046840753826803486,
+      "fraction_of_max_linear_tracking": 0.0003122716921786899,
+      "csv_sha256": "11f6a5ea7050c8c60aac244229a2d68675f1f8635520f21c9f6e4500e10ad28b"
+    }
+  },
+  "counterexamples": {
+    "all_four_equal": 0.0,
+    "diagonal_groups_different": 0.0,
+    "fronts_equal_rears_equal_offset_point1": 0.010000000000000018
+  }
+}

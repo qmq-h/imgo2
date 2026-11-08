@@ -1,0 +1,1145 @@
+{
+  "rough": {
+    "original5300": {
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.005953020819528319,
+          "mean_vy": 0.0003141830145032145,
+          "mean_wz": -0.0005577921390067786,
+          "mean_z": 0.238560528755188,
+          "gyro_xy_rms": 0.15977530330262704,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2940469791804717
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.23349492207635195,
+          "mean_vy": -0.001137951032607816,
+          "mean_wz": 0.028539676789194345,
+          "mean_z": 0.24172969686985016,
+          "gyro_xy_rms": 0.42901079603595904,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1387584902657196
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.06766353231132961,
+          "mean_vy": 0.004058301148412284,
+          "mean_wz": -0.03713558191177435,
+          "mean_z": 0.24919429820775985,
+          "gyro_xy_rms": 0.3852063277085397,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2432890415841248
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.06012811367952963,
+          "mean_vy": -0.0061268263256934,
+          "mean_wz": 0.0033935871347202918,
+          "mean_z": 0.2510554134845734,
+          "gyro_xy_rms": 0.23965394256025463,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.24031811744725565
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.061266722917207514,
+          "mean_vy": 0.04952227554912679,
+          "mean_wz": -0.18775903768953867,
+          "mean_z": 0.17879208670556546,
+          "gyro_xy_rms": 1.218062966581993,
+          "upright_fraction": 0.552,
+          "vx_mae": 0.26415458524262064
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.042492449259720164,
+          "mean_vy": -0.006053375239367597,
+          "mean_wz": 0.013686236049892614,
+          "mean_z": 0.2278641208410263,
+          "gyro_xy_rms": 0.24552483970071573,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2681070951223752
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.0006720423031365499,
+          "mean_vy": 0.003247539079049602,
+          "mean_wz": -0.005542144620703766,
+          "mean_z": 0.2545159037709236,
+          "gyro_xy_rms": 0.14490918160437444,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.29932795769686343
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.16904780660034158,
+          "mean_vy": -0.008326470446190797,
+          "mean_wz": 0.005587288582930341,
+          "mean_z": 0.26659828078746794,
+          "gyro_xy_rms": 0.3237402690499968,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.13652023675083183
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.0001396312119322829,
+          "mean_vy": -0.00029360985837683984,
+          "mean_wz": 0.007847352602373577,
+          "mean_z": 0.26488632011413576,
+          "gyro_xy_rms": 0.08240657579543643,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.30013963121193227
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.18989386455953355,
+          "mean_vy": -0.04600091431027977,
+          "mean_wz": 0.0029677360345376656,
+          "mean_z": 0.1675441256761551,
+          "gyro_xy_rms": 1.2709828124945786,
+          "upright_fraction": 0.688,
+          "vx_mae": 0.13764886007368332
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.09553386472642887,
+          "mean_vy": 0.0026576455676768094,
+          "mean_wz": 0.01077716855739709,
+          "mean_z": 0.2732112712264061,
+          "gyro_xy_rms": 0.2986400510703483,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.20581347943365108
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.14647843933285912,
+          "mean_vy": 0.010270241933700163,
+          "mean_wz": -0.0016684911635820754,
+          "mean_z": 0.3060925097465515,
+          "gyro_xy_rms": 0.324370267883344,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1535338737708167
+        }
+      ],
+      "vx_mae_mean": 0.2234715289816955,
+      "forward_mae": 0.2677952790582773,
+      "backward_mae": 0.1791477789051137,
+      "gyro_xy_mean": 0.4268569444823473
+    },
+    "terrain6300": {
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.13728804602858144,
+          "mean_vy": 9.17325490154326e-05,
+          "mean_wz": 0.008319818866671994,
+          "mean_z": 0.2711215958595276,
+          "gyro_xy_rms": 0.28970695316479544,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1631982040620176
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.09682956998524242,
+          "mean_vy": 0.004437786619353574,
+          "mean_wz": -0.0020638300976097528,
+          "mean_z": 0.24304615330696105,
+          "gyro_xy_rms": 0.2104940478974447,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2273717590076012
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.09273345823178533,
+          "mean_vy": -0.0016894125569851895,
+          "mean_wz": -0.00016959978570230306,
+          "mean_z": 0.2918883780241013,
+          "gyro_xy_rms": 0.34615676105363713,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.20726654176821466
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.1153421089220792,
+          "mean_vy": 0.00990964906370209,
+          "mean_wz": 0.01572413262166083,
+          "mean_z": 0.32885729014873505,
+          "gyro_xy_rms": 0.35862018825144165,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.21414716052524746
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.0815426774379448,
+          "mean_vy": -0.002629348341084551,
+          "mean_wz": 0.014150690553127789,
+          "mean_z": 0.24989922869205475,
+          "gyro_xy_rms": 0.24861430487314692,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2188157199266716
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.23391480170329304,
+          "mean_vy": 0.001975951043481473,
+          "mean_wz": 0.0014771393806440756,
+          "mean_z": 0.24623926627635956,
+          "gyro_xy_rms": 0.2978977271289638,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.10291968337456492
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.2075067092264071,
+          "mean_vy": -0.003869934461195953,
+          "mean_wz": -0.008025818267415162,
+          "mean_z": 0.2771288965344429,
+          "gyro_xy_rms": 0.2917695688410535,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.09711089207287876
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.31369085448980333,
+          "mean_vy": 0.0011148956881079357,
+          "mean_wz": -0.02007551854365738,
+          "mean_z": 0.2725565241575241,
+          "gyro_xy_rms": 0.28487872776882306,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.051140581667423246
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.16928423938993364,
+          "mean_vy": -0.005366879455424169,
+          "mean_wz": -0.003018996261060238,
+          "mean_z": 0.2788857853412628,
+          "gyro_xy_rms": 0.3258222027564469,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.13072585828062147
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.31779423293471337,
+          "mean_vy": 0.009141510811808985,
+          "mean_wz": -0.02158757265325403,
+          "mean_z": 0.17529547441005708,
+          "gyro_xy_rms": 0.30518781905392517,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.06854711421132088
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.17579763786494731,
+          "mean_vy": -0.005351839089518762,
+          "mean_wz": -0.0013278552820102049,
+          "mean_z": 0.2992170769572258,
+          "gyro_xy_rms": 0.3011957095285103,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.12486402318775652
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.2876069051027298,
+          "mean_vy": 0.004738533195923083,
+          "mean_wz": -0.004328424521139823,
+          "mean_z": 0.4159557941555977,
+          "gyro_xy_rms": 0.3100002601282624,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.04687832660675049
+        }
+      ],
+      "vx_mae_mean": 0.13774882205758907,
+      "forward_mae": 0.1569968732163601,
+      "backward_mae": 0.11850077089881804,
+      "gyro_xy_mean": 0.29752868920387093
+    },
+    "terrain9299": {
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.1360184308617172,
+          "mean_vy": -0.0017320485447708052,
+          "mean_wz": 0.01264259306580061,
+          "mean_z": 0.24661226570606232,
+          "gyro_xy_rms": 0.28752551286838546,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.16587630166124726
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.3020813512802124,
+          "mean_vy": 0.0036793153595353944,
+          "mean_wz": -0.0037859352909144946,
+          "mean_z": 0.13323943364620208,
+          "gyro_xy_rms": 0.32663868320385236,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.052219737577438356
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.12195733773254323,
+          "mean_vy": 0.001404001764341956,
+          "mean_wz": 0.10321802406350616,
+          "mean_z": 0.29651076859235764,
+          "gyro_xy_rms": 0.6173670919648802,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.18189418275810312
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.2118462341405684,
+          "mean_vy": -0.0002254216259752866,
+          "mean_wz": 0.00340975316199183,
+          "mean_z": 0.38166984349489214,
+          "gyro_xy_rms": 0.33402729489574035,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.12073325058443006
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.06858052427301846,
+          "mean_vy": -0.0033022170760668816,
+          "mean_wz": 0.0016833244274603203,
+          "mean_z": 0.24396281725168228,
+          "gyro_xy_rms": 0.2572887491015665,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.23490715976228274
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.2880944977849722,
+          "mean_vy": -0.004985080763217411,
+          "mean_wz": 0.0024102571623807307,
+          "mean_z": 0.2453718559741974,
+          "gyro_xy_rms": 0.34120079723162566,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.05759791695177555
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.2402790963947773,
+          "mean_vy": 0.005980978029314429,
+          "mean_wz": 0.009025713143888425,
+          "mean_z": 0.2763024702072144,
+          "gyro_xy_rms": 0.3082909528177075,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.07251167461276053
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.3153628399372101,
+          "mean_vy": 0.013370678826744552,
+          "mean_wz": -0.013230716245947407,
+          "mean_z": 0.2719043899178505,
+          "gyro_xy_rms": 0.26037530482151094,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.039463157296180724
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.2189108988940716,
+          "mean_vy": -0.005548802415883984,
+          "mean_wz": -0.0072690263102995235,
+          "mean_z": 0.2598587658405304,
+          "gyro_xy_rms": 0.3394600271839879,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.0828707103550434
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.36274970108270643,
+          "mean_vy": 0.013270277447474655,
+          "mean_wz": 0.002590269805979915,
+          "mean_z": 0.14292635226249695,
+          "gyro_xy_rms": 0.29540146300048864,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.06345096405744553
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.19660836715996266,
+          "mean_vy": -0.0027481144475314068,
+          "mean_wz": -0.0005688482346013188,
+          "mean_z": 0.30992389053106306,
+          "gyro_xy_rms": 0.31358436428355263,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.10479110817611216
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.2865758394300938,
+          "mean_vy": 0.004753228529589251,
+          "mean_wz": -0.01582718946947716,
+          "mean_z": 0.4083142282962799,
+          "gyro_xy_rms": 0.3021629969035461,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.05224457067847251
+        }
+      ],
+      "vx_mae_mean": 0.102380061205941,
+      "forward_mae": 0.1404751895542582,
+      "backward_mae": 0.0642849328576238,
+      "gyro_xy_mean": 0.33194360318973704
+    }
+  },
+  "plane": {
+    "terrain6300": {
+      "task": "Imgo2-basemove-rough-ppo",
+      "policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/terrain5300_compare_2026-11-06/terrain6300.pt",
+      "sha256": "d1aaca087f8fe3fc19aa299ee6a33cb2e15e5bab569d99e2f09d01fc3246b0c4",
+      "dt": 0.02,
+      "history_frames": 1,
+      "body_names": [
+        "base",
+        "FL_HIP",
+        "FR_HIP",
+        "RL_HIP",
+        "RR_HIP",
+        "FL_THIGH",
+        "FR_THIGH",
+        "RL_THIGH",
+        "RR_THIGH",
+        "FL_SHANK",
+        "FR_SHANK",
+        "RL_SHANK",
+        "RR_SHANK",
+        "FL_FOOT",
+        "FR_FOOT",
+        "RL_FOOT",
+        "RR_FOOT"
+      ],
+      "joint_names": [
+        "FL_hip_joint",
+        "FR_hip_joint",
+        "RL_hip_joint",
+        "RR_hip_joint",
+        "FL_thigh_joint",
+        "FR_thigh_joint",
+        "RL_thigh_joint",
+        "RR_thigh_joint",
+        "FL_shank_joint",
+        "FR_shank_joint",
+        "RL_shank_joint",
+        "RR_shank_joint"
+      ],
+      "default_joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.8700000047683716,
+        0.8700000047683716,
+        0.8700000047683716,
+        0.8700000047683716,
+        -1.8200000524520874,
+        -1.8200000524520874,
+        -1.8200000524520874,
+        -1.8200000524520874
+      ],
+      "stiffness": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "damping": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_reset": true,
+      "actuator_gains": {
+        "legs": {
+          "stiffness": [
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ]
+          ],
+          "damping": [
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          ]
+        }
+      },
+      "terrain": "plane",
+      "terrain_names": [],
+      "terrain_difficulty": null,
+      "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.0021300230179185746,
+          "mean_vy": 0.0004902811683762139,
+          "mean_wz": -0.0015905326774609421,
+          "mean_z": 0.2710603240132332,
+          "gyro_xy_rms": 0.014581108349264087,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.22817602261900902,
+          "mean_vy": 0.00068552110879682,
+          "mean_wz": -0.00746373303400469,
+          "mean_z": 0.29606801867485044,
+          "gyro_xy_rms": 0.15622083203071344,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.3722969719171524,
+          "mean_vy": 0.003908299335220363,
+          "mean_wz": -0.01871561881247908,
+          "mean_z": 0.2969553125500679,
+          "gyro_xy_rms": 0.2064937187898318,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "turn_left03",
+          "command": [
+            0.0,
+            0.0,
+            0.3
+          ],
+          "resets": 0,
+          "mean_vx": -0.024068008674541487,
+          "mean_vy": 0.016122132803779096,
+          "mean_wz": 0.25878963647782804,
+          "mean_z": 0.30539715814590457,
+          "gyro_xy_rms": 0.1626848811942036,
+          "upright_fraction": 1.0
+        }
+      ]
+    },
+    "terrain9299": {
+      "task": "Imgo2-basemove-rough-ppo",
+      "policy": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/terrain5300_compare_2026-11-06/terrain9299.pt",
+      "sha256": "9a505c5af98d60ae0fe791c7ca21a0d46102c3a8f058dba2f313d1053d8a88bd",
+      "dt": 0.02,
+      "history_frames": 1,
+      "body_names": [
+        "base",
+        "FL_HIP",
+        "FR_HIP",
+        "RL_HIP",
+        "RR_HIP",
+        "FL_THIGH",
+        "FR_THIGH",
+        "RL_THIGH",
+        "RR_THIGH",
+        "FL_SHANK",
+        "FR_SHANK",
+        "RL_SHANK",
+        "RR_SHANK",
+        "FL_FOOT",
+        "FR_FOOT",
+        "RL_FOOT",
+        "RR_FOOT"
+      ],
+      "joint_names": [
+        "FL_hip_joint",
+        "FR_hip_joint",
+        "RL_hip_joint",
+        "RR_hip_joint",
+        "FL_thigh_joint",
+        "FR_thigh_joint",
+        "RL_thigh_joint",
+        "RR_thigh_joint",
+        "FL_shank_joint",
+        "FR_shank_joint",
+        "RL_shank_joint",
+        "RR_shank_joint"
+      ],
+      "default_joint_pos": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.8700000047683716,
+        0.8700000047683716,
+        0.8700000047683716,
+        0.8700000047683716,
+        -1.8200000524520874,
+        -1.8200000524520874,
+        -1.8200000524520874,
+        -1.8200000524520874
+      ],
+      "stiffness": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "damping": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_reset": true,
+      "actuator_gains": {
+        "legs": {
+          "stiffness": [
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ],
+            [
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0,
+              25.0
+            ]
+          ],
+          "damping": [
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ],
+            [
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5,
+              0.5
+            ]
+          ]
+        }
+      },
+      "terrain": "plane",
+      "terrain_names": [],
+      "terrain_difficulty": null,
+      "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+      "cases": [
+        {
+          "case": "stand",
+          "command": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.0027675013434745777,
+          "mean_vy": 0.0006269070648572779,
+          "mean_wz": -0.0027072901431083665,
+          "mean_z": 0.2678423461318016,
+          "gyro_xy_rms": 0.016417504166455363,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.23605822187662123,
+          "mean_vy": 0.009414742281071085,
+          "mean_wz": 0.008986957747954875,
+          "mean_z": 0.29488016045093535,
+          "gyro_xy_rms": 0.2195885403955277,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.3654108265042305,
+          "mean_vy": 0.007931294633275684,
+          "mean_wz": -0.017450551100308076,
+          "mean_z": 0.2960874710083008,
+          "gyro_xy_rms": 0.1620916956886517,
+          "upright_fraction": 1.0
+        },
+        {
+          "case": "turn_left03",
+          "command": [
+            0.0,
+            0.0,
+            0.3
+          ],
+          "resets": 0,
+          "mean_vx": -0.0037797137582674624,
+          "mean_vy": 0.01119667811319232,
+          "mean_wz": 0.22357681953720748,
+          "mean_z": 0.2995385514497757,
+          "gyro_xy_rms": 0.1816096842314859,
+          "upright_fraction": 1.0
+        }
+      ]
+    }
+  },
+  "scope": "seed42 fixed nominal 25/.5, 600steps/12s, discard100steps/2s, rough six types difficulty .5; patch-origin height not local ground clearance; no through-terrain completion metric"
+}

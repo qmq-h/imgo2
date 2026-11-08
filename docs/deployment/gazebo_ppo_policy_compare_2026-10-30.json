@@ -1,0 +1,204 @@
+{
+  "date": "2026-10-30",
+  "scope": "Gazebo headless comparison of deployed PPO policy.pt vs policy_1; MuJoCo supplementary",
+  "policy_hashes": {
+    "latest": "4cffbe658700b1a7801c5c1db1003bbb204b0ae1a1ebe6002906dc75ef761371",
+    "policy_1": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf"
+  },
+  "gazebo": {
+    "latest_stand": {
+      "z_mean": 0.30938770051058123,
+      "vx_mean": -3.106053291618327e-05,
+      "error_pct": 0.0,
+      "freq_hz": NaN,
+      "phase_deg": NaN,
+      "roll_range_deg": 0.013515438619618271,
+      "pitch_range_deg": 0.0020943227460934535,
+      "yaw_drift_deg_s": -0.014160944739322022,
+      "thigh_ddq": 0.006210216787172016,
+      "hip_front_deg": 1.8226715385814134,
+      "hip_rear_deg": 1.7298633858260093
+    },
+    "latest_forward03": {
+      "z_mean": 0.23965212370412586,
+      "vx_mean": 0.35569485770719667,
+      "error_pct": 18.56495256906556,
+      "freq_hz": 1.8867924528298938,
+      "phase_deg": -183.39622641509433,
+      "roll_range_deg": 3.511058413297078,
+      "pitch_range_deg": 2.558254026481511,
+      "yaw_drift_deg_s": -0.5808709489181038,
+      "thigh_ddq": 37.39173139550113,
+      "hip_front_deg": -3.7819378347315435,
+      "hip_rear_deg": -5.13415138456907
+    },
+    "latest_backward03": {
+      "z_mean": 0.23795254769788987,
+      "vx_mean": -0.1915616673243351,
+      "error_pct": 36.14611089188829,
+      "freq_hz": 1.746823956442558,
+      "phase_deg": 136.55172413793105,
+      "roll_range_deg": 2.7827042632468335,
+      "pitch_range_deg": 2.392880142399723,
+      "yaw_drift_deg_s": 1.2035273251027958,
+      "thigh_ddq": 28.558418061289373,
+      "hip_front_deg": -3.2153208465854206,
+      "hip_rear_deg": -5.743966697415469
+    },
+    "latest_forward05": {
+      "z_mean": 0.23940150101991295,
+      "vx_mean": 0.5498796598129819,
+      "error_pct": 9.975931962596384,
+      "freq_hz": 2.3255813953484736,
+      "phase_deg": -175.8139534883721,
+      "roll_range_deg": 2.801554346407011,
+      "pitch_range_deg": 2.192723986151541,
+      "yaw_drift_deg_s": -0.6739447410224512,
+      "thigh_ddq": 52.25499784833573,
+      "hip_front_deg": -1.7037386695050885,
+      "hip_rear_deg": -6.504764053586997
+    },
+    "policy_1_stand": {
+      "z_mean": 0.07322050307959181,
+      "vx_mean": -2.1977499976167365e-10,
+      "error_pct": 0.0,
+      "freq_hz": NaN,
+      "phase_deg": NaN,
+      "roll_range_deg": 6.0738322496553915e-06,
+      "pitch_range_deg": 9.500518972121981e-06,
+      "yaw_drift_deg_s": 1.8919856374084988e-08,
+      "thigh_ddq": 0.004610282708370034,
+      "hip_front_deg": -2.2261454206078444,
+      "hip_rear_deg": 0.6811257244956755
+    },
+    "policy_1_forward03": {
+      "z_mean": 0.2394230144909282,
+      "vx_mean": 0.35586065573907927,
+      "error_pct": 18.620218579693095,
+      "freq_hz": 1.8867924528298938,
+      "phase_deg": -190.18867924528303,
+      "roll_range_deg": 3.0851131008715407,
+      "pitch_range_deg": 2.56561949736787,
+      "yaw_drift_deg_s": -0.6317069560667311,
+      "thigh_ddq": 36.73994604557767,
+      "hip_front_deg": -3.8538512166764876,
+      "hip_rear_deg": -5.166676336701396
+    },
+    "policy_1_backward03": {
+      "z_mean": 0.23804219539121615,
+      "vx_mean": -0.19030662879684593,
+      "error_pct": 36.56445706771802,
+      "freq_hz": 1.7857142857140065,
+      "phase_deg": 135.0,
+      "roll_range_deg": 2.6216566964639707,
+      "pitch_range_deg": 2.3487110813763614,
+      "yaw_drift_deg_s": 1.1056760281764535,
+      "thigh_ddq": 28.155134421061543,
+      "hip_front_deg": -3.0723580049946557,
+      "hip_rear_deg": -5.881642919553439
+    },
+    "policy_1_forward05": {
+      "z_mean": 0.23891492606573414,
+      "vx_mean": 0.5509980324765524,
+      "error_pct": 10.199606495310487,
+      "freq_hz": 2.3255813953484736,
+      "phase_deg": -175.8139534883721,
+      "roll_range_deg": 2.684443381849303,
+      "pitch_range_deg": 1.9700898804082616,
+      "yaw_drift_deg_s": -0.8508303828823292,
+      "thigh_ddq": 51.637193601470486,
+      "hip_front_deg": -1.89568834399163,
+      "hip_rear_deg": -6.459195109425695
+    }
+  },
+  "mujoco": {
+    "latest": {
+      "stand": {
+        "z": 0.311,
+        "vx": 0.0
+      },
+      "+0.20": {
+        "z": 0.309,
+        "vx": 0.0
+      },
+      "+0.25": {
+        "z": 0.302,
+        "vx": 0.0
+      },
+      "+0.30": {
+        "z": 0.298,
+        "vx": 0.0
+      },
+      "+0.35": {
+        "z": 0.238,
+        "vx": 0.399,
+        "freq": 2.0,
+        "clearance_cm": 7.64
+      },
+      "+0.40": {
+        "z": 0.239,
+        "vx": 0.445,
+        "freq": 2.11,
+        "clearance_cm": 7.75
+      },
+      "+0.50": {
+        "z": 0.238,
+        "vx": 0.54,
+        "freq": 2.27,
+        "clearance_cm": 7.62
+      },
+      "-0.30": {
+        "z": 0.236,
+        "vx": -0.202,
+        "freq": 1.72,
+        "clearance_cm": 6.07
+      }
+    },
+    "policy_1": {
+      "stand": {
+        "z": 0.303,
+        "vx": 0.0
+      },
+      "+0.30": {
+        "z": 0.289,
+        "vx": 0.288,
+        "freq": 2.02,
+        "clearance_cm": 3.97
+      },
+      "+0.50": {
+        "z": 0.287,
+        "vx": 0.465,
+        "freq": 2.33,
+        "clearance_cm": 4.23
+      },
+      "-0.30": {
+        "z": 0.289,
+        "vx": -0.243,
+        "freq": 2.08,
+        "clearance_cm": 3.72
+      }
+    }
+  },
+  "issues": [
+    "latest Gazebo stand good (.309, hips normal); walking height ~.239 vs stand .309",
+    "MuJoCo +.2/.25/.3 stand still, +.35 walks: low-speed deadband; Gazebo +.3 walks (engine-dependent)",
+    "policy_1 Gazebo stand failed at z .073 (old policy incompatible with current Gazebo model)",
+    "speed overshoot +.3 .356 (+18.6%), +.5 .550 (+10%)",
+    "hips fixed: no front-out/rear-in; stand_still good; thigh jitter comparable"
+  ],
+  "suggestions": [
+    "feet_height_body=0 or -0.5 first; keep base_height_l2 -12; train 300-500 iters LR 3e-4",
+    "if +.3 still stands: feet_air_time 1.8->1.2 or deficit -3/.20; or speed-gated airtime",
+    "if walking height still low after FHB=0: base_height_l2 -12->-15",
+    "if overshoot: track_lin_vel_xy_exp 1.5->1.7",
+    "keep mirror thigh/shank only + hip L1 -0.2; keep stand_still -0.2; no hip splay observed",
+    "do not use feet_height=-3.5; no world-target foot height on rough",
+    "evaluate both Gazebo and MuJoCo; policy_1 not a valid current-Gazebo baseline"
+  ],
+  "limitations": [
+    "single 20s run per case, one seed",
+    "Gazebo vs MuJoCo contact/friction differ; +.3 walking differs",
+    "policy_1 original training model/config unknown; its Gazebo stand failure may be model incompatibility",
+    "no stairs/slopes/hardware; no training started"
+  ]
+}

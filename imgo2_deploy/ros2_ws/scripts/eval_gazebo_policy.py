@@ -106,9 +106,9 @@ class Eval(Node):
             if self.state in ("getup", "passive"):
                 self.state = "policy"
                 self.entry_time = time.time()
-            # RB=buttons[5]；DPadUp=axes[7]>0（键1）/ DPadRight=axes[6]>0（键2）/ DPadDown=axes[7]<0（键3）
+            # RB=buttons[5]；DPadUp=axes[7]>0（键1）/ DPadRight=axes[6]<0（键2）/ DPadDown=axes[7]<0（键3）
             dpad = {1: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-                    2: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                    2: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0],
                     3: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0]}[self.key]
             axes = list(dpad)
             axes[1] = self.vx

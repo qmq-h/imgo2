@@ -1,0 +1,110 @@
+{
+  "angxy01_10498": {
+    "run": "2026-11-03_19-19-42_feetheight_4.0",
+    "actor_exact": {
+      "mlp.0.weight": true,
+      "mlp.0.bias": true,
+      "mlp.2.weight": true,
+      "mlp.2.bias": true,
+      "mlp.4.weight": true,
+      "mlp.4.bias": true,
+      "mlp.6.weight": true,
+      "mlp.6.bias": true
+    },
+    "checkpoints": [
+      {
+        "file": "model_10000.pt",
+        "all_finite": true,
+        "mean_std": 0.4150635004043579
+      },
+      {
+        "file": "model_10100.pt",
+        "all_finite": true,
+        "mean_std": 0.36956357955932617
+      },
+      {
+        "file": "model_10200.pt",
+        "all_finite": true,
+        "mean_std": 0.38128387928009033
+      },
+      {
+        "file": "model_10300.pt",
+        "all_finite": true,
+        "mean_std": 0.39009690284729004
+      },
+      {
+        "file": "model_10400.pt",
+        "all_finite": true,
+        "mean_std": 0.3953159749507904
+      },
+      {
+        "file": "model_10498.pt",
+        "all_finite": true,
+        "mean_std": 0.3937032222747803
+      }
+    ],
+    "policy_sha256": "efa62125b751aa4292f7ceeffa71b1b2a62f94d37c51d05bfb727c3126a01a23",
+    "resume": {
+      "resume": true,
+      "load_run": "2026-11-02_23-12-30",
+      "load_checkpoint": "model_9999.pt",
+      "seed": 42,
+      "max_iterations": 500
+    },
+    "num_envs": 4096
+  },
+  "target024_10498": {
+    "run": "2026-11-03_19-26-37_fefeet_height_target_0.24",
+    "actor_exact": {
+      "mlp.0.weight": true,
+      "mlp.0.bias": true,
+      "mlp.2.weight": true,
+      "mlp.2.bias": true,
+      "mlp.4.weight": true,
+      "mlp.4.bias": true,
+      "mlp.6.weight": true,
+      "mlp.6.bias": true
+    },
+    "checkpoints": [
+      {
+        "file": "model_10000.pt",
+        "all_finite": true,
+        "mean_std": 0.41568365693092346
+      },
+      {
+        "file": "model_10100.pt",
+        "all_finite": true,
+        "mean_std": 0.38358819484710693
+      },
+      {
+        "file": "model_10200.pt",
+        "all_finite": true,
+        "mean_std": 0.3951486349105835
+      },
+      {
+        "file": "model_10300.pt",
+        "all_finite": true,
+        "mean_std": 0.4038866460323334
+      },
+      {
+        "file": "model_10400.pt",
+        "all_finite": true,
+        "mean_std": 0.4074307382106781
+      },
+      {
+        "file": "model_10498.pt",
+        "all_finite": true,
+        "mean_std": 0.4080860912799835
+      }
+    ],
+    "policy_sha256": "af3077d50c5566ff2d1337c5960a1ca967f40992713ba98c26d90c667b331d53",
+    "resume": {
+      "resume": true,
+      "load_run": "2026-11-02_23-12-30",
+      "load_checkpoint": "model_9999.pt",
+      "seed": 42,
+      "max_iterations": 500
+    },
+    "num_envs": 4096
+  }
+}

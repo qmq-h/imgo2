@@ -18,15 +18,25 @@ CASES={'stand':(0.,0.,0.),'forward01':(.1,0.,0.),'forward03':(.3,0.,0.),
        'forward05':(.5,0.,0.),'forward08':(.8,0.,0.),'backward03':(-.3,0.,0.),
        'backward05':(-.5,0.,0.),'left03':(0.,.3,0.),'right03':(0.,-.3,0.),
        'turn_left':(0.,0.,.8),'turn_right':(0.,0.,-.8),'arc':(.4,0.,.8)}
+# Additional low-speed probes; retain the original default case set for repeatability.
+DEFAULT_CASES=tuple(CASES)
+CASES.update({'forward02':(.2,0.,0.),'backward01':(-.1,0.,0.),
+              'backward02':(-.2,0.,0.),'left01':(0.,.1,0.),
+              'right01':(0.,-.1,0.),'turn_left03':(0.,0.,.3),
+              'turn_right03':(0.,0.,-.3)})
+CASES.update({'forward10':(1.,0.,0.), 'forward12':(1.2,0.,0.),
+              'backward08':(-.8,0.,0.)})
 
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--policies',nargs='+',default=['policy.pt','policy_now.pt'])
-    p.add_argument('--cases',default=','.join(CASES))
+    p.add_argument('--cases',default=','.join(DEFAULT_CASES))
     p.add_argument('--seconds',type=float,default=20.)
     p.add_argument('--binary',type=Path,help='Reuse a previously compiled benchmark executable')
+    p.add_argument('--policy-config',type=Path,help='Use a diagnostic PPO configuration without changing deployment files')
+    p.add_argument('--base-config',type=Path,help='Use diagnostic feedback timing without changing deployment files')
     a=p.parse_args()
     if not 8<=a.seconds<=60:p.error('seconds must be between 8 and 60')
     cases=a.cases.split(',')
@@ -36,7 +46,8 @@ def main():
     source=WS/'scripts/mujoco_policy_benchmark.cpp'
     header=WS/'src/imgo2_deploy/include'
     scene=ROOT/'imgo2_description/mjcf/scene.xml'
-    config=WS/'policy/imgo2/ppo/config.yaml';base=WS/'policy/imgo2/base.yaml'
+    config=a.policy_config.resolve() if a.policy_config else WS/'policy/imgo2/ppo/config.yaml'
+    base=a.base_config.resolve() if a.base_config else WS/'policy/imgo2/base.yaml'
     policies=[(WS/'policy/imgo2/ppo'/f).resolve() for f in a.policies]
     files=[source,header/'mujoco_motor_pd.hpp',header/'mujoco_feedback.hpp',scene,
            ROOT/'imgo2_description/mjcf/imgo2.xml',config,base,*policies]

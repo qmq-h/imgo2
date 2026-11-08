@@ -1,0 +1,114 @@
+[
+  {
+    "policy": "policy.pt",
+    "case": "stand",
+    "vz_body_rms": 0.00020137568772366713,
+    "gyro_x_rms": 0.003021693275341098,
+    "gyro_y_rms": 0.001775591276516366
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "stand",
+    "vz_body_rms": 0.00028531660793252504,
+    "gyro_x_rms": 0.003589831972282958,
+    "gyro_y_rms": 0.002971063871035165
+  },
+  {
+    "policy": "policy.pt",
+    "case": "forward03",
+    "vz_body_rms": 0.08131437719144384,
+    "gyro_x_rms": 0.15760572607293977,
+    "gyro_y_rms": 0.10600493988673948
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "forward03",
+    "vz_body_rms": 0.08990441844500235,
+    "gyro_x_rms": 0.11518852555850388,
+    "gyro_y_rms": 0.09773161189294473
+  },
+  {
+    "policy": "policy.pt",
+    "case": "forward05",
+    "vz_body_rms": 0.04636085228112124,
+    "gyro_x_rms": 0.16472618142838227,
+    "gyro_y_rms": 0.16176961431081607
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "forward05",
+    "vz_body_rms": 0.0658927013306702,
+    "gyro_x_rms": 0.12379242415525946,
+    "gyro_y_rms": 0.11713973164011054
+  },
+  {
+    "policy": "policy.pt",
+    "case": "backward03",
+    "vz_body_rms": 0.11042957277958507,
+    "gyro_x_rms": 0.1252176705440594,
+    "gyro_y_rms": 0.10456646456601869
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "backward03",
+    "vz_body_rms": 0.06309996884317354,
+    "gyro_x_rms": 0.14835479895291045,
+    "gyro_y_rms": 0.15246902699961035
+  },
+  {
+    "policy": "policy.pt",
+    "case": "left03",
+    "vz_body_rms": 0.037466874157638816,
+    "gyro_x_rms": 0.2420770893470928,
+    "gyro_y_rms": 0.27459385677555903
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "left03",
+    "vz_body_rms": 0.07771519534698451,
+    "gyro_x_rms": 0.16835514984922034,
+    "gyro_y_rms": 0.22541966120307735
+  },
+  {
+    "policy": "policy.pt",
+    "case": "right03",
+    "vz_body_rms": 0.036239891221508135,
+    "gyro_x_rms": 0.28749055810446483,
+    "gyro_y_rms": 0.21823477175396253
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "right03",
+    "vz_body_rms": 0.0787613957750586,
+    "gyro_x_rms": 0.19406796134876778,
+    "gyro_y_rms": 0.19679746394386904
+  },
+  {
+    "policy": "policy.pt",
+    "case": "turn_left03",
+    "vz_body_rms": 0.07995151133880718,
+    "gyro_x_rms": 0.08655627834551496,
+    "gyro_y_rms": 0.09027115199932123
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "turn_left03",
+    "vz_body_rms": 0.03460096584240573,
+    "gyro_x_rms": 0.11022147759186614,
+    "gyro_y_rms": 0.09438488575870604
+  },
+  {
+    "policy": "policy.pt",
+    "case": "turn_right03",
+    "vz_body_rms": 0.04384565900580449,
+    "gyro_x_rms": 0.1531246611696698,
+    "gyro_y_rms": 0.1013273971528015
+  },
+  {
+    "policy": "policy_1.pt",
+    "case": "turn_right03",
+    "vz_body_rms": 0.05030322429426067,
+    "gyro_x_rms": 0.08643738031402613,
+    "gyro_y_rms": 0.06861269865789825
+  }
+]

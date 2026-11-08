@@ -1,0 +1,62 @@
+{
+  "basis": "5899 run, iterations 5500-5899; not newest server run",
+  "control_dt": 0.02,
+  "positive_sum": 1.7644860341399906,
+  "negative_magnitude_sum": 1.0947903538731771,
+  "base_share_negative": 0.011556384372093718,
+  "base_vs_positive": 0.007170256885816285,
+  "height_examples": [
+    {
+      "error_cm": 1,
+      "weighted_before_dt": -0.0018,
+      "reward_per_step": -3.6e-05
+    },
+    {
+      "error_cm": 2,
+      "weighted_before_dt": -0.0072,
+      "reward_per_step": -0.000144
+    },
+    {
+      "error_cm": 3,
+      "weighted_before_dt": -0.0162,
+      "reward_per_step": -0.000324
+    },
+    {
+      "error_cm": 5,
+      "weighted_before_dt": -0.045000000000000005,
+      "reward_per_step": -0.0009000000000000001
+    },
+    {
+      "error_cm": 10,
+      "weighted_before_dt": -0.18000000000000002,
+      "reward_per_step": -0.0036000000000000003
+    }
+  ],
+  "tracking_examples": [
+    {
+      "xy_error_mps": 0,
+      "weighted_before_dt": 1.5,
+      "reward_per_step": 0.03
+    },
+    {
+      "xy_error_mps": 0.1,
+      "weighted_before_dt": 1.4411841587284848,
+      "reward_per_step": 0.028823683174569695
+    },
+    {
+      "xy_error_mps": 0.2,
+      "weighted_before_dt": 1.278215683449317,
+      "reward_per_step": 0.02556431366898634
+    },
+    {
+      "xy_error_mps": 0.3,
+      "weighted_before_dt": 1.0465144891065465,
+      "reward_per_step": 0.02093028978213093
+    },
+    {
+      "xy_error_mps": 0.5,
+      "weighted_before_dt": 0.5518191617571635,
+      "reward_per_step": 0.01103638323514327
+    }
+  ]
+}

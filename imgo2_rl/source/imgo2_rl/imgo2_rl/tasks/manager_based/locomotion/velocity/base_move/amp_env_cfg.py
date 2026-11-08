@@ -21,7 +21,6 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     ObservationsCfg,
 )
 
-
 # ---------------------------------------------------------------------------------------
 # 滞空缺口项（2026-10-10，AMP-06 的 P2）：给「步频过快」一个直接梯度
 # ---------------------------------------------------------------------------------------
@@ -40,7 +39,7 @@ from imgo2_rl.tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 #   ⇒ 要让这一项有 ~10% 的话语权，取 c ≈ 3。取 1 只有 ~3%（等于没加）。
 # 有界性（为什么敢给到 3）：缺口形式每个足每次落地最多贡献 θ，即使 T 掉到 0.1 s，
 #   每步量级也只有 `3 × 0.08 × 0.2 / 0.1 ≈ 0.48`，是任务项的 ~1/3，不会压倒跟踪。
-FEET_AIR_TIME_THRESHOLD_S = 0.20      # 实测参考腾空中位 ≈0.21 s
+FEET_AIR_TIME_THRESHOLD_S = 0.20  # 实测参考腾空中位 ≈0.21 s
 FEET_AIR_TIME_DEFICIT_PER_STEP = -3.0  # 负权重（函数返回非负缺口）
 
 
@@ -252,13 +251,19 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
             params={
                 "command_name": "base_velocity",
                 "threshold": FEET_AIR_TIME_THRESHOLD_S,
-                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=self.foot_body_names),
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces", body_names=self.foot_body_names
+                ),
             },
         )
 
         keep_rewards = {
-            "track_lin_vel_xy_exp", "track_ang_vel_z_exp", "base_height_l2",
-            "lin_vel_z_l2", "ang_vel_xy_l2", "joint_pos_limits",
+            "track_lin_vel_xy_exp",
+            "track_ang_vel_z_exp",
+            "base_height_l2",
+            "lin_vel_z_l2",
+            "ang_vel_xy_l2",
+            "joint_pos_limits",
             "feet_air_time_deficit",
         }
         for attr in dir(self.rewards):
@@ -277,11 +282,11 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
         #   Run2（50 / 17 / -1，5000 轮）：速度项生效但退化为贴地滑行（高度 0.172 m、
         #     贴地 0.89），且噪声 std 失控到 12、价值损失 ~5000、判别器饱和。
         #     根因之一是高度项相对速度项弱了约 3000 倍。
-        TRACK_LIN_VEL_PER_STEP = 4.0      # Run1 1.0 / Run2 50；go2 用 4.0
-        TRACK_ANG_VEL_PER_STEP = 2.0      # Run1 0.3 / Run2 17；go2 用 2.0
-        BASE_HEIGHT_PER_STEP = -5.0       # 乘 (z-0.30)^2；需用实际分项奖励判断贡献
-        LIN_VEL_Z_PER_STEP = -1.0         # go2 的 lin_vel_z
-        ANG_VEL_XY_PER_STEP = -0.05       # go2 的 ang_vel_xy
+        TRACK_LIN_VEL_PER_STEP = 4.0  # Run1 1.0 / Run2 50；go2 用 4.0
+        TRACK_ANG_VEL_PER_STEP = 2.0  # Run1 0.3 / Run2 17；go2 用 2.0
+        BASE_HEIGHT_PER_STEP = -5.0  # 乘 (z-0.30)^2；需用实际分项奖励判断贡献
+        LIN_VEL_Z_PER_STEP = -1.0  # go2 的 lin_vel_z
+        ANG_VEL_XY_PER_STEP = -0.05  # go2 的 ang_vel_xy
         JOINT_POS_LIMITS_PER_STEP = -2.0  # go2 的 dof_pos_limits
 
         step_dt = self.sim.dt * self.decimation
@@ -309,7 +314,9 @@ class Imgo2AmpMoveEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # 滞空缺口项（2026-10-10）：按「每步系数 / step_dt」写，理由与标定见模块顶部注释。
         # 注意该项的函数返回**非负缺口**、权重必须为负（同 base_height_l2 的约定）。
-        self.rewards.feet_air_time_deficit.weight = FEET_AIR_TIME_DEFICIT_PER_STEP / step_dt
+        self.rewards.feet_air_time_deficit.weight = (
+            FEET_AIR_TIME_DEFICIT_PER_STEP / step_dt
+        )
 
 
 @configclass
@@ -425,7 +432,7 @@ def apply_rlamp_obs_and_action_scales(cfg) -> None:
 # 参考的 `class commands.ranges`：`lin_vel_x [-1.0, 2.0]`、`lin_vel_y ±0.3`、
 # `ang_vel_yaw ±1.57`（`resampling_time = 10.` 与 `heading_command = False` 我们本来就一致）。
 RLAMP_COMMAND_RANGES = {
-    "lin_vel_x": (-1.0, 2.0),
+    "lin_vel_x": (-1.2, 1.2),
     "lin_vel_y": (-0.3, 0.3),
     "ang_vel_z": (-1.57, 1.57),
 }

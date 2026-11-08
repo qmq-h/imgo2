@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-31",
+  "scope": "Document snippets only; CPU torch, no Isaac class instantiation or GPU rollout; production source unchanged",
+  "python_blocks_compiled": 9,
+  "sampling_n": 200000,
+  "sampling_seed": 42,
+  "sampling_fractions": {
+    "stand": 0.15017500519752502,
+    "forward": 0.25010499358177185,
+    "backward": 0.1996150016784668,
+    "left": 0.09956499934196472,
+    "right": 0.09993500262498856,
+    "yaw_left": 0.10005500167608261,
+    "yaw_right": 0.10055000334978104
+  },
+  "sampling_checks": [
+    "single axis",
+    "range and minimum",
+    "subset leaves other envs unchanged",
+    "empty env ids",
+    "disabled mode equals original parent plus deadzone"
+  ],
+  "height_mixed_ray_test": [
+    0.004899999126791954,
+    0.014399994164705276,
+    9.999980829888955e-05
+  ],
+  "height_no_sensor_test": [
+    0.004899999126791954,
+    0.0003999992331955582,
+    9.999980829888955e-05
+  ],
+  "slide_zero_world_velocity": [
+    0,
+    0,
+    0
+  ],
+  "slide_one_foot_at_point1": [
+    0.10000000149011612,
+    0.10000000149011612,
+    0.10000000149011612
+  ],
+  "attachment_sha256": "9f4db0cf3198170de4269f7ec827e03cea30f3ca969778800e4d70b773f36645"
+}

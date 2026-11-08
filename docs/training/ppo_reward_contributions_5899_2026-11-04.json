@@ -1,0 +1,22 @@
+{
+  "Episode_Reward/lin_vel_z_l2": -0.09302854174748063,
+  "Episode_Reward/ang_vel_xy_l2": -0.07100430566817523,
+  "Episode_Reward/flat_orientation_l2": -0.04062702579423785,
+  "Episode_Reward/base_height_l2": -0.012651818136218936,
+  "Episode_Reward/joint_torques_l2": -0.0009675143906497396,
+  "Episode_Reward/joint_acc_l2": -0.01152036769897677,
+  "Episode_Reward/joint_deviation_l1": -0.2270469318702817,
+  "Episode_Reward/joint_power": -0.002691219068947248,
+  "Episode_Reward/stand_still": -0.002576346987116267,
+  "Episode_Reward/joint_pos_penalty": -0.06237637114711106,
+  "Episode_Reward/joint_mirror": -0.05432392720133066,
+  "Episode_Reward/action_rate_l2": -0.08532540697604418,
+  "Episode_Reward/undesired_contacts": -0.021750415896531195,
+  "Episode_Reward/contact_forces": -0.09420181214809417,
+  "Episode_Reward/track_lin_vel_xy_exp": 1.2699028119444846,
+  "Episode_Reward/track_ang_vel_z_exp": 0.4945832221955061,
+  "Episode_Reward/feet_air_time": -0.19267262782901526,
+  "Episode_Reward/feet_air_time_variance": -0.07727993367239833,
+  "Episode_Reward/feet_slide": -0.03664970800280571,
+  "Episode_Reward/feet_height_body": -0.00809607963776216
+}

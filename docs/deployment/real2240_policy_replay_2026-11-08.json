@@ -1,0 +1,29 @@
+{
+  "old9299": {
+    "sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+    "same_row_rmse": 0.10726362466812134,
+    "previous_row_rmse": 0.23206020891666412,
+    "windows": {
+      "zero": {
+        "n": 200,
+        "rmse": 0.0026420308277010918,
+        "action_abs_max": 0.6338800191879272
+      },
+      "forward": {
+        "n": 300,
+        "rmse": 0.19440284371376038,
+        "action_abs_max": 3.0
+      },
+      "back_mixed": {
+        "n": 398,
+        "rmse": 0.1791321337223053,
+        "action_abs_max": 3.0
+      },
+      "zero_end": {
+        "n": 199,
+        "rmse": 0.003118116408586502,
+        "action_abs_max": 0.7786800265312195
+      }
+    }
+  }
+}

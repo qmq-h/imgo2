@@ -137,19 +137,19 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.action_rate_l2.weight = -0.01
         # self.rewards.smoothness_2.weight = -0.0075
         # 基座高度和期望值对比，返回高度差的平方
-        self.rewards.base_height_l2.weight = -10.0
+        self.rewards.base_height_l2.weight = -16.0
         self.rewards.base_height_l2.params["target_height"] = 0.30
         self.rewards.base_height_l2.params["asset_cfg"].body_names = [
             self.base_link_name
         ]
         # 足端滞空时间，返回滞空时间-0.5s
-        self.rewards.feet_air_time.weight = 1.2
+        self.rewards.feet_air_time.weight = 1.6
         self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = [
             self.foot_link_name
         ]
         ## 足端运动均匀，惩罚运动中足端滞空时间的方差
-        self.rewards.feet_air_time_variance.weight = -8.0
+        self.rewards.feet_air_time_variance.weight = -5.0
         self.rewards.feet_air_time_variance.params["sensor_cfg"].body_names = [
             self.foot_link_name
         ]
@@ -162,20 +162,24 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.joint_names
         self.rewards.stand_still.params["command_threshold"] = 0.05
         ## 足端和基座的距离
-        self.rewards.feet_height_body.weight = -6.0
-        self.rewards.feet_height_body.params["target_height"] = -0.20
+        self.rewards.feet_height_body.weight = -4.0
+        self.rewards.feet_height_body.params["target_height"] = -0.23
         self.rewards.feet_height_body.params["asset_cfg"].body_names = [
             self.foot_link_name
         ]
         ## 足端在踏步时候的期望高度
-        self.rewards.feet_height.weight = -0.0
+        self.rewards.feet_height.weight = -0
         self.rewards.feet_height.params["asset_cfg"].body_names = [self.foot_link_name]
         self.rewards.feet_height.params["target_height"] = 0.1
         ##
         self.rewards.joint_mirror.weight = -1.0
+        # self.rewards.joint_mirror.params["mirror_joints"] = [
+        #     ["FR_(hip|thigh|shank).*", "RL_(hip|thigh|shank).*"],
+        #     ["FL_(hip|thigh|shank).*", "RR_(hip|thigh|shank).*"],
+        # ]
         self.rewards.joint_mirror.params["mirror_joints"] = [
-            ["FR_(hip|thigh|shank).*", "RL_(hip|thigh|shank).*"],
-            ["FL_(hip|thigh|shank).*", "RR_(hip|thigh|shank).*"],
+            ["FR_(thigh|shank).*", "RL_(thigh|shank).*"],
+            ["FL_(thigh|shank).*", "RR_(thigh|shank).*"],
         ]
 
         ## 接触地面时候的触地力
@@ -185,13 +189,13 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         ]
 
         # 不希望基座上下移动
-        self.rewards.lin_vel_z_l2.weight = -2.0
+        self.rewards.lin_vel_z_l2.weight = -5.0
         # 横滚和俯仰的限制
         self.rewards.ang_vel_xy_l2.weight = -0.05
 
         # 跟踪奖励
         self.rewards.track_lin_vel_xy_exp.weight = 1.5
-        self.rewards.track_ang_vel_z_exp.weight = 0.6
+        self.rewards.track_ang_vel_z_exp.weight = 2.0
 
         # 计划外的碰撞
         self.rewards.undesired_contacts.weight = -0.5
@@ -203,9 +207,11 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_torques_l2.weight = -2.5e-6
         self.rewards.joint_acc_l2.weight = -5e-9
         # 髋关节的限制，尽量为
-        self.rewards.joint_deviation_l1.weight = 0.0
-        self.rewards.joint_deviation_l1.params["asset_cfg"].joint_names = [".*hip.*"]
-        self.rewards.joint_pos_penalty.weight = -0.5
+        self.rewards.joint_deviation_l1.weight = -1
+        self.rewards.joint_deviation_l1.params["asset_cfg"].joint_names = [
+            ".*_hip_joint"
+        ]
+        self.rewards.joint_pos_penalty.weight = -0.1
 
         # 功率限制
         self.rewards.joint_power.weight = -2e-5
@@ -221,12 +227,19 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # ------------------------------Curriculums------------------------------
-        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
-        # self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
+        self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
+        self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
+
         self.curriculum.command_levels_lin_vel = None
         self.curriculum.command_levels_ang_vel = None
 
+        # 关闭地形课程并使用平地
+        # self.scene.terrain.terrain_type = "plane"  # 指定使用平地
+        # self.scene.terrain.terrain_generator = None  # 不使用楼梯等地形生成器
+        # self.curriculum.terrain_levels = None  # 关闭地形等级课程
+
         # ------------------------------Commands------------------------------
+        self.commands.base_velocity.heading_command = False  # 关闭朝向控制
         self.commands.base_velocity.ranges.lin_vel_x = (-1.2, 1.2)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.8, 0.8)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)

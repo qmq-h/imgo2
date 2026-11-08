@@ -1,0 +1,96 @@
+{
+  "sha256": "c55ba55f3652ce67be4cb7e6091be8cba15a8fa5b9efa3ef3b6af95704d56487",
+  "deterministic_regeneration": true,
+  "physics_equal_stairs_8cm": true,
+  "models": {
+    "level1_stairs_25mm": 13,
+    "level1_ramp_5deg": 3,
+    "level1_blocks_25mm": 24,
+    "level1_rough_20mm": 96,
+    "level2_stairs_50mm": 13,
+    "level2_ramp_10deg": 3,
+    "level2_blocks_50mm": 24,
+    "level2_rough_30mm": 96,
+    "level3_stairs_80mm": 13,
+    "level3_ramp_15deg": 3,
+    "level3_blocks_100mm": 24,
+    "level3_rough_60mm": 96
+  },
+  "collision_count": 408,
+  "visual_collision_match": true,
+  "installed_symlink": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/install/share/imgo2_deploy/worlds/terrain_course.world",
+  "runtime": {
+    "all_12_models_present": true,
+    "models": {
+      "level1_stairs_25mm": {
+        "loaded": true,
+        "collisions": 13,
+        "returncode": 0
+      },
+      "level1_ramp_5deg": {
+        "loaded": true,
+        "collisions": 3,
+        "returncode": 0
+      },
+      "level1_blocks_25mm": {
+        "loaded": true,
+        "collisions": 24,
+        "returncode": 0
+      },
+      "level1_rough_20mm": {
+        "loaded": true,
+        "collisions": 96,
+        "returncode": 0
+      },
+      "level2_stairs_50mm": {
+        "loaded": true,
+        "collisions": 13,
+        "returncode": 0
+      },
+      "level2_ramp_10deg": {
+        "loaded": true,
+        "collisions": 3,
+        "returncode": 0
+      },
+      "level2_blocks_50mm": {
+        "loaded": true,
+        "collisions": 24,
+        "returncode": 0
+      },
+      "level2_rough_30mm": {
+        "loaded": true,
+        "collisions": 96,
+        "returncode": 0
+      },
+      "level3_stairs_80mm": {
+        "loaded": true,
+        "collisions": 13,
+        "returncode": 0
+      },
+      "level3_ramp_15deg": {
+        "loaded": true,
+        "collisions": 3,
+        "returncode": 0
+      },
+      "level3_blocks_100mm": {
+        "loaded": true,
+        "collisions": 24,
+        "returncode": 0
+      },
+      "level3_rough_60mm": {
+        "loaded": true,
+        "collisions": 96,
+        "returncode": 0
+      }
+    },
+    "ready": true,
+    "server_exit_before_cleanup": null,
+    "scope": "headless Gazebo world only; robot/policy/GUI not tested",
+    "log": "/tmp/imgo2_terrain_course_gzserver.log"
+  },
+  "sdf_check": {
+    "returncode": 0,
+    "stdout": "Check complete\n",
+    "stderr": ""
+  }
+}

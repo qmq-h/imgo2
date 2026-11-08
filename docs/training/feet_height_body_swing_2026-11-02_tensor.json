@@ -1,0 +1,19 @@
+{
+  "checks_passed": 12,
+  "checks": [
+    "all stance contributes zero",
+    "only swing foot contributes with reversed sensor order",
+    "stance foot height does not affect cost",
+    "base linear velocity does not affect world speed weight",
+    "pure yaw command remains enabled",
+    "zero command contributes zero",
+    "zero world foot speed contributes zero",
+    "swing foot at target has zero error",
+    "100 steady-state calls perform zero body-name reads",
+    "changed sensor selection/order recomputes correct mapping",
+    "disabled air-time tracking raises error",
+    "missing selected foot raises error"
+  ],
+  "legacy_restores_valid_function": true,
+  "scope": "Actual function with CPU torch and mock scene; not Isaac runtime or training"
+}

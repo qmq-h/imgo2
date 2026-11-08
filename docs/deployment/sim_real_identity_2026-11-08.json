@@ -1,0 +1,150 @@
+{
+  "candidates": [
+    {
+      "name": "old9299",
+      "sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+      "row_lag_scan": [
+        {
+          "lag_rows": 0,
+          "rmse": 0.08622706711028781,
+          "max_abs": 1.9735875312042235,
+          "median_frame_max": 0.0885536454296112
+        },
+        {
+          "lag_rows": 1,
+          "rmse": 0.27391399356431795,
+          "max_abs": 3.1219759045791626,
+          "median_frame_max": 0.40885455577850344
+        },
+        {
+          "lag_rows": 2,
+          "rmse": 0.5129589726521038,
+          "max_abs": 4.588987846946717,
+          "median_frame_max": 0.8170425212097168
+        },
+        {
+          "lag_rows": 3,
+          "rmse": 0.6814395283822794,
+          "max_abs": 4.672117846946716,
+          "median_frame_max": 1.1442473322677613
+        },
+        {
+          "lag_rows": 4,
+          "rmse": 0.7891303475411979,
+          "max_abs": 5.112104654312134,
+          "median_frame_max": 1.3941969830322265
+        }
+      ]
+    },
+    {
+      "name": "new23",
+      "sha256": "56d6d0432e54a53126375834d7ab34750f139d7057e0a583b71ea7068bc67123",
+      "row_lag_scan": [
+        {
+          "lag_rows": 0,
+          "rmse": 0.17403010158544974,
+          "max_abs": 1.687559384460449,
+          "median_frame_max": 0.2685158001041412
+        },
+        {
+          "lag_rows": 1,
+          "rmse": 0.3102220888488904,
+          "max_abs": 3.3614045095825196,
+          "median_frame_max": 0.48035279975891115
+        },
+        {
+          "lag_rows": 2,
+          "rmse": 0.5222663433871457,
+          "max_abs": 4.715099354362488,
+          "median_frame_max": 0.8286001200103761
+        },
+        {
+          "lag_rows": 3,
+          "rmse": 0.6799556899286763,
+          "max_abs": 4.798229354362488,
+          "median_frame_max": 1.1246357665157318
+        },
+        {
+          "lag_rows": 4,
+          "rmse": 0.7831508916833488,
+          "max_abs": 5.047450092010498,
+          "median_frame_max": 1.3362228578948976
+        }
+      ]
+    },
+    {
+      "name": "policy1",
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+      "row_lag_scan": [
+        {
+          "lag_rows": 0,
+          "rmse": 0.3723634644281309,
+          "max_abs": 2.1818900311470033,
+          "median_frame_max": 0.6182095306396485
+        },
+        {
+          "lag_rows": 1,
+          "rmse": 0.4302328001145781,
+          "max_abs": 3.4016471801757815,
+          "median_frame_max": 0.7202266059303284
+        },
+        {
+          "lag_rows": 2,
+          "rmse": 0.5702172152069159,
+          "max_abs": 4.929955382919312,
+          "median_frame_max": 0.9463762677764893
+        },
+        {
+          "lag_rows": 3,
+          "rmse": 0.6935761083411043,
+          "max_abs": 5.435988326644898,
+          "median_frame_max": 1.174294425354004
+        },
+        {
+          "lag_rows": 4,
+          "rmse": 0.7781186032569408,
+          "max_abs": 5.908203363418579,
+          "median_frame_max": 1.3099626479530335
+        }
+      ]
+    },
+    {
+      "name": "low5300",
+      "sha256": "8fb8c0045f086cc95fb0a9f1e8ba760b6bc2b6bdc5f35c3cdd312fb237b6b470",
+      "row_lag_scan": [
+        {
+          "lag_rows": 0,
+          "rmse": 0.35101267991722207,
+          "max_abs": 1.8379438454437258,
+          "median_frame_max": 0.6000877296972275
+        },
+        {
+          "lag_rows": 1,
+          "rmse": 0.4067892922768779,
+          "max_abs": 3.862209697341919,
+          "median_frame_max": 0.6747555881023406
+        },
+        {
+          "lag_rows": 2,
+          "rmse": 0.5709346487037364,
+          "max_abs": 4.9494387107849125,
+          "median_frame_max": 0.9089639040374755
+        },
+        {
+          "lag_rows": 3,
+          "rmse": 0.7139182744393948,
+          "max_abs": 5.032568710784912,
+          "median_frame_max": 1.1564005098438264
+        },
+        {
+          "lag_rows": 4,
+          "rmse": 0.811241518622614,
+          "max_abs": 5.461900949478149,
+          "median_frame_max": 1.3047288079071044
+        }
+      ]
+    }
+  ],
+  "last_action_previous_logged_act_max_diff": 5.118408203053093e-06,
+  "note": "Lag scan tests user previous-obs hypothesis. Rebuilt real observations may differ from actual worker input; no exact model identity assertion from approximate agreement."
+}

@@ -81,11 +81,12 @@ def main():
     parser.add_argument("traces",nargs="+",type=Path)
     parser.add_argument("--policy",type=Path,default=REPO/"imgo2_deploy/ros2_ws/policy/imgo2/amp/policy.pt")
     parser.add_argument("--config",type=Path,default=REPO/"imgo2_deploy/ros2_ws/policy/imgo2/amp/config.yaml")
+    parser.add_argument("--config-key",default="imgo2/amp",help="YAML policy section, e.g. imgo2/ppo")
     parser.add_argument("--json",type=Path)
     args=parser.parse_args()
     policy_bytes=args.policy.read_bytes()
     policy=torch.jit.load(io.BytesIO(policy_bytes),map_location="cpu").eval()
-    config=yaml.safe_load(args.config.read_text())["imgo2/amp"]
+    config=yaml.safe_load(args.config.read_text())[args.config_key]
     results=[analyze(p,policy,config) for p in args.traces]
     for result in results:
         result['tested_policy']=str(args.policy.resolve())

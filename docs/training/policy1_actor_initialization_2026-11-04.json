@@ -1,0 +1,16 @@
+{
+  "policy_sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+  "actor_shape": [
+    45,
+    512,
+    256,
+    128,
+    12
+  ],
+  "activation": "ELU",
+  "normalizer_code": "def forward(self,\n    input: Tensor) -> Tensor:\n  return input\n",
+  "output_code": "def forward(self,\n    mlp_output: Tensor) -> Tensor:\n  return mlp_output\n",
+  "input_count": 1024,
+  "max_abs_diff": 0.0,
+  "scope": "CPU in-memory actor initialization feasibility only; no checkpoint written, no training, no deployment export"
+}

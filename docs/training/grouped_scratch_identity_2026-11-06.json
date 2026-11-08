@@ -1,0 +1,531 @@
+{
+  "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_00-36-44_speed_curriculum",
+  "checkpoints": [
+    {
+      "file": "model_0.pt",
+      "iter": 0,
+      "finite": true,
+      "std_mean": 0.9934977889060974,
+      "std_max": 1.0032838582992554
+    },
+    {
+      "file": "model_100.pt",
+      "iter": 100,
+      "finite": true,
+      "std_mean": 0.4169161319732666,
+      "std_max": 0.45139968395233154
+    },
+    {
+      "file": "model_200.pt",
+      "iter": 200,
+      "finite": true,
+      "std_mean": 0.31969693303108215,
+      "std_max": 0.3802660405635834
+    },
+    {
+      "file": "model_300.pt",
+      "iter": 300,
+      "finite": true,
+      "std_mean": 0.3138711154460907,
+      "std_max": 0.3792688250541687
+    },
+    {
+      "file": "model_400.pt",
+      "iter": 400,
+      "finite": true,
+      "std_mean": 0.3178243339061737,
+      "std_max": 0.3979826271533966
+    },
+    {
+      "file": "model_500.pt",
+      "iter": 500,
+      "finite": true,
+      "std_mean": 0.31805065274238586,
+      "std_max": 0.39352408051490784
+    },
+    {
+      "file": "model_600.pt",
+      "iter": 600,
+      "finite": true,
+      "std_mean": 0.3008634150028229,
+      "std_max": 0.368777871131897
+    },
+    {
+      "file": "model_700.pt",
+      "iter": 700,
+      "finite": true,
+      "std_mean": 0.2945966422557831,
+      "std_max": 0.36772266030311584
+    },
+    {
+      "file": "model_800.pt",
+      "iter": 800,
+      "finite": true,
+      "std_mean": 0.2726132571697235,
+      "std_max": 0.3458317816257477
+    },
+    {
+      "file": "model_900.pt",
+      "iter": 900,
+      "finite": true,
+      "std_mean": 0.2691686451435089,
+      "std_max": 0.33615395426750183
+    },
+    {
+      "file": "model_1000.pt",
+      "iter": 1000,
+      "finite": true,
+      "std_mean": 0.2608470022678375,
+      "std_max": 0.33152055740356445
+    },
+    {
+      "file": "model_1100.pt",
+      "iter": 1100,
+      "finite": true,
+      "std_mean": 0.25802674889564514,
+      "std_max": 0.3257181644439697
+    },
+    {
+      "file": "model_1200.pt",
+      "iter": 1200,
+      "finite": true,
+      "std_mean": 0.2568776309490204,
+      "std_max": 0.3217533230781555
+    },
+    {
+      "file": "model_1300.pt",
+      "iter": 1300,
+      "finite": true,
+      "std_mean": 0.25396856665611267,
+      "std_max": 0.32045403122901917
+    },
+    {
+      "file": "model_1400.pt",
+      "iter": 1400,
+      "finite": true,
+      "std_mean": 0.25689077377319336,
+      "std_max": 0.3273009955883026
+    },
+    {
+      "file": "model_1500.pt",
+      "iter": 1500,
+      "finite": true,
+      "std_mean": 0.2507701814174652,
+      "std_max": 0.32089078426361084
+    },
+    {
+      "file": "model_1600.pt",
+      "iter": 1600,
+      "finite": true,
+      "std_mean": 0.25056684017181396,
+      "std_max": 0.3105317950248718
+    },
+    {
+      "file": "model_1700.pt",
+      "iter": 1700,
+      "finite": true,
+      "std_mean": 0.25655877590179443,
+      "std_max": 0.32818901538848877
+    },
+    {
+      "file": "model_1800.pt",
+      "iter": 1800,
+      "finite": true,
+      "std_mean": 0.25849899649620056,
+      "std_max": 0.3275713622570038
+    },
+    {
+      "file": "model_1900.pt",
+      "iter": 1900,
+      "finite": true,
+      "std_mean": 0.2529539167881012,
+      "std_max": 0.312043696641922
+    },
+    {
+      "file": "model_2000.pt",
+      "iter": 2000,
+      "finite": true,
+      "std_mean": 0.2510242164134979,
+      "std_max": 0.3141363859176636
+    },
+    {
+      "file": "model_2100.pt",
+      "iter": 2100,
+      "finite": true,
+      "std_mean": 0.24979586899280548,
+      "std_max": 0.3162746727466583
+    },
+    {
+      "file": "model_2200.pt",
+      "iter": 2200,
+      "finite": true,
+      "std_mean": 0.24684612452983856,
+      "std_max": 0.3132530748844147
+    },
+    {
+      "file": "model_2300.pt",
+      "iter": 2300,
+      "finite": true,
+      "std_mean": 0.24972288310527802,
+      "std_max": 0.3079127371311188
+    },
+    {
+      "file": "model_2400.pt",
+      "iter": 2400,
+      "finite": true,
+      "std_mean": 0.2447124570608139,
+      "std_max": 0.30806952714920044
+    },
+    {
+      "file": "model_2500.pt",
+      "iter": 2500,
+      "finite": true,
+      "std_mean": 0.24519138038158417,
+      "std_max": 0.3043062090873718
+    },
+    {
+      "file": "model_2600.pt",
+      "iter": 2600,
+      "finite": true,
+      "std_mean": 0.24520324170589447,
+      "std_max": 0.3119150698184967
+    },
+    {
+      "file": "model_2700.pt",
+      "iter": 2700,
+      "finite": true,
+      "std_mean": 0.24982725083827972,
+      "std_max": 0.3108311593532562
+    },
+    {
+      "file": "model_2800.pt",
+      "iter": 2800,
+      "finite": true,
+      "std_mean": 0.2474663257598877,
+      "std_max": 0.3113662004470825
+    },
+    {
+      "file": "model_2900.pt",
+      "iter": 2900,
+      "finite": true,
+      "std_mean": 0.24592679738998413,
+      "std_max": 0.30687326192855835
+    },
+    {
+      "file": "model_3000.pt",
+      "iter": 3000,
+      "finite": true,
+      "std_mean": 0.2473086714744568,
+      "std_max": 0.310352623462677
+    },
+    {
+      "file": "model_3100.pt",
+      "iter": 3100,
+      "finite": true,
+      "std_mean": 0.24517564475536346,
+      "std_max": 0.30731961131095886
+    },
+    {
+      "file": "model_3200.pt",
+      "iter": 3200,
+      "finite": true,
+      "std_mean": 0.25010946393013,
+      "std_max": 0.31310445070266724
+    },
+    {
+      "file": "model_3300.pt",
+      "iter": 3300,
+      "finite": true,
+      "std_mean": 0.24779407680034637,
+      "std_max": 0.3053686022758484
+    },
+    {
+      "file": "model_3400.pt",
+      "iter": 3400,
+      "finite": true,
+      "std_mean": 0.2435871809720993,
+      "std_max": 0.3014613687992096
+    },
+    {
+      "file": "model_3500.pt",
+      "iter": 3500,
+      "finite": true,
+      "std_mean": 0.24629749357700348,
+      "std_max": 0.30760204792022705
+    },
+    {
+      "file": "model_3600.pt",
+      "iter": 3600,
+      "finite": true,
+      "std_mean": 0.24717606604099274,
+      "std_max": 0.3079370856285095
+    },
+    {
+      "file": "model_3700.pt",
+      "iter": 3700,
+      "finite": true,
+      "std_mean": 0.24221765995025635,
+      "std_max": 0.2988453805446625
+    },
+    {
+      "file": "model_3800.pt",
+      "iter": 3800,
+      "finite": true,
+      "std_mean": 0.242289736866951,
+      "std_max": 0.303364634513855
+    },
+    {
+      "file": "model_3900.pt",
+      "iter": 3900,
+      "finite": true,
+      "std_mean": 0.2412293404340744,
+      "std_max": 0.29659897089004517
+    },
+    {
+      "file": "model_4000.pt",
+      "iter": 4000,
+      "finite": true,
+      "std_mean": 0.24835169315338135,
+      "std_max": 0.3128189742565155
+    },
+    {
+      "file": "model_4100.pt",
+      "iter": 4100,
+      "finite": true,
+      "std_mean": 0.24987339973449707,
+      "std_max": 0.3107011318206787
+    },
+    {
+      "file": "model_4200.pt",
+      "iter": 4200,
+      "finite": true,
+      "std_mean": 0.24256111681461334,
+      "std_max": 0.3064661920070648
+    },
+    {
+      "file": "model_4300.pt",
+      "iter": 4300,
+      "finite": true,
+      "std_mean": 0.2446833699941635,
+      "std_max": 0.30483168363571167
+    },
+    {
+      "file": "model_4400.pt",
+      "iter": 4400,
+      "finite": true,
+      "std_mean": 0.2441633939743042,
+      "std_max": 0.30020007491111755
+    },
+    {
+      "file": "model_4500.pt",
+      "iter": 4500,
+      "finite": true,
+      "std_mean": 0.24922412633895874,
+      "std_max": 0.307976633310318
+    },
+    {
+      "file": "model_4600.pt",
+      "iter": 4600,
+      "finite": true,
+      "std_mean": 0.24559032917022705,
+      "std_max": 0.3082515299320221
+    },
+    {
+      "file": "model_4700.pt",
+      "iter": 4700,
+      "finite": true,
+      "std_mean": 0.24159155786037445,
+      "std_max": 0.2982363700866699
+    },
+    {
+      "file": "model_4800.pt",
+      "iter": 4800,
+      "finite": true,
+      "std_mean": 0.24325378239154816,
+      "std_max": 0.30108410120010376
+    },
+    {
+      "file": "model_4900.pt",
+      "iter": 4900,
+      "finite": true,
+      "std_mean": 0.24473954737186432,
+      "std_max": 0.3082549571990967
+    },
+    {
+      "file": "model_5000.pt",
+      "iter": 5000,
+      "finite": true,
+      "std_mean": 0.24272094666957855,
+      "std_max": 0.30088678002357483
+    },
+    {
+      "file": "model_5100.pt",
+      "iter": 5100,
+      "finite": true,
+      "std_mean": 0.24557609856128693,
+      "std_max": 0.30337750911712646
+    },
+    {
+      "file": "model_5200.pt",
+      "iter": 5200,
+      "finite": true,
+      "std_mean": 0.2477143555879593,
+      "std_max": 0.3071756958961487
+    },
+    {
+      "file": "model_5300.pt",
+      "iter": 5300,
+      "finite": true,
+      "std_mean": 0.24261511862277985,
+      "std_max": 0.3023972809314728
+    },
+    {
+      "file": "model_5400.pt",
+      "iter": 5400,
+      "finite": true,
+      "std_mean": 0.24151934683322906,
+      "std_max": 0.29920879006385803
+    },
+    {
+      "file": "model_5500.pt",
+      "iter": 5500,
+      "finite": true,
+      "std_mean": 0.2472284883260727,
+      "std_max": 0.31046977639198303
+    },
+    {
+      "file": "model_5600.pt",
+      "iter": 5600,
+      "finite": true,
+      "std_mean": 0.2483576387166977,
+      "std_max": 0.31262364983558655
+    },
+    {
+      "file": "model_5700.pt",
+      "iter": 5700,
+      "finite": true,
+      "std_mean": 0.24623548984527588,
+      "std_max": 0.3049737811088562
+    },
+    {
+      "file": "model_5800.pt",
+      "iter": 5800,
+      "finite": true,
+      "std_mean": 0.25119397044181824,
+      "std_max": 0.31288254261016846
+    },
+    {
+      "file": "model_5900.pt",
+      "iter": 5900,
+      "finite": true,
+      "std_mean": 0.24437157809734344,
+      "std_max": 0.3011922836303711
+    },
+    {
+      "file": "model_6000.pt",
+      "iter": 6000,
+      "finite": true,
+      "std_mean": 0.24333031475543976,
+      "std_max": 0.30135437846183777
+    },
+    {
+      "file": "model_6100.pt",
+      "iter": 6100,
+      "finite": true,
+      "std_mean": 0.24104613065719604,
+      "std_max": 0.30374571681022644
+    },
+    {
+      "file": "model_6200.pt",
+      "iter": 6200,
+      "finite": true,
+      "std_mean": 0.24286633729934692,
+      "std_max": 0.30386659502983093
+    },
+    {
+      "file": "model_6300.pt",
+      "iter": 6300,
+      "finite": true,
+      "std_mean": 0.24106089770793915,
+      "std_max": 0.30105945467948914
+    },
+    {
+      "file": "model_6400.pt",
+      "iter": 6400,
+      "finite": true,
+      "std_mean": 0.24617899954319,
+      "std_max": 0.3049193322658539
+    },
+    {
+      "file": "model_6500.pt",
+      "iter": 6500,
+      "finite": true,
+      "std_mean": 0.23924577236175537,
+      "std_max": 0.29441091418266296
+    },
+    {
+      "file": "model_6600.pt",
+      "iter": 6600,
+      "finite": true,
+      "std_mean": 0.24136431515216827,
+      "std_max": 0.2991071045398712
+    },
+    {
+      "file": "model_6700.pt",
+      "iter": 6700,
+      "finite": true,
+      "std_mean": 0.23830626904964447,
+      "std_max": 0.29682713747024536
+    },
+    {
+      "file": "model_6800.pt",
+      "iter": 6800,
+      "finite": true,
+      "std_mean": 0.23792989552021027,
+      "std_max": 0.2966609299182892
+    },
+    {
+      "file": "model_6900.pt",
+      "iter": 6900,
+      "finite": true,
+      "std_mean": 0.24108625948429108,
+      "std_max": 0.30494993925094604
+    },
+    {
+      "file": "model_6999.pt",
+      "iter": 6999,
+      "finite": true,
+      "std_mean": 0.23849187791347504,
+      "std_max": 0.29837411642074585
+    }
+  ],
+  "hashes": {
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_00-36-44_speed_curriculum/params/env.yaml": "e9e92add2cb602955fdaf2cb9e3f0f91273d48bcfe676134f9f6c9511ef8a533",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_00-36-44_speed_curriculum/params/agent.yaml": "10739d211adfaf3e3099bb32249c81c652cf85a7f690d3df883272f1b9a4c860",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_00-36-44_speed_curriculum/model_6999.pt": "383fb042b0c514c1417dce23eca40ef1715043ec0fc3402cb6eb96f867f001cf",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-06_00-36-44_speed_curriculum/model_4000.pt": "8a134685eddd56d16ba0a6229a791adba74221f37c255b8a5558842ce58819a2"
+  },
+  "exports": [
+    {
+      "iter": 4000,
+      "jit_1024_input_max_diff": 0.0,
+      "jit_actor_tensor_max_diff": 0.0,
+      "jit_sha256": "81ecde1b5321b832a2c21b81c71d8ea49ac2ac19b530300de54a830eef00466a"
+    },
+    {
+      "iter": 6999,
+      "jit_1024_input_max_diff": 0.0,
+      "jit_actor_tensor_max_diff": 0.0,
+      "jit_sha256": "c39e17de05f7332355664918092e3d8b4ea0acab79e5bbdafb7e7f94e6b762a0"
+    }
+  ],
+  "mujoco_common_hash_match": {
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_feedback.hpp": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": true,
+    "imgo2_description/mjcf/imgo2.xml": true,
+    "imgo2_deploy/ros2_ws/scripts/mujoco_policy_benchmark.cpp": true,
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_motor_pd.hpp": true,
+    "imgo2_description/mjcf/scene.xml": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": true
+  }
+}

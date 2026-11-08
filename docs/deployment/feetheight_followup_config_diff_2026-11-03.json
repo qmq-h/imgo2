@@ -1,0 +1,38 @@
+{
+  "2026-11-03_19-19-42_feetheight_4.0": {
+    "env.yaml": [
+      {
+        "path": ".rewards.ang_vel_xy_l2.weight",
+        "control": "-0.05",
+        "candidate": "-0.1"
+      },
+      {
+        "path": ".log_dir",
+        "control": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-24-27_feetheight_4.0",
+        "candidate": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_19-19-42_feetheight_4.0"
+      }
+    ],
+    "agent.yaml": []
+  },
+  "2026-11-03_19-26-37_fefeet_height_target_0.24": {
+    "env.yaml": [
+      {
+        "path": ".rewards.feet_height_body.params.target_height",
+        "control": "-0.2",
+        "candidate": "-0.24"
+      },
+      {
+        "path": ".log_dir",
+        "control": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-24-27_feetheight_4.0",
+        "candidate": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_19-26-37_fefeet_height_target_0.24"
+      }
+    ],
+    "agent.yaml": [
+      {
+        "path": ".run_name",
+        "control": "feetheight_4.0",
+        "candidate": "fefeet_height_target_0.24"
+      }
+    ]
+  }
+}

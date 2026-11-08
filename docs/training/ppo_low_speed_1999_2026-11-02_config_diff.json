@@ -1,0 +1,216 @@
+{
+  "env_differences": [
+    {
+      "path": ".commands.base_velocity.heading_command",
+      "old": true,
+      "new": false
+    },
+    {
+      "path": ".commands.base_velocity.ranges.ang_vel_z",
+      "old": [
+        -1.0,
+        1.0
+      ],
+      "new": [
+        -0.6,
+        0.6
+      ]
+    },
+    {
+      "path": ".commands.base_velocity.ranges.heading",
+      "old": [
+        -3.141592653589793,
+        3.141592653589793
+      ],
+      "new": null
+    },
+    {
+      "path": ".commands.base_velocity.ranges.lin_vel_x",
+      "old": [
+        -1.2,
+        1.2
+      ],
+      "new": [
+        -0.6,
+        0.6
+      ]
+    },
+    {
+      "path": ".commands.base_velocity.ranges.lin_vel_y",
+      "old": [
+        -0.8,
+        0.8
+      ],
+      "new": [
+        -0.35,
+        0.35
+      ]
+    },
+    {
+      "path": ".commands.base_velocity.rel_heading_envs",
+      "old": 1.0,
+      "new": 0.0
+    },
+    {
+      "path": ".commands.base_velocity.rel_standing_envs",
+      "old": 0.02,
+      "new": 0.15
+    },
+    {
+      "path": ".commands.base_velocity.resampling_time_range",
+      "old": [
+        10.0,
+        10.0
+      ],
+      "new": [
+        5.0,
+        8.0
+      ]
+    },
+    {
+      "path": ".curriculum.terrain_levels",
+      "old": {
+        "func": "isaaclab_tasks.manager_based.locomotion.velocity.mdp.curriculums:terrain_levels_vel",
+        "params": {}
+      },
+      "new": null
+    },
+    {
+      "path": ".log_dir",
+      "old": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-30_17-37-05_resume",
+      "new": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-31_01-07-35"
+    },
+    {
+      "path": ".rewards.feet_air_time.weight",
+      "old": 2.0,
+      "new": 1.5
+    },
+    {
+      "path": ".scene.terrain.max_init_terrain_level",
+      "old": 5,
+      "new": 0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.curriculum",
+      "old": true,
+      "new": false
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.boxes.grid_height_range",
+      "old": [
+        0.025,
+        0.1
+      ],
+      "new": [
+        0.05,
+        0.2
+      ]
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.boxes.proportion",
+      "old": 0.2,
+      "new": 0.0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.flat",
+      "old": null,
+      "new": {
+        "function": "isaaclab.terrains.trimesh.mesh_terrains:flat_terrain",
+        "proportion": 0.8,
+        "size": [
+          8.0,
+          8.0
+        ],
+        "flat_patch_sampling": null
+      }
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.hf_pyramid_slope.proportion",
+      "old": 0.1,
+      "new": 0.0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.hf_pyramid_slope_inv.proportion",
+      "old": 0.1,
+      "new": 0.0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.pyramid_stairs.proportion",
+      "old": 0.2,
+      "new": 0.0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.pyramid_stairs.step_height_range",
+      "old": [
+        0.025,
+        0.08
+      ],
+      "new": [
+        0.05,
+        0.23
+      ]
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.pyramid_stairs_inv.proportion",
+      "old": 0.2,
+      "new": 0.0
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.pyramid_stairs_inv.step_height_range",
+      "old": [
+        0.025,
+        0.08
+      ],
+      "new": [
+        0.05,
+        0.23
+      ]
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.random_rough.noise_range",
+      "old": [
+        0.01,
+        0.06
+      ],
+      "new": [
+        -0.01,
+        0.01
+      ]
+    },
+    {
+      "path": ".scene.terrain.terrain_generator.sub_terrains.random_rough.noise_step",
+      "old": 0.01,
+      "new": 0.005
+    }
+  ],
+  "env_source_sha256": {
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-30_17-37-05_resume/params/env.yaml": "2d01e253959d78960cdf4256400173c3499161616894814c9805053bd8cd4f7c",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-31_01-07-35/params/env.yaml": "10f6a12fe5aa46b82a692313ad0c46b57ce2fa503f2c826af31571aeb03e67cd"
+  },
+  "agent_differences": [
+    {
+      "path": ".load_checkpoint",
+      "old": "model_5498.pt",
+      "new": "model_.*.pt"
+    },
+    {
+      "path": ".load_run",
+      "old": "2026-10-30_16-06-09_resume",
+      "new": ".*"
+    },
+    {
+      "path": ".resume",
+      "old": true,
+      "new": false
+    },
+    {
+      "path": ".run_name",
+      "old": "resume",
+      "new": ""
+    }
+  ],
+  "agent_source_sha256": {
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-30_17-37-05_resume/params/agent.yaml": "8c137249a8bb2edae662cdbcb2f8d4b587ede21d14ffb5368d98b88b3f1d378e",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-31_01-07-35/params/agent.yaml": "51d6efd54d2e21cfff2a3530374239a2375e0eeeac408fe42a3d9e011cf53599"
+  }
+}

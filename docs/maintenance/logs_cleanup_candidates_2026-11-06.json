@@ -1,0 +1,132 @@
+{
+  "scope": "只读候选清单，未删除；效果差不等于无研究价值",
+  "candidates": [
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-26_17-09-42",
+      "reason": "后髋持续裁剪，8400闭环退化；9999 std_max37.10。早期未逐个闭环，不宣称全run每一份都失败。",
+      "report": "docs/deployment/mujoco_policy_comparison_2026-10-27.md",
+      "exists": true,
+      "total_bytes": 608149473,
+      "root_checkpoint_bytes": 577200433,
+      "root_checkpoint_count": 101,
+      "declared_resume_children": []
+    },
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-28_17-45-38",
+      "reason": "5998严重退化，站姿约22.5cm、髋偏置/动作饱和。",
+      "report": "docs/training/ppo_rough_gait_reward_audit_2026-10-28.md",
+      "exists": true,
+      "total_bytes": 42762871,
+      "root_checkpoint_bytes": 34289214,
+      "root_checkpoint_count": 6,
+      "declared_resume_children": []
+    },
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-28_20-17-05",
+      "reason": "3400单髋std4.583、名义mu10.631超裁剪，姿态退化分支。",
+      "report": "docs/training/ppo_latest_collapse_audit_2026-10-28.md",
+      "exists": true,
+      "total_bytes": 207896776,
+      "root_checkpoint_bytes": 200019079,
+      "root_checkpoint_count": 35,
+      "declared_resume_children": []
+    },
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-31_01-07-35",
+      "reason": "1999前后分组短跳/后退贴地，步态不合格。",
+      "report": "docs/training/ppo_low_speed_1999_review_2026-11-02.md",
+      "exists": true,
+      "total_bytes": 132043157,
+      "root_checkpoint_bytes": 120010913,
+      "root_checkpoint_count": 21,
+      "declared_resume_children": []
+    },
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_23-37-54",
+      "reason": "4000/5900后退与横移近贴地，5900站立/前进角运动增加。",
+      "report": "docs/deployment/plane_low_review_2026-11-05.md",
+      "exists": true,
+      "total_bytes": 369664024,
+      "root_checkpoint_bytes": 342890804,
+      "root_checkpoint_count": 60,
+      "declared_resume_children": []
+    },
+    {
+      "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_01-38-11",
+      "reason": "6999后退净空约0.012cm、纯转向近贴地，后续4000已明显改善。",
+      "report": "docs/deployment/slide15_review_2026-11-05.md",
+      "exists": true,
+      "total_bytes": 435324383,
+      "root_checkpoint_bytes": 405754363,
+      "root_checkpoint_count": 71,
+      "declared_resume_children": []
+    }
+  ],
+  "declared_resume_links": {
+    "2026-11-05_15-19-20": [
+      {
+        "child": "2026-11-05_19-15-47_speed_curriculum_resume",
+        "checkpoint": "model_5300.pt"
+      },
+      {
+        "child": "2026-11-05_22-07-33_speed_curriculum_resume",
+        "checkpoint": "model_5300.pt"
+      }
+    ],
+    "2026-11-02_23-12-30": [
+      {
+        "child": "2026-11-03_17-24-27_feetheight_4.0",
+        "checkpoint": "model_9999.pt"
+      },
+      {
+        "child": "2026-11-03_19-26-37_fefeet_height_target_0.24",
+        "checkpoint": "model_9999.pt"
+      },
+      {
+        "child": "2026-11-03_19-19-42_feetheight_4.0",
+        "checkpoint": "model_9999.pt"
+      },
+      {
+        "child": "2026-11-03_17-32-21_feetheight_1",
+        "checkpoint": "model_9999.pt"
+      }
+    ],
+    "2026-10-28_00-34-30": [
+      {
+        "child": "2026-10-28_17-45-38",
+        "checkpoint": "model_5499.pt"
+      }
+    ],
+    "2026-10-30_00-53-27": [
+      {
+        "child": "2026-10-30_16-06-09_resume",
+        "checkpoint": "model_4999.pt"
+      }
+    ],
+    "2026-11-03_20-44-05_terrain_curriculum_stop": [
+      {
+        "child": "2026-11-04_00-37-16_low3900_speed_terrain_resume",
+        "checkpoint": "model_3900.pt"
+      }
+    ],
+    "2026-10-30_16-06-09_resume": [
+      {
+        "child": "2026-10-30_17-37-05_resume",
+        "checkpoint": "model_5498.pt"
+      }
+    ],
+    "2026-10-27_17-42-50": [
+      {
+        "child": "2026-10-28_00-34-30",
+        "checkpoint": "model_4500.pt"
+      }
+    ],
+    "2026-11-04_00-37-16_low3900_speed_terrain_resume": [
+      {
+        "child": "2026-11-04_22-11-36_resume5800_airtime01",
+        "checkpoint": "model_5800.pt"
+      }
+    ]
+  },
+  "deleted": false
+}

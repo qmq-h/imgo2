@@ -1,0 +1,748 @@
+{
+  "scope": "Current-source controlled rough terrain probes; fixed seed42, difficulty0.5, six terrain columns, zero initial pose/velocity, 12s per case, first2s excluded. Not original training reproduction or terrain completion proof. Patch-relative z is not local ground clearance.",
+  "policies": {
+    "fast4999": {
+      "sha256": "a399e46dce810ad1da4129985d1bc64cb739d9307c2cc9fec691670701c302f6",
+      "dt": 0.02,
+      "terrain_names": [
+        "pyramid_stairs",
+        "pyramid_stairs_inv",
+        "boxes",
+        "random_rough",
+        "hf_pyramid_slope",
+        "hf_pyramid_slope_inv"
+      ],
+      "difficulty": 0.5,
+      "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.20809206989756784,
+          "mean_vy": -0.029347624862624797,
+          "mean_wz": -0.0440888639545883,
+          "mean_z": 0.2115180013179779,
+          "gyro_xy_rms": 0.4645211538964237,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.10933441385277547,
+          "yaw_mae": 0.10994006668525981,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 2.0809206989756808
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.052906057879677976,
+          "mean_vy": -0.004130596087998128,
+          "mean_wz": 0.025036593848722987,
+          "mean_z": 0.3148287813663483,
+          "gyro_xy_rms": 0.7593638961552529,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.247093942120322,
+          "yaw_mae": 0.06834033345070202,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.5290605787967793
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.43603046190738676,
+          "mean_vy": -0.009756879094289616,
+          "mean_wz": 0.08859599872102263,
+          "mean_z": 0.6595593152046204,
+          "gyro_xy_rms": 0.9774984928174651,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.16682183198928835,
+          "yaw_mae": 0.13062522780458677,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 4.360304619073868
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.030599676885467487,
+          "mean_vy": -0.0013179172410600587,
+          "mean_wz": 0.013264318722067401,
+          "mean_z": 0.3117941526770592,
+          "gyro_xy_rms": 0.6969823181292281,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2694003231145325,
+          "yaw_mae": 0.04935751572670415,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.3059967688546749
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.08637925964020542,
+          "mean_vy": -0.010222631231255946,
+          "mean_wz": 0.010677812223904766,
+          "mean_z": 0.29075604778528213,
+          "gyro_xy_rms": 0.31081242748190807,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.21455583550311275,
+          "yaw_mae": 0.09887511522637214,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 0.8637925964020536
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.01012787770484283,
+          "mean_vy": -0.00551788997551921,
+          "mean_wz": 0.007377290185686434,
+          "mean_z": 0.2907960894703865,
+          "gyro_xy_rms": 0.5046356186172735,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.28987212229515713,
+          "yaw_mae": 0.03978659002328641,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.10127877704842836
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.33115879157185557,
+          "mean_vy": 0.003451554758939892,
+          "mean_wz": -0.03534003364382079,
+          "mean_z": 0.29968483036756516,
+          "gyro_xy_rms": 0.44981118491997846,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.06335177506804467,
+          "yaw_mae": 0.09524411072308431,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 3.3115879157185577
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.011187395530432695,
+          "mean_vy": -0.004109036741996534,
+          "mean_wz": -0.007162925188953523,
+          "mean_z": 0.22811213153600693,
+          "gyro_xy_rms": 0.17420667303746157,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.3111873955304327,
+          "yaw_mae": 0.045860974984767384,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 0.1118739553043271
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.3336781783103943,
+          "mean_vy": -0.04205541679495946,
+          "mean_wz": -0.04772281398146879,
+          "mean_z": 0.1467622584104538,
+          "gyro_xy_rms": 0.49782797270168117,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.05923132269382477,
+          "yaw_mae": 0.09588327413355001,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 3.3367817831039406
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.1249009015262127,
+          "mean_vy": -0.02719550377712585,
+          "mean_wz": 0.045306794060627,
+          "mean_z": 0.2818714225292206,
+          "gyro_xy_rms": 0.47307728799205767,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1902972544491291,
+          "yaw_mae": 0.07329274054057897,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.2490090152621238
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.4273030963540077,
+          "mean_vy": -0.021232989013427867,
+          "mean_wz": -0.03180941709782928,
+          "mean_z": 0.5841783415079117,
+          "gyro_xy_rms": 0.41756982131443987,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1273112818837166,
+          "yaw_mae": 0.06922244695294648,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 4.273030963540072
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.3080239478796721,
+          "mean_vy": 0.008926817617379129,
+          "mean_wz": 0.02305767408153042,
+          "mean_z": 0.42822437435388566,
+          "gyro_xy_rms": 0.612779724465215,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.061736260131001475,
+          "yaw_mae": 0.10610643931804224,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -3.080239478796719
+        }
+      ]
+    },
+    "terrain5899": {
+      "sha256": "2397c872849d6b20bfe12476d0a8ec1c17ee0ae709f90537297a8c9474d5295b",
+      "dt": 0.02,
+      "terrain_names": [
+        "pyramid_stairs",
+        "pyramid_stairs_inv",
+        "boxes",
+        "random_rough",
+        "hf_pyramid_slope",
+        "hf_pyramid_slope_inv"
+      ],
+      "difficulty": 0.5,
+      "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.3348417212367058,
+          "mean_vy": -0.016354644405830187,
+          "mean_wz": -0.04820479191746563,
+          "mean_z": 0.13923606765270233,
+          "gyro_xy_rms": 0.5717556655239397,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.0620010168671608,
+          "yaw_mae": 0.09050561728142202,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 3.34841721236706
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.08349464772443753,
+          "mean_vy": -0.006084895734791644,
+          "mean_wz": 0.029038820514222605,
+          "mean_z": 0.31809155428409575,
+          "gyro_xy_rms": 0.7057223603544779,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.21650535227556247,
+          "yaw_mae": 0.0766785070092883,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.8349464772443757
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.3913221227843314,
+          "mean_vy": -0.06630472526693484,
+          "mean_wz": 0.07160681007581297,
+          "mean_z": 0.5985909851193428,
+          "gyro_xy_rms": 0.9367647601641329,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.11310253124646844,
+          "yaw_mae": 0.13587714262644296,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 3.9132212278433163
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.1110516710053198,
+          "mean_vy": -0.02001114987919573,
+          "mean_wz": 0.09606925224140286,
+          "mean_z": 0.3229977296590805,
+          "gyro_xy_rms": 0.5354646527967648,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1889483289946802,
+          "yaw_mae": 0.12805864175222814,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.1105167100531976
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.14660631376609673,
+          "mean_vy": -0.016191265718312933,
+          "mean_wz": -0.014253776816185565,
+          "mean_z": 0.2768304649591446,
+          "gyro_xy_rms": 0.39884465180904455,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1555001180995954,
+          "yaw_mae": 0.08211369507387281,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 1.4660631376609667
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.00912005150981713,
+          "mean_vy": -0.0005564018255536211,
+          "mean_wz": 0.010535670675744768,
+          "mean_z": 0.292729725420475,
+          "gyro_xy_rms": 0.4366942839553011,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.29087994849018284,
+          "yaw_mae": 0.03435179965972202,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.09120051509817129
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.2702092620425392,
+          "mean_vy": -0.005120342710055411,
+          "mean_wz": -0.055215624953445515,
+          "mean_z": 0.2909679929018021,
+          "gyro_xy_rms": 0.4770212130556248,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.09329818562935106,
+          "yaw_mae": 0.08594934018905041,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 2.7020926204253923
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.000632637755747055,
+          "mean_vy": -0.000994651743376835,
+          "mean_wz": 0.007164040347415721,
+          "mean_z": 0.24896953219175338,
+          "gyro_xy_rms": 0.07785273241462837,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.30063263775574706,
+          "yaw_mae": 0.0099338752203912,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 0.006326377557470558
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.28562314879894257,
+          "mean_vy": -0.03354825449927012,
+          "mean_wz": -0.028862433686852457,
+          "mean_z": 0.1998281753063202,
+          "gyro_xy_rms": 0.574209732351022,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.06681028625965119,
+          "yaw_mae": 0.08073260865011253,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 2.856231487989429
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.14824865372874774,
+          "mean_vy": -0.016770764745306223,
+          "mean_wz": 0.06272430841694586,
+          "mean_z": 0.2897648482322693,
+          "gyro_xy_rms": 0.585886766647569,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.16197469252846203,
+          "yaw_mae": 0.08875708787259645,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.482486537287478
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.40839075684547427,
+          "mean_vy": -0.02723775328299962,
+          "mean_wz": -0.028665014443162364,
+          "mean_z": 0.5411343121528626,
+          "gyro_xy_rms": 0.5160331861379314,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.11002126502990724,
+          "yaw_mae": 0.07923831094551133,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 4.083907568454738
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.15720523887872695,
+          "mean_vy": -0.010855621164635522,
+          "mean_wz": 0.03374181367445271,
+          "mean_z": 0.32661614793539046,
+          "gyro_xy_rms": 0.4258974607369333,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.14844642475843428,
+          "yaw_mae": 0.07330796598189045,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.5720523887872688
+        }
+      ]
+    },
+    "policy_1": {
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+      "dt": 0.02,
+      "terrain_names": [
+        "pyramid_stairs",
+        "pyramid_stairs_inv",
+        "boxes",
+        "random_rough",
+        "hf_pyramid_slope",
+        "hf_pyramid_slope_inv"
+      ],
+      "difficulty": 0.5,
+      "limits": "Current source config, noise/startup/interval randomization disabled. Not original training reproduction; foot z/base z are relative to patch origin, not local ground clearance.",
+      "cases": [
+        {
+          "case": "pyramid_stairs_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.44533998119831086,
+          "mean_vy": -0.02556368052936159,
+          "mean_wz": -0.0032138756066560745,
+          "mean_z": 0.1021415405869484,
+          "gyro_xy_rms": 1.0623928140803764,
+          "upright_fraction": 0.958,
+          "vx_mae": 0.21323584129810333,
+          "yaw_mae": 0.19580104664806278,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 4.453399811983112
+        },
+        {
+          "case": "pyramid_stairs_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 9.752043557273282e-05,
+          "mean_vy": 0.00014111665790551343,
+          "mean_wz": -0.009639365960087161,
+          "mean_z": 0.29575006318092345,
+          "gyro_xy_rms": 0.4786206403522296,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.3000975204355727,
+          "yaw_mae": 0.056240939467737915,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 0.0009752043557273258
+        },
+        {
+          "case": "pyramid_stairs_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.07766011580407212,
+          "mean_vy": -0.00038156084972433747,
+          "mean_wz": 0.008562328712461749,
+          "mean_z": 0.3288449537754059,
+          "gyro_xy_rms": 0.8550612644821909,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.2546762418848317,
+          "yaw_mae": 0.14473155366277204,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 0.7766011580407218
+        },
+        {
+          "case": "pyramid_stairs_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.07204076201235876,
+          "mean_vy": -0.06440092219167855,
+          "mean_wz": 0.024897008250904035,
+          "mean_z": 0.2932610175013542,
+          "gyro_xy_rms": 0.5225530200674837,
+          "upright_fraction": 0.756,
+          "vx_mae": 0.22795923798764123,
+          "yaw_mae": 0.11879189720845898,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -0.7204076201235882
+        },
+        {
+          "case": "boxes_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.13451398063608214,
+          "mean_vy": -0.00042976560161332597,
+          "mean_wz": -0.028233067419379948,
+          "mean_z": 0.2660366280376911,
+          "gyro_xy_rms": 0.7889118194087374,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.19862715586713747,
+          "yaw_mae": 0.19727573462110012,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 1.3451398063608222
+        },
+        {
+          "case": "boxes_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.14614432429987936,
+          "mean_vy": -0.0129465953358158,
+          "mean_wz": 0.0029283331390324747,
+          "mean_z": 0.2535090019106865,
+          "gyro_xy_rms": 0.5820349908987588,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.16099308488648384,
+          "yaw_mae": 0.0932614103967935,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.4614432429987927
+        },
+        {
+          "case": "random_rough_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.21167383483611046,
+          "mean_vy": 0.026474366581183857,
+          "mean_wz": -0.06519681774068158,
+          "mean_z": 0.2847406586408615,
+          "gyro_xy_rms": 0.5304709879274349,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.1338478365305811,
+          "yaw_mae": 0.10808746027026792,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 2.1167383483611055
+        },
+        {
+          "case": "random_rough_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.14477143055165653,
+          "mean_vy": -0.04359675899898866,
+          "mean_wz": -0.018223925567581317,
+          "mean_z": 0.2797356044054031,
+          "gyro_xy_rms": 0.4817544040135403,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.15544766913687344,
+          "yaw_mae": 0.09291298098408152,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.4477143055165662
+        },
+        {
+          "case": "hf_pyramid_slope_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.2817460384430597,
+          "mean_vy": -0.09088698714459315,
+          "mean_wz": 0.03588218379640602,
+          "mean_z": 0.12666929709911345,
+          "gyro_xy_rms": 1.4833849046006553,
+          "upright_fraction": 0.75,
+          "vx_mae": 0.2607636127171805,
+          "yaw_mae": 0.27447733664853147,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 2.817460384430596
+        },
+        {
+          "case": "hf_pyramid_slope_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.4000152160227299,
+          "mean_vy": -0.050793001896119676,
+          "mean_wz": 0.03291944305560901,
+          "mean_z": 0.12394436180591584,
+          "gyro_xy_rms": 0.6124203887949673,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.13091964446902277,
+          "yaw_mae": 0.13160088096596884,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -4.000152160227298
+        },
+        {
+          "case": "hf_pyramid_slope_inv_forward03",
+          "command": [
+            0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": 0.13199275850201958,
+          "mean_vy": 0.00789645642391406,
+          "mean_wz": -0.00542174835834885,
+          "mean_z": 0.32034929251670835,
+          "gyro_xy_rms": 0.3812234944201262,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.17842400091742164,
+          "yaw_mae": 0.08623158349090955,
+          "samples": 500,
+          "travel_proxy_body_signed_m": 1.3199275850201946
+        },
+        {
+          "case": "hf_pyramid_slope_inv_backward03",
+          "command": [
+            -0.3,
+            0.0,
+            0.0
+          ],
+          "resets": 0,
+          "mean_vx": -0.11831979716842761,
+          "mean_vy": 0.005388817742059473,
+          "mean_wz": -0.04469609929888975,
+          "mean_z": 0.32212653148174286,
+          "gyro_xy_rms": 0.502108248594839,
+          "upright_fraction": 1.0,
+          "vx_mae": 0.18178272558624156,
+          "yaw_mae": 0.10696862840477843,
+          "samples": 500,
+          "travel_proxy_body_signed_m": -1.1831979716842753
+        }
+      ]
+    }
+  },
+  "policy1_physics_contract_match": {
+    "dt": true,
+    "body_names": true,
+    "joint_names": true,
+    "default_joint_pos": true,
+    "stiffness": true,
+    "damping": true,
+    "terrain": true,
+    "terrain_names": true,
+    "terrain_difficulty": true
+  }
+}

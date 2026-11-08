@@ -1,0 +1,21 @@
+{
+  "env.yaml": [
+    [
+      ".log_dir",
+      "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-24-27_feetheight_4.0",
+      "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-32-21_feetheight_1"
+    ],
+    [
+      ".rewards.feet_height_body.weight",
+      "-4.0",
+      "-1.0"
+    ]
+  ],
+  "agent.yaml": [
+    [
+      ".run_name",
+      "feetheight_4.0",
+      "feetheight_1"
+    ]
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "output_directory": "/home/tommy0929/Documents/imgo2/imgo2_deploy/logs/gazebo_old9299_forward05_20261107_172338",
+  "collection": {
+    "complete": true,
+    "counts": [
+      20571,
+      3721,
+      4137,
+      2076
+    ],
+    "clock_origin_sim_s": 2.2,
+    "hold_seconds": 10.0,
+    "ppo_pd_start_sim_s": 8.3,
+    "stand_request_sim_s": 18.3,
+    "schedule": "6s getup/stand; direct PPO .5 command; 10.0s after PPO PD observed; switch to GetUp/stand and record5s",
+    "relative_time_definition": "t_s = sim_s - clock_origin_sim_s - 6; actual hold start/end saved separately"
+  },
+  "summary": {
+    "policy_frames": 482,
+    "robot_rows": 3721,
+    "actual_ppo_pd_interval_sim_s": [
+      8.3,
+      18.3
+    ],
+    "actual_ppo_pd_duration_s": 10.0,
+    "policy_command_counts": {
+      "0": 2,
+      "0.5": 480
+    },
+    "stable_interval_sim_s": [
+      10.3,
+      18.1
+    ],
+    "mean_body_vx_from_pose_mps": 0.5048817879867699,
+    "gyro_xy_rms_rads": 0.290902571038946,
+    "roll_std_deg": 0.5478242442033868,
+    "pitch_std_deg": 0.28901180499351276,
+    "height_mean_m": 0.2943408807551446,
+    "height_std_m": 0.0037576986336404668,
+    "final_kp": [
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      60.0
+    ],
+    "final_q_des": [
+      0.0,
+      0.8700000047683716,
+      -1.8200000524520874,
+      0.0,
+      0.8700000047683716,
+      -1.8200000524520874,
+      0.0,
+      0.8700000047683716,
+      -1.8200000524520874,
+      0.0,
+      0.8700000047683716,
+      -1.8200000524520874
+    ],
+    "time_limits": "policy sim_s uses ROS /clock (coarse); host_s monotonic precise. IMU/odom sim_s use exact message header stamps. Unstamped motor topics use last received clock. robot.csv joins only previous host arrivals, with explicit ages; not simultaneous sensor sampling.",
+    "policy_pairing": "policy.csv obs/act_raw are exact same inference call. Real logger currently rebuilds next-input obs beside an older consumed clipped act; do not pair those real columns rowwise.",
+    "missing_hardware_fields": "No motor temperature/error codes/bus RTT in Gazebo; not fabricated.",
+    "observed_rates": {
+      "policy_trace": {
+        "rows": 482,
+        "host_span_s": 9.919912235000083,
+        "sim_span_s": 9.899999999999999,
+        "hz_host_arrival": 48.48833221557186,
+        "hz_sim_observed": 48.585858585858595
+      },
+      "state": {
+        "rows": 20571,
+        "host_span_s": 20.82664301900013,
+        "sim_span_s": 21.0,
+        "hz_host_arrival": 987.6771777974014,
+        "hz_sim_observed": 979.5238095238095
+      },
+      "command": {
+        "rows": 3721,
+        "host_span_s": 20.825632716999735,
+        "sim_span_s": 21.0,
+        "hz_host_arrival": 178.62602546348592,
+        "hz_sim_observed": 177.14285714285714
+      },
+      "imu": {
+        "rows": 4137,
+        "host_span_s": 20.822566813999856,
+        "sim_span_s": 20.82,
+        "hz_host_arrival": 198.63065091567864,
+        "hz_sim_observed": 198.65513928914504
+      },
+      "odom": {
+        "rows": 2076,
+        "host_span_s": 20.826387018999867,
+        "sim_span_s": 20.81,
+        "hz_host_arrival": 99.63322001588571,
+        "hz_sim_observed": 99.71167707832774
+      },
+      "velocity": {
+        "rows": 212,
+        "host_span_s": 20.82813973600014,
+        "sim_span_s": 21.1,
+        "hz_host_arrival": 10.130525465762057,
+        "hz_sim_observed": 10.0
+      }
+    },
+    "rate_limits": "ROS topic arrival rates do not distinguish publisher scheduling misses from transport drops; no header sequence in motor messages. Actual policy trace records each fresh inference."
+  },
+  "replay_check": [
+    {
+      "trace": "/home/tommy0929/Documents/imgo2/imgo2_deploy/logs/gazebo_old9299_forward05_20261107_172338/policy_raw.csv",
+      "frames": 482,
+      "all_joint_target_clip": false,
+      "actor_max_diff": 2.384185791015625e-06,
+      "target_max_diff": 0.0,
+      "last_action_max_diff": 0.0,
+      "raw_over_3_element_fraction": 0.0,
+      "raw_over_3_frame_fraction": 0.0,
+      "max_abs_raw": 2.9354782104492188,
+      "processed_target_clipped_frame_fraction": 0.0,
+      "passed": true,
+      "controller_additional_position_limit": {
+        "affected_elements": 0,
+        "affected_frames": 0,
+        "limits": "ROS2 controller also clamps target to URDF limits before PD; Isaac JointAction does not explicitly perform this extra clamp. This difference remains."
+      },
+      "tested_policy": "/home/tommy0929/Documents/imgo2/imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt",
+      "tested_policy_sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea"
+    }
+  ],
+  "metadata": {
+    "files": {
+      "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+      "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": "b8e903d8e77b11c09affee4650740168851d11a8e7aeeea17d23609a51ea1118",
+      "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": "30e4ee576f943a1e9d7408996a872db0a1c90d638a7724dc62801ad4db4b8429",
+      "imgo2_description/urdf/imgo2_real.gazebo.urdf": "ce49b743b306c0e57c40e1bbb4c7b087b34053287aef1135924309ecf98c32b1",
+      "imgo2_deploy/ros2_ws/install/lib/imgo2_deploy/rl_sim": "703f16b788bb3cded8c66494f2fcdddff5be491b4a68863b3070adbc6814cb9c"
+    },
+    "motor_extra_delay_ms": 0,
+    "imu_extra_delay_ms": 0,
+    "gui": false,
+    "ros_domain_id": "67",
+    "gazebo_master_uri": "http://127.0.0.1:11377",
+    "hold_seconds": 10.0,
+    "policy_trace": "paired actual actor input/raw output; state snapshot from same policy call",
+    "completed": true,
+    "sources_unchanged": true
+  },
+  "manifest_sha256": "00be3aba44552a54506dbc184ac6af1734e2fde73aff8cfb428a4ab89021e039",
+  "scope": "Actual owned headless ROS2/Gazebo; PPO trace enabled and built; no hardware access. Raw data intentionally ignored by Git under deploy/logs.",
+  "policy_snapshot_accel_notice": "policy_raw.csv accel_* is zero because the controller input-state struct does not populate acceleration; use independently recorded imu.csv or joined robot.csv accel_* for physical acceleration. Acceleration is not one of the 45 actor inputs."
+}

@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-31",
+  "source_sha256": "2e38595ccd08c6ef3eef9dcf83e3e9f417c6ebbef3533b4e1f8813a37ba263c7",
+  "interpreter": "/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python",
+  "torch": "2.7.0+cu128",
+  "scope": "Actual production functions extracted through AST; CPU tensors and mock scene, no Isaac import or GPU rollout",
+  "passed_cases": 14,
+  "results": {
+    "finite_ground_heights": [
+      0.004900000000000001,
+      0.014400000000000012
+    ],
+    "mixed_valid_partial_invalid_all_invalid": [
+      0.004900000000000001,
+      0.014400000000000012,
+      0.00010000000000000018
+    ],
+    "diagnostic_valid_fraction": 0.5,
+    "diagnostic_all_invalid_fraction": 0.3333333432674408,
+    "healthy_environment_batch_isolation": true,
+    "all_invalid_uses_each_origin": [
+      0.0,
+      0.0
+    ],
+    "no_sensor_branch": [
+      0.004900000000000001,
+      0.0004000000000000007
+    ],
+    "height_upright_gate": [
+      0.002449999958276749,
+      0.0
+    ],
+    "invalid_extreme_boundary": [
+      0.0
+    ],
+    "stationary_feet_moving_body": [
+      0.0,
+      0.0
+    ],
+    "single_sliding_contact": [
+      0.5,
+      0.5
+    ],
+    "noncontact_foot_excluded": [
+      0.0,
+      0.0
+    ],
+    "historical_contact_preserved": [
+      0.5,
+      0.5
+    ],
+    "vertical_velocity_excluded": [
+      0.0,
+      0.0
+    ],
+    "body_selector_respected": [
+      0.1,
+      0.1
+    ],
+    "slide_upright_gate": [
+      0.04999999914850508,
+      0.0
+    ]
+  }
+}

@@ -1,0 +1,439 @@
+{
+  "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-04_23-37-54",
+  "checkpoints": [
+    {
+      "file": "model_0.pt",
+      "iter": 0,
+      "model_finite": true,
+      "std_mean": 0.9965429306030273,
+      "std_max": 1.0007418394088745
+    },
+    {
+      "file": "model_100.pt",
+      "iter": 100,
+      "model_finite": true,
+      "std_mean": 0.4823574721813202,
+      "std_max": 0.5708938837051392
+    },
+    {
+      "file": "model_200.pt",
+      "iter": 200,
+      "model_finite": true,
+      "std_mean": 0.3280700445175171,
+      "std_max": 0.4201340973377228
+    },
+    {
+      "file": "model_300.pt",
+      "iter": 300,
+      "model_finite": true,
+      "std_mean": 0.26248231530189514,
+      "std_max": 0.3558865189552307
+    },
+    {
+      "file": "model_400.pt",
+      "iter": 400,
+      "model_finite": true,
+      "std_mean": 0.23823703825473785,
+      "std_max": 0.34283387660980225
+    },
+    {
+      "file": "model_500.pt",
+      "iter": 500,
+      "model_finite": true,
+      "std_mean": 0.2222488522529602,
+      "std_max": 0.31560218334198
+    },
+    {
+      "file": "model_600.pt",
+      "iter": 600,
+      "model_finite": true,
+      "std_mean": 0.21123598515987396,
+      "std_max": 0.30741769075393677
+    },
+    {
+      "file": "model_700.pt",
+      "iter": 700,
+      "model_finite": true,
+      "std_mean": 0.2043994814157486,
+      "std_max": 0.2914305329322815
+    },
+    {
+      "file": "model_800.pt",
+      "iter": 800,
+      "model_finite": true,
+      "std_mean": 0.2038995623588562,
+      "std_max": 0.29562532901763916
+    },
+    {
+      "file": "model_900.pt",
+      "iter": 900,
+      "model_finite": true,
+      "std_mean": 0.1994299292564392,
+      "std_max": 0.28287288546562195
+    },
+    {
+      "file": "model_1000.pt",
+      "iter": 1000,
+      "model_finite": true,
+      "std_mean": 0.1959472894668579,
+      "std_max": 0.28059953451156616
+    },
+    {
+      "file": "model_1100.pt",
+      "iter": 1100,
+      "model_finite": true,
+      "std_mean": 0.19467203319072723,
+      "std_max": 0.2834298312664032
+    },
+    {
+      "file": "model_1200.pt",
+      "iter": 1200,
+      "model_finite": true,
+      "std_mean": 0.19783592224121094,
+      "std_max": 0.29458087682724
+    },
+    {
+      "file": "model_1300.pt",
+      "iter": 1300,
+      "model_finite": true,
+      "std_mean": 0.19373399019241333,
+      "std_max": 0.2889576852321625
+    },
+    {
+      "file": "model_1400.pt",
+      "iter": 1400,
+      "model_finite": true,
+      "std_mean": 0.19123975932598114,
+      "std_max": 0.27658283710479736
+    },
+    {
+      "file": "model_1500.pt",
+      "iter": 1500,
+      "model_finite": true,
+      "std_mean": 0.19208544492721558,
+      "std_max": 0.2829025387763977
+    },
+    {
+      "file": "model_1600.pt",
+      "iter": 1600,
+      "model_finite": true,
+      "std_mean": 0.19081884622573853,
+      "std_max": 0.27814701199531555
+    },
+    {
+      "file": "model_1700.pt",
+      "iter": 1700,
+      "model_finite": true,
+      "std_mean": 0.19012969732284546,
+      "std_max": 0.2756444811820984
+    },
+    {
+      "file": "model_1800.pt",
+      "iter": 1800,
+      "model_finite": true,
+      "std_mean": 0.18891791999340057,
+      "std_max": 0.27563419938087463
+    },
+    {
+      "file": "model_1900.pt",
+      "iter": 1900,
+      "model_finite": true,
+      "std_mean": 0.18901102244853973,
+      "std_max": 0.27493226528167725
+    },
+    {
+      "file": "model_2000.pt",
+      "iter": 2000,
+      "model_finite": true,
+      "std_mean": 0.19206993281841278,
+      "std_max": 0.2895604074001312
+    },
+    {
+      "file": "model_2100.pt",
+      "iter": 2100,
+      "model_finite": true,
+      "std_mean": 0.190529465675354,
+      "std_max": 0.2930777668952942
+    },
+    {
+      "file": "model_2200.pt",
+      "iter": 2200,
+      "model_finite": true,
+      "std_mean": 0.1928362101316452,
+      "std_max": 0.28969648480415344
+    },
+    {
+      "file": "model_2300.pt",
+      "iter": 2300,
+      "model_finite": true,
+      "std_mean": 0.1912224292755127,
+      "std_max": 0.2857525050640106
+    },
+    {
+      "file": "model_2400.pt",
+      "iter": 2400,
+      "model_finite": true,
+      "std_mean": 0.1918696165084839,
+      "std_max": 0.2888306677341461
+    },
+    {
+      "file": "model_2500.pt",
+      "iter": 2500,
+      "model_finite": true,
+      "std_mean": 0.1903257519006729,
+      "std_max": 0.28318238258361816
+    },
+    {
+      "file": "model_2600.pt",
+      "iter": 2600,
+      "model_finite": true,
+      "std_mean": 0.19063489139080048,
+      "std_max": 0.28778380155563354
+    },
+    {
+      "file": "model_2700.pt",
+      "iter": 2700,
+      "model_finite": true,
+      "std_mean": 0.19351200759410858,
+      "std_max": 0.2930948734283447
+    },
+    {
+      "file": "model_2800.pt",
+      "iter": 2800,
+      "model_finite": true,
+      "std_mean": 0.19288311898708344,
+      "std_max": 0.29118627309799194
+    },
+    {
+      "file": "model_2900.pt",
+      "iter": 2900,
+      "model_finite": true,
+      "std_mean": 0.19336731731891632,
+      "std_max": 0.2864736020565033
+    },
+    {
+      "file": "model_3000.pt",
+      "iter": 3000,
+      "model_finite": true,
+      "std_mean": 0.19055263698101044,
+      "std_max": 0.2866958677768707
+    },
+    {
+      "file": "model_3100.pt",
+      "iter": 3100,
+      "model_finite": true,
+      "std_mean": 0.1904672384262085,
+      "std_max": 0.2857102155685425
+    },
+    {
+      "file": "model_3200.pt",
+      "iter": 3200,
+      "model_finite": true,
+      "std_mean": 0.19073647260665894,
+      "std_max": 0.2882573902606964
+    },
+    {
+      "file": "model_3300.pt",
+      "iter": 3300,
+      "model_finite": true,
+      "std_mean": 0.19080404937267303,
+      "std_max": 0.2875072658061981
+    },
+    {
+      "file": "model_3400.pt",
+      "iter": 3400,
+      "model_finite": true,
+      "std_mean": 0.19012825191020966,
+      "std_max": 0.2885948419570923
+    },
+    {
+      "file": "model_3500.pt",
+      "iter": 3500,
+      "model_finite": true,
+      "std_mean": 0.1892460137605667,
+      "std_max": 0.2911834120750427
+    },
+    {
+      "file": "model_3600.pt",
+      "iter": 3600,
+      "model_finite": true,
+      "std_mean": 0.18823808431625366,
+      "std_max": 0.28810498118400574
+    },
+    {
+      "file": "model_3700.pt",
+      "iter": 3700,
+      "model_finite": true,
+      "std_mean": 0.18890662491321564,
+      "std_max": 0.2852605879306793
+    },
+    {
+      "file": "model_3800.pt",
+      "iter": 3800,
+      "model_finite": true,
+      "std_mean": 0.19019536674022675,
+      "std_max": 0.28823110461235046
+    },
+    {
+      "file": "model_3900.pt",
+      "iter": 3900,
+      "model_finite": true,
+      "std_mean": 0.18598295748233795,
+      "std_max": 0.28417930006980896
+    },
+    {
+      "file": "model_4000.pt",
+      "iter": 4000,
+      "model_finite": true,
+      "std_mean": 0.1851341873407364,
+      "std_max": 0.27164557576179504
+    },
+    {
+      "file": "model_4100.pt",
+      "iter": 4100,
+      "model_finite": true,
+      "std_mean": 0.18536531925201416,
+      "std_max": 0.2775578498840332
+    },
+    {
+      "file": "model_4200.pt",
+      "iter": 4200,
+      "model_finite": true,
+      "std_mean": 0.18399406969547272,
+      "std_max": 0.2788444459438324
+    },
+    {
+      "file": "model_4300.pt",
+      "iter": 4300,
+      "model_finite": true,
+      "std_mean": 0.1868448704481125,
+      "std_max": 0.27927857637405396
+    },
+    {
+      "file": "model_4400.pt",
+      "iter": 4400,
+      "model_finite": true,
+      "std_mean": 0.18757621943950653,
+      "std_max": 0.2820814847946167
+    },
+    {
+      "file": "model_4500.pt",
+      "iter": 4500,
+      "model_finite": true,
+      "std_mean": 0.18796181678771973,
+      "std_max": 0.2818816006183624
+    },
+    {
+      "file": "model_4600.pt",
+      "iter": 4600,
+      "model_finite": true,
+      "std_mean": 0.1871582418680191,
+      "std_max": 0.27934858202934265
+    },
+    {
+      "file": "model_4700.pt",
+      "iter": 4700,
+      "model_finite": true,
+      "std_mean": 0.19038785994052887,
+      "std_max": 0.2931882441043854
+    },
+    {
+      "file": "model_4800.pt",
+      "iter": 4800,
+      "model_finite": true,
+      "std_mean": 0.187616765499115,
+      "std_max": 0.28171372413635254
+    },
+    {
+      "file": "model_4900.pt",
+      "iter": 4900,
+      "model_finite": true,
+      "std_mean": 0.18754486739635468,
+      "std_max": 0.2849613428115845
+    },
+    {
+      "file": "model_5000.pt",
+      "iter": 5000,
+      "model_finite": true,
+      "std_mean": 0.1905994862318039,
+      "std_max": 0.28737369179725647
+    },
+    {
+      "file": "model_5100.pt",
+      "iter": 5100,
+      "model_finite": true,
+      "std_mean": 0.19063091278076172,
+      "std_max": 0.2878849506378174
+    },
+    {
+      "file": "model_5200.pt",
+      "iter": 5200,
+      "model_finite": true,
+      "std_mean": 0.1929667443037033,
+      "std_max": 0.2907480001449585
+    },
+    {
+      "file": "model_5300.pt",
+      "iter": 5300,
+      "model_finite": true,
+      "std_mean": 0.19365300238132477,
+      "std_max": 0.2940668761730194
+    },
+    {
+      "file": "model_5400.pt",
+      "iter": 5400,
+      "model_finite": true,
+      "std_mean": 0.19362767040729523,
+      "std_max": 0.2955242395401001
+    },
+    {
+      "file": "model_5500.pt",
+      "iter": 5500,
+      "model_finite": true,
+      "std_mean": 0.18983221054077148,
+      "std_max": 0.29031240940093994
+    },
+    {
+      "file": "model_5600.pt",
+      "iter": 5600,
+      "model_finite": true,
+      "std_mean": 0.18948529660701752,
+      "std_max": 0.289502888917923
+    },
+    {
+      "file": "model_5700.pt",
+      "iter": 5700,
+      "model_finite": true,
+      "std_mean": 0.19116006791591644,
+      "std_max": 0.2871398329734802
+    },
+    {
+      "file": "model_5800.pt",
+      "iter": 5800,
+      "model_finite": true,
+      "std_mean": 0.1948285847902298,
+      "std_max": 0.2897396981716156
+    },
+    {
+      "file": "model_5900.pt",
+      "iter": 5900,
+      "model_finite": true,
+      "std_mean": 0.19078153371810913,
+      "std_max": 0.2905203104019165
+    }
+  ],
+  "exports": [
+    {
+      "iteration": 4000,
+      "actor_tensors": 8,
+      "actor_tensor_max_diff": 0.0,
+      "policy_sha256": "47d782429272ed8ed76964eea9af44f18b99f8833a78266f161af8228b612611"
+    },
+    {
+      "iteration": 5900,
+      "actor_tensors": 8,
+      "actor_tensor_max_diff": 0.0,
+      "policy_sha256": "571a45046a5b74e79df2512c59afc53d8860aadf493e300d7720b16e40d354ac"
+    }
+  ]
+}

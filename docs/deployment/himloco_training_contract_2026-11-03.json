@@ -1,0 +1,19 @@
+{
+  "scope": "CPU executes current estimator slicing and actual wrapper methods with a mock environment; no training or deployment modifications",
+  "detected": {
+    "next_target_is_critic_columns": [
+      3,
+      48
+    ],
+    "expected_policy_prefix_columns": [
+      0,
+      45
+    ],
+    "next_target_starts_with": "angular velocity instead of commands",
+    "next_target_ends_with": "privileged base velocity instead of last action tail",
+    "old_episode_history_survives_done": true,
+    "explicit_reset_returns_single_frame": true,
+    "explicit_reset_leaves_wrapper_history_unchanged": true
+  },
+  "note": "These reproduce current-source defects, not the unknown training provenance of deployed HIM weights."
+}

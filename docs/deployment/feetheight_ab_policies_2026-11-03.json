@@ -1,0 +1,14 @@
+{
+  "feetheight4_10498": {
+    "run": "2026-11-03_17-24-27_feetheight_4.0",
+    "checkpoint": "model_10498.pt",
+    "snapshot": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/feetheight_ab_2026-11-03/feetheight4_10498.pt",
+    "sha256": "70383f80d05a8cae07fc8e7f806157f4e7f9d6ee2609c1618ffa5fc9e4059846"
+  },
+  "feetheight1_10498": {
+    "run": "2026-11-03_17-32-21_feetheight_1",
+    "checkpoint": "model_10498.pt",
+    "snapshot": "/home/tommy0929/Documents/imgo2/imgo2_rl/logs/feetheight_ab_2026-11-03/feetheight1_10498.pt",
+    "sha256": "53df1ba898c11e46562adf011501702b26f09775f1435d72d6b6db77b76fa000"
+  }
+}

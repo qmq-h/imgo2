@@ -1,0 +1,244 @@
+{
+  "2026-11-03_20-47-29_fast_no_curriculum": {
+    "last_iteration": 4999,
+    "nonfinite": 0,
+    "windows": [
+      {
+        "start": 0,
+        "end": 499,
+        "metrics": {
+          "Train/mean_reward": -9.869662546681498,
+          "Train/mean_episode_length": 960.2471739514796,
+          "Metrics/base_velocity/error_vel_xy": 1.0346642395477734,
+          "Metrics/base_velocity/error_vel_yaw": 0.6486896003534894,
+          "Policy/mean_noise_std": 0.5697833333082333,
+          "Loss/value_function": 0.02537186404238483,
+          "Episode_Reward/base_height_l2": -0.017830075690511593,
+          "Episode_Reward/feet_height_body": -0.008974824515185347,
+          "Episode_Reward/ang_vel_xy_l2": -0.1757055586521217
+        }
+      },
+      {
+        "start": 500,
+        "end": 999,
+        "metrics": {
+          "Train/mean_reward": 0.4757959870598279,
+          "Train/mean_episode_length": 999.9965197753907,
+          "Metrics/base_velocity/error_vel_xy": 0.5801887851953507,
+          "Metrics/base_velocity/error_vel_yaw": 0.489046360373497,
+          "Policy/mean_noise_std": 0.5028756088614463,
+          "Loss/value_function": 0.024951984871178865,
+          "Episode_Reward/base_height_l2": -0.015799873273819685,
+          "Episode_Reward/feet_height_body": -0.012401566928252578,
+          "Episode_Reward/ang_vel_xy_l2": -0.16986528715491295
+        }
+      },
+      {
+        "start": 1000,
+        "end": 1499,
+        "metrics": {
+          "Train/mean_reward": 3.920983720242977,
+          "Train/mean_episode_length": 999.9955399169922,
+          "Metrics/base_velocity/error_vel_xy": 0.4976932235956192,
+          "Metrics/base_velocity/error_vel_yaw": 0.4583689175248146,
+          "Policy/mean_noise_std": 0.4736272607445717,
+          "Loss/value_function": 0.022249110907316207,
+          "Episode_Reward/base_height_l2": -0.01543101691454649,
+          "Episode_Reward/feet_height_body": -0.012364432893693447,
+          "Episode_Reward/ang_vel_xy_l2": -0.1582247295975685
+        }
+      },
+      {
+        "start": 1500,
+        "end": 1999,
+        "metrics": {
+          "Train/mean_reward": 5.410114427089691,
+          "Train/mean_episode_length": 999.9946401367188,
+          "Metrics/base_velocity/error_vel_xy": 0.4672061940431595,
+          "Metrics/base_velocity/error_vel_yaw": 0.44683429652452467,
+          "Policy/mean_noise_std": 0.45872413492202757,
+          "Loss/value_function": 0.020267799641937017,
+          "Episode_Reward/base_height_l2": -0.01463887339644134,
+          "Episode_Reward/feet_height_body": -0.013251958275213837,
+          "Episode_Reward/ang_vel_xy_l2": -0.1526769887804985
+        }
+      },
+      {
+        "start": 2000,
+        "end": 2499,
+        "metrics": {
+          "Train/mean_reward": 7.1746436157226565,
+          "Train/mean_episode_length": 999.9956800537109,
+          "Metrics/base_velocity/error_vel_xy": 0.44580384039878845,
+          "Metrics/base_velocity/error_vel_yaw": 0.43128624004125593,
+          "Policy/mean_noise_std": 0.434830426633358,
+          "Loss/value_function": 0.019006125219166278,
+          "Episode_Reward/base_height_l2": -0.014074871595948935,
+          "Episode_Reward/feet_height_body": -0.011935689751058817,
+          "Episode_Reward/ang_vel_xy_l2": -0.14514016541838645
+        }
+      },
+      {
+        "start": 2500,
+        "end": 2999,
+        "metrics": {
+          "Train/mean_reward": 8.05887447834015,
+          "Train/mean_episode_length": 999.9910999755859,
+          "Metrics/base_velocity/error_vel_xy": 0.4342789943218231,
+          "Metrics/base_velocity/error_vel_yaw": 0.42221113687753675,
+          "Policy/mean_noise_std": 0.4248305557370186,
+          "Loss/value_function": 0.018380773382261396,
+          "Episode_Reward/base_height_l2": -0.014095626186579465,
+          "Episode_Reward/feet_height_body": -0.010706189861521125,
+          "Episode_Reward/ang_vel_xy_l2": -0.14200943204760552
+        }
+      },
+      {
+        "start": 3000,
+        "end": 3499,
+        "metrics": {
+          "Train/mean_reward": 8.525299426078796,
+          "Train/mean_episode_length": 999.992819946289,
+          "Metrics/base_velocity/error_vel_xy": 0.42881771475076674,
+          "Metrics/base_velocity/error_vel_yaw": 0.4244394410252571,
+          "Policy/mean_noise_std": 0.42066656309366224,
+          "Loss/value_function": 0.017788324752822517,
+          "Episode_Reward/base_height_l2": -0.012908135671168566,
+          "Episode_Reward/feet_height_body": -0.010677938198670744,
+          "Episode_Reward/ang_vel_xy_l2": -0.14001113612949848
+        }
+      },
+      {
+        "start": 3500,
+        "end": 3999,
+        "metrics": {
+          "Train/mean_reward": 8.96182871723175,
+          "Train/mean_episode_length": 999.9878801269531,
+          "Metrics/base_velocity/error_vel_xy": 0.4231869387030601,
+          "Metrics/base_velocity/error_vel_yaw": 0.4230064891576767,
+          "Policy/mean_noise_std": 0.41608318299055097,
+          "Loss/value_function": 0.017492863258346914,
+          "Episode_Reward/base_height_l2": -0.012663271982222795,
+          "Episode_Reward/feet_height_body": -0.010567196385934948,
+          "Episode_Reward/ang_vel_xy_l2": -0.13720522192120552
+        }
+      },
+      {
+        "start": 4000,
+        "end": 4499,
+        "metrics": {
+          "Train/mean_reward": 9.447494445800782,
+          "Train/mean_episode_length": 999.9964600830078,
+          "Metrics/base_velocity/error_vel_xy": 0.4220635979771614,
+          "Metrics/base_velocity/error_vel_yaw": 0.41723372381925583,
+          "Policy/mean_noise_std": 0.40933186227083207,
+          "Loss/value_function": 0.017086528280749917,
+          "Episode_Reward/base_height_l2": -0.012613321725279092,
+          "Episode_Reward/feet_height_body": -0.010441532585769893,
+          "Episode_Reward/ang_vel_xy_l2": -0.134576021656394
+        }
+      },
+      {
+        "start": 4500,
+        "end": 4999,
+        "metrics": {
+          "Train/mean_reward": 9.540548526763915,
+          "Train/mean_episode_length": 999.9943399658204,
+          "Metrics/base_velocity/error_vel_xy": 0.421839591383934,
+          "Metrics/base_velocity/error_vel_yaw": 0.4199211727976799,
+          "Policy/mean_noise_std": 0.4100538761615753,
+          "Loss/value_function": 0.01740075935423374,
+          "Episode_Reward/base_height_l2": -0.012090925101190805,
+          "Episode_Reward/feet_height_body": -0.010156907534226775,
+          "Episode_Reward/ang_vel_xy_l2": -0.1342940626591444
+        }
+      }
+    ]
+  },
+  "2026-11-04_00-37-16_low3900_speed_terrain_resume": {
+    "last_iteration": 5899,
+    "nonfinite": 0,
+    "windows": [
+      {
+        "start": 3500,
+        "end": 3999,
+        "metrics": {
+          "Train/mean_reward": 15.730285759344698,
+          "Train/mean_episode_length": 791.8043478393555,
+          "Metrics/base_velocity/error_vel_xy": 0.24749262457713483,
+          "Metrics/base_velocity/error_vel_yaw": 0.2621155758528039,
+          "Policy/mean_noise_std": 0.30149835377931594,
+          "Loss/value_function": 0.007411642412189394,
+          "Curriculum/terrain_levels": 1.6922305822372437,
+          "Episode_Reward/base_height_l2": -0.007978512969857547,
+          "Episode_Reward/feet_height_body": -0.004725862432969734,
+          "Episode_Reward/ang_vel_xy_l2": -0.04116459193872288
+        }
+      },
+      {
+        "start": 4000,
+        "end": 4499,
+        "metrics": {
+          "Train/mean_reward": 14.967434143066406,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.36107523810863495,
+          "Metrics/base_velocity/error_vel_yaw": 0.3753153412938118,
+          "Policy/mean_noise_std": 0.36490522712469103,
+          "Loss/value_function": 0.012937650609761476,
+          "Curriculum/terrain_levels": 5.055797648429871,
+          "Episode_Reward/base_height_l2": -0.011840303858742117,
+          "Episode_Reward/feet_height_body": -0.007483886560425162,
+          "Episode_Reward/ang_vel_xy_l2": -0.06544907546043396
+        }
+      },
+      {
+        "start": 4500,
+        "end": 4999,
+        "metrics": {
+          "Train/mean_reward": 12.968412298202514,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.38019017404317856,
+          "Metrics/base_velocity/error_vel_yaw": 0.3917267514467239,
+          "Policy/mean_noise_std": 0.3886818090081215,
+          "Loss/value_function": 0.013943793315440416,
+          "Curriculum/terrain_levels": 5.864800945281982,
+          "Episode_Reward/base_height_l2": -0.01356228401325643,
+          "Episode_Reward/feet_height_body": -0.008181095028296113,
+          "Episode_Reward/ang_vel_xy_l2": -0.07137388065457344
+        }
+      },
+      {
+        "start": 5000,
+        "end": 5499,
+        "metrics": {
+          "Train/mean_reward": 13.171658336639405,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.37529829680919646,
+          "Metrics/base_velocity/error_vel_yaw": 0.3909875709414482,
+          "Policy/mean_noise_std": 0.3889372833967209,
+          "Loss/value_function": 0.013745288226753473,
+          "Curriculum/terrain_levels": 5.849716324806213,
+          "Episode_Reward/base_height_l2": -0.013080563422292472,
+          "Episode_Reward/feet_height_body": -0.008248775000683963,
+          "Episode_Reward/ang_vel_xy_l2": -0.07114598725736142
+        }
+      },
+      {
+        "start": 5500,
+        "end": 5899,
+        "metrics": {
+          "Train/mean_reward": 13.413730967044831,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.3731423383206129,
+          "Metrics/base_velocity/error_vel_yaw": 0.3882734548300505,
+          "Policy/mean_noise_std": 0.38641570150852206,
+          "Loss/value_function": 0.01336914937477559,
+          "Curriculum/terrain_levels": 5.822552862167359,
+          "Episode_Reward/base_height_l2": -0.012651818136218936,
+          "Episode_Reward/feet_height_body": -0.00809607963776216,
+          "Episode_Reward/ang_vel_xy_l2": -0.07100430566817523
+        }
+      }
+    ]
+  }
+}

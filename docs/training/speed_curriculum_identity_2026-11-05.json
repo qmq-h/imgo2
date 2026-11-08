@@ -1,0 +1,172 @@
+{
+  "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_19-15-47_speed_curriculum_resume",
+  "checkpoints": [
+    {
+      "file": "model_5300.pt",
+      "iter": 5300,
+      "model_finite": true,
+      "std_mean": 0.15822455286979675,
+      "std_max": 0.19284234941005707
+    },
+    {
+      "file": "model_5400.pt",
+      "iter": 5400,
+      "model_finite": true,
+      "std_mean": 0.18294024467468262,
+      "std_max": 0.22283108532428741
+    },
+    {
+      "file": "model_5500.pt",
+      "iter": 5500,
+      "model_finite": true,
+      "std_mean": 0.24173444509506226,
+      "std_max": 0.30535221099853516
+    },
+    {
+      "file": "model_5600.pt",
+      "iter": 5600,
+      "model_finite": true,
+      "std_mean": 0.2804204523563385,
+      "std_max": 0.35599374771118164
+    },
+    {
+      "file": "model_5700.pt",
+      "iter": 5700,
+      "model_finite": true,
+      "std_mean": 0.2996368110179901,
+      "std_max": 0.3846249282360077
+    },
+    {
+      "file": "model_5800.pt",
+      "iter": 5800,
+      "model_finite": true,
+      "std_mean": 0.29673564434051514,
+      "std_max": 0.38109105825424194
+    },
+    {
+      "file": "model_5900.pt",
+      "iter": 5900,
+      "model_finite": true,
+      "std_mean": 0.29669782519340515,
+      "std_max": 0.38278478384017944
+    },
+    {
+      "file": "model_6000.pt",
+      "iter": 6000,
+      "model_finite": true,
+      "std_mean": 0.2933771312236786,
+      "std_max": 0.37586864829063416
+    },
+    {
+      "file": "model_6100.pt",
+      "iter": 6100,
+      "model_finite": true,
+      "std_mean": 0.2922629117965698,
+      "std_max": 0.3680543601512909
+    },
+    {
+      "file": "model_6200.pt",
+      "iter": 6200,
+      "model_finite": true,
+      "std_mean": 0.28616243600845337,
+      "std_max": 0.36677756905555725
+    },
+    {
+      "file": "model_6300.pt",
+      "iter": 6300,
+      "model_finite": true,
+      "std_mean": 0.291282057762146,
+      "std_max": 0.37362363934516907
+    },
+    {
+      "file": "model_6400.pt",
+      "iter": 6400,
+      "model_finite": true,
+      "std_mean": 0.2930580973625183,
+      "std_max": 0.3734692931175232
+    },
+    {
+      "file": "model_6500.pt",
+      "iter": 6500,
+      "model_finite": true,
+      "std_mean": 0.2922455966472626,
+      "std_max": 0.37327784299850464
+    },
+    {
+      "file": "model_6600.pt",
+      "iter": 6600,
+      "model_finite": true,
+      "std_mean": 0.2908109724521637,
+      "std_max": 0.3667888045310974
+    },
+    {
+      "file": "model_6700.pt",
+      "iter": 6700,
+      "model_finite": true,
+      "std_mean": 0.28798022866249084,
+      "std_max": 0.36468401551246643
+    },
+    {
+      "file": "model_6800.pt",
+      "iter": 6800,
+      "model_finite": true,
+      "std_mean": 0.2893497347831726,
+      "std_max": 0.3652646839618683
+    },
+    {
+      "file": "model_6900.pt",
+      "iter": 6900,
+      "model_finite": true,
+      "std_mean": 0.2877812683582306,
+      "std_max": 0.3596844971179962
+    },
+    {
+      "file": "model_7000.pt",
+      "iter": 7000,
+      "model_finite": true,
+      "std_mean": 0.28739985823631287,
+      "std_max": 0.35946857929229736
+    },
+    {
+      "file": "model_7100.pt",
+      "iter": 7100,
+      "model_finite": true,
+      "std_mean": 0.2822639048099518,
+      "std_max": 0.35122185945510864
+    },
+    {
+      "file": "model_7200.pt",
+      "iter": 7200,
+      "model_finite": true,
+      "std_mean": 0.2828589379787445,
+      "std_max": 0.35717812180519104
+    },
+    {
+      "file": "model_7299.pt",
+      "iter": 7299,
+      "model_finite": true,
+      "std_mean": 0.2839888334274292,
+      "std_max": 0.3607792258262634
+    }
+  ],
+  "jit_tensor_max_diff": 0.0,
+  "jit_1024_input_max_diff": 0.0,
+  "resumed_first_saved5300_vs_original_max_diff": 0.013121291995048523,
+  "hashes": {
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_19-15-47_speed_curriculum_resume/model_7299.pt": "577447148edb281c99cb6ba8b135dfd0e434a27d9aea0dd5e3a2a30b0b68f9cb",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_19-15-47_speed_curriculum_resume/params/env.yaml": "25d8c1051fc646365b988fce294d276bcad22f7372f8c36b188fc5c6d690388b",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_19-15-47_speed_curriculum_resume/params/agent.yaml": "58bc4a18c047755513cc03670b6013c14ccbcfe6d02b0e0ff0b961cd2c610b8e",
+    "imgo2_rl/logs/speed_curriculum_compare_2026-11-05/speed7299.pt": "865249874bb544963862862ecf5de0fd2cc47502b16ee5cb2baba7d0406d99c2"
+  },
+  "mujoco_baseline_common_hash_match": {
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_feedback.hpp": true,
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_motor_pd.hpp": true,
+    "imgo2_description/mjcf/scene.xml": true,
+    "imgo2_description/mjcf/imgo2.xml": true,
+    "imgo2_deploy/ros2_ws/scripts/mujoco_policy_benchmark.cpp": true,
+    "imgo2_rl/logs/ang03_compare_2026-11-05/new5300.pt": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": true
+  },
+  "mujoco_reused_binary_sha256": "fb47796b3dafa91c40f7d234fa29b972cb7bfeb77152dfbc2bc025683a17795d"
+}

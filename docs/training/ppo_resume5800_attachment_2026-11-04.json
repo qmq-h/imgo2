@@ -1,0 +1,167 @@
+{
+  "attachment": "/home/tommy0929/.codex/attachments/1f8fef9b-1c82-4d0e-8f48-733d2112a7c8/已粘贴的文本.txt",
+  "sha256": "2c1c9044aa9396b2031b6040bdd93e7062096cecb0bb58ed4a6a176130e8869b",
+  "syntax_compile": "passed_without_import_or_environment_construction",
+  "assignments": {
+    "base_link_name": "base",
+    "foot_link_name": ".*_FOOT",
+    "joint_names": [
+      "FL_hip_joint",
+      "FL_thigh_joint",
+      "FL_shank_joint",
+      "FR_hip_joint",
+      "FR_thigh_joint",
+      "FR_shank_joint",
+      "RL_hip_joint",
+      "RL_thigh_joint",
+      "RL_shank_joint",
+      "RR_hip_joint",
+      "RR_thigh_joint",
+      "RR_shank_joint"
+    ],
+    "self.scene.terrain.terrain_generator.sub_terrains['boxes'].grid_height_range": [
+      0.025,
+      0.1
+    ],
+    "self.scene.terrain.terrain_generator.sub_terrains['random_rough'].noise_range": [
+      0.01,
+      0.06
+    ],
+    "self.scene.terrain.terrain_generator.sub_terrains['random_rough'].noise_step": 0.01,
+    "self.scene.terrain.terrain_generator.sub_terrains['pyramid_stairs'].step_height_range": [
+      0.025,
+      0.08
+    ],
+    "self.scene.terrain.terrain_generator.sub_terrains['pyramid_stairs_inv'].step_height_range": [
+      0.025,
+      0.08
+    ],
+    "self.observations.policy.base_ang_vel.scale": 0.25,
+    "self.observations.policy.joint_pos.scale": 1.0,
+    "self.observations.policy.joint_vel.scale": 0.05,
+    "self.observations.policy.base_lin_vel": null,
+    "self.observations.policy.height_scan": null,
+    "self.actions.joint_pos.scale": {
+      ".*_hip_joint": 0.125,
+      "^(?!.*_hip_joint).*": 0.25
+    },
+    "self.actions.joint_pos.clip": {
+      ".*": [
+        -3.0,
+        3.0
+      ]
+    },
+    "self.events.randomize_reset_base.params": {
+      "pose_range": {
+        "x": [
+          -1.0,
+          1.0
+        ],
+        "y": [
+          -1.0,
+          1.0
+        ],
+        "z": [
+          0.0,
+          0.0
+        ],
+        "roll": [
+          -0.3,
+          0.3
+        ],
+        "pitch": [
+          -0.3,
+          0.3
+        ],
+        "yaw": [
+          -3.14,
+          3.14
+        ]
+      },
+      "velocity_range": {
+        "x": [
+          -0.2,
+          0.2
+        ],
+        "y": [
+          -0.2,
+          0.2
+        ],
+        "z": [
+          -0.2,
+          0.2
+        ],
+        "roll": [
+          -0.05,
+          0.05
+        ],
+        "pitch": [
+          -0.05,
+          0.05
+        ],
+        "yaw": [
+          -0.0,
+          0.0
+        ]
+      }
+    },
+    "self.events.randomize_apply_external_force_torque": null,
+    "self.events.randomize_push_robot": null,
+    "self.rewards.action_rate_l2.weight": -0.01,
+    "self.rewards.base_height_l2.weight": -18.0,
+    "self.rewards.base_height_l2.params['target_height']": 0.3,
+    "self.rewards.feet_air_time.weight": 1.0,
+    "self.rewards.feet_air_time.params['threshold']": 0.5,
+    "self.rewards.feet_air_time_variance.weight": -8.0,
+    "self.rewards.feet_slide.weight": -0.05,
+    "self.rewards.stand_still.weight": -0.1,
+    "self.rewards.stand_still.params['command_threshold']": 0.05,
+    "self.rewards.feet_height_body.weight": -5.0,
+    "self.rewards.feet_height_body.params['target_height']": -0.2,
+    "self.rewards.feet_height.weight": 0,
+    "self.rewards.feet_height.params['target_height']": 0.1,
+    "self.rewards.joint_mirror.weight": -1.0,
+    "self.rewards.joint_mirror.params['mirror_joints']": [
+      [
+        "FR_(thigh|shank).*",
+        "RL_(thigh|shank).*"
+      ],
+      [
+        "FL_(thigh|shank).*",
+        "RR_(thigh|shank).*"
+      ]
+    ],
+    "self.rewards.contact_forces.weight": -0.02,
+    "self.rewards.lin_vel_z_l2.weight": -4.0,
+    "self.rewards.ang_vel_xy_l2.weight": -0.1,
+    "self.rewards.track_lin_vel_xy_exp.weight": 1.5,
+    "self.rewards.track_ang_vel_z_exp.weight": 0.6,
+    "self.rewards.undesired_contacts.weight": -0.5,
+    "self.rewards.joint_torques_l2.weight": -2.5e-06,
+    "self.rewards.joint_acc_l2.weight": -5e-09,
+    "self.rewards.joint_deviation_l1.weight": -1,
+    "self.rewards.joint_deviation_l1.params['asset_cfg'].joint_names": [
+      ".*_hip_joint"
+    ],
+    "self.rewards.joint_pos_penalty.weight": -0.1,
+    "self.rewards.joint_power.weight": -2e-05,
+    "self.rewards.flat_orientation_l2.weight": -5.0,
+    "self.terminations.illegal_contact": null,
+    "self.curriculum.command_levels_lin_vel": null,
+    "self.curriculum.command_levels_ang_vel": null,
+    "self.curriculum.terrain_levels": null,
+    "self.scene.terrain.terrain_generator.curriculum": false,
+    "self.commands.base_velocity.ranges.lin_vel_x": [
+      -0.8,
+      0.8
+    ],
+    "self.commands.base_velocity.ranges.lin_vel_y": [
+      -0.6,
+      0.6
+    ],
+    "self.commands.base_velocity.ranges.ang_vel_z": [
+      -1.0,
+      1.0
+    ]
+  }
+}

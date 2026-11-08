@@ -1,0 +1,2951 @@
+{
+  "scope": "Force contacts: 5N/2N hysteresis, 10ms persistence, <20ms chatter removal; contact correlation and support fractions alone do not define a gait",
+  "skip_seconds": 4.0,
+  "results": [
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 34.73193814079688,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.1904601884875,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "RL": {
+            "normal_force_time_mean_n": 29.374637778896876,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.903978787984375,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.10657591969375,
+            "second_mean_n": 63.09443897647188,
+            "first_share": 0.503978493976829,
+            "signed_difference_over_sum": 0.00795698795365811
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 64.63591692878126,
+            "second_mean_n": 62.565097967384375,
+            "first_share": 0.5081399466941647,
+            "signed_difference_over_sum": 0.016279893388329438
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.92239832928438,
+            "second_mean_n": 59.278616566881254,
+            "first_share": 0.533976858476558,
+            "signed_difference_over_sum": 0.06795371695311593
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        null,
+        null
+      ],
+      "same_side_contact_correlation": [
+        null,
+        null
+      ],
+      "front_and_rear_contact_correlation": [
+        null,
+        null
+      ],
+      "diagonal_swing_jaccard": [
+        null,
+        null
+      ],
+      "all_four_contact_fraction": 1,
+      "three_contact_fraction": 0,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -0.0004490281756,
+        "FR": -0.00043600507,
+        "RL": -0.000402682741,
+        "RR": -0.0004073317169
+      },
+      "all_feet_mean_slip_mps": 9.316593228557593e-05,
+      "policy": "height23_6300.pt",
+      "case": "stand",
+      "csv": "height23_6300_stand.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 31.885256822173062,
+            "stance_fraction": 0.6334375,
+            "stance_duration_median_s": 0.34499999999999265,
+            "stance_peak_median_n": 74.02678996,
+            "stance_impulse_median_ns": 17.202238256589634,
+            "complete_stances": 29
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.77215210056688,
+            "stance_fraction": 0.7140625,
+            "stance_duration_median_s": 0.3899999999999917,
+            "stance_peak_median_n": 65.8615793,
+            "stance_impulse_median_ns": 18.5091783920996,
+            "complete_stances": 29
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.01429267597175,
+            "stance_fraction": 0.6625,
+            "stance_duration_median_s": 0.3649999999999922,
+            "stance_peak_median_n": 70.87815002,
+            "stance_impulse_median_ns": 17.56506812763463,
+            "complete_stances": 29
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.242133889485313,
+            "stance_fraction": 0.650625,
+            "stance_duration_median_s": 0.35499999999999243,
+            "stance_peak_median_n": 59.92274819,
+            "stance_impulse_median_ns": 15.87321054109967,
+            "complete_stances": 29
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.899549498144815,
+            "second_mean_n": 63.01428599005219,
+            "first_share": 0.5034876556393055,
+            "signed_difference_over_sum": 0.006975311278611206
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 61.12739071165838,
+            "second_mean_n": 65.78644477653863,
+            "first_share": 0.4816448141884675,
+            "signed_difference_over_sum": -0.036710371623065036
+          },
+          "front_vs_rear": {
+            "first_mean_n": 65.65740892273993,
+            "second_mean_n": 61.25642656545706,
+            "first_share": 0.5173384656619733,
+            "signed_difference_over_sum": 0.034676931323946655
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9292872189016148,
+        0.8441768495009165
+      ],
+      "same_side_contact_correlation": [
+        -0.5429578031413048,
+        -0.4637116254888567
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.4813817002674241,
+        -0.5230274547757905
+      ],
+      "diagonal_swing_jaccard": [
+        0.9123539232053423,
+        0.7989179440937781
+      ],
+      "all_four_contact_fraction": 0.2790625,
+      "three_contact_fraction": 0.1025,
+      "diagonal_two_contact_fraction": 0.6184375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06621224139,
+        "FR": 0.05370767352,
+        "RL": 0.04862065907,
+        "RR": 0.06433949223
+      },
+      "all_feet_mean_slip_mps": 0.33053954615952286,
+      "policy": "height23_6300.pt",
+      "case": "forward03",
+      "csv": "height23_6300_forward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 31.313800383029093,
+            "stance_fraction": 0.638125,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 69.36454768,
+            "stance_impulse_median_ns": 15.68113511994217,
+            "complete_stances": 32
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.18399523272206,
+            "stance_fraction": 0.691875,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 65.03860741,
+            "stance_impulse_median_ns": 16.916106206049644,
+            "complete_stances": 31
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.66741225600844,
+            "stance_fraction": 0.6446875,
+            "stance_duration_median_s": 0.32499999999999307,
+            "stance_peak_median_n": 68.45838446,
+            "stance_impulse_median_ns": 16.544354782099653,
+            "complete_stances": 31
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.672954821775,
+            "stance_fraction": 0.6028125,
+            "stance_duration_median_s": 0.2949999999999937,
+            "stance_peak_median_n": 62.37619259,
+            "stance_impulse_median_ns": 14.838245903599685,
+            "complete_stances": 32
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.98121263903754,
+            "second_mean_n": 62.85695005449706,
+            "first_share": 0.5044318782323303,
+            "signed_difference_over_sum": 0.008863756464660477
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.9867552048041,
+            "second_mean_n": 65.8514074887305,
+            "first_share": 0.48082338871590113,
+            "signed_difference_over_sum": -0.03835322256819771
+          },
+          "front_vs_rear": {
+            "first_mean_n": 64.49779561575116,
+            "second_mean_n": 62.34036707778344,
+            "first_share": 0.5085046506987825,
+            "signed_difference_over_sum": 0.017009301397565024
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8506433426334672,
+        0.8423501750757544
+      ],
+      "same_side_contact_correlation": [
+        -0.5590582093923016,
+        -0.5416968506342447
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5025462770643805,
+        -0.6026113119732321
+      ],
+      "diagonal_swing_jaccard": [
+        0.8276899924755455,
+        0.8037383177570093
+      ],
+      "all_four_contact_fraction": 0.216875,
+      "three_contact_fraction": 0.14375,
+      "diagonal_two_contact_fraction": 0.639375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.09410332181,
+        "FR": 0.07188580722,
+        "RL": 0.05675000529,
+        "RR": 0.08979037174
+      },
+      "all_feet_mean_slip_mps": 0.5124218050534896,
+      "policy": "height23_6300.pt",
+      "case": "forward05",
+      "csv": "height23_6300_forward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 30.064521793884502,
+            "stance_fraction": 0.5996875,
+            "stance_duration_median_s": 0.26999999999999424,
+            "stance_peak_median_n": 66.54284429,
+            "stance_impulse_median_ns": 13.452664210809715,
+            "complete_stances": 35
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.211124263754066,
+            "stance_fraction": 0.6778125,
+            "stance_duration_median_s": 0.3049999999999935,
+            "stance_peak_median_n": 82.5265296,
+            "stance_impulse_median_ns": 14.47566093024969,
+            "complete_stances": 34
+          },
+          "RL": {
+            "normal_force_time_mean_n": 33.835999784506534,
+            "stance_fraction": 0.616875,
+            "stance_duration_median_s": 0.27499999999999414,
+            "stance_peak_median_n": 68.90496961,
+            "stance_impulse_median_ns": 15.016634032269685,
+            "complete_stances": 35
+          },
+          "RR": {
+            "normal_force_time_mean_n": 30.111394885191125,
+            "stance_fraction": 0.5340625,
+            "stance_duration_median_s": 0.23999999999999488,
+            "stance_peak_median_n": 72.9992372,
+            "stance_impulse_median_ns": 13.573604975049708,
+            "complete_stances": 35
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.900521578391036,
+            "second_mean_n": 62.32251914894519,
+            "first_share": 0.506250849370895,
+            "signed_difference_over_sum": 0.012501698741789987
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.17591667907563,
+            "second_mean_n": 66.0471240482606,
+            "first_share": 0.47674272725742756,
+            "signed_difference_over_sum": -0.04651454548514485
+          },
+          "front_vs_rear": {
+            "first_mean_n": 62.27564605763857,
+            "second_mean_n": 63.94739466969766,
+            "first_share": 0.49337779932084525,
+            "signed_difference_over_sum": -0.013244401358309526
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.7673197033289327,
+        0.8748385170000141
+      ],
+      "same_side_contact_correlation": [
+        -0.6438856383788204,
+        -0.6439725373970969
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5632959569969347,
+        -0.7361044637190869
+      ],
+      "diagonal_swing_jaccard": [
+        0.76,
+        0.8409461663947798
+      ],
+      "all_four_contact_fraction": 0.1246875,
+      "three_contact_fraction": 0.1790625,
+      "diagonal_two_contact_fraction": 0.69625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1311454869,
+        "FR": 0.09049354305,
+        "RL": 0.0569212804,
+        "RR": 0.1242034174
+      },
+      "all_feet_mean_slip_mps": 0.7734104865670621,
+      "policy": "height23_6300.pt",
+      "case": "forward08",
+      "csv": "height23_6300_forward08.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 26.17575547685,
+            "stance_fraction": 0.5778125,
+            "stance_duration_median_s": 0.23999999999999488,
+            "stance_peak_median_n": 66.01656111,
+            "stance_impulse_median_ns": 11.012175436849768,
+            "complete_stances": 37
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.588497398909375,
+            "stance_fraction": 0.665,
+            "stance_duration_median_s": 0.27999999999999403,
+            "stance_peak_median_n": 123.5952441,
+            "stance_impulse_median_ns": 14.293866072424692,
+            "complete_stances": 38
+          },
+          "RL": {
+            "normal_force_time_mean_n": 36.10974338338438,
+            "stance_fraction": 0.59375,
+            "stance_duration_median_s": 0.24999999999999467,
+            "stance_peak_median_n": 99.09071485000001,
+            "stance_impulse_median_ns": 15.370746701199671,
+            "complete_stances": 38
+          },
+          "RR": {
+            "normal_force_time_mean_n": 30.35846396549544,
+            "stance_fraction": 0.53375,
+            "stance_duration_median_s": 0.2249999999999952,
+            "stance_peak_median_n": 81.82688196500001,
+            "stance_impulse_median_ns": 12.735727725724729,
+            "complete_stances": 38
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 62.28549886023438,
+            "second_mean_n": 63.946961364404814,
+            "first_share": 0.4934190361923797,
+            "signed_difference_over_sum": -0.013161927615240583
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 56.53421944234544,
+            "second_mean_n": 69.69824078229375,
+            "first_share": 0.44785801799108543,
+            "signed_difference_over_sum": -0.10428396401782906
+          },
+          "front_vs_rear": {
+            "first_mean_n": 59.764252875759375,
+            "second_mean_n": 66.46820734887982,
+            "first_share": 0.47344599613605604,
+            "signed_difference_over_sum": -0.053108007727887895
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.700229334820418,
+        0.858058119397361
+      ],
+      "same_side_contact_correlation": [
+        -0.7070564601066874,
+        -0.6593826256903713
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.6066955364668999,
+        -0.7692729961515722
+      ],
+      "diagonal_swing_jaccard": [
+        0.7116195063214931,
+        0.8246153846153846
+      ],
+      "all_four_contact_fraction": 0.075625,
+      "three_contact_fraction": 0.22,
+      "diagonal_two_contact_fraction": 0.7034375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1374305828,
+        "FR": 0.09902746102,
+        "RL": 0.06269233136,
+        "RR": 0.1378666655
+      },
+      "all_feet_mean_slip_mps": 0.937862702063901,
+      "policy": "height23_6300.pt",
+      "case": "forward10",
+      "csv": "height23_6300_forward10.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 23.373350456157187,
+            "stance_fraction": 0.4925,
+            "stance_duration_median_s": 0.18999999999999595,
+            "stance_peak_median_n": 66.52327414,
+            "stance_impulse_median_ns": 9.070959455149808,
+            "complete_stances": 41
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.62186203773781,
+            "stance_fraction": 0.6196875,
+            "stance_duration_median_s": 0.24499999999999478,
+            "stance_peak_median_n": 118.9978218,
+            "stance_impulse_median_ns": 12.972208682199728,
+            "complete_stances": 41
+          },
+          "RL": {
+            "normal_force_time_mean_n": 34.58836665640741,
+            "stance_fraction": 0.55375,
+            "stance_duration_median_s": 0.21499999999999542,
+            "stance_peak_median_n": 104.0132877,
+            "stance_impulse_median_ns": 13.44577051894971,
+            "complete_stances": 41
+          },
+          "RR": {
+            "normal_force_time_mean_n": 33.64983863484313,
+            "stance_fraction": 0.50125,
+            "stance_duration_median_s": 0.19499999999999584,
+            "stance_peak_median_n": 100.6110394,
+            "stance_impulse_median_ns": 12.974010837019724,
+            "complete_stances": 41
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 57.9617171125646,
+            "second_mean_n": 67.27170067258095,
+            "first_share": 0.46282947585129053,
+            "signed_difference_over_sum": -0.07434104829741893
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 57.02318909100032,
+            "second_mean_n": 68.21022869414523,
+            "first_share": 0.4553352459710963,
+            "signed_difference_over_sum": -0.08932950805780733
+          },
+          "front_vs_rear": {
+            "first_mean_n": 56.995212493894996,
+            "second_mean_n": 68.23820529125054,
+            "first_share": 0.45511185035034185,
+            "signed_difference_over_sum": -0.08977629929931626
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.7013685999400512,
+        0.7794381055624913
+      ],
+      "same_side_contact_correlation": [
+        -0.8986958898196695,
+        -0.4634485964004745
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.7553263422258507,
+        -0.6704057777288999
+      ],
+      "diagonal_swing_jaccard": [
+        0.7414818820984316,
+        0.7633333333333333
+      ],
+      "all_four_contact_fraction": 0.031875,
+      "three_contact_fraction": 0.1678125,
+      "diagonal_two_contact_fraction": 0.721875,
+      "lateral_two_contact_fraction": 0.0159375,
+      "front_rear_two_contact_fraction": 0.00125,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1475204881,
+        "FR": 0.08862779508,
+        "RL": 0.06640320237,
+        "RR": 0.1502362492
+      },
+      "all_feet_mean_slip_mps": 1.1785636820546108,
+      "policy": "height23_6300.pt",
+      "case": "forward12",
+      "csv": "height23_6300_forward12.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 35.332594580026125,
+            "stance_fraction": 0.7265625,
+            "stance_duration_median_s": 0.4349999999999907,
+            "stance_peak_median_n": 82.93235745,
+            "stance_impulse_median_ns": 20.812586044302055,
+            "complete_stances": 26
+          },
+          "FR": {
+            "normal_force_time_mean_n": 37.44707707104616,
+            "stance_fraction": 0.78875,
+            "stance_duration_median_s": 0.46999999999999,
+            "stance_peak_median_n": 77.20785028,
+            "stance_impulse_median_ns": 22.18464057119953,
+            "complete_stances": 27
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.758123898850936,
+            "stance_fraction": 0.6803125,
+            "stance_duration_median_s": 0.40499999999999137,
+            "stance_peak_median_n": 69.04524346,
+            "stance_impulse_median_ns": 18.209668237999608,
+            "complete_stances": 27
+          },
+          "RR": {
+            "normal_force_time_mean_n": 23.945732893885125,
+            "stance_fraction": 0.5990625,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 57.38939638,
+            "stance_impulse_median_ns": 14.141059635294699,
+            "complete_stances": 26
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.09071847887706,
+            "second_mean_n": 61.39280996493129,
+            "first_share": 0.5184255510154651,
+            "signed_difference_over_sum": 0.03685110203093022
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 59.27832747391125,
+            "second_mean_n": 68.20520096989709,
+            "first_share": 0.46498812981976495,
+            "signed_difference_over_sum": -0.07002374036047014
+          },
+          "front_vs_rear": {
+            "first_mean_n": 72.77967165107228,
+            "second_mean_n": 54.70385679273606,
+            "first_share": 0.5708947072574305,
+            "signed_difference_over_sum": 0.14178941451486102
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.7498774193945761,
+        0.7549532696381911
+      ],
+      "same_side_contact_correlation": [
+        -0.42053403500557557,
+        -0.4233805906276329
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.3174835447216007,
+        -0.5608037048843261
+      ],
+      "diagonal_swing_jaccard": [
+        0.6819953234606392,
+        0.6608015640273704
+      ],
+      "all_four_contact_fraction": 0.279375,
+      "three_contact_fraction": 0.2359375,
+      "diagonal_two_contact_fraction": 0.4846875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05386409595,
+        "FR": 0.02981597162,
+        "RL": 0.04369835279,
+        "RR": 0.0431675244
+      },
+      "all_feet_mean_slip_mps": 0.2666814065939266,
+      "policy": "height23_6300.pt",
+      "case": "backward03",
+      "csv": "height23_6300_backward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 35.33705961560719,
+            "stance_fraction": 0.6825,
+            "stance_duration_median_s": 0.3849999999999918,
+            "stance_peak_median_n": 82.120326595,
+            "stance_impulse_median_ns": 19.850403294699575,
+            "complete_stances": 28
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.02274509581562,
+            "stance_fraction": 0.7353125,
+            "stance_duration_median_s": 0.40999999999999126,
+            "stance_peak_median_n": 72.35347096000001,
+            "stance_impulse_median_ns": 19.979162987074577,
+            "complete_stances": 28
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.031756490255876,
+            "stance_fraction": 0.6334375,
+            "stance_duration_median_s": 0.35499999999999243,
+            "stance_peak_median_n": 68.034445375,
+            "stance_impulse_median_ns": 17.356397610099627,
+            "complete_stances": 28
+          },
+          "RR": {
+            "normal_force_time_mean_n": 25.118191165139688,
+            "stance_fraction": 0.601875,
+            "stance_duration_median_s": 0.33499999999999286,
+            "stance_peak_median_n": 53.62030711,
+            "stance_impulse_median_ns": 14.083220214734695,
+            "complete_stances": 28
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.36881610586306,
+            "second_mean_n": 61.140936260955314,
+            "first_share": 0.5204999215662668,
+            "signed_difference_over_sum": 0.04099984313253351
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.45525078074688,
+            "second_mean_n": 67.0545015860715,
+            "first_share": 0.4741225644202493,
+            "signed_difference_over_sum": -0.05175487115950141
+          },
+          "front_vs_rear": {
+            "first_mean_n": 71.35980471142281,
+            "second_mean_n": 56.149947655395565,
+            "first_share": 0.5596419362978281,
+            "signed_difference_over_sum": 0.11928387259565629
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8386175839451843,
+        0.7886941324406963
+      ],
+      "same_side_contact_correlation": [
+        -0.5188510126241391,
+        -0.4879634735804927
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.4092147492675726,
+        -0.6186979888774353
+      ],
+      "diagonal_swing_jaccard": [
+        0.7974882260596546,
+        0.722080136402387
+      ],
+      "all_four_contact_fraction": 0.2353125,
+      "three_contact_fraction": 0.1825,
+      "diagonal_two_contact_fraction": 0.5821875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.08521266926,
+        "FR": 0.04867172405,
+        "RL": 0.05085741911,
+        "RR": 0.06156866406
+      },
+      "all_feet_mean_slip_mps": 0.4379412775302572,
+      "policy": "height23_6300.pt",
+      "case": "backward05",
+      "csv": "height23_6300_backward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 35.72868637101344,
+            "stance_fraction": 0.618125,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 82.70332047,
+            "stance_impulse_median_ns": 18.254103389049618,
+            "complete_stances": 31
+          },
+          "FR": {
+            "normal_force_time_mean_n": 34.36996097213781,
+            "stance_fraction": 0.6709375,
+            "stance_duration_median_s": 0.34499999999999265,
+            "stance_peak_median_n": 73.94417681,
+            "stance_impulse_median_ns": 17.634628385699628,
+            "complete_stances": 31
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.09423513749625,
+            "stance_fraction": 0.63875,
+            "stance_duration_median_s": 0.32499999999999307,
+            "stance_peak_median_n": 66.22701209,
+            "stance_impulse_median_ns": 15.85444723099966,
+            "complete_stances": 31
+          },
+          "RR": {
+            "normal_force_time_mean_n": 26.283648089784688,
+            "stance_fraction": 0.5546875,
+            "stance_duration_median_s": 0.2849999999999939,
+            "stance_peak_median_n": 62.68814658,
+            "stance_impulse_median_ns": 13.504571051074715,
+            "complete_stances": 31
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.8229215085097,
+            "second_mean_n": 60.653609061922495,
+            "first_share": 0.5241978363349737,
+            "signed_difference_over_sum": 0.048395672669947556
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 62.01233446079813,
+            "second_mean_n": 65.46419610963406,
+            "first_share": 0.4864607954366599,
+            "signed_difference_over_sum": -0.02707840912668029
+          },
+          "front_vs_rear": {
+            "first_mean_n": 70.09864734315124,
+            "second_mean_n": 57.37788322728093,
+            "first_share": 0.5498945337582825,
+            "signed_difference_over_sum": 0.09978906751656492
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8772314752166701,
+        0.9298513376256506
+      ],
+      "same_side_contact_correlation": [
+        -0.5910999609168351,
+        -0.627489433302978
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5504534812592439,
+        -0.6738243868539228
+      ],
+      "diagonal_swing_jaccard": [
+        0.8575438596491228,
+        0.909248055315471
+      ],
+      "all_four_contact_fraction": 0.193125,
+      "three_contact_fraction": 0.09625,
+      "diagonal_two_contact_fraction": 0.710625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1177785891,
+        "FR": 0.07997741728,
+        "RL": 0.05869004913,
+        "RR": 0.08428874779
+      },
+      "all_feet_mean_slip_mps": 0.6647485793424367,
+      "policy": "height23_6300.pt",
+      "case": "backward08",
+      "csv": "height23_6300_backward08.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 34.20242689184125,
+            "stance_fraction": 0.6415625,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 77.28377171,
+            "stance_impulse_median_ns": 17.136874528544634,
+            "complete_stances": 31
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.93131625358344,
+            "stance_fraction": 0.7059375,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 66.71606458,
+            "stance_impulse_median_ns": 18.4342001247596,
+            "complete_stances": 31
+          },
+          "RL": {
+            "normal_force_time_mean_n": 28.643910968114774,
+            "stance_fraction": 0.635625,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 70.75502037,
+            "stance_impulse_median_ns": 14.322517797649695,
+            "complete_stances": 31
+          },
+          "RR": {
+            "normal_force_time_mean_n": 27.25395812451875,
+            "stance_fraction": 0.59375,
+            "stance_duration_median_s": 0.2999999999999936,
+            "stance_peak_median_n": 80.91048415,
+            "stance_impulse_median_ns": 13.702416597809707,
+            "complete_stances": 31
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 62.84633785995602,
+            "second_mean_n": 64.18527437810219,
+            "first_share": 0.4947299081915256,
+            "signed_difference_over_sum": -0.010540183616948768
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 61.45638501636,
+            "second_mean_n": 65.57522722169821,
+            "first_share": 0.4837881211897891,
+            "signed_difference_over_sum": -0.03242375762042183
+          },
+          "front_vs_rear": {
+            "first_mean_n": 71.13374314542469,
+            "second_mean_n": 55.89786909263353,
+            "first_share": 0.5599688289566813,
+            "signed_difference_over_sum": 0.11993765791336267
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.7948309999938109,
+        0.852438184254213
+      ],
+      "same_side_contact_correlation": [
+        -0.5659278090318107,
+        -0.5338651503783252
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.4824184739500418,
+        -0.6262801927923921
+      ],
+      "diagonal_swing_jaccard": [
+        0.7706222865412445,
+        0.807032590051458
+      ],
+      "all_four_contact_fraction": 0.20375,
+      "three_contact_fraction": 0.169375,
+      "diagonal_two_contact_fraction": 0.626875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.08649846509,
+        "FR": 0.0519781437,
+        "RL": 0.05879155891,
+        "RR": 0.06548415748
+      },
+      "all_feet_mean_slip_mps": 0.322080410655382,
+      "policy": "height23_6300.pt",
+      "case": "left03",
+      "csv": "height23_6300_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 38.81657214307844,
+            "stance_fraction": 0.6859375,
+            "stance_duration_median_s": 0.33999999999999275,
+            "stance_peak_median_n": 73.94845572,
+            "stance_impulse_median_ns": 19.1283545400996,
+            "complete_stances": 32
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.76794581986063,
+            "stance_fraction": 0.651875,
+            "stance_duration_median_s": 0.32499999999999307,
+            "stance_peak_median_n": 71.190742525,
+            "stance_impulse_median_ns": 16.191978407574656,
+            "complete_stances": 32
+          },
+          "RL": {
+            "normal_force_time_mean_n": 27.805866317509373,
+            "stance_fraction": 0.603125,
+            "stance_duration_median_s": 0.2949999999999937,
+            "stance_peak_median_n": 57.160769645,
+            "stance_impulse_median_ns": 13.711318972574707,
+            "complete_stances": 32
+          },
+          "RR": {
+            "normal_force_time_mean_n": 27.468218464146876,
+            "stance_fraction": 0.6234375,
+            "stance_duration_median_s": 0.3049999999999935,
+            "stance_peak_median_n": 59.264996659999994,
+            "stance_impulse_median_ns": 13.336087349867217,
+            "complete_stances": 32
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.62243846058782,
+            "second_mean_n": 60.2361642840075,
+            "first_share": 0.5251708360269339,
+            "signed_difference_over_sum": 0.05034167205386783
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 66.28479060722532,
+            "second_mean_n": 60.57381213737,
+            "first_share": 0.5225092281733279,
+            "signed_difference_over_sum": 0.04501845634665585
+          },
+          "front_vs_rear": {
+            "first_mean_n": 71.58451796293906,
+            "second_mean_n": 55.27408478165625,
+            "first_share": 0.5642858774588612,
+            "signed_difference_over_sum": 0.12857175491772235
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8234043361482679,
+        0.9008702338648951
+      ],
+      "same_side_contact_correlation": [
+        -0.5488946206389993,
+        -0.5679466167707506
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.49448282526223797,
+        -0.630442205126656
+      ],
+      "diagonal_swing_jaccard": [
+        0.7836965294592413,
+        0.8771653543307086
+      ],
+      "all_four_contact_fraction": 0.2159375,
+      "three_contact_fraction": 0.1325,
+      "diagonal_two_contact_fraction": 0.6515625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.07699210439,
+        "FR": 0.06229825253,
+        "RL": 0.04922006492,
+        "RR": 0.07296718895
+      },
+      "all_feet_mean_slip_mps": 0.32776400828577423,
+      "policy": "height23_6300.pt",
+      "case": "right03",
+      "csv": "height23_6300_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.91624574965562,
+            "stance_fraction": 0.690625,
+            "stance_duration_median_s": 0.41499999999999115,
+            "stance_peak_median_n": 72.57115259,
+            "stance_impulse_median_ns": 20.453452354277065,
+            "complete_stances": 26
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.733249113459685,
+            "stance_fraction": 0.745625,
+            "stance_duration_median_s": 0.4449999999999905,
+            "stance_peak_median_n": 68.82764621999999,
+            "stance_impulse_median_ns": 21.93412399112453,
+            "complete_stances": 26
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.546446256542126,
+            "stance_fraction": 0.7121875,
+            "stance_duration_median_s": 0.42499999999999094,
+            "stance_peak_median_n": 54.63766689,
+            "stance_impulse_median_ns": 18.268842406974606,
+            "complete_stances": 26
+          },
+          "RR": {
+            "normal_force_time_mean_n": 25.748485742186563,
+            "stance_fraction": 0.629375,
+            "stance_duration_median_s": 0.374999999999992,
+            "stance_peak_median_n": 56.368566765,
+            "stance_impulse_median_ns": 15.513178988309669,
+            "complete_stances": 26
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.46269200619776,
+            "second_mean_n": 62.48173485564625,
+            "first_share": 0.5078024581288134,
+            "signed_difference_over_sum": 0.015604916257626784
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 59.66473149184219,
+            "second_mean_n": 67.2796953700018,
+            "first_share": 0.47000670267137,
+            "signed_difference_over_sum": -0.059986594657259924
+          },
+          "front_vs_rear": {
+            "first_mean_n": 70.64949486311531,
+            "second_mean_n": 56.294931998728686,
+            "first_share": 0.5565387674718835,
+            "signed_difference_over_sum": 0.11307753494376688
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.832991237893639,
+        0.9187964960110238
+      ],
+      "same_side_contact_correlation": [
+        -0.42547996315849784,
+        -0.44821831043189525
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.39092949927292764,
+        -0.48783197626225755
+      ],
+      "diagonal_swing_jaccard": [
+        0.7924217462932455,
+        0.8838219326818675
+      ],
+      "all_four_contact_fraction": 0.3328125,
+      "three_contact_fraction": 0.1121875,
+      "diagonal_two_contact_fraction": 0.555,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03854812552,
+        "FR": 0.03368550127,
+        "RL": 0.03519308334,
+        "RR": 0.04061118174
+      },
+      "all_feet_mean_slip_mps": 0.12511250562163778,
+      "policy": "height23_6300.pt",
+      "case": "turn_left03",
+      "csv": "height23_6300_turn_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.99179090340313,
+            "stance_fraction": 0.720625,
+            "stance_duration_median_s": 0.4449999999999905,
+            "stance_peak_median_n": 71.20675379,
+            "stance_impulse_median_ns": 20.992226900299553,
+            "complete_stances": 25
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.07390439306069,
+            "stance_fraction": 0.7734375,
+            "stance_duration_median_s": 0.47999999999998977,
+            "stance_peak_median_n": 70.19015739,
+            "stance_impulse_median_ns": 22.402835433804533,
+            "complete_stances": 25
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.819763596933438,
+            "stance_fraction": 0.7303125,
+            "stance_duration_median_s": 0.4549999999999903,
+            "stance_peak_median_n": 64.10866275,
+            "stance_impulse_median_ns": 19.172189202964603,
+            "complete_stances": 25
+          },
+          "RR": {
+            "normal_force_time_mean_n": 26.470409592096875,
+            "stance_fraction": 0.645625,
+            "stance_duration_median_s": 0.3999999999999915,
+            "stance_peak_median_n": 56.7983465,
+            "stance_impulse_median_ns": 16.356443048049645,
+            "complete_stances": 25
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.81155450033657,
+            "second_mean_n": 62.54431398515756,
+            "first_share": 0.5089012015784622,
+            "signed_difference_over_sum": 0.017802403156924416
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.4622004955,
+            "second_mean_n": 66.89366798999413,
+            "first_share": 0.47475001517018167,
+            "signed_difference_over_sum": -0.05049996965963665
+          },
+          "front_vs_rear": {
+            "first_mean_n": 70.06569529646382,
+            "second_mean_n": 57.29017318903031,
+            "first_share": 0.5501567860961533,
+            "signed_difference_over_sum": 0.10031357219230647
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8404226321754628,
+        0.8906464885278276
+      ],
+      "same_side_contact_correlation": [
+        -0.37836865360143296,
+        -0.40098005431719624
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.3369927126991182,
+        -0.45021235639741514
+      ],
+      "diagonal_swing_jaccard": [
+        0.7883597883597884,
+        0.8400926998841252
+      ],
+      "all_four_contact_fraction": 0.3759375,
+      "three_contact_fraction": 0.118125,
+      "diagonal_two_contact_fraction": 0.5059375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.04086747181,
+        "FR": 0.02151771264,
+        "RL": 0.02774201766,
+        "RR": 0.0348615467
+      },
+      "all_feet_mean_slip_mps": 0.10407593935912539,
+      "policy": "height23_6300.pt",
+      "case": "turn_right03",
+      "csv": "height23_6300_turn_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.969319913190624,
+            "stance_fraction": 0.6353125,
+            "stance_duration_median_s": 0.29749999999999366,
+            "stance_peak_median_n": 75.62104313500001,
+            "stance_impulse_median_ns": 15.546451496349668,
+            "complete_stances": 34
+          },
+          "FR": {
+            "normal_force_time_mean_n": 38.791893691386875,
+            "stance_fraction": 0.744375,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 73.50477139,
+            "stance_impulse_median_ns": 18.195737230349614,
+            "complete_stances": 33
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.00141820166875,
+            "stance_fraction": 0.6721875,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 64.27847733,
+            "stance_impulse_median_ns": 14.674594689299688,
+            "complete_stances": 33
+          },
+          "RR": {
+            "normal_force_time_mean_n": 24.063265029565624,
+            "stance_fraction": 0.5534375,
+            "stance_duration_median_s": 0.25999999999999446,
+            "stance_peak_median_n": 62.962310905,
+            "stance_impulse_median_ns": 11.307017418574763,
+            "complete_stances": 34
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.97073811485937,
+            "second_mean_n": 62.8551587209525,
+            "first_share": 0.5043980741384037,
+            "signed_difference_over_sum": 0.008796148276807324
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 57.032584942756245,
+            "second_mean_n": 69.79331189305563,
+            "first_share": 0.44969195066359613,
+            "signed_difference_over_sum": -0.10061609867280777
+          },
+          "front_vs_rear": {
+            "first_mean_n": 71.7612136045775,
+            "second_mean_n": 55.06468323123437,
+            "first_share": 0.5658246099176353,
+            "signed_difference_over_sum": 0.1316492198352705
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8395332970083909,
+        0.8391473634010657
+      ],
+      "same_side_contact_correlation": [
+        -0.5290957555585384,
+        -0.5263960322161538
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.4439893082636418,
+        -0.6272986786047566
+      ],
+      "diagonal_swing_jaccard": [
+        0.8128491620111732,
+        0.7797902764537655
+      ],
+      "all_four_contact_fraction": 0.2246875,
+      "three_contact_fraction": 0.1559375,
+      "diagonal_two_contact_fraction": 0.619375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06952613707,
+        "FR": 0.04567228285,
+        "RL": 0.04544121323,
+        "RR": 0.07747128844
+      },
+      "all_feet_mean_slip_mps": 0.26764608445075705,
+      "policy": "height23_6300.pt",
+      "case": "turn_left",
+      "csv": "height23_6300_turn_left.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 38.85081944481563,
+            "stance_fraction": 0.693125,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 67.74218184,
+            "stance_impulse_median_ns": 17.57796613554963,
+            "complete_stances": 34
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.16449952645094,
+            "stance_fraction": 0.674375,
+            "stance_duration_median_s": 0.3049999999999935,
+            "stance_peak_median_n": 64.09234955,
+            "stance_impulse_median_ns": 14.669758525299686,
+            "complete_stances": 35
+          },
+          "RL": {
+            "normal_force_time_mean_n": 27.348863620211844,
+            "stance_fraction": 0.61125,
+            "stance_duration_median_s": 0.27499999999999414,
+            "stance_peak_median_n": 57.45118872,
+            "stance_impulse_median_ns": 12.534396809649735,
+            "complete_stances": 35
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.700189958892814,
+            "stance_fraction": 0.594375,
+            "stance_duration_median_s": 0.26999999999999424,
+            "stance_peak_median_n": 68.1491148,
+            "stance_impulse_median_ns": 13.049516806399723,
+            "complete_stances": 34
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.19968306502747,
+            "second_mean_n": 60.86468948534375,
+            "first_share": 0.5209932708618571,
+            "signed_difference_over_sum": 0.04198654172371414
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 67.55100940370843,
+            "second_mean_n": 59.51336314666278,
+            "first_share": 0.5316282451788732,
+            "signed_difference_over_sum": 0.06325649035774639
+          },
+          "front_vs_rear": {
+            "first_mean_n": 71.01531897126657,
+            "second_mean_n": 56.04905357910466,
+            "first_share": 0.5588924538474739,
+            "signed_difference_over_sum": 0.11778490769494761
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8054579697101512,
+        0.8713294126571537
+      ],
+      "same_side_contact_correlation": [
+        -0.5306409208411357,
+        -0.5740374535678657
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.46236304188835814,
+        -0.6588064688615474
+      ],
+      "diagonal_swing_jaccard": [
+        0.7565485362095532,
+        0.837620578778135
+      ],
+      "all_four_contact_fraction": 0.205625,
+      "three_contact_fraction": 0.161875,
+      "diagonal_two_contact_fraction": 0.6325,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06398366627,
+        "FR": 0.03758237781,
+        "RL": 0.04864500475,
+        "RR": 0.05304983172
+      },
+      "all_feet_mean_slip_mps": 0.26276770587457704,
+      "policy": "height23_6300.pt",
+      "case": "turn_right",
+      "csv": "height23_6300_turn_right.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 27.012652078757814,
+            "stance_fraction": 0.6153125,
+            "stance_duration_median_s": 0.27499999999999414,
+            "stance_peak_median_n": 64.50795347,
+            "stance_impulse_median_ns": 12.040695609449742,
+            "complete_stances": 35
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.93158164999984,
+            "stance_fraction": 0.701875,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 75.77694336,
+            "stance_impulse_median_ns": 16.85863469414964,
+            "complete_stances": 35
+          },
+          "RL": {
+            "normal_force_time_mean_n": 33.36523497014219,
+            "stance_fraction": 0.6425,
+            "stance_duration_median_s": 0.2899999999999938,
+            "stance_peak_median_n": 73.07586289,
+            "stance_impulse_median_ns": 15.171319612849679,
+            "complete_stances": 35
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.819607756184062,
+            "stance_fraction": 0.585625,
+            "stance_duration_median_s": 0.25999999999999446,
+            "stance_peak_median_n": 61.13165763,
+            "stance_impulse_median_ns": 12.868047072349725,
+            "complete_stances": 35
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 60.37788704890001,
+            "second_mean_n": 65.7511894061839,
+            "first_share": 0.4786991924927105,
+            "signed_difference_over_sum": -0.04260161501457904
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 55.83225983494188,
+            "second_mean_n": 70.29681662014204,
+            "first_share": 0.44265970547104116,
+            "signed_difference_over_sum": -0.11468058905791768
+          },
+          "front_vs_rear": {
+            "first_mean_n": 63.94423372875765,
+            "second_mean_n": 62.18484272632625,
+            "first_share": 0.5069745654684863,
+            "signed_difference_over_sum": 0.013949130936972653
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8095920939886739,
+        0.8737111022382029
+      ],
+      "same_side_contact_correlation": [
+        -0.5898038803399749,
+        -0.5482217733806604
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.515318198396209,
+        -0.6274634395468587
+      ],
+      "diagonal_swing_jaccard": [
+        0.7931276297335204,
+        0.833916083916084
+      ],
+      "all_four_contact_fraction": 0.196875,
+      "three_contact_fraction": 0.1515625,
+      "diagonal_two_contact_fraction": 0.6515625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.08628337383,
+        "FR": 0.07597526328,
+        "RL": 0.05384200162,
+        "RR": 0.09555227549
+      },
+      "all_feet_mean_slip_mps": 0.4858073352026129,
+      "policy": "height23_6300.pt",
+      "case": "arc",
+      "csv": "height23_6300_arc.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.52726507382187,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.4391229843875,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.380792149446876,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.85385021875,
+            "stance_fraction": 1,
+            "stance_duration_median_s": null,
+            "stance_peak_median_n": null,
+            "stance_impulse_median_ns": null,
+            "complete_stances": 0
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.90805722326874,
+            "second_mean_n": 62.29297320313751,
+            "first_share": 0.5102793350469131,
+            "signed_difference_over_sum": 0.0205586700938262
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 62.38111529257188,
+            "second_mean_n": 64.81991513383437,
+            "first_share": 0.4904136002944037,
+            "signed_difference_over_sum": -0.0191727994111926
+          },
+          "front_vs_rear": {
+            "first_mean_n": 66.96638805820938,
+            "second_mean_n": 60.23464236819687,
+            "first_share": 0.5264610501481245,
+            "signed_difference_over_sum": 0.05292210029624908
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        null,
+        null
+      ],
+      "same_side_contact_correlation": [
+        null,
+        null
+      ],
+      "front_and_rear_contact_correlation": [
+        null,
+        null
+      ],
+      "diagonal_swing_jaccard": [
+        null,
+        null
+      ],
+      "all_four_contact_fraction": 1,
+      "three_contact_fraction": 0,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -0.0004385353254,
+        "FR": -0.0004379011819,
+        "RL": -0.0004209215267,
+        "RR": -0.0003973807221
+      },
+      "all_feet_mean_slip_mps": 9.914589628427267e-05,
+      "policy": "height23_9299.pt",
+      "case": "stand",
+      "csv": "height23_9299_stand.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.2636423282375,
+            "stance_fraction": 0.6409375,
+            "stance_duration_median_s": 0.3699999999999921,
+            "stance_peak_median_n": 75.46965154,
+            "stance_impulse_median_ns": 18.96320856864959,
+            "complete_stances": 27
+          },
+          "FR": {
+            "normal_force_time_mean_n": 31.667280670235936,
+            "stance_fraction": 0.6540625,
+            "stance_duration_median_s": 0.374999999999992,
+            "stance_peak_median_n": 66.01053211,
+            "stance_impulse_median_ns": 18.01802296791461,
+            "complete_stances": 27
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.71591372290625,
+            "stance_fraction": 0.6840625,
+            "stance_duration_median_s": 0.3899999999999917,
+            "stance_peak_median_n": 67.01715078,
+            "stance_impulse_median_ns": 17.973495315949616,
+            "complete_stances": 27
+          },
+          "RR": {
+            "normal_force_time_mean_n": 30.395962043887813,
+            "stance_fraction": 0.6521875,
+            "stance_duration_median_s": 0.37249999999999206,
+            "stance_peak_median_n": 65.40557971499999,
+            "stance_impulse_median_ns": 17.29293803301713,
+            "complete_stances": 28
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.97955605114376,
+            "second_mean_n": 62.063242714123746,
+            "first_share": 0.5114776806137922,
+            "signed_difference_over_sum": 0.022955361227584285
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 63.659604372125315,
+            "second_mean_n": 63.38319439314219,
+            "first_share": 0.5010878616563456,
+            "signed_difference_over_sum": 0.0021757233126911656
+          },
+          "front_vs_rear": {
+            "first_mean_n": 64.93092299847343,
+            "second_mean_n": 62.111875766794064,
+            "first_share": 0.5110948721969202,
+            "signed_difference_over_sum": 0.022189744393840256
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9483295070972348,
+        0.9344659920182107
+      ],
+      "same_side_contact_correlation": [
+        -0.5086626870994899,
+        -0.5310990858631147
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5443351512460148,
+        -0.49629403413104073
+      ],
+      "diagonal_swing_jaccard": [
+        0.9349871685201027,
+        0.9132791327913279
+      ],
+      "all_four_contact_fraction": 0.28875,
+      "three_contact_fraction": 0.05375,
+      "diagonal_two_contact_fraction": 0.6575,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05949220438,
+        "FR": 0.06823324948,
+        "RL": 0.06644061636,
+        "RR": 0.04833575624
+      },
+      "all_feet_mean_slip_mps": 0.3378782351560072,
+      "policy": "height23_9299.pt",
+      "case": "forward03",
+      "csv": "height23_9299_forward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.81764819027813,
+            "stance_fraction": 0.6128125,
+            "stance_duration_median_s": 0.33499999999999286,
+            "stance_peak_median_n": 74.37566651,
+            "stance_impulse_median_ns": 17.885878589949616,
+            "complete_stances": 29
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.43171377344687,
+            "stance_fraction": 0.6521875,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 67.20101784,
+            "stance_impulse_median_ns": 17.402107165599634,
+            "complete_stances": 29
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.88343481089375,
+            "stance_fraction": 0.6703125,
+            "stance_duration_median_s": 0.3599999999999923,
+            "stance_peak_median_n": 69.4966533,
+            "stance_impulse_median_ns": 17.601086833549626,
+            "complete_stances": 29
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.511432466257375,
+            "stance_fraction": 0.58875,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 63.96796704,
+            "stance_impulse_median_ns": 15.505788024699667,
+            "complete_stances": 29
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 65.70108300117188,
+            "second_mean_n": 60.94314623970425,
+            "first_share": 0.518784656790078,
+            "signed_difference_over_sum": 0.037569313580155965
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 61.3290806565355,
+            "second_mean_n": 65.31514858434062,
+            "first_share": 0.48426273367646444,
+            "signed_difference_over_sum": -0.03147453264707114
+          },
+          "front_vs_rear": {
+            "first_mean_n": 65.249361963725,
+            "second_mean_n": 61.39486727715113,
+            "first_share": 0.5152178062501477,
+            "signed_difference_over_sum": 0.03043561250029524
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9510631635030163,
+        0.9603426656488728
+      ],
+      "same_side_contact_correlation": [
+        -0.5574545157863833,
+        -0.6103428384026214
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5804745907126072,
+        -0.5861382683912725
+      ],
+      "diagonal_swing_jaccard": [
+        0.9414893617021277,
+        0.9478885893980233
+      ],
+      "all_four_contact_fraction": 0.2409375,
+      "three_contact_fraction": 0.0421875,
+      "diagonal_two_contact_fraction": 0.716875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.08390344449,
+        "FR": 0.09033004098,
+        "RL": 0.08143192091,
+        "RR": 0.06401544932
+      },
+      "all_feet_mean_slip_mps": 0.5312818411640045,
+      "policy": "height23_9299.pt",
+      "case": "forward05",
+      "csv": "height23_9299_forward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.382378158698124,
+            "stance_fraction": 0.5940625,
+            "stance_duration_median_s": 0.2899999999999938,
+            "stance_peak_median_n": 73.01080248,
+            "stance_impulse_median_ns": 16.35902617371465,
+            "complete_stances": 32
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.22649919344281,
+            "stance_fraction": 0.6215625,
+            "stance_duration_median_s": 0.2999999999999936,
+            "stance_peak_median_n": 71.76717460500001,
+            "stance_impulse_median_ns": 15.721455987932163,
+            "complete_stances": 32
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.62882177541119,
+            "stance_fraction": 0.65375,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 76.67514885,
+            "stance_impulse_median_ns": 15.850274851539659,
+            "complete_stances": 32
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.074406463041687,
+            "stance_fraction": 0.55625,
+            "stance_duration_median_s": 0.26499999999999435,
+            "stance_peak_median_n": 66.888597985,
+            "stance_impulse_median_ns": 13.669066888224709,
+            "complete_stances": 32
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 66.01119993410931,
+            "second_mean_n": 60.3009056564845,
+            "first_share": 0.5226039074043036,
+            "signed_difference_over_sum": 0.04520781480860726
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 61.456784621739814,
+            "second_mean_n": 64.855320968854,
+            "first_share": 0.48654706795036096,
+            "signed_difference_over_sum": -0.026905864099278143
+          },
+          "front_vs_rear": {
+            "first_mean_n": 65.60887735214094,
+            "second_mean_n": 60.70322823845288,
+            "first_share": 0.5194187607385328,
+            "signed_difference_over_sum": 0.03883752147706553
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9011699726322072,
+        0.8988265387262999
+      ],
+      "same_side_contact_correlation": [
+        -0.6015926993267773,
+        -0.6969295049605533
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.645012598022451,
+        -0.6500147491926975
+      ],
+      "diagonal_swing_jaccard": [
+        0.8895066018068103,
+        0.8762135922330098
+      ],
+      "all_four_contact_fraction": 0.1640625,
+      "three_contact_fraction": 0.0975,
+      "diagonal_two_contact_fraction": 0.7384375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1150679843,
+        "FR": 0.118445917,
+        "RL": 0.0891432724,
+        "RR": 0.08772025217
+      },
+      "all_feet_mean_slip_mps": 0.8106685142644915,
+      "policy": "height23_9299.pt",
+      "case": "forward08",
+      "csv": "height23_9299_forward08.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.5612114558525,
+            "stance_fraction": 0.5621875,
+            "stance_duration_median_s": 0.25999999999999446,
+            "stance_peak_median_n": 74.72840271999999,
+            "stance_impulse_median_ns": 15.230169279609672,
+            "complete_stances": 34
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.91911354555656,
+            "stance_fraction": 0.6028125,
+            "stance_duration_median_s": 0.27999999999999403,
+            "stance_peak_median_n": 81.07828485,
+            "stance_impulse_median_ns": 15.283624239599671,
+            "complete_stances": 33
+          },
+          "RL": {
+            "normal_force_time_mean_n": 33.21098195629156,
+            "stance_fraction": 0.64,
+            "stance_duration_median_s": 0.2949999999999937,
+            "stance_peak_median_n": 82.47865098,
+            "stance_impulse_median_ns": 15.263248624759676,
+            "complete_stances": 33
+          },
+          "RR": {
+            "normal_force_time_mean_n": 27.850933926304805,
+            "stance_fraction": 0.5428125,
+            "stance_duration_median_s": 0.24999999999999467,
+            "stance_peak_median_n": 70.105468915,
+            "stance_impulse_median_ns": 12.985723922427223,
+            "complete_stances": 34
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 65.77219341214406,
+            "second_mean_n": 60.77004747186137,
+            "first_share": 0.5197647279886086,
+            "signed_difference_over_sum": 0.039529455977217104
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.412145382157306,
+            "second_mean_n": 66.13009550184813,
+            "first_share": 0.4774069509132047,
+            "signed_difference_over_sum": -0.04518609817359065
+          },
+          "front_vs_rear": {
+            "first_mean_n": 65.48032500140906,
+            "second_mean_n": 61.06191588259637,
+            "first_share": 0.5174582380079029,
+            "signed_difference_over_sum": 0.034916476015805754
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9122581278355547,
+        0.8401405820476923
+      ],
+      "same_side_contact_correlation": [
+        -0.6618578883484685,
+        -0.7449530717928791
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.7163250642746455,
+        -0.6883091093773304
+      ],
+      "diagonal_swing_jaccard": [
+        0.9067909454061251,
+        0.8163418290854573
+      ],
+      "all_four_contact_fraction": 0.11375,
+      "three_contact_fraction": 0.1203125,
+      "diagonal_two_contact_fraction": 0.7659375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1267798732,
+        "FR": 0.1336692684,
+        "RL": 0.09441350507,
+        "RR": 0.09932354812
+      },
+      "all_feet_mean_slip_mps": 0.9772416473383078,
+      "policy": "height23_9299.pt",
+      "case": "forward10",
+      "csv": "height23_9299_forward10.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 30.168355592988437,
+            "stance_fraction": 0.535,
+            "stance_duration_median_s": 0.234999999999995,
+            "stance_peak_median_n": 78.46591373,
+            "stance_impulse_median_ns": 13.465303891197212,
+            "complete_stances": 36
+          },
+          "FR": {
+            "normal_force_time_mean_n": 34.27454531793,
+            "stance_fraction": 0.5659375,
+            "stance_duration_median_s": 0.24999999999999467,
+            "stance_peak_median_n": 107.3640201,
+            "stance_impulse_median_ns": 15.16957639334968,
+            "complete_stances": 36
+          },
+          "RL": {
+            "normal_force_time_mean_n": 34.515057811740625,
+            "stance_fraction": 0.6203125,
+            "stance_duration_median_s": 0.26999999999999424,
+            "stance_peak_median_n": 99.480744715,
+            "stance_impulse_median_ns": 15.259576346874677,
+            "complete_stances": 36
+          },
+          "RR": {
+            "normal_force_time_mean_n": 27.326974503499844,
+            "stance_fraction": 0.5415625,
+            "stance_duration_median_s": 0.23999999999999488,
+            "stance_peak_median_n": 71.895833385,
+            "stance_impulse_median_ns": 12.040762562174743,
+            "complete_stances": 36
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.68341340472907,
+            "second_mean_n": 61.60151982142985,
+            "first_share": 0.5122021428232455,
+            "signed_difference_over_sum": 0.024404285646490963
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 57.49533009648828,
+            "second_mean_n": 68.78960312967062,
+            "first_share": 0.45528257906683195,
+            "signed_difference_over_sum": -0.08943484186633616
+          },
+          "front_vs_rear": {
+            "first_mean_n": 64.44290091091844,
+            "second_mean_n": 61.84203231524047,
+            "first_share": 0.5102976203464438,
+            "signed_difference_over_sum": 0.020595240692887477
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9479039934333966,
+        0.8400717513254969
+      ],
+      "same_side_contact_correlation": [
+        -0.721640041224327,
+        -0.8044982608928934
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.8164723524331251,
+        -0.718527273607941
+      ],
+      "diagonal_swing_jaccard": [
+        0.945358788676761,
+        0.820979020979021
+      ],
+      "all_four_contact_fraction": 0.080625,
+      "three_contact_fraction": 0.101875,
+      "diagonal_two_contact_fraction": 0.8153125,
+      "lateral_two_contact_fraction": 0.001875,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1205028944,
+        "FR": 0.1306411612,
+        "RL": 0.09439258731,
+        "RR": 0.1135281567
+      },
+      "all_feet_mean_slip_mps": 1.1529574672461445,
+      "policy": "height23_9299.pt",
+      "case": "forward12",
+      "csv": "height23_9299_forward12.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.712318752159064,
+            "stance_fraction": 0.7053125,
+            "stance_duration_median_s": 0.48499999999998966,
+            "stance_peak_median_n": 78.01485339,
+            "stance_impulse_median_ns": 22.61925980934952,
+            "complete_stances": 23
+          },
+          "FR": {
+            "normal_force_time_mean_n": 36.12080594522434,
+            "stance_fraction": 0.7515625,
+            "stance_duration_median_s": 0.5099999999999891,
+            "stance_peak_median_n": 77.33362917,
+            "stance_impulse_median_ns": 24.596654946749478,
+            "complete_stances": 22
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.145507831907814,
+            "stance_fraction": 0.6965625,
+            "stance_duration_median_s": 0.4749999999999899,
+            "stance_peak_median_n": 62.273888615000004,
+            "stance_impulse_median_ns": 21.986932459549532,
+            "complete_stances": 22
+          },
+          "RR": {
+            "normal_force_time_mean_n": 26.364174066018126,
+            "stance_fraction": 0.608125,
+            "stance_duration_median_s": 0.41999999999999105,
+            "stance_peak_median_n": 63.18719494,
+            "stance_impulse_median_ns": 18.252811615349607,
+            "complete_stances": 23
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.85782658406688,
+            "second_mean_n": 62.48498001124247,
+            "first_share": 0.5093167672217451,
+            "signed_difference_over_sum": 0.01863353444349025
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 59.07649281817719,
+            "second_mean_n": 68.26631377713215,
+            "first_share": 0.46391700008560405,
+            "signed_difference_over_sum": -0.07216599982879185
+          },
+          "front_vs_rear": {
+            "first_mean_n": 68.8331246973834,
+            "second_mean_n": 58.509681897925944,
+            "first_share": 0.5405340634287454,
+            "signed_difference_over_sum": 0.08106812685749079
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8052165944580844,
+        0.8711068788963627
+      ],
+      "same_side_contact_correlation": [
+        -0.4266233754645622,
+        -0.46153365395465845
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.37163455706516596,
+        -0.5298243707355316
+      ],
+      "diagonal_swing_jaccard": [
+        0.751993620414673,
+        0.8187435633367662
+      ],
+      "all_four_contact_fraction": 0.3046875,
+      "three_contact_fraction": 0.1521875,
+      "diagonal_two_contact_fraction": 0.543125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05050789256,
+        "FR": 0.0489865131,
+        "RL": 0.05127280024,
+        "RR": 0.04296374949
+      },
+      "all_feet_mean_slip_mps": 0.2400330866690019,
+      "policy": "height23_9299.pt",
+      "case": "backward03",
+      "csv": "height23_9299_backward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 34.42168871475969,
+            "stance_fraction": 0.6721875,
+            "stance_duration_median_s": 0.42499999999999094,
+            "stance_peak_median_n": 75.449560325,
+            "stance_impulse_median_ns": 21.638861802299537,
+            "complete_stances": 24
+          },
+          "FR": {
+            "normal_force_time_mean_n": 33.45283555598781,
+            "stance_fraction": 0.66125,
+            "stance_duration_median_s": 0.41999999999999105,
+            "stance_peak_median_n": 77.38662006,
+            "stance_impulse_median_ns": 21.15863899404955,
+            "complete_stances": 25
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.11958148179625,
+            "stance_fraction": 0.634375,
+            "stance_duration_median_s": 0.40499999999999137,
+            "stance_peak_median_n": 66.29362272,
+            "stance_impulse_median_ns": 19.166773860049588,
+            "complete_stances": 25
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.62998088835719,
+            "stance_fraction": 0.67125,
+            "stance_duration_median_s": 0.41999999999999105,
+            "stance_peak_median_n": 60.369888055000004,
+            "stance_impulse_median_ns": 18.616799093194608,
+            "complete_stances": 24
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.54127019655594,
+            "second_mean_n": 63.082816444345,
+            "first_share": 0.5057138655821084,
+            "signed_difference_over_sum": 0.011427731164216911
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 64.05166960311688,
+            "second_mean_n": 63.572417037784064,
+            "first_share": 0.501877594496254,
+            "signed_difference_over_sum": 0.0037551889925081226
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.8745242707475,
+            "second_mean_n": 59.74956237015344,
+            "first_share": 0.5318316162506826,
+            "signed_difference_over_sum": 0.06366323250136524
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9695334502109155,
+        0.9400413414122455
+      ],
+      "same_side_contact_correlation": [
+        -0.5301667058477428,
+        -0.5008959737638071
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.49983233543515726,
+        -0.5312948954203982
+      ],
+      "diagonal_swing_jaccard": [
+        0.9598880597014925,
+        0.9232081911262798
+      ],
+      "all_four_contact_fraction": 0.29875,
+      "three_contact_fraction": 0.0415625,
+      "diagonal_two_contact_fraction": 0.6596875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.07982106427,
+        "FR": 0.07179429191,
+        "RL": 0.06875063248,
+        "RR": 0.05752694268
+      },
+      "all_feet_mean_slip_mps": 0.42240755438781796,
+      "policy": "height23_9299.pt",
+      "case": "backward05",
+      "csv": "height23_9299_backward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 34.48953823180091,
+            "stance_fraction": 0.6634375,
+            "stance_duration_median_s": 0.3849999999999918,
+            "stance_peak_median_n": 75.16871213,
+            "stance_impulse_median_ns": 20.06883887919957,
+            "complete_stances": 27
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.662863123766485,
+            "stance_fraction": 0.6125,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 77.35508323,
+            "stance_impulse_median_ns": 18.805762860094593,
+            "complete_stances": 27
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.444951023370624,
+            "stance_fraction": 0.5521875,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 75.31554908,
+            "stance_impulse_median_ns": 17.39852617884963,
+            "complete_stances": 27
+          },
+          "RR": {
+            "normal_force_time_mean_n": 30.092048328898,
+            "stance_fraction": 0.62,
+            "stance_duration_median_s": 0.3599999999999923,
+            "stance_peak_median_n": 64.10523771,
+            "stance_impulse_median_ns": 17.452137114489627,
+            "complete_stances": 27
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.93448925517153,
+            "second_mean_n": 62.75491145266449,
+            "first_share": 0.5085346856920963,
+            "signed_difference_over_sum": 0.017069371384192615
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 64.58158656069891,
+            "second_mean_n": 63.107814147137105,
+            "first_share": 0.505770926973547,
+            "signed_difference_over_sum": 0.011541853947093995
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.15240135556739,
+            "second_mean_n": 60.53699935226862,
+            "first_share": 0.5259042722678109,
+            "signed_difference_over_sum": 0.05180854453562171
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8975187779310071,
+        0.8832384897163679
+      ],
+      "same_side_contact_correlation": [
+        -0.6414128776478462,
+        -0.6226998490772392
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5665205413383132,
+        -0.7050189233456133
+      ],
+      "diagonal_swing_jaccard": [
+        0.8718367346938776,
+        0.8653175157013259
+      ],
+      "all_four_contact_fraction": 0.169375,
+      "three_contact_fraction": 0.109375,
+      "diagonal_two_contact_fraction": 0.72125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.1105001514,
+        "FR": 0.09968473154,
+        "RL": 0.08194608517,
+        "RR": 0.07315042529
+      },
+      "all_feet_mean_slip_mps": 0.6699469744043305,
+      "policy": "height23_9299.pt",
+      "case": "backward08",
+      "csv": "height23_9299_backward08.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.628374468273435,
+            "stance_fraction": 0.631875,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 70.2472535,
+            "stance_impulse_median_ns": 16.30570541328965,
+            "complete_stances": 31
+          },
+          "FR": {
+            "normal_force_time_mean_n": 35.595333036276564,
+            "stance_fraction": 0.691875,
+            "stance_duration_median_s": 0.34999999999999254,
+            "stance_peak_median_n": 64.87288189,
+            "stance_impulse_median_ns": 18.036556293699615,
+            "complete_stances": 31
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.631195886387577,
+            "stance_fraction": 0.6528125,
+            "stance_duration_median_s": 0.32999999999999297,
+            "stance_peak_median_n": 62.30483091,
+            "stance_impulse_median_ns": 15.562989748484672,
+            "complete_stances": 31
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.179570759494375,
+            "stance_fraction": 0.5796875,
+            "stance_duration_median_s": 0.2899999999999938,
+            "stance_peak_median_n": 59.45785763,
+            "stance_impulse_median_ns": 14.128657928249702,
+            "complete_stances": 31
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.25957035466101,
+            "second_mean_n": 63.77490379577094,
+            "first_share": 0.4979716787724107,
+            "signed_difference_over_sum": -0.0040566424551786015
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.80794522776781,
+            "second_mean_n": 66.22652892266414,
+            "first_share": 0.47867278260041546,
+            "signed_difference_over_sum": -0.04265443479916912
+          },
+          "front_vs_rear": {
+            "first_mean_n": 68.22370750454999,
+            "second_mean_n": 58.810766645881955,
+            "first_share": 0.5370487653907293,
+            "signed_difference_over_sum": 0.07409753078145859
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8675028857254434,
+        0.9150858496310383
+      ],
+      "same_side_contact_correlation": [
+        -0.5566341908994218,
+        -0.5682492018444031
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5093680715128829,
+        -0.6209791158649436
+      ],
+      "diagonal_swing_jaccard": [
+        0.8456474030724214,
+        0.8874887488748875
+      ],
+      "all_four_contact_fraction": 0.225625,
+      "three_contact_fraction": 0.105,
+      "diagonal_two_contact_fraction": 0.669375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06461687737,
+        "FR": 0.05408152125,
+        "RL": 0.05768184636,
+        "RR": 0.04836638657
+      },
+      "all_feet_mean_slip_mps": 0.28743658823501483,
+      "policy": "height23_9299.pt",
+      "case": "left03",
+      "csv": "height23_9299_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 36.69363670205816,
+            "stance_fraction": 0.6825,
+            "stance_duration_median_s": 0.3699999999999921,
+            "stance_peak_median_n": 70.2790091,
+            "stance_impulse_median_ns": 19.974722692149573,
+            "complete_stances": 29
+          },
+          "FR": {
+            "normal_force_time_mean_n": 32.93987248460597,
+            "stance_fraction": 0.6265625,
+            "stance_duration_median_s": 0.33999999999999275,
+            "stance_peak_median_n": 76.13505619,
+            "stance_impulse_median_ns": 17.928746224199614,
+            "complete_stances": 29
+          },
+          "RL": {
+            "normal_force_time_mean_n": 27.60827108339175,
+            "stance_fraction": 0.579375,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 65.98653809,
+            "stance_impulse_median_ns": 15.092100169599679,
+            "complete_stances": 29
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.794600802272438,
+            "stance_fraction": 0.6471875,
+            "stance_duration_median_s": 0.35499999999999243,
+            "stance_peak_median_n": 59.24434438,
+            "stance_impulse_median_ns": 16.240980716979657,
+            "complete_stances": 29
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.30190778544991,
+            "second_mean_n": 62.73447328687841,
+            "first_share": 0.5061692346922221,
+            "signed_difference_over_sum": 0.01233846938444413
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 66.4882375043306,
+            "second_mean_n": 60.54814356799772,
+            "first_share": 0.5233794991883108,
+            "signed_difference_over_sum": 0.04675899837662157
+          },
+          "front_vs_rear": {
+            "first_mean_n": 69.63350918666413,
+            "second_mean_n": 57.40287188566418,
+            "first_share": 0.5481383254063118,
+            "signed_difference_over_sum": 0.09627665081262364
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9237694922354674,
+        0.9060644671037397
+      ],
+      "same_side_contact_correlation": [
+        -0.5811499462835361,
+        -0.5700115892683545
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5265593163867592,
+        -0.6291070999510797
+      ],
+      "diagonal_swing_jaccard": [
+        0.899911426040744,
+        0.887815750371471
+      ],
+      "all_four_contact_fraction": 0.2265625,
+      "three_contact_fraction": 0.0825,
+      "diagonal_two_contact_fraction": 0.6909375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06997969333,
+        "FR": 0.06946097615,
+        "RL": 0.07158134274,
+        "RR": 0.06077844131
+      },
+      "all_feet_mean_slip_mps": 0.29073646945498205,
+      "policy": "height23_9299.pt",
+      "case": "right03",
+      "csv": "height23_9299_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.4374869803045,
+            "stance_fraction": 0.6565625,
+            "stance_duration_median_s": 0.3949999999999916,
+            "stance_peak_median_n": 74.85763804,
+            "stance_impulse_median_ns": 19.638974675102077,
+            "complete_stances": 26
+          },
+          "FR": {
+            "normal_force_time_mean_n": 34.673994530990626,
+            "stance_fraction": 0.711875,
+            "stance_duration_median_s": 0.4274999999999909,
+            "stance_peak_median_n": 62.58522514,
+            "stance_impulse_median_ns": 20.70318867147705,
+            "complete_stances": 26
+          },
+          "RL": {
+            "normal_force_time_mean_n": 31.911387535337813,
+            "stance_fraction": 0.72875,
+            "stance_duration_median_s": 0.4349999999999907,
+            "stance_peak_median_n": 58.10062089,
+            "stance_impulse_median_ns": 18.9832803830571,
+            "complete_stances": 26
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.115851681268126,
+            "stance_fraction": 0.663125,
+            "stance_duration_median_s": 0.3999999999999915,
+            "stance_peak_median_n": 59.794913715,
+            "stance_impulse_median_ns": 17.00736798628964,
+            "complete_stances": 26
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 64.34887451564231,
+            "second_mean_n": 62.78984621225875,
+            "first_share": 0.5061312096521725,
+            "signed_difference_over_sum": 0.012262419304345113
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 60.553338661572624,
+            "second_mean_n": 66.58538206632844,
+            "first_share": 0.4762777092209956,
+            "signed_difference_over_sum": -0.04744458155800884
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.11148151129512,
+            "second_mean_n": 60.027239216605935,
+            "first_share": 0.5278602862060044,
+            "signed_difference_over_sum": 0.055720572412008916
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9659936922243717,
+        0.8503363949886877
+      ],
+      "same_side_contact_correlation": [
+        -0.44124663817711984,
+        -0.45344570358650166
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.46012350636167226,
+        -0.43484279663411113
+      ],
+      "diagonal_swing_jaccard": [
+        0.9559748427672956,
+        0.8044354838709677
+      ],
+      "all_four_contact_fraction": 0.3421875,
+      "three_contact_fraction": 0.0759375,
+      "diagonal_two_contact_fraction": 0.581875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03335450172,
+        "FR": 0.04624423687,
+        "RL": 0.04691469327,
+        "RR": 0.02648736902
+      },
+      "all_feet_mean_slip_mps": 0.11774386745769524,
+      "policy": "height23_9299.pt",
+      "case": "turn_left03",
+      "csv": "height23_9299_turn_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 32.60663833617291,
+            "stance_fraction": 0.6875,
+            "stance_duration_median_s": 0.42499999999999094,
+            "stance_peak_median_n": 65.85891839,
+            "stance_impulse_median_ns": 20.09001114524958,
+            "complete_stances": 25
+          },
+          "FR": {
+            "normal_force_time_mean_n": 35.08361274819413,
+            "stance_fraction": 0.7203125,
+            "stance_duration_median_s": 0.4449999999999905,
+            "stance_peak_median_n": 70.48109396,
+            "stance_impulse_median_ns": 21.820886521399537,
+            "complete_stances": 25
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.482596710880095,
+            "stance_fraction": 0.7675,
+            "stance_duration_median_s": 0.47999999999998977,
+            "stance_peak_median_n": 61.42279688,
+            "stance_impulse_median_ns": 20.289385676659563,
+            "complete_stances": 25
+          },
+          "RR": {
+            "normal_force_time_mean_n": 26.989307723285467,
+            "stance_fraction": 0.653125,
+            "stance_duration_median_s": 0.3999999999999915,
+            "stance_peak_median_n": 55.58906449,
+            "stance_impulse_median_ns": 16.642608399799652,
+            "complete_stances": 25
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 65.089235047053,
+            "second_mean_n": 62.07292047147959,
+            "first_share": 0.5118601110655671,
+            "signed_difference_over_sum": 0.023720222131134026
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 59.59594605945837,
+            "second_mean_n": 67.56620945907423,
+            "first_share": 0.46866102431531104,
+            "signed_difference_over_sum": -0.06267795136937793
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.69025108436703,
+            "second_mean_n": 59.471904434165566,
+            "first_share": 0.5323144359133002,
+            "signed_difference_over_sum": 0.06462887182660039
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9251247785330667,
+        0.8799792579853288
+      ],
+      "same_side_contact_correlation": [
+        -0.37107435918082055,
+        -0.4541134855961543
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.4201116377910211,
+        -0.4011073617217543
+      ],
+      "diagonal_swing_jaccard": [
+        0.9009009009009009,
+        0.8272017837235228
+      ],
+      "all_four_contact_fraction": 0.3728125,
+      "three_contact_fraction": 0.0828125,
+      "diagonal_two_contact_fraction": 0.544375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.04168667117,
+        "FR": 0.03414908695,
+        "RL": 0.02943820936,
+        "RR": 0.03406121016
+      },
+      "all_feet_mean_slip_mps": 0.10478026156564546,
+      "policy": "height23_9299.pt",
+      "case": "turn_right03",
+      "csv": "height23_9299_turn_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 33.28728060921875,
+            "stance_fraction": 0.596875,
+            "stance_duration_median_s": 0.27499999999999414,
+            "stance_peak_median_n": 84.845411575,
+            "stance_impulse_median_ns": 15.404769539974673,
+            "complete_stances": 34
+          },
+          "FR": {
+            "normal_force_time_mean_n": 34.61568815577,
+            "stance_fraction": 0.7103125,
+            "stance_duration_median_s": 0.32499999999999307,
+            "stance_peak_median_n": 56.48370629,
+            "stance_impulse_median_ns": 15.89336444494966,
+            "complete_stances": 34
+          },
+          "RL": {
+            "normal_force_time_mean_n": 30.217356977171907,
+            "stance_fraction": 0.660625,
+            "stance_duration_median_s": 0.2999999999999936,
+            "stance_peak_median_n": 63.46481911,
+            "stance_impulse_median_ns": 13.952425698699702,
+            "complete_stances": 34
+          },
+          "RR": {
+            "normal_force_time_mean_n": 28.387841523887186,
+            "stance_fraction": 0.5928125,
+            "stance_duration_median_s": 0.26999999999999424,
+            "stance_peak_median_n": 67.97413080999999,
+            "stance_impulse_median_ns": 13.007406260124721,
+            "complete_stances": 34
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 63.50463758639066,
+            "second_mean_n": 63.00352967965719,
+            "first_share": 0.5019805357929169,
+            "signed_difference_over_sum": 0.003961071585833914
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 61.67512213310593,
+            "second_mean_n": 64.8330451329419,
+            "first_share": 0.48751889673180215,
+            "signed_difference_over_sum": -0.02496220653639566
+          },
+          "front_vs_rear": {
+            "first_mean_n": 67.90296876498874,
+            "second_mean_n": 58.60519850105909,
+            "first_share": 0.5367477075388198,
+            "signed_difference_over_sum": 0.07349541507763964
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9786403105842818,
+        0.8910000493044976
+      ],
+      "same_side_contact_correlation": [
+        -0.5890343105555276,
+        -0.5292717226751482
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5248295997470156,
+        -0.5940198578982018
+      ],
+      "diagonal_swing_jaccard": [
+        0.9748667174409749,
+        0.8535911602209945
+      ],
+      "all_four_contact_fraction": 0.2503125,
+      "three_contact_fraction": 0.06,
+      "diagonal_two_contact_fraction": 0.6896875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06577537279,
+        "FR": 0.06317004528,
+        "RL": 0.06980978813,
+        "RR": 0.05261121504
+      },
+      "all_feet_mean_slip_mps": 0.26915667304917446,
+      "policy": "height23_9299.pt",
+      "case": "turn_left",
+      "csv": "height23_9299_turn_left.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 36.657733254075,
+            "stance_fraction": 0.68,
+            "stance_duration_median_s": 0.33999999999999275,
+            "stance_peak_median_n": 67.4981466,
+            "stance_impulse_median_ns": 18.34429654729961,
+            "complete_stances": 31
+          },
+          "FR": {
+            "normal_force_time_mean_n": 31.463742538830626,
+            "stance_fraction": 0.6,
+            "stance_duration_median_s": 0.2999999999999936,
+            "stance_peak_median_n": 76.04690196,
+            "stance_impulse_median_ns": 15.716655475984666,
+            "complete_stances": 31
+          },
+          "RL": {
+            "normal_force_time_mean_n": 28.84668885918781,
+            "stance_fraction": 0.644375,
+            "stance_duration_median_s": 0.3199999999999932,
+            "stance_peak_median_n": 57.61423704,
+            "stance_impulse_median_ns": 14.413643478319695,
+            "complete_stances": 31
+          },
+          "RR": {
+            "normal_force_time_mean_n": 29.71908447506875,
+            "stance_fraction": 0.63,
+            "stance_duration_median_s": 0.3149999999999933,
+            "stance_peak_median_n": 59.21806178,
+            "stance_impulse_median_ns": 14.86143542759968,
+            "complete_stances": 31
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 65.5044221132628,
+            "second_mean_n": 61.18282701389938,
+            "first_share": 0.5170561565159002,
+            "signed_difference_over_sum": 0.03411231303180032
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 66.37681772914375,
+            "second_mean_n": 60.31043139801844,
+            "first_share": 0.5239423713630256,
+            "signed_difference_over_sum": 0.04788474272605119
+          },
+          "front_vs_rear": {
+            "first_mean_n": 68.12147579290563,
+            "second_mean_n": 58.56577333425656,
+            "first_share": 0.5377137499017661,
+            "signed_difference_over_sum": 0.07542749980353224
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.8951379000441156,
+        0.8858698651125879
+      ],
+      "same_side_contact_correlation": [
+        -0.5096210207153444,
+        -0.6257270902992705
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.560112033611204,
+        -0.5693212416659249
+      ],
+      "diagonal_swing_jaccard": [
+        0.8648648648648649,
+        0.8628659476117103
+      ],
+      "all_four_contact_fraction": 0.224375,
+      "three_contact_fraction": 0.105625,
+      "diagonal_two_contact_fraction": 0.67,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.06179213725,
+        "FR": 0.05510110542,
+        "RL": 0.05749900737,
+        "RR": 0.04657699098
+      },
+      "all_feet_mean_slip_mps": 0.25732018539421375,
+      "policy": "height23_9299.pt",
+      "case": "turn_right",
+      "csv": "height23_9299_turn_right.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "load_balance": {
+        "per_foot": {
+          "FL": {
+            "normal_force_time_mean_n": 28.91425273185194,
+            "stance_fraction": 0.58375,
+            "stance_duration_median_s": 0.26499999999999435,
+            "stance_peak_median_n": 71.40263719,
+            "stance_impulse_median_ns": 13.154475859199719,
+            "complete_stances": 35
+          },
+          "FR": {
+            "normal_force_time_mean_n": 34.628715873058404,
+            "stance_fraction": 0.6765625,
+            "stance_duration_median_s": 0.3049999999999935,
+            "stance_peak_median_n": 75.452667075,
+            "stance_impulse_median_ns": 15.666768185899665,
+            "complete_stances": 34
+          },
+          "RL": {
+            "normal_force_time_mean_n": 32.652207772928435,
+            "stance_fraction": 0.6765625,
+            "stance_duration_median_s": 0.3049999999999935,
+            "stance_peak_median_n": 58.97587547,
+            "stance_impulse_median_ns": 14.793928895319684,
+            "complete_stances": 34
+          },
+          "RR": {
+            "normal_force_time_mean_n": 30.173453147401563,
+            "stance_fraction": 0.6071875,
+            "stance_duration_median_s": 0.27999999999999403,
+            "stance_peak_median_n": 65.91755,
+            "stance_impulse_median_ns": 13.75041679694971,
+            "complete_stances": 35
+          }
+        },
+        "groups": {
+          "left_vs_right": {
+            "first_mean_n": 61.56646050478037,
+            "second_mean_n": 64.80216902045997,
+            "first_share": 0.4871973426955884,
+            "signed_difference_over_sum": -0.025605314608823152
+          },
+          "diagonal_FL_RR_vs_FR_RL": {
+            "first_mean_n": 59.087705879253505,
+            "second_mean_n": 67.28092364598683,
+            "first_share": 0.4675820739786655,
+            "signed_difference_over_sum": -0.06483585204266892
+          },
+          "front_vs_rear": {
+            "first_mean_n": 63.54296860491034,
+            "second_mean_n": 62.825660920329994,
+            "first_share": 0.5028381556691531,
+            "signed_difference_over_sum": 0.005676311338306283
+          }
+        },
+        "definition": "Time-mean positive contact normal force includes swing zeros; peaks/impulses use complete hysteresis-filtered stances. On this flat floor normal is vertical. Front/rear equality is not assumed."
+      },
+      "diagonal_contact_correlation": [
+        0.9213514514412929,
+        0.970010375874419
+      ],
+      "same_side_contact_correlation": [
+        -0.5838548618837693,
+        -0.5561250567769032
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5838548618837693,
+        -0.5561250567769032
+      ],
+      "diagonal_swing_jaccard": [
+        0.9092920353982301,
+        0.9602272727272727
+      ],
+      "all_four_contact_fraction": 0.24625,
+      "three_contact_fraction": 0.0515625,
+      "diagonal_two_contact_fraction": 0.7021875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.08317349884,
+        "FR": 0.09009018511,
+        "RL": 0.08665951151,
+        "RR": 0.060469531
+      },
+      "all_feet_mean_slip_mps": 0.5041895241868245,
+      "policy": "height23_9299.pt",
+      "case": "arc",
+      "csv": "height23_9299_arc.csv"
+    }
+  ],
+  "tool_sha256": "20326c819b08d0da56ac652c9287fed72b1e0bfd166c97de336a56976bf4b003"
+}

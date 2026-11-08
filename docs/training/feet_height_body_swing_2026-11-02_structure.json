@@ -1,0 +1,27 @@
+{
+  "scope": "Standard-library syntax/rollback checks; no Isaac or dynamics",
+  "source_sha256": "27c08800ac491dc2855306ac53ccb1b9d9c49b64e841a141cedae8f301a3e5b0",
+  "syntax": true,
+  "rollback_syntax": true,
+  "functions": {
+    "feet_slide": {
+      "active_line": 714,
+      "legacy_line": 679,
+      "legacy_sha256": "4862e2261c432dea860e2b18f70333f1c02bc80e765d7879dc782f4338cf24f7",
+      "legacy_matches_baseline": true
+    },
+    "base_height_l2": {
+      "active_line": 791,
+      "legacy_line": 758,
+      "legacy_sha256": "c12a2afc302fbc223e44c919dd30d06f98a5552ea961d23c3042f50029804715",
+      "legacy_matches_baseline": true
+    },
+    "feet_height_body": {
+      "active_line": 617,
+      "legacy_line": 585,
+      "legacy_sha256": "c925b795fd9a877692889d1e8743bf7605ed9efe92cdc17a6c8a3e5eeaaedfe5",
+      "legacy_matches_baseline": true
+    }
+  },
+  "rollback_matches_baseline_ast": true
+}

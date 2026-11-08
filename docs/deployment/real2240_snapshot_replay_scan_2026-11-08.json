@@ -1,0 +1,125 @@
+{
+  "old": {
+    "directory": "imgo2_deploy/logs/2026-11-08_21-32-40_7802",
+    "window": [
+      46,
+      52
+    ],
+    "scan": [
+      {
+        "host_snapshot_shift_ms": 0,
+        "action_rmse": 0.08597096800804138
+      },
+      {
+        "host_snapshot_shift_ms": 1,
+        "action_rmse": 0.025557709857821465
+      },
+      {
+        "host_snapshot_shift_ms": 2,
+        "action_rmse": 0.028352919965982437
+      },
+      {
+        "host_snapshot_shift_ms": 3,
+        "action_rmse": 0.02808057703077793
+      },
+      {
+        "host_snapshot_shift_ms": 4,
+        "action_rmse": 0.02776145376265049
+      },
+      {
+        "host_snapshot_shift_ms": 5,
+        "action_rmse": 0.041454918682575226
+      },
+      {
+        "host_snapshot_shift_ms": 6,
+        "action_rmse": 0.08947938680648804
+      },
+      {
+        "host_snapshot_shift_ms": 7,
+        "action_rmse": 0.09268840402364731
+      },
+      {
+        "host_snapshot_shift_ms": 8,
+        "action_rmse": 0.0931285172700882
+      },
+      {
+        "host_snapshot_shift_ms": 10,
+        "action_rmse": 0.10711870342493057
+      },
+      {
+        "host_snapshot_shift_ms": 12,
+        "action_rmse": 0.15610313415527344
+      },
+      {
+        "host_snapshot_shift_ms": 15,
+        "action_rmse": 0.17106138169765472
+      },
+      {
+        "host_snapshot_shift_ms": 20,
+        "action_rmse": 0.22957341372966766
+      }
+    ]
+  },
+  "new": {
+    "directory": "imgo2_deploy/logs/2026-11-08_22-40-31_15337",
+    "window": [
+      30,
+      36
+    ],
+    "scan": [
+      {
+        "host_snapshot_shift_ms": 0,
+        "action_rmse": 0.19440282881259918
+      },
+      {
+        "host_snapshot_shift_ms": 1,
+        "action_rmse": 0.12932953238487244
+      },
+      {
+        "host_snapshot_shift_ms": 2,
+        "action_rmse": 0.12932953238487244
+      },
+      {
+        "host_snapshot_shift_ms": 3,
+        "action_rmse": 0.1283518224954605
+      },
+      {
+        "host_snapshot_shift_ms": 4,
+        "action_rmse": 0.12648224830627441
+      },
+      {
+        "host_snapshot_shift_ms": 5,
+        "action_rmse": 0.12342967092990875
+      },
+      {
+        "host_snapshot_shift_ms": 6,
+        "action_rmse": 0.07938137650489807
+      },
+      {
+        "host_snapshot_shift_ms": 7,
+        "action_rmse": 0.07420871406793594
+      },
+      {
+        "host_snapshot_shift_ms": 8,
+        "action_rmse": 0.07423757761716843
+      },
+      {
+        "host_snapshot_shift_ms": 10,
+        "action_rmse": 0.08404011279344559
+      },
+      {
+        "host_snapshot_shift_ms": 12,
+        "action_rmse": 0.13737551867961884
+      },
+      {
+        "host_snapshot_shift_ms": 15,
+        "action_rmse": 0.15480177104473114
+      },
+      {
+        "host_snapshot_shift_ms": 20,
+        "action_rmse": 0.23080487549304962
+      }
+    ]
+  },
+  "limits": "Exploratory as-of host snapshot scan; rebuilt observations, no real inference timestamps or exact policy hash. Best shift is not measured device latency."
+}

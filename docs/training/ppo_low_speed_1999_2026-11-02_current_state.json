@@ -1,0 +1,90 @@
+{
+  "date": "2026-11-02",
+  "basis": "Saved latest training params, not current local rough source",
+  "env_sha256": "10f6a12fe5aa46b82a692313ad0c46b57ce2fa503f2c826af31571aeb03e67cd",
+  "active_weights": {
+    "lin_vel_z_l2": -2.0,
+    "ang_vel_xy_l2": -0.05,
+    "flat_orientation_l2": -5.0,
+    "base_height_l2": -20.0,
+    "joint_torques_l2": -2.5e-06,
+    "joint_acc_l2": -5e-09,
+    "joint_deviation_l1": -1.0,
+    "joint_power": -2e-05,
+    "stand_still": -0.1,
+    "joint_pos_penalty": -0.1,
+    "joint_mirror": -1.0,
+    "action_rate_l2": -0.01,
+    "undesired_contacts": -0.5,
+    "contact_forces": -0.02,
+    "track_lin_vel_xy_exp": 1.5,
+    "track_ang_vel_z_exp": 0.6,
+    "feet_air_time": 1.5,
+    "feet_air_time_variance": -8.0,
+    "feet_slide": -0.05
+  },
+  "inactive_rewards": [
+    "is_terminated",
+    "body_lin_acc_l2",
+    "joint_vel_l2",
+    "joint_pos_limits",
+    "joint_vel_limits",
+    "wheel_vel_penalty",
+    "action_mirror",
+    "action_sync",
+    "applied_torque_limits",
+    "feet_gait",
+    "feet_contact",
+    "feet_contact_without_cmd",
+    "feet_stumble",
+    "feet_height",
+    "feet_height_body",
+    "feet_distance_y_exp",
+    "upward"
+  ],
+  "height_parameters": {
+    "base_height_l2": {
+      "target_height": 0.32
+    },
+    "undesired_contacts": {
+      "threshold": 1.0
+    },
+    "contact_forces": {
+      "threshold": 100.0
+    },
+    "feet_air_time": {
+      "threshold": 0.5
+    }
+  },
+  "reward_functions_modified": [
+    "feet_slide: contact-weighted world horizontal foot speed",
+    "base_height_l2: per-environment finite-ray filtering with origin-height fallback on entirely invalid rays"
+  ],
+  "not_implemented_or_enabled": [
+    "new swing-clearance reward",
+    "feet_gait activation",
+    "directional command groups"
+  ],
+  "current_run": {
+    "resume": false,
+    "num_envs": 8192,
+    "iterations": 2000,
+    "rollout": 24,
+    "approx_transitions": 393216000
+  },
+  "public_sources_checked": [
+    {
+      "url": "https://github.com/InternRobotics/HIMLoco/blob/main/legged_gym/legged_gym/envs/a1/a1_config.py",
+      "finding": "Explicit A1 reward scales include foot_clearance, no explicit gait phase/contact-pair term"
+    },
+    {
+      "url": "https://github.com/Improbable-AI/walk-these-ways/blob/master/scripts/train.py",
+      "finding": "Training enables contact-force/velocity shaped rewards and gait/clock observations"
+    },
+    {
+      "url": "https://github.com/google-deepmind/mujoco_playground/blob/main/mujoco_playground/_src/locomotion/go1/joystick.py",
+      "finding": "Go1 contact-weighted global foot horizontal speed slip cost; exact norm/gates differ from this project"
+    }
+  ],
+  "next_step": "Server Isaac fixed-command playback; matched additional-500-iteration control, optionally matched no-slide intervention; no mandatory new gait reward conclusion"
+}

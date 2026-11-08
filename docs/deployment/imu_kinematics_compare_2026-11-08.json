@@ -1,0 +1,414 @@
+{
+  "real_forward": {
+    "source": "imgo2_deploy/logs/2026-11-08_21-32-40_7802/robot.csv",
+    "interval": [
+      46,
+      52
+    ],
+    "axes": {
+      "x": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.700416470043565,
+          "quat_rate_over_gyro_fit": 0.4531104719230059,
+          "residual_rms": 0.512826117367429
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.700416470043565,
+          "quat_rate_over_gyro_fit": 0.4531104719230059,
+          "residual_rms": 0.512826117367429
+        },
+        "gyro_smoothed_rms": 0.7164201604508579,
+        "quat_rate_rms": 0.4635275507070413
+      },
+      "y": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.21419754797372878,
+          "quat_rate_over_gyro_fit": 0.4249878875546811,
+          "residual_rms": 0.710770939470986
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.21419754797372878,
+          "quat_rate_over_gyro_fit": 0.4249878875546811,
+          "residual_rms": 0.710770939470986
+        },
+        "gyro_smoothed_rms": 0.3517387326272588,
+        "quat_rate_rms": 0.697591793877457
+      },
+      "z": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9878705496519732,
+          "quat_rate_over_gyro_fit": 1.0032995161698255,
+          "residual_rms": 0.02217155956288297
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9878705496519732,
+          "quat_rate_over_gyro_fit": 1.0032995161698255,
+          "residual_rms": 0.02217155956288297
+        },
+        "gyro_smoothed_rms": 0.14176137320627658,
+        "quat_rate_rms": 0.14394610461613624
+      }
+    },
+    "rate_vs_gyro_cross_correlation": [
+      [
+        0.700416470043565,
+        0.7181496421760983,
+        -0.2270543212194134
+      ],
+      [
+        -0.9724430747910344,
+        0.21419754797372878,
+        0.08577121584775717
+      ],
+      [
+        0.014877551959484819,
+        -0.15607757711226905,
+        0.9878705496519732
+      ]
+    ],
+    "limits": "100Hz host/message-time bins; centered 40ms quaternion change/gyro mean. Index-shift fit is exploratory, not a measured device latency or axis calibration. Gyro and fused quaternion can differ under filtering/linear acceleration."
+  },
+  "real_backward": {
+    "source": "imgo2_deploy/logs/2026-11-08_21-32-40_7802/robot.csv",
+    "interval": [
+      66,
+      70
+    ],
+    "axes": {
+      "x": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.7804275888066518,
+          "quat_rate_over_gyro_fit": 0.49158239899454065,
+          "residual_rms": 0.5713050267051765
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.7804275888066518,
+          "quat_rate_over_gyro_fit": 0.49158239899454065,
+          "residual_rms": 0.5713050267051765
+        },
+        "gyro_smoothed_rms": 0.888404491179438,
+        "quat_rate_rms": 0.5595552155408169
+      },
+      "y": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.1099700369008333,
+          "quat_rate_over_gyro_fit": 0.25265345961462066,
+          "residual_rms": 0.8985300033877626
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 10,
+          "corr": 0.11627516032356863,
+          "quat_rate_over_gyro_fit": 0.26817614335650275,
+          "residual_rms": 0.8969434095568821
+        },
+        "gyro_smoothed_rms": 0.37328499327709863,
+        "quat_rate_rms": 0.8593164719467629
+      },
+      "z": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9796920116046484,
+          "quat_rate_over_gyro_fit": 1.0314071459197647,
+          "residual_rms": 0.02892736499846281
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9796920116046484,
+          "quat_rate_over_gyro_fit": 1.0314071459197647,
+          "residual_rms": 0.02892736499846281
+        },
+        "gyro_smoothed_rms": 0.13605278983154653,
+        "quat_rate_rms": 0.14321267165867238
+      }
+    },
+    "rate_vs_gyro_cross_correlation": [
+      [
+        0.7804275888066518,
+        0.68157108127594,
+        -0.040753385540251916
+      ],
+      [
+        -0.9790507716625427,
+        0.1099700369008333,
+        0.009598108252072964
+      ],
+      [
+        0.16829466474912924,
+        0.012945912901304183,
+        0.9796920116046484
+      ]
+    ],
+    "limits": "100Hz host/message-time bins; centered 40ms quaternion change/gyro mean. Index-shift fit is exploratory, not a measured device latency or axis calibration. Gyro and fused quaternion can differ under filtering/linear acceleration."
+  },
+  "sim_forward": {
+    "source": "imgo2_deploy/logs/gazebo_old9299_kd08_forward05_20261108/imu.csv",
+    "interval": [
+      12.9,
+      20.7
+    ],
+    "axes": {
+      "x": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9966297121197941,
+          "quat_rate_over_gyro_fit": 1.0818426039110283,
+          "residual_rms": 0.022968820969279866
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9966297121197941,
+          "quat_rate_over_gyro_fit": 1.0818426039110283,
+          "residual_rms": 0.022968820969279866
+        },
+        "gyro_smoothed_rms": 0.18990975833447732,
+        "quat_rate_rms": 0.2061472951967599
+      },
+      "y": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9952876987651297,
+          "quat_rate_over_gyro_fit": 1.0943644135300048,
+          "residual_rms": 0.014193796752206419
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9952876987651297,
+          "quat_rate_over_gyro_fit": 1.0943644135300048,
+          "residual_rms": 0.014193796752206419
+        },
+        "gyro_smoothed_rms": 0.0996086922681239,
+        "quat_rate_rms": 0.10952580700841286
+      },
+      "z": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.998774845681705,
+          "quat_rate_over_gyro_fit": 1.0178066723920034,
+          "residual_rms": 0.004158375238275217
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.998774845681705,
+          "quat_rate_over_gyro_fit": 1.0178066723920034,
+          "residual_rms": 0.004158375238275217
+        },
+        "gyro_smoothed_rms": 0.0776790495630563,
+        "quat_rate_rms": 0.07915945291190854
+      }
+    },
+    "rate_vs_gyro_cross_correlation": [
+      [
+        0.9966297121197941,
+        -0.22179593127364572,
+        0.12206739989824099
+      ],
+      [
+        -0.22482667838830844,
+        0.9952876987651297,
+        0.16415242315380965
+      ],
+      [
+        0.13959263660022797,
+        0.17766242560433768,
+        0.998774845681705
+      ]
+    ],
+    "limits": "100Hz host/message-time bins; centered 40ms quaternion change/gyro mean. Index-shift fit is exploratory, not a measured device latency or axis calibration. Gyro and fused quaternion can differ under filtering/linear acceleration."
+  },
+  "real_forward_reference_counterfactual": {
+    "source": "imgo2_deploy/logs/2026-11-08_21-32-40_7802/robot.csv",
+    "interval": [
+      46,
+      52
+    ],
+    "axes": {
+      "x": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9979379255706344,
+          "quat_rate_over_gyro_fit": 1.0494221388022589,
+          "residual_rms": 0.059933863331090534
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9979379255706344,
+          "quat_rate_over_gyro_fit": 1.0494221388022589,
+          "residual_rms": 0.059933863331090534
+        },
+        "gyro_smoothed_rms": 0.7164201604508579,
+        "quat_rate_rms": 0.7533807240145189
+      },
+      "y": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9981917291409759,
+          "quat_rate_over_gyro_fit": 1.0362396585487914,
+          "residual_rms": 0.025381317015018376
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9981917291409759,
+          "quat_rate_over_gyro_fit": 1.0362396585487914,
+          "residual_rms": 0.025381317015018376
+        },
+        "gyro_smoothed_rms": 0.3517387326272588,
+        "quat_rate_rms": 0.36514585887606327
+      },
+      "z": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9985547957253619,
+          "quat_rate_over_gyro_fit": 1.0280148137777445,
+          "residual_rms": 0.008734655537934621
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9985547957253619,
+          "quat_rate_over_gyro_fit": 1.0280148137777445,
+          "residual_rms": 0.008734655537934621
+        },
+        "gyro_smoothed_rms": 0.14176137320627658,
+        "quat_rate_rms": 0.14594029125919372
+      }
+    },
+    "rate_vs_gyro_cross_correlation": [
+      [
+        0.9979379255706344,
+        0.009446945206811847,
+        -0.12665263885675765
+      ],
+      [
+        0.0061251668623383245,
+        0.9981917291409759,
+        -0.1846156686131191
+      ],
+      [
+        -0.12262050063025612,
+        -0.1907153789899578,
+        0.9985547957253619
+      ]
+    ],
+    "limits": "100Hz host/message-time bins; centered 40ms quaternion change/gyro mean. Index-shift fit is exploratory, not a measured device latency or axis calibration. Gyro and fused quaternion can differ under filtering/linear acceleration."
+  },
+  "real_backward_reference_counterfactual": {
+    "source": "imgo2_deploy/logs/2026-11-08_21-32-40_7802/robot.csv",
+    "interval": [
+      66,
+      70
+    ],
+    "axes": {
+      "x": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9971274918193391,
+          "quat_rate_over_gyro_fit": 1.0666417628616378,
+          "residual_rms": 0.09320741160099126
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9971274918193391,
+          "quat_rate_over_gyro_fit": 1.0666417628616378,
+          "residual_rms": 0.09320741160099126
+        },
+        "gyro_smoothed_rms": 0.888404491179438,
+        "quat_rate_rms": 0.9503398631914284
+      },
+      "y": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9975817962800481,
+          "quat_rate_over_gyro_fit": 1.0313890902493916,
+          "residual_rms": 0.029307601593324354
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9975817962800481,
+          "quat_rate_over_gyro_fit": 1.0313890902493916,
+          "residual_rms": 0.029307601593324354
+        },
+        "gyro_smoothed_rms": 0.37328499327709863,
+        "quat_rate_rms": 0.3859381287780132
+      },
+      "z": {
+        "zero_lag": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9978744403324853,
+          "quat_rate_over_gyro_fit": 1.0357136744744628,
+          "residual_rms": 0.010493094232983067
+        },
+        "best_absolute_corr": {
+          "gyro_index_shift_ms": 0,
+          "corr": 0.9978744403324853,
+          "quat_rate_over_gyro_fit": 1.0357136744744628,
+          "residual_rms": 0.010493094232983067
+        },
+        "gyro_smoothed_rms": 0.13605278983154653,
+        "quat_rate_rms": 0.14121831576038366
+      }
+    },
+    "rate_vs_gyro_cross_correlation": [
+      [
+        0.9971274918193391,
+        0.08221084602348552,
+        -0.014243195512480005
+      ],
+      [
+        0.08755920896568455,
+        0.9975817962800481,
+        -0.039102675799143324
+      ],
+      [
+        -0.010497541629579454,
+        -0.040062414503656656,
+        0.9978744403324853
+      ]
+    ],
+    "limits": "100Hz host/message-time bins; centered 40ms quaternion change/gyro mean. Index-shift fit is exploratory, not a measured device latency or axis calibration. Gyro and fused quaternion can differ under filtering/linear acceleration."
+  },
+  "startup_reference": {
+    "quaternion_wxyz": [
+      0.845148384785532,
+      -0.001102911236363152,
+      -0.014909246136319115,
+      -0.5343226606282553
+    ],
+    "raw_host_samples": 45,
+    "raw_interval_s": [
+      5.2e-05,
+      0.22019
+    ],
+    "jump_time_s": 0.22525299999999998,
+    "rpy_deg": [
+      0.8063699725141232,
+      -1.5116191966179315,
+      -64.61470942458902
+    ]
+  },
+  "synthetic_body_x_test": {
+    "expected_rate_rad_s": [
+      1,
+      0,
+      0
+    ],
+    "right_reference_rate": [
+      0.42855401743757765,
+      -0.9031309800183772,
+      0.026379671513471484
+    ],
+    "left_reference_rate": [
+      1.0000000000000004,
+      -1.0841877164301858e-16,
+      1.1103035447199925e-14
+    ],
+    "scope": "Algebra check, not a hardware recovery or closed-loop simulation."
+  }
+}

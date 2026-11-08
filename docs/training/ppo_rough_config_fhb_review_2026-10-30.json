@@ -1,0 +1,143 @@
+{
+  "scope": "Static declared weights/selectors and analytic examples only; no Isaac instantiation, CLI overrides or rollout.",
+  "source_sha256": {
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/rough_env_cfg.py": "5a69e403c1e6da5e6ba95000aa64c13ff3520649315105e67fea052aba21d8d2",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py": "6c42992a140dd356dd4d20b88e602afae509ac748f6305a9340513a12937b992",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/rewards.py": "b68b22e52305ee2b43d2f147308a742a0689939918536ef32d3eeb7249111a69",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/mdp/commands.py": "c36a86840b57bece7f21e04f5f128f89b7039084d32bac886aeec2db044fc609",
+    "imgo2_rl/source/imgo2_rl/imgo2_rl/assets/imgo2.py": "f33c70448d20805c8d1035b86b3fd5fae7eef96c3d298cdd93938a61f838b07b",
+    "imgo2_description/urdf/imgo2_real.urdf": "1d97de7806341b376df619c48c5ce463f72e16d87f47211bf74c7acfddfc30a2"
+  },
+  "active_weights": {
+    "lin_vel_z_l2": -2.0,
+    "ang_vel_xy_l2": -0.05,
+    "flat_orientation_l2": -5.0,
+    "base_height_l2": -16.0,
+    "joint_torques_l2": -2.5e-06,
+    "joint_acc_l2": -5e-09,
+    "joint_deviation_l1": -1,
+    "joint_power": -2e-05,
+    "stand_still": -0.1,
+    "joint_pos_penalty": -0.1,
+    "joint_mirror": -1.0,
+    "action_rate_l2": -0.01,
+    "undesired_contacts": -0.5,
+    "contact_forces": -0.02,
+    "track_lin_vel_xy_exp": 1.5,
+    "track_ang_vel_z_exp": 0.6,
+    "feet_air_time": 1.8,
+    "feet_air_time_variance": -8.0,
+    "feet_slide": -0.05
+  },
+  "disabled_zero_weights": [
+    "is_terminated",
+    "body_lin_acc_l2",
+    "joint_vel_l2",
+    "joint_pos_limits",
+    "joint_vel_limits",
+    "wheel_vel_penalty",
+    "action_mirror",
+    "action_sync",
+    "applied_torque_limits",
+    "feet_gait",
+    "feet_contact",
+    "feet_contact_without_cmd",
+    "feet_stumble",
+    "feet_height",
+    "feet_height_body",
+    "feet_distance_y_exp",
+    "upward"
+  ],
+  "source_lines": {
+    "action_rate_l2": 137,
+    "base_height_l2": 140,
+    "feet_air_time": 146,
+    "feet_air_time_variance": 152,
+    "feet_slide": 157,
+    "stand_still": 161,
+    "feet_height_body": 165,
+    "feet_height": 171,
+    "joint_mirror": 175,
+    "contact_forces": 186,
+    "lin_vel_z_l2": 192,
+    "ang_vel_xy_l2": 194,
+    "track_lin_vel_xy_exp": 197,
+    "track_ang_vel_z_exp": 198,
+    "undesired_contacts": 201,
+    "joint_torques_l2": 207,
+    "joint_acc_l2": 208,
+    "joint_deviation_l1": 210,
+    "joint_pos_penalty": 212,
+    "joint_power": 215,
+    "flat_orientation_l2": 217
+  },
+  "selector_matches": {
+    ".*_hip_joint": [
+      "FL_hip_joint",
+      "FR_hip_joint",
+      "RL_hip_joint",
+      "RR_hip_joint"
+    ],
+    "FR_(thigh|shank).*": [
+      "FR_thigh_joint",
+      "FR_shank_joint"
+    ],
+    "RL_(thigh|shank).*": [
+      "RL_thigh_joint",
+      "RL_shank_joint"
+    ],
+    "FL_(thigh|shank).*": [
+      "FL_thigh_joint",
+      "FL_shank_joint"
+    ],
+    "RR_(thigh|shank).*": [
+      "RR_thigh_joint",
+      "RR_shank_joint"
+    ]
+  },
+  "feet": [
+    "FL_FOOT",
+    "FR_FOOT",
+    "RL_FOOT",
+    "RR_FOOT"
+  ],
+  "checks": {
+    "syntax": true,
+    "hip_count_4": true,
+    "feet_count_4": true,
+    "mirror_each_two": true,
+    "declared_action_joint_set": true
+  },
+  "saved_env": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-10-30_17-37-05_resume/params/env.yaml",
+  "saved_env_sha256": "2d01e253959d78960cdf4256400173c3499161616894814c9805053bd8cd4f7c",
+  "saved_weight_differences": {
+    "base_height_l2": {
+      "current_source": -16.0,
+      "saved": -20.0
+    },
+    "feet_air_time": {
+      "current_source": 1.8,
+      "saved": 2.0
+    }
+  },
+  "analytic_examples": [
+    {
+      "base_height": 0.3,
+      "stance_foot_link_world_z": 0.043,
+      "body_z": -0.257,
+      "relative_speed": 0.3,
+      "raw_single_foot": 0.0017448740431766164,
+      "historical_weight_minus6_step_reward": -0.00020938488518119395,
+      "current_step_reward": -0.0
+    },
+    {
+      "base_height": 0.24,
+      "stance_foot_link_world_z": 0.043,
+      "body_z": -0.197,
+      "relative_speed": 0.3,
+      "raw_single_foot": 4.833446102982326e-06,
+      "historical_weight_minus6_step_reward": -5.800135323578792e-07,
+      "current_step_reward": -0.0
+    }
+  ]
+}

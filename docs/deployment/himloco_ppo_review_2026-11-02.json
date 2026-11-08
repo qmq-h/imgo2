@@ -1,0 +1,143 @@
+{
+  "interpreter": "/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python",
+  "torch": "2.7.0+cu128",
+  "cuda_available": false,
+  "scope": "CPU loading/inference only; no locomotion result",
+  "policies": {
+    "himloco": {
+      "path": "imgo2_deploy/ros2_ws/policy/imgo2/himloco/himloco.pt",
+      "sha256": "d9945f85a39944aaf241a67f7d2b25a15326a0222d0e503aeb05a7f188430509",
+      "input_dim": 270,
+      "output_shape": [
+        1024,
+        12
+      ],
+      "weights_finite": true,
+      "outputs_finite": true,
+      "exported_composition_max_diff": 0.0,
+      "parameters": {
+        "actor.0.weight": [
+          512,
+          64
+        ],
+        "actor.0.bias": [
+          512
+        ],
+        "actor.2.weight": [
+          256,
+          512
+        ],
+        "actor.2.bias": [
+          256
+        ],
+        "actor.4.weight": [
+          128,
+          256
+        ],
+        "actor.4.bias": [
+          128
+        ],
+        "actor.6.weight": [
+          12,
+          128
+        ],
+        "actor.6.bias": [
+          12
+        ],
+        "estimator.0.weight": [
+          128,
+          270
+        ],
+        "estimator.0.bias": [
+          128
+        ],
+        "estimator.2.weight": [
+          64,
+          128
+        ],
+        "estimator.2.bias": [
+          64
+        ],
+        "estimator.4.weight": [
+          19,
+          64
+        ],
+        "estimator.4.bias": [
+          19
+        ]
+      }
+    },
+    "ppo_policy_1": {
+      "path": "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy_1.pt",
+      "sha256": "53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf",
+      "input_dim": 45,
+      "output_shape": [
+        1024,
+        12
+      ],
+      "weights_finite": true,
+      "outputs_finite": true,
+      "exported_composition_max_diff": null,
+      "parameters": {
+        "mlp.0.weight": [
+          512,
+          45
+        ],
+        "mlp.0.bias": [
+          512
+        ],
+        "mlp.2.weight": [
+          256,
+          512
+        ],
+        "mlp.2.bias": [
+          256
+        ],
+        "mlp.4.weight": [
+          128,
+          256
+        ],
+        "mlp.4.bias": [
+          128
+        ],
+        "mlp.6.weight": [
+          12,
+          128
+        ],
+        "mlp.6.bias": [
+          12
+        ]
+      }
+    }
+  },
+  "source_checkpoint": "No local logs/himloco_rsl_rl run found; original provenance not verified against a checkpoint.",
+  "gazebo_attempt": {
+    "gui": false,
+    "policy_entered": false,
+    "temporary_home": true,
+    "socket_permission_denied": true,
+    "spawn_waiting": true,
+    "log_excerpt": [
+      "[robot_state_publisher-1] getifaddrs: Operation not permitted",
+      "[robot_state_publisher-1] getifaddrs: Operation not permitted",
+      "[robot_state_publisher-1] getifaddrs: Operation not permitted",
+      "[robot_state_publisher-1] getifaddrs: Operation not permitted",
+      "[robot_state_publisher-1] \u001b[37;1m2026-11-02 23:57:01.721 \u001b[31;1m[\u001b[37;1mTRANSPORT_UDP\u001b[31;1m Error] \u001b[37mError creating socket: Operation not permitted\u001b[34;1m -> Function \u001b[36minit\u001b[m",
+      "[parameter_blackboard-5] getifaddrs: Operation not permitted",
+      "[parameter_blackboard-5] getifaddrs: Operation not permitted",
+      "[parameter_blackboard-5] getifaddrs: Operation not permitted",
+      "[parameter_blackboard-5] getifaddrs: Operation not permitted",
+      "[joy_node-4] getifaddrs: Operation not permitted",
+      "[joy_node-4] getifaddrs: Operation not permitted",
+      "[joy_node-4] getifaddrs: Operation not permitted",
+      "[joy_node-4] getifaddrs: Operation not permitted",
+      "[joy_node-4] \u001b[37;1m2026-11-02 23:57:01.731 \u001b[31;1m[\u001b[37;1mTRANSPORT_UDP\u001b[31;1m Error] \u001b[37mError creating socket: Operation not permitted\u001b[34;1m -> Function \u001b[36minit\u001b[m",
+      "[ERROR] [joy_node-4]: process has died [pid 29, exit code -11, cmd '/opt/ros/humble/lib/joy/joy_node --ros-args -r __node:=joy_node --params-file /tmp/launch_params_h0of07st']."
+    ]
+  },
+  "offline_policy_selection_checks": {
+    "command": "/usr/bin/python3 imgo2_rl/scripts/tools/check_gazebo_policy_selection.py -v",
+    "passed": 2,
+    "scope": "AST-extracted evaluator tick and actual C++ source bindings; no ROS end-to-end"
+  }
+}

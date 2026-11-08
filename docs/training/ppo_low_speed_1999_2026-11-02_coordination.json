@@ -1,0 +1,847 @@
+{
+  "scope": "Force contacts: 5N/2N hysteresis, 10ms persistence, <20ms chatter removal; contact correlation and support fractions alone do not define a gait",
+  "skip_seconds": 4.0,
+  "results": [
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        null,
+        null
+      ],
+      "same_side_contact_correlation": [
+        null,
+        null
+      ],
+      "front_and_rear_contact_correlation": [
+        null,
+        null
+      ],
+      "diagonal_swing_jaccard": [
+        null,
+        null
+      ],
+      "all_four_contact_fraction": 1,
+      "three_contact_fraction": 0,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -0.0004361583301,
+        "FR": -0.0004054607463,
+        "RL": -0.0004182581653,
+        "RR": -0.0004302132201
+      },
+      "all_feet_mean_slip_mps": 0.00016255175822372798,
+      "policy": "policy.pt",
+      "case": "stand",
+      "csv": "policy_stand.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.17390744319024098,
+        0.2683470989407117
+      ],
+      "same_side_contact_correlation": [
+        0.012312385005706436,
+        0.015024151661017632
+      ],
+      "front_and_rear_contact_correlation": [
+        0.8219176758608737,
+        0.6860219263498174
+      ],
+      "diagonal_swing_jaccard": [
+        0.0030643513789581204,
+        0.2315270935960591
+      ],
+      "all_four_contact_fraction": 0.685625,
+      "three_contact_fraction": 0.060625,
+      "diagonal_two_contact_fraction": 0.0084375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0.195,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.0348308624,
+        "FR": 0.02896606576,
+        "RL": 0.01604243084,
+        "RR": 0.01910897843
+      },
+      "all_feet_mean_slip_mps": 0.2961304319454607,
+      "policy": "policy.pt",
+      "case": "forward03",
+      "csv": "policy_forward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.21230051486100052,
+        0.2387728951722789
+      ],
+      "same_side_contact_correlation": [
+        -0.0028449916263577676,
+        0.028686697882884336
+      ],
+      "front_and_rear_contact_correlation": [
+        0.8333767985285951,
+        0.7527166459577301
+      ],
+      "diagonal_swing_jaccard": [
+        0.013643659711075442,
+        0.24293785310734464
+      ],
+      "all_four_contact_fraction": 0.6103125,
+      "three_contact_fraction": 0.0578125,
+      "diagonal_two_contact_fraction": 0.0003125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0.25125,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03936125152,
+        "FR": 0.03276672769,
+        "RL": 0.02112008376,
+        "RR": 0.02446069086
+      },
+      "all_feet_mean_slip_mps": 0.4735250727270589,
+      "policy": "policy.pt",
+      "case": "forward05",
+      "csv": "policy_forward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.14983060954460353,
+        -0.03991931525159784
+      ],
+      "same_side_contact_correlation": [
+        -0.07240591113553176,
+        -0.04730072337690419
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.0643864975741371,
+        -0.05319208378326332
+      ],
+      "diagonal_swing_jaccard": [
+        0.10416666666666667,
+        0.008571428571428572
+      ],
+      "all_four_contact_fraction": 0.785625,
+      "three_contact_fraction": 0.2025,
+      "diagonal_two_contact_fraction": 0.011875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 2.653131636e-05,
+        "FR": 1.922848507e-05,
+        "RL": 2.818764157e-05,
+        "RR": 1.912779382e-05
+      },
+      "all_feet_mean_slip_mps": 0.19329269156067297,
+      "policy": "policy.pt",
+      "case": "backward03",
+      "csv": "policy_backward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.0903302002636385,
+        0.37308278946534384
+      ],
+      "same_side_contact_correlation": [
+        -0.1832583136576752,
+        0.03326837016927614
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.06587193003329916,
+        0.15046126785107905
+      ],
+      "diagonal_swing_jaccard": [
+        0.05776173285198556,
+        0.33498513379583744
+      ],
+      "all_four_contact_fraction": 0.429375,
+      "three_contact_fraction": 0.405625,
+      "diagonal_two_contact_fraction": 0.0740625,
+      "lateral_two_contact_fraction": 0.0025,
+      "front_rear_two_contact_fraction": 0.0375,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.00593478718,
+        "FR": 0.0050812054,
+        "RL": 0.005746791594,
+        "RR": 0.0003318900331
+      },
+      "all_feet_mean_slip_mps": 0.3491186911031993,
+      "policy": "policy.pt",
+      "case": "left03",
+      "csv": "policy_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.24772849796699717,
+        0.09157434245990245
+      ],
+      "same_side_contact_correlation": [
+        -0.11740120286561775,
+        -0.3156636365120151
+      ],
+      "front_and_rear_contact_correlation": [
+        0.5580330774936142,
+        0.3017727039124787
+      ],
+      "diagonal_swing_jaccard": [
+        0.00818452380952381,
+        0.19513938527519656
+      ],
+      "all_four_contact_fraction": 0.41,
+      "three_contact_fraction": 0.2634375,
+      "diagonal_two_contact_fraction": 0.059375,
+      "lateral_two_contact_fraction": 0.0025,
+      "front_rear_two_contact_fraction": 0.2353125,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.0191438359,
+        "FR": 0.01984805113,
+        "RL": 0.01194393352,
+        "RR": 0.01060396313
+      },
+      "all_feet_mean_slip_mps": 0.47197136944870627,
+      "policy": "policy.pt",
+      "case": "right03",
+      "csv": "policy_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.011021472036935627,
+        -0.02295414072812123
+      ],
+      "same_side_contact_correlation": [
+        -0.005591858018797595,
+        0.0001133891791878057
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.008999202523298042,
+        -0.028112315453700586
+      ],
+      "diagonal_swing_jaccard": [
+        0.0,
+        0.0
+      ],
+      "all_four_contact_fraction": 0.8975,
+      "three_contact_fraction": 0.100625,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0.001875,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -3.170656431e-05,
+        "FR": -1.492023356e-05,
+        "RL": -2.271657649e-05,
+        "RR": 1.31623099e-05
+      },
+      "all_feet_mean_slip_mps": 0.05164283602592803,
+      "policy": "policy.pt",
+      "case": "turn_left03",
+      "csv": "policy_turn_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        -0.028850683989129617,
+        -0.021510279945621134
+      ],
+      "same_side_contact_correlation": [
+        -0.044652001600181304,
+        -0.00836754709138109
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.014064336137012056,
+        -0.04412481920107634
+      ],
+      "diagonal_swing_jaccard": [
+        0.0,
+        0.0
+      ],
+      "all_four_contact_fraction": 0.8328125,
+      "three_contact_fraction": 0.1653125,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0.001875,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -2.841993753e-06,
+        "FR": -2.280447332e-05,
+        "RL": 0.001003276251,
+        "RR": -1.00532136e-05
+      },
+      "all_feet_mean_slip_mps": 0.08016346516555932,
+      "policy": "policy.pt",
+      "case": "turn_right03",
+      "csv": "policy_turn_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        null,
+        null
+      ],
+      "same_side_contact_correlation": [
+        null,
+        null
+      ],
+      "front_and_rear_contact_correlation": [
+        null,
+        null
+      ],
+      "diagonal_swing_jaccard": [
+        null,
+        null
+      ],
+      "all_four_contact_fraction": 1,
+      "three_contact_fraction": 0,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -0.0005057480379,
+        "FR": -0.0004241327836,
+        "RL": -0.0003290246566,
+        "RR": -0.0004130534768
+      },
+      "all_feet_mean_slip_mps": 8.703523110116983e-05,
+      "policy": "policy_latest_2.pt",
+      "case": "stand",
+      "csv": "policy_latest_2_stand.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.8860392409299644,
+        0.7675292559797585
+      ],
+      "same_side_contact_correlation": [
+        -0.5398930203574298,
+        -0.6879160747214044
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.7034168615087523,
+        -0.5279957130074356
+      ],
+      "diagonal_swing_jaccard": [
+        0.8598290598290599,
+        0.7354838709677419
+      ],
+      "all_four_contact_fraction": 0.15,
+      "three_contact_fraction": 0.179375,
+      "diagonal_two_contact_fraction": 0.670625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05371527827,
+        "FR": 0.08925726118,
+        "RL": 0.06033983278,
+        "RR": 0.06297198703
+      },
+      "all_feet_mean_slip_mps": 0.343540430833033,
+      "policy": "policy_latest_2.pt",
+      "case": "forward03",
+      "csv": "policy_latest_2_forward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.9243121306255977,
+        0.7885070390027662
+      ],
+      "same_side_contact_correlation": [
+        -0.6364550322397242,
+        -0.7733206171576428
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.8071646805393851,
+        -0.6097687500347648
+      ],
+      "diagonal_swing_jaccard": [
+        0.9127218934911243,
+        0.7594524119947849
+      ],
+      "all_four_contact_fraction": 0.098125,
+      "three_contact_fraction": 0.1521875,
+      "diagonal_two_contact_fraction": 0.7496875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.07192843983,
+        "FR": 0.09923674488,
+        "RL": 0.07351390877,
+        "RR": 0.08726040796
+      },
+      "all_feet_mean_slip_mps": 0.5054726967437003,
+      "policy": "policy_latest_2.pt",
+      "case": "forward05",
+      "csv": "policy_latest_2_forward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.9601884284905648,
+        0.7253201834028453
+      ],
+      "same_side_contact_correlation": [
+        -0.3945270659532931,
+        -0.5224753107624939
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5374690564837661,
+        -0.38352096534954216
+      ],
+      "diagonal_swing_jaccard": [
+        0.9452332657200812,
+        0.6514913657770801
+      ],
+      "all_four_contact_fraction": 0.29375,
+      "three_contact_fraction": 0.155625,
+      "diagonal_two_contact_fraction": 0.550625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03892088203,
+        "FR": 0.03948636048,
+        "RL": 0.02681532226,
+        "RR": 0.046943269
+      },
+      "all_feet_mean_slip_mps": 0.20944376050031593,
+      "policy": "policy_latest_2.pt",
+      "case": "backward03",
+      "csv": "policy_latest_2_backward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.7914996875794144,
+        0.8677752211830089
+      ],
+      "same_side_contact_correlation": [
+        -0.6689537887995455,
+        -0.7486552203371928
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.742745050686668,
+        -0.6515529196556441
+      ],
+      "diagonal_swing_jaccard": [
+        0.7651975683890577,
+        0.860248447204969
+      ],
+      "all_four_contact_fraction": 0.091875,
+      "three_contact_fraction": 0.154375,
+      "diagonal_two_contact_fraction": 0.7475,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0.00625,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05212728059,
+        "FR": 0.06355624767,
+        "RL": 0.04988622183,
+        "RR": 0.05971740088
+      },
+      "all_feet_mean_slip_mps": 0.31574108134620393,
+      "policy": "policy_latest_2.pt",
+      "case": "left03",
+      "csv": "policy_latest_2_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.8734526631611996,
+        0.7993282045239288
+      ],
+      "same_side_contact_correlation": [
+        -0.5847110143183126,
+        -0.7390442291788757
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.7105148811626987,
+        -0.6081889518797063
+      ],
+      "diagonal_swing_jaccard": [
+        0.8561897702001483,
+        0.7700754975978037
+      ],
+      "all_four_contact_fraction": 0.123125,
+      "three_contact_fraction": 0.1653125,
+      "diagonal_two_contact_fraction": 0.7115625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.05134990722,
+        "FR": 0.0589664268,
+        "RL": 0.04557577317,
+        "RR": 0.06142665328
+      },
+      "all_feet_mean_slip_mps": 0.32061297634313907,
+      "policy": "policy_latest_2.pt",
+      "case": "right03",
+      "csv": "policy_latest_2_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.18681500084180716,
+        0.7335423320474272
+      ],
+      "same_side_contact_correlation": [
+        -0.08637508367381573,
+        -0.1518198909229047
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.10747011402997472,
+        -0.12201955771776701
+      ],
+      "diagonal_swing_jaccard": [
+        0.15574963609898107,
+        0.5883977900552486
+      ],
+      "all_four_contact_fraction": 0.6721875,
+      "three_contact_fraction": 0.2278125,
+      "diagonal_two_contact_fraction": 0.1,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.0005683085282,
+        "FR": 0.008401493672,
+        "RL": 1.960545493e-05,
+        "RR": 0.002822288844
+      },
+      "all_feet_mean_slip_mps": 0.09494384966572723,
+      "policy": "policy_latest_2.pt",
+      "case": "turn_left03",
+      "csv": "policy_latest_2_turn_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.9012600469869724,
+        0.8780745665689349
+      ],
+      "same_side_contact_correlation": [
+        -0.2215939663553842,
+        -0.256106160016569
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.25236349484675386,
+        -0.22488030545218238
+      ],
+      "diagonal_swing_jaccard": [
+        0.8503184713375797,
+        0.8130193905817175
+      ],
+      "all_four_contact_fraction": 0.578125,
+      "three_contact_fraction": 0.0715625,
+      "diagonal_two_contact_fraction": 0.3503125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.003410172321,
+        "FR": 0.009731003437,
+        "RL": 0.01095819513,
+        "RR": 0.007081832753
+      },
+      "all_feet_mean_slip_mps": 0.13425692985357712,
+      "policy": "policy_latest_2.pt",
+      "case": "turn_right03",
+      "csv": "policy_latest_2_turn_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        null,
+        null
+      ],
+      "same_side_contact_correlation": [
+        null,
+        null
+      ],
+      "front_and_rear_contact_correlation": [
+        null,
+        null
+      ],
+      "diagonal_swing_jaccard": [
+        null,
+        null
+      ],
+      "all_four_contact_fraction": 1,
+      "three_contact_fraction": 0,
+      "diagonal_two_contact_fraction": 0,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -0.0003737983625,
+        "FR": -0.0004754324295,
+        "RL": -0.0004744261763,
+        "RR": -0.0003540787868
+      },
+      "all_feet_mean_slip_mps": 8.307326834175838e-05,
+      "policy": "policy_1.pt",
+      "case": "stand",
+      "csv": "policy_1_stand.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.9360418909705529,
+        0.9724783337472505
+      ],
+      "same_side_contact_correlation": [
+        -0.6160381774056105,
+        -0.6451365821571732
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.6055770198174576,
+        -0.6562811190715079
+      ],
+      "diagonal_swing_jaccard": [
+        0.9222999222999223,
+        0.9666401906274821
+      ],
+      "all_four_contact_fraction": 0.204375,
+      "three_contact_fraction": 0.044375,
+      "diagonal_two_contact_fraction": 0.75125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.0399962505,
+        "FR": 0.03856649554,
+        "RL": 0.03469088346,
+        "RR": 0.03643517655
+      },
+      "all_feet_mean_slip_mps": 0.29894865223998934,
+      "policy": "policy_1.pt",
+      "case": "forward03",
+      "csv": "policy_1_forward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.9329356494951463,
+        0.9630534318930646
+      ],
+      "same_side_contact_correlation": [
+        -0.6490232587604776,
+        -0.7052366201214609
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.6579403842407766,
+        -0.6956784844824977
+      ],
+      "diagonal_swing_jaccard": [
+        0.9206819866567828,
+        0.9566869300911854
+      ],
+      "all_four_contact_fraction": 0.1671875,
+      "three_contact_fraction": 0.05125,
+      "diagonal_two_contact_fraction": 0.7815625,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.04235546248,
+        "FR": 0.04020289168,
+        "RL": 0.03779618377,
+        "RR": 0.04079732592
+      },
+      "all_feet_mean_slip_mps": 0.47178025845067806,
+      "policy": "policy_1.pt",
+      "case": "forward05",
+      "csv": "policy_1_forward05.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.8859490990967763,
+        0.9108153981165588
+      ],
+      "same_side_contact_correlation": [
+        -0.6378555943936856,
+        -0.5520126070089545
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5818079440927965,
+        -0.6051899654026469
+      ],
+      "diagonal_swing_jaccard": [
+        0.8614754098360655,
+        0.8925056775170326
+      ],
+      "all_four_contact_fraction": 0.2059375,
+      "three_contact_fraction": 0.0971875,
+      "diagonal_two_contact_fraction": 0.696875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03187325428,
+        "FR": 0.03836390412,
+        "RL": 0.03966292193,
+        "RR": 0.03390954586
+      },
+      "all_feet_mean_slip_mps": 0.25197517115616735,
+      "policy": "policy_1.pt",
+      "case": "backward03",
+      "csv": "policy_1_backward03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.8363816751871849,
+        0.8772096297562361
+      ],
+      "same_side_contact_correlation": [
+        -0.6023988317775529,
+        -0.5270260286578148
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5284300561891764,
+        -0.6007982707671227
+      ],
+      "diagonal_swing_jaccard": [
+        0.8150375939849624,
+        0.8421052631578947
+      ],
+      "all_four_contact_fraction": 0.2103125,
+      "three_contact_fraction": 0.1359375,
+      "diagonal_two_contact_fraction": 0.65375,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.04127604881,
+        "FR": 0.03107857213,
+        "RL": 0.03862173069,
+        "RR": 0.03519665114
+      },
+      "all_feet_mean_slip_mps": 0.2948421376250992,
+      "policy": "policy_1.pt",
+      "case": "left03",
+      "csv": "policy_1_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.8681165387799601,
+        0.9181257069242174
+      ],
+      "same_side_contact_correlation": [
+        -0.5447047794019223,
+        -0.6418675038407113
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.5822733281495347,
+        -0.6004539108736723
+      ],
+      "diagonal_swing_jaccard": [
+        0.8415300546448088,
+        0.9002375296912114
+      ],
+      "all_four_contact_fraction": 0.205,
+      "three_contact_fraction": 0.1028125,
+      "diagonal_two_contact_fraction": 0.6921875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 0.03590403219,
+        "FR": 0.0380916966,
+        "RL": 0.03279141968,
+        "RR": 0.03569342724
+      },
+      "all_feet_mean_slip_mps": 0.31644357412004687,
+      "policy": "policy_1.pt",
+      "case": "right03",
+      "csv": "policy_1_right03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.5994924217924418,
+        0.7218080845440871
+      ],
+      "same_side_contact_correlation": [
+        -0.04440619707252805,
+        -0.09338399418043472
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.05790113966709275,
+        -0.07161910927554647
+      ],
+      "diagonal_swing_jaccard": [
+        0.3861788617886179,
+        0.5615141955835962
+      ],
+      "all_four_contact_fraction": 0.8240625,
+      "three_contact_fraction": 0.090625,
+      "diagonal_two_contact_fraction": 0.0853125,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": -4.198810972e-05,
+        "FR": 0.01762625475,
+        "RL": 3.260424825e-05,
+        "RR": 0.0005642148479
+      },
+      "all_feet_mean_slip_mps": 0.0549539673163356,
+      "policy": "policy_1.pt",
+      "case": "turn_left03",
+      "csv": "policy_1_turn_left03.csv"
+    },
+    {
+      "samples": 3200,
+      "sample_dt": 0.004999999999999893,
+      "diagonal_contact_correlation": [
+        0.4195539898595626,
+        0.582523214461498
+      ],
+      "same_side_contact_correlation": [
+        -0.06701490871931981,
+        -0.023455401883118936
+      ],
+      "front_and_rear_contact_correlation": [
+        -0.04284351533469004,
+        -0.03668843706901622
+      ],
+      "diagonal_swing_jaccard": [
+        0.22935779816513763,
+        0.375609756097561
+      ],
+      "all_four_contact_fraction": 0.8678125,
+      "three_contact_fraction": 0.0925,
+      "diagonal_two_contact_fraction": 0.0396875,
+      "lateral_two_contact_fraction": 0,
+      "front_rear_two_contact_fraction": 0,
+      "per_foot_clearance_p95_m": {
+        "FL": 4.038033388e-05,
+        "FR": -3.680978549e-05,
+        "RL": 0.0002819749017,
+        "RR": -3.308681986e-05
+      },
+      "all_feet_mean_slip_mps": 0.0453938220962487,
+      "policy": "policy_1.pt",
+      "case": "turn_right03",
+      "csv": "policy_1_turn_right03.csv"
+    }
+  ],
+  "tool_sha256": "045487b2e9ac33fb1fe574632a4b3e11935254f1e96b9115174a1b959873019c"
+}

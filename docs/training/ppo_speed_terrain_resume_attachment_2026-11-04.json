@@ -1,0 +1,68 @@
+{
+  "attachment_sha256": "b8720dc76539012f8d7144c2cf7df46262b1f2d98cf0c0ea2b8e1e9a6f2b2602",
+  "syntax_compile_pass": true,
+  "explicit_reward_weights_checked": [
+    "action_rate_l2",
+    "base_height_l2",
+    "feet_air_time",
+    "feet_air_time_variance",
+    "feet_slide",
+    "stand_still",
+    "feet_height_body",
+    "joint_mirror",
+    "contact_forces",
+    "lin_vel_z_l2",
+    "ang_vel_xy_l2",
+    "track_lin_vel_xy_exp",
+    "track_ang_vel_z_exp",
+    "undesired_contacts",
+    "joint_torques_l2",
+    "joint_acc_l2",
+    "joint_deviation_l1",
+    "joint_pos_penalty",
+    "joint_power",
+    "flat_orientation_l2"
+  ],
+  "explicit_reward_weight_differences_from_low_run": [],
+  "settings": {
+    "self.curriculum.command_levels_lin_vel": {
+      "line": 230,
+      "value": null
+    },
+    "self.curriculum.command_levels_ang_vel": {
+      "line": 231,
+      "value": null
+    },
+    "self.scene.terrain.max_init_terrain_level": {
+      "line": 235,
+      "value": 1
+    },
+    "self.commands.base_velocity.ranges.lin_vel_x": {
+      "line": 238,
+      "value": [
+        -1.0,
+        1.0
+      ]
+    },
+    "self.commands.base_velocity.ranges.lin_vel_y": {
+      "line": 239,
+      "value": [
+        -0.6,
+        0.6
+      ]
+    },
+    "self.commands.base_velocity.ranges.ang_vel_z": {
+      "line": 240,
+      "value": [
+        -1.0,
+        1.0
+      ]
+    }
+  },
+  "scope": "Static attachment and current local parent source; no Isaac environment construction or server training. Parent terrain_levels remains enabled locally.",
+  "pending": [
+    "server parent configuration and reward function versions",
+    "resume uses model_3900.pt and current configuration",
+    "short runtime validation"
+  ]
+}

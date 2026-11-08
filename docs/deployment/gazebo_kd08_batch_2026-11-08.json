@@ -1,0 +1,20 @@
+{
+  "runs": [
+    {
+      "case": "forward05",
+      "command_vx": 0.5,
+      "returncode": 0,
+      "directory": "/home/tommy0929/Documents/imgo2/imgo2_deploy/logs/gazebo_old9299_kd08_forward05_20261108"
+    },
+    {
+      "case": "backward05",
+      "command_vx": -0.5,
+      "returncode": 0,
+      "directory": "/home/tommy0929/Documents/imgo2/imgo2_deploy/logs/gazebo_old9299_kd08_backward05_20261108"
+    }
+  ],
+  "config_restored": true,
+  "original_config_sha256": "b8e903d8e77b11c09affee4650740168851d11a8e7aeeea17d23609a51ea1118",
+  "diagnostic_config_sha256": "e61975a4debba1fda53b6fecabfc6595c8a65982d88dd1b1a6562f82f4e2b745",
+  "no_hardware": true
+}

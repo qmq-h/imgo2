@@ -1,0 +1,448 @@
+{
+  "checkpoints": [
+    {
+      "file": "model_0.pt",
+      "iter": 0,
+      "model_finite": true,
+      "std_mean": 0.9931909441947937,
+      "std_max": 0.9995641112327576
+    },
+    {
+      "file": "model_100.pt",
+      "iter": 100,
+      "model_finite": true,
+      "std_mean": 0.4175468683242798,
+      "std_max": 0.46232083439826965
+    },
+    {
+      "file": "model_200.pt",
+      "iter": 200,
+      "model_finite": true,
+      "std_mean": 0.2682403326034546,
+      "std_max": 0.3232938051223755
+    },
+    {
+      "file": "model_300.pt",
+      "iter": 300,
+      "model_finite": true,
+      "std_mean": 0.21752913296222687,
+      "std_max": 0.26621589064598083
+    },
+    {
+      "file": "model_400.pt",
+      "iter": 400,
+      "model_finite": true,
+      "std_mean": 0.19372408092021942,
+      "std_max": 0.2444159984588623
+    },
+    {
+      "file": "model_500.pt",
+      "iter": 500,
+      "model_finite": true,
+      "std_mean": 0.18068550527095795,
+      "std_max": 0.23128968477249146
+    },
+    {
+      "file": "model_600.pt",
+      "iter": 600,
+      "model_finite": true,
+      "std_mean": 0.17399372160434723,
+      "std_max": 0.22351941466331482
+    },
+    {
+      "file": "model_700.pt",
+      "iter": 700,
+      "model_finite": true,
+      "std_mean": 0.16842828691005707,
+      "std_max": 0.2181791514158249
+    },
+    {
+      "file": "model_800.pt",
+      "iter": 800,
+      "model_finite": true,
+      "std_mean": 0.16247804462909698,
+      "std_max": 0.21077552437782288
+    },
+    {
+      "file": "model_900.pt",
+      "iter": 900,
+      "model_finite": true,
+      "std_mean": 0.16313178837299347,
+      "std_max": 0.20821303129196167
+    },
+    {
+      "file": "model_1000.pt",
+      "iter": 1000,
+      "model_finite": true,
+      "std_mean": 0.1600867360830307,
+      "std_max": 0.20918554067611694
+    },
+    {
+      "file": "model_1100.pt",
+      "iter": 1100,
+      "model_finite": true,
+      "std_mean": 0.15695372223854065,
+      "std_max": 0.20366866886615753
+    },
+    {
+      "file": "model_1200.pt",
+      "iter": 1200,
+      "model_finite": true,
+      "std_mean": 0.15798334777355194,
+      "std_max": 0.20423375070095062
+    },
+    {
+      "file": "model_1300.pt",
+      "iter": 1300,
+      "model_finite": true,
+      "std_mean": 0.16156522929668427,
+      "std_max": 0.20689363777637482
+    },
+    {
+      "file": "model_1400.pt",
+      "iter": 1400,
+      "model_finite": true,
+      "std_mean": 0.15858770906925201,
+      "std_max": 0.20236513018608093
+    },
+    {
+      "file": "model_1500.pt",
+      "iter": 1500,
+      "model_finite": true,
+      "std_mean": 0.16097252070903778,
+      "std_max": 0.20456300675868988
+    },
+    {
+      "file": "model_1600.pt",
+      "iter": 1600,
+      "model_finite": true,
+      "std_mean": 0.1651494950056076,
+      "std_max": 0.21356776356697083
+    },
+    {
+      "file": "model_1700.pt",
+      "iter": 1700,
+      "model_finite": true,
+      "std_mean": 0.16878382861614227,
+      "std_max": 0.2121211439371109
+    },
+    {
+      "file": "model_1800.pt",
+      "iter": 1800,
+      "model_finite": true,
+      "std_mean": 0.16632266342639923,
+      "std_max": 0.21204949915409088
+    },
+    {
+      "file": "model_1900.pt",
+      "iter": 1900,
+      "model_finite": true,
+      "std_mean": 0.16259680688381195,
+      "std_max": 0.20667847990989685
+    },
+    {
+      "file": "model_2000.pt",
+      "iter": 2000,
+      "model_finite": true,
+      "std_mean": 0.16375266015529633,
+      "std_max": 0.21164660155773163
+    },
+    {
+      "file": "model_2100.pt",
+      "iter": 2100,
+      "model_finite": true,
+      "std_mean": 0.1642916053533554,
+      "std_max": 0.20598123967647552
+    },
+    {
+      "file": "model_2200.pt",
+      "iter": 2200,
+      "model_finite": true,
+      "std_mean": 0.16377149522304535,
+      "std_max": 0.20109322667121887
+    },
+    {
+      "file": "model_2300.pt",
+      "iter": 2300,
+      "model_finite": true,
+      "std_mean": 0.16112257540225983,
+      "std_max": 0.20401524007320404
+    },
+    {
+      "file": "model_2400.pt",
+      "iter": 2400,
+      "model_finite": true,
+      "std_mean": 0.15863199532032013,
+      "std_max": 0.20097900927066803
+    },
+    {
+      "file": "model_2500.pt",
+      "iter": 2500,
+      "model_finite": true,
+      "std_mean": 0.16013175249099731,
+      "std_max": 0.20229622721672058
+    },
+    {
+      "file": "model_2600.pt",
+      "iter": 2600,
+      "model_finite": true,
+      "std_mean": 0.1572512835264206,
+      "std_max": 0.1960696130990982
+    },
+    {
+      "file": "model_2700.pt",
+      "iter": 2700,
+      "model_finite": true,
+      "std_mean": 0.16013292968273163,
+      "std_max": 0.2001306414604187
+    },
+    {
+      "file": "model_2800.pt",
+      "iter": 2800,
+      "model_finite": true,
+      "std_mean": 0.1590457409620285,
+      "std_max": 0.19685015082359314
+    },
+    {
+      "file": "model_2900.pt",
+      "iter": 2900,
+      "model_finite": true,
+      "std_mean": 0.15722382068634033,
+      "std_max": 0.19483411312103271
+    },
+    {
+      "file": "model_3000.pt",
+      "iter": 3000,
+      "model_finite": true,
+      "std_mean": 0.1556069552898407,
+      "std_max": 0.19497403502464294
+    },
+    {
+      "file": "model_3100.pt",
+      "iter": 3100,
+      "model_finite": true,
+      "std_mean": 0.15575477480888367,
+      "std_max": 0.1957641988992691
+    },
+    {
+      "file": "model_3200.pt",
+      "iter": 3200,
+      "model_finite": true,
+      "std_mean": 0.15411628782749176,
+      "std_max": 0.1903960406780243
+    },
+    {
+      "file": "model_3300.pt",
+      "iter": 3300,
+      "model_finite": true,
+      "std_mean": 0.15597446262836456,
+      "std_max": 0.19233438372612
+    },
+    {
+      "file": "model_3400.pt",
+      "iter": 3400,
+      "model_finite": true,
+      "std_mean": 0.15542657673358917,
+      "std_max": 0.19220243394374847
+    },
+    {
+      "file": "model_3500.pt",
+      "iter": 3500,
+      "model_finite": true,
+      "std_mean": 0.15728670358657837,
+      "std_max": 0.19548262655735016
+    },
+    {
+      "file": "model_3600.pt",
+      "iter": 3600,
+      "model_finite": true,
+      "std_mean": 0.15448115766048431,
+      "std_max": 0.19042058289051056
+    },
+    {
+      "file": "model_3700.pt",
+      "iter": 3700,
+      "model_finite": true,
+      "std_mean": 0.1549391895532608,
+      "std_max": 0.18899796903133392
+    },
+    {
+      "file": "model_3800.pt",
+      "iter": 3800,
+      "model_finite": true,
+      "std_mean": 0.15805937349796295,
+      "std_max": 0.2006089687347412
+    },
+    {
+      "file": "model_3900.pt",
+      "iter": 3900,
+      "model_finite": true,
+      "std_mean": 0.15534928441047668,
+      "std_max": 0.18997585773468018
+    },
+    {
+      "file": "model_4000.pt",
+      "iter": 4000,
+      "model_finite": true,
+      "std_mean": 0.15645119547843933,
+      "std_max": 0.19470864534378052
+    },
+    {
+      "file": "model_4100.pt",
+      "iter": 4100,
+      "model_finite": true,
+      "std_mean": 0.15665076673030853,
+      "std_max": 0.19810925424098969
+    },
+    {
+      "file": "model_4200.pt",
+      "iter": 4200,
+      "model_finite": true,
+      "std_mean": 0.15656724572181702,
+      "std_max": 0.1926676630973816
+    },
+    {
+      "file": "model_4300.pt",
+      "iter": 4300,
+      "model_finite": true,
+      "std_mean": 0.15761396288871765,
+      "std_max": 0.19444897770881653
+    },
+    {
+      "file": "model_4400.pt",
+      "iter": 4400,
+      "model_finite": true,
+      "std_mean": 0.1578778475522995,
+      "std_max": 0.19675666093826294
+    },
+    {
+      "file": "model_4500.pt",
+      "iter": 4500,
+      "model_finite": true,
+      "std_mean": 0.15604649484157562,
+      "std_max": 0.19220814108848572
+    },
+    {
+      "file": "model_4600.pt",
+      "iter": 4600,
+      "model_finite": true,
+      "std_mean": 0.15576305985450745,
+      "std_max": 0.19095362722873688
+    },
+    {
+      "file": "model_4700.pt",
+      "iter": 4700,
+      "model_finite": true,
+      "std_mean": 0.1559971272945404,
+      "std_max": 0.19327765703201294
+    },
+    {
+      "file": "model_4800.pt",
+      "iter": 4800,
+      "model_finite": true,
+      "std_mean": 0.15643925964832306,
+      "std_max": 0.1950812041759491
+    },
+    {
+      "file": "model_4900.pt",
+      "iter": 4900,
+      "model_finite": true,
+      "std_mean": 0.1570100486278534,
+      "std_max": 0.1935742348432541
+    },
+    {
+      "file": "model_5000.pt",
+      "iter": 5000,
+      "model_finite": true,
+      "std_mean": 0.1569279432296753,
+      "std_max": 0.19276943802833557
+    },
+    {
+      "file": "model_5100.pt",
+      "iter": 5100,
+      "model_finite": true,
+      "std_mean": 0.15961486101150513,
+      "std_max": 0.19844281673431396
+    },
+    {
+      "file": "model_5200.pt",
+      "iter": 5200,
+      "model_finite": true,
+      "std_mean": 0.1563917100429535,
+      "std_max": 0.19193962216377258
+    },
+    {
+      "file": "model_5300.pt",
+      "iter": 5300,
+      "model_finite": true,
+      "std_mean": 0.1577908843755722,
+      "std_max": 0.19292117655277252
+    }
+  ],
+  "env_sha256": "1b97ddb594ac71150255afae0911e0ffa819b010a065ee54093ff0d093f4351b",
+  "agent_sha256": "132c987b69e62b503fb4c4a92efba6b61772d72eacd45c31942e4cddbd36d130",
+  "env_diff_vs_previous": [
+    "--- \n",
+    "+++ \n",
+    "@@ -1097,7 +1097,7 @@\n",
+    " teleop_devices:",
+    "   devices: {}",
+    " export_io_descriptors: false",
+    "-log_dir: /root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_13-55-41",
+    "+log_dir: /root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_15-19-20",
+    " is_finite_horizon: false",
+    " episode_length_s: 20.0",
+    " rewards:",
+    "@@ -1105,11 +1105,11 @@\n",
+    "   lin_vel_z_l2:",
+    "     func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:lin_vel_z_l2",
+    "     params: {}",
+    "-    weight: -5.0",
+    "+    weight: -4.0",
+    "   ang_vel_xy_l2:",
+    "     func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:ang_vel_xy_l2",
+    "     params: {}",
+    "-    weight: -0.1",
+    "+    weight: -0.3",
+    "   flat_orientation_l2:",
+    "     func: imgo2_rl.tasks.manager_based.locomotion.velocity.mdp.rewards:flat_orientation_l2",
+    "     params: {}",
+    "@@ -1164,7 +1164,7 @@\n",
+    "         - null",
+    "         - null",
+    "         preserve_order: false",
+    "-      target_height: 0.3",
+    "+      target_height: 0.33",
+    "     weight: -35.0",
+    "   body_lin_acc_l2: null",
+    "   joint_torques_l2:",
+    "@@ -1319,7 +1319,7 @@\n",
+    "         - null",
+    "         - null",
+    "         preserve_order: false",
+    "-    weight: -0.1",
+    "+    weight: -0.2",
+    "   joint_pos_penalty: null",
+    "   wheel_vel_penalty: null",
+    "   joint_mirror:"
+  ],
+  "server_git_files": [],
+  "new_export": {
+    "actor_tensors": 8,
+    "max_tensor_diff": 0.0,
+    "sha256": "8fb8c0045f086cc95fb0a9f1e8ba760b6bc2b6bdc5f35c3cdd312fb237b6b470",
+    "deterministic_input_batch": {
+      "seed": 42,
+      "shape": [
+        1024,
+        45
+      ],
+      "output_shape": [
+        1024,
+        12
+      ],
+      "max_abs_diff": 0.0,
+      "note": "In-memory actor only, no new export or checkpoint written"
+    }
+  }
+}

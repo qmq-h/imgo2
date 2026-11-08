@@ -1,0 +1,92 @@
+{
+  "current_deploy": "imgo2_deploy/ros2_ws/policy/imgo2/ppo/policy.pt",
+  "sha256": "d2334e9845c237062fc0671e6df8e79440efbfa035c0c9a3c2c884daac40cfea",
+  "reference": "imgo2_rl/logs/terrain5300_compare_2026-11-06/terrain9299.pt",
+  "inputs": 1024,
+  "input_dim": 45,
+  "output_dim": 12,
+  "output_finite": true,
+  "max_diff_to_exported9299": 0.0,
+  "interface": {
+    "num_observations": 45,
+    "observations": [
+      "ang_vel",
+      "gravity_vec",
+      "commands",
+      "dof_pos",
+      "dof_vel",
+      "actions"
+    ],
+    "action_scale": [
+      0.125,
+      0.25,
+      0.25,
+      0.125,
+      0.25,
+      0.25,
+      0.125,
+      0.25,
+      0.25,
+      0.125,
+      0.25,
+      0.25
+    ],
+    "rl_kp": [
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "rl_kd": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "default_dof_pos": [
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82,
+      0.0,
+      0.87,
+      -1.82
+    ],
+    "joint_mapping": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  },
+  "scope": "CPU file/inference and config review; reuses previously measured 32 MuJoCo/44 Isaac and contact-analysis results. No new dynamics simulation, hardware or policy copy."
+}

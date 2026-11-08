@@ -1,0 +1,303 @@
+{
+  "2026-11-03_20-44-05_terrain_curriculum_stop": {
+    "last_step": 4333,
+    "nonfinite": 0,
+    "windows": [
+      {
+        "start": 0,
+        "metrics": {
+          "Train/mean_reward": 3.5851179162910083,
+          "Train/mean_episode_length": 960.2471739514796,
+          "Metrics/base_velocity/error_vel_xy": 0.5033762362414228,
+          "Metrics/base_velocity/error_vel_yaw": 0.5841888222313357,
+          "Policy/mean_noise_std": 0.5153409834495766,
+          "Loss/value_function": 0.01609981201872797,
+          "Episode_Reward/base_height_l2": -0.0150109713240144,
+          "Episode_Reward/feet_height_body": -0.004128006588105851,
+          "Episode_Reward/lin_vel_z_l2": -0.1002160954608289,
+          "Episode_Reward/ang_vel_xy_l2": -0.08896816061074306,
+          "Episode_Termination/time_out": 0.9604761294333753,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 500,
+        "metrics": {
+          "Train/mean_reward": 15.387755338668823,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.35324076026678086,
+          "Metrics/base_velocity/error_vel_yaw": 0.36614484786987306,
+          "Policy/mean_noise_std": 0.3585486075878143,
+          "Loss/value_function": 0.0102364451168105,
+          "Episode_Reward/base_height_l2": -0.008711823312565684,
+          "Episode_Reward/feet_height_body": -0.004221613565459847,
+          "Episode_Reward/lin_vel_z_l2": -0.07903237514197826,
+          "Episode_Reward/ang_vel_xy_l2": -0.06084714738279581,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 1000,
+        "metrics": {
+          "Train/mean_reward": 17.897954832077026,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.3149381833672523,
+          "Metrics/base_velocity/error_vel_yaw": 0.34636773759126666,
+          "Policy/mean_noise_std": 0.3300394583940506,
+          "Loss/value_function": 0.00840410749334842,
+          "Episode_Reward/base_height_l2": -0.008319930458441377,
+          "Episode_Reward/feet_height_body": -0.004850242929533124,
+          "Episode_Reward/lin_vel_z_l2": -0.07461975751817226,
+          "Episode_Reward/ang_vel_xy_l2": -0.05428214626014233,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 1500,
+        "metrics": {
+          "Train/mean_reward": 19.112419761657716,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.298961591899395,
+          "Metrics/base_velocity/error_vel_yaw": 0.3391015702486038,
+          "Policy/mean_noise_std": 0.3170670661330223,
+          "Loss/value_function": 0.007641388036310673,
+          "Episode_Reward/base_height_l2": -0.008399237792938948,
+          "Episode_Reward/feet_height_body": -0.005194847292266786,
+          "Episode_Reward/lin_vel_z_l2": -0.07013245062530041,
+          "Episode_Reward/ang_vel_xy_l2": -0.0519195381551981,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 2000,
+        "metrics": {
+          "Train/mean_reward": 19.768652313232423,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.2908633018136024,
+          "Metrics/base_velocity/error_vel_yaw": 0.33139181953668595,
+          "Policy/mean_noise_std": 0.3089732186794281,
+          "Loss/value_function": 0.007004929170012474,
+          "Episode_Reward/base_height_l2": -0.008339562331326307,
+          "Episode_Reward/feet_height_body": -0.0053684234013780955,
+          "Episode_Reward/lin_vel_z_l2": -0.06871224001795054,
+          "Episode_Reward/ang_vel_xy_l2": -0.050336987383663656,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 2500,
+        "metrics": {
+          "Train/mean_reward": 20.360560264587402,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.2852902776002884,
+          "Metrics/base_velocity/error_vel_yaw": 0.3274747440218925,
+          "Policy/mean_noise_std": 0.30179965299367906,
+          "Loss/value_function": 0.006529307214543223,
+          "Episode_Reward/base_height_l2": -0.008136928837746383,
+          "Episode_Reward/feet_height_body": -0.0047203460210002955,
+          "Episode_Reward/lin_vel_z_l2": -0.06551267419010401,
+          "Episode_Reward/ang_vel_xy_l2": -0.04850965415686369,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 3000,
+        "metrics": {
+          "Train/mean_reward": 20.660068851470946,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.28135118913650514,
+          "Metrics/base_velocity/error_vel_yaw": 0.3258287397623062,
+          "Policy/mean_noise_std": 0.29931714165210727,
+          "Loss/value_function": 0.006375563338398934,
+          "Episode_Reward/base_height_l2": -0.007966131168417632,
+          "Episode_Reward/feet_height_body": -0.004625168400816619,
+          "Episode_Reward/lin_vel_z_l2": -0.06492786005884409,
+          "Episode_Reward/ang_vel_xy_l2": -0.04809732559323311,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 3500,
+        "metrics": {
+          "Train/mean_reward": 20.683589977264404,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.28076377558708193,
+          "Metrics/base_velocity/error_vel_yaw": 0.3247319016456604,
+          "Policy/mean_noise_std": 0.3003726306557655,
+          "Loss/value_function": 0.00628673151601106,
+          "Episode_Reward/base_height_l2": -0.008337488574907183,
+          "Episode_Reward/feet_height_body": -0.005222482020035386,
+          "Episode_Reward/lin_vel_z_l2": -0.06555568265914917,
+          "Episode_Reward/ang_vel_xy_l2": -0.04843023511022329,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 4000,
+        "metrics": {
+          "Train/mean_reward": 21.013950964647854,
+          "Train/mean_episode_length": 1000.0,
+          "Metrics/base_velocity/error_vel_xy": 0.27683556820461136,
+          "Metrics/base_velocity/error_vel_yaw": 0.3225604896238464,
+          "Policy/mean_noise_std": 0.29378004809339603,
+          "Loss/value_function": 0.005922390327894848,
+          "Episode_Reward/base_height_l2": -0.007992584350334848,
+          "Episode_Reward/feet_height_body": -0.004960505385230669,
+          "Episode_Reward/lin_vel_z_l2": -0.06505882125459388,
+          "Episode_Reward/ang_vel_xy_l2": -0.04714608598433569,
+          "Episode_Termination/time_out": 1.0,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      }
+    ]
+  },
+  "2026-11-03_20-47-29_fast_no_curriculum": {
+    "last_step": 3971,
+    "nonfinite": 0,
+    "windows": [
+      {
+        "start": 0,
+        "metrics": {
+          "Train/mean_reward": -9.869662546681498,
+          "Train/mean_episode_length": 960.2471739514796,
+          "Metrics/base_velocity/error_vel_xy": 1.0346642395477734,
+          "Metrics/base_velocity/error_vel_yaw": 0.6486896003534894,
+          "Policy/mean_noise_std": 0.5697833333082333,
+          "Loss/value_function": 0.02537186404238483,
+          "Episode_Reward/base_height_l2": -0.017830075690511593,
+          "Episode_Reward/feet_height_body": -0.008974824515185347,
+          "Episode_Reward/lin_vel_z_l2": -0.11811465832343201,
+          "Episode_Reward/ang_vel_xy_l2": -0.1757055586521217,
+          "Episode_Termination/time_out": 0.9604761294333753,
+          "Episode_Termination/terrain_out_of_bounds": 0.0
+        }
+      },
+      {
+        "start": 500,
+        "metrics": {
+          "Train/mean_reward": 0.4757959870598279,
+          "Train/mean_episode_length": 999.9965197753907,
+          "Metrics/base_velocity/error_vel_xy": 0.5801887851953507,
+          "Metrics/base_velocity/error_vel_yaw": 0.489046360373497,
+          "Policy/mean_noise_std": 0.5028756088614463,
+          "Loss/value_function": 0.024951984871178865,
+          "Episode_Reward/base_height_l2": -0.015799873273819685,
+          "Episode_Reward/feet_height_body": -0.012401566928252578,
+          "Episode_Reward/lin_vel_z_l2": -0.13015034526586533,
+          "Episode_Reward/ang_vel_xy_l2": -0.16986528715491295,
+          "Episode_Termination/time_out": 0.9998227951526641,
+          "Episode_Termination/terrain_out_of_bounds": 0.0001772054040193325
+        }
+      },
+      {
+        "start": 1000,
+        "metrics": {
+          "Train/mean_reward": 3.920983720242977,
+          "Train/mean_episode_length": 999.9955399169922,
+          "Metrics/base_velocity/error_vel_xy": 0.4976932235956192,
+          "Metrics/base_velocity/error_vel_yaw": 0.4583689175248146,
+          "Policy/mean_noise_std": 0.4736272607445717,
+          "Loss/value_function": 0.022249110907316207,
+          "Episode_Reward/base_height_l2": -0.01543101691454649,
+          "Episode_Reward/feet_height_body": -0.012364432893693447,
+          "Episode_Reward/lin_vel_z_l2": -0.11891976229846478,
+          "Episode_Reward/ang_vel_xy_l2": -0.1582247295975685,
+          "Episode_Termination/time_out": 0.9998923751115799,
+          "Episode_Termination/terrain_out_of_bounds": 0.00010762532559238025
+        }
+      },
+      {
+        "start": 1500,
+        "metrics": {
+          "Train/mean_reward": 5.410114427089691,
+          "Train/mean_episode_length": 999.9946401367188,
+          "Metrics/base_velocity/error_vel_xy": 0.4672061940431595,
+          "Metrics/base_velocity/error_vel_yaw": 0.44683429652452467,
+          "Policy/mean_noise_std": 0.45872413492202757,
+          "Loss/value_function": 0.020267799641937017,
+          "Episode_Reward/base_height_l2": -0.01463887339644134,
+          "Episode_Reward/feet_height_body": -0.013251958275213837,
+          "Episode_Reward/lin_vel_z_l2": -0.1160370900630951,
+          "Episode_Reward/ang_vel_xy_l2": -0.1526769887804985,
+          "Episode_Termination/time_out": 0.9998982751369476,
+          "Episode_Termination/terrain_out_of_bounds": 0.0001220703126200533
+        }
+      },
+      {
+        "start": 2000,
+        "metrics": {
+          "Train/mean_reward": 7.1746436157226565,
+          "Train/mean_episode_length": 999.9956800537109,
+          "Metrics/base_velocity/error_vel_xy": 0.44580384039878845,
+          "Metrics/base_velocity/error_vel_yaw": 0.43128624004125593,
+          "Policy/mean_noise_std": 0.434830426633358,
+          "Loss/value_function": 0.019006125219166278,
+          "Episode_Reward/base_height_l2": -0.014074871595948935,
+          "Episode_Reward/feet_height_body": -0.011935689751058817,
+          "Episode_Reward/lin_vel_z_l2": -0.10990705205500126,
+          "Episode_Reward/ang_vel_xy_l2": -0.14514016541838645,
+          "Episode_Termination/time_out": 0.9998982751369476,
+          "Episode_Termination/terrain_out_of_bounds": 0.00010172526055430353
+        }
+      },
+      {
+        "start": 2500,
+        "metrics": {
+          "Train/mean_reward": 8.05887447834015,
+          "Train/mean_episode_length": 999.9910999755859,
+          "Metrics/base_velocity/error_vel_xy": 0.4342789943218231,
+          "Metrics/base_velocity/error_vel_yaw": 0.42221113687753675,
+          "Policy/mean_noise_std": 0.4248305557370186,
+          "Loss/value_function": 0.018380773382261396,
+          "Episode_Reward/base_height_l2": -0.014095626186579465,
+          "Episode_Reward/feet_height_body": -0.010706189861521125,
+          "Episode_Reward/lin_vel_z_l2": -0.10580095319449902,
+          "Episode_Reward/ang_vel_xy_l2": -0.14200943204760552,
+          "Episode_Termination/time_out": 0.9998982751369476,
+          "Episode_Termination/terrain_out_of_bounds": 0.00010172526050519082
+        }
+      },
+      {
+        "start": 3000,
+        "metrics": {
+          "Train/mean_reward": 8.525299426078796,
+          "Train/mean_episode_length": 999.992819946289,
+          "Metrics/base_velocity/error_vel_xy": 0.42881771475076674,
+          "Metrics/base_velocity/error_vel_yaw": 0.4244394410252571,
+          "Policy/mean_noise_std": 0.42066656309366224,
+          "Loss/value_function": 0.017788324752822517,
+          "Episode_Reward/base_height_l2": -0.012908135671168566,
+          "Episode_Reward/feet_height_body": -0.010677938198670744,
+          "Episode_Reward/lin_vel_z_l2": -0.10372193191945553,
+          "Episode_Reward/ang_vel_xy_l2": -0.14001113612949848,
+          "Episode_Termination/time_out": 0.9998372400999069,
+          "Episode_Termination/terrain_out_of_bounds": 0.00016276041680248456
+        }
+      },
+      {
+        "start": 3500,
+        "metrics": {
+          "Train/mean_reward": 8.95794348090382,
+          "Train/mean_episode_length": 999.9871611514334,
+          "Metrics/base_velocity/error_vel_xy": 0.42324687793093213,
+          "Metrics/base_velocity/error_vel_yaw": 0.42319628356371897,
+          "Policy/mean_noise_std": 0.4161492177616742,
+          "Loss/value_function": 0.017482802717772833,
+          "Episode_Reward/base_height_l2": -0.012661092441087053,
+          "Episode_Reward/feet_height_body": -0.010566916553524592,
+          "Episode_Reward/lin_vel_z_l2": -0.10279042819925284,
+          "Episode_Reward/ang_vel_xy_l2": -0.13723400588762963,
+          "Episode_Termination/time_out": 0.999806033100112,
+          "Episode_Termination/terrain_out_of_bounds": 0.0001939676579441165
+        }
+      }
+    ]
+  }
+}

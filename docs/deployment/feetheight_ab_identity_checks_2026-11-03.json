@@ -1,0 +1,88 @@
+[
+  {
+    "label": "feetheight4",
+    "actor_tensors_equal": true,
+    "max_diff_1024": 0.0,
+    "checkpoints": [
+      {
+        "checkpoint": "model_10000.pt",
+        "finite": true,
+        "std_mean": 0.4157543480396271,
+        "std_max": 0.5465682148933411
+      },
+      {
+        "checkpoint": "model_10100.pt",
+        "finite": true,
+        "std_mean": 0.3799189627170563,
+        "std_max": 0.4921313524246216
+      },
+      {
+        "checkpoint": "model_10200.pt",
+        "finite": true,
+        "std_mean": 0.39874640107154846,
+        "std_max": 0.5235415101051331
+      },
+      {
+        "checkpoint": "model_10300.pt",
+        "finite": true,
+        "std_mean": 0.40909668803215027,
+        "std_max": 0.52824467420578
+      },
+      {
+        "checkpoint": "model_10400.pt",
+        "finite": true,
+        "std_mean": 0.4160666763782501,
+        "std_max": 0.5385007262229919
+      },
+      {
+        "checkpoint": "model_10498.pt",
+        "finite": true,
+        "std_mean": 0.41988515853881836,
+        "std_max": 0.5494115352630615
+      }
+    ]
+  },
+  {
+    "label": "feetheight1",
+    "actor_tensors_equal": true,
+    "max_diff_1024": 0.0,
+    "checkpoints": [
+      {
+        "checkpoint": "model_10000.pt",
+        "finite": true,
+        "std_mean": 0.4158482551574707,
+        "std_max": 0.5459165573120117
+      },
+      {
+        "checkpoint": "model_10100.pt",
+        "finite": true,
+        "std_mean": 0.38503405451774597,
+        "std_max": 0.5035301446914673
+      },
+      {
+        "checkpoint": "model_10200.pt",
+        "finite": true,
+        "std_mean": 0.39648738503456116,
+        "std_max": 0.5168227553367615
+      },
+      {
+        "checkpoint": "model_10300.pt",
+        "finite": true,
+        "std_mean": 0.4095967710018158,
+        "std_max": 0.5274600386619568
+      },
+      {
+        "checkpoint": "model_10400.pt",
+        "finite": true,
+        "std_mean": 0.41275787353515625,
+        "std_max": 0.5404683351516724
+      },
+      {
+        "checkpoint": "model_10498.pt",
+        "finite": true,
+        "std_mean": 0.41753530502319336,
+        "std_max": 0.5372769236564636
+      }
+    ]
+  }
+]

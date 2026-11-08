@@ -1,0 +1,28 @@
+{
+  "exports": [
+    {
+      "checkpoint": "model_6300.pt",
+      "actor_input": 45,
+      "critic_input": 235,
+      "inference_1024_maxdiff": 0.0,
+      "jit_sha256": "d1aaca087f8fe3fc19aa299ee6a33cb2e15e5bab569d99e2f09d01fc3246b0c4",
+      "actor_tensors_match": true
+    },
+    {
+      "checkpoint": "model_9299.pt",
+      "actor_input": 45,
+      "critic_input": 235,
+      "inference_1024_maxdiff": 0.0,
+      "jit_sha256": "9a505c5af98d60ae0fe791c7ca21a0d46102c3a8f058dba2f313d1053d8a88bd",
+      "actor_tensors_match": true
+    }
+  ],
+  "current_deploy_1024_maxdiff": {
+    "imgo2_rl/logs/terrain5300_compare_2026-11-06/terrain9299.pt": 15.433647155761719,
+    "imgo2_rl/logs/grouped_scratch_compare_2026-11-06/scratch6999.pt": 28.13995361328125
+  },
+  "current_deploy_sha256": "8744dbb6cbfd8cdca16c4d96ebec4c5fb442aa6cf43890ad4783d466078fbd36",
+  "current_deploy_actor_matches": [
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_15-19-20/model_5100.pt"
+  ]
+}

@@ -1,0 +1,669 @@
+{
+  "2026-11-03_20-44-05_terrain_curriculum_stop": {
+    "checkpoints": [
+      {
+        "iteration": 0,
+        "finite": true,
+        "std_mean": 0.9961712956428528,
+        "std_max": 1.0006405115127563
+      },
+      {
+        "iteration": 100,
+        "finite": true,
+        "std_mean": 0.6053345799446106,
+        "std_max": 0.6849808692932129
+      },
+      {
+        "iteration": 200,
+        "finite": true,
+        "std_mean": 0.4998442828655243,
+        "std_max": 0.6043590307235718
+      },
+      {
+        "iteration": 300,
+        "finite": true,
+        "std_mean": 0.4447920322418213,
+        "std_max": 0.5545127391815186
+      },
+      {
+        "iteration": 400,
+        "finite": true,
+        "std_mean": 0.41261646151542664,
+        "std_max": 0.5242558121681213
+      },
+      {
+        "iteration": 500,
+        "finite": true,
+        "std_mean": 0.3862822949886322,
+        "std_max": 0.5061125159263611
+      },
+      {
+        "iteration": 600,
+        "finite": true,
+        "std_mean": 0.3743058443069458,
+        "std_max": 0.49089381098747253
+      },
+      {
+        "iteration": 700,
+        "finite": true,
+        "std_mean": 0.3618144989013672,
+        "std_max": 0.4741033613681793
+      },
+      {
+        "iteration": 800,
+        "finite": true,
+        "std_mean": 0.35436761379241943,
+        "std_max": 0.46565982699394226
+      },
+      {
+        "iteration": 900,
+        "finite": true,
+        "std_mean": 0.34160134196281433,
+        "std_max": 0.4650097191333771
+      },
+      {
+        "iteration": 1000,
+        "finite": true,
+        "std_mean": 0.33672794699668884,
+        "std_max": 0.4510451853275299
+      },
+      {
+        "iteration": 1100,
+        "finite": true,
+        "std_mean": 0.33181726932525635,
+        "std_max": 0.4395551085472107
+      },
+      {
+        "iteration": 1200,
+        "finite": true,
+        "std_mean": 0.3323446214199066,
+        "std_max": 0.4421883821487427
+      },
+      {
+        "iteration": 1300,
+        "finite": true,
+        "std_mean": 0.3288527727127075,
+        "std_max": 0.43651077151298523
+      },
+      {
+        "iteration": 1400,
+        "finite": true,
+        "std_mean": 0.3230780363082886,
+        "std_max": 0.4323979318141937
+      },
+      {
+        "iteration": 1500,
+        "finite": true,
+        "std_mean": 0.32405877113342285,
+        "std_max": 0.4403845965862274
+      },
+      {
+        "iteration": 1600,
+        "finite": true,
+        "std_mean": 0.3219965994358063,
+        "std_max": 0.4333575963973999
+      },
+      {
+        "iteration": 1700,
+        "finite": true,
+        "std_mean": 0.31751957535743713,
+        "std_max": 0.43127086758613586
+      },
+      {
+        "iteration": 1800,
+        "finite": true,
+        "std_mean": 0.315386027097702,
+        "std_max": 0.4349551796913147
+      },
+      {
+        "iteration": 1900,
+        "finite": true,
+        "std_mean": 0.3128187358379364,
+        "std_max": 0.42122602462768555
+      },
+      {
+        "iteration": 2000,
+        "finite": true,
+        "std_mean": 0.3123757839202881,
+        "std_max": 0.428728848695755
+      },
+      {
+        "iteration": 2100,
+        "finite": true,
+        "std_mean": 0.31119927763938904,
+        "std_max": 0.4219738841056824
+      },
+      {
+        "iteration": 2200,
+        "finite": true,
+        "std_mean": 0.3076513409614563,
+        "std_max": 0.41127756237983704
+      },
+      {
+        "iteration": 2300,
+        "finite": true,
+        "std_mean": 0.30969569087028503,
+        "std_max": 0.4165707528591156
+      },
+      {
+        "iteration": 2400,
+        "finite": true,
+        "std_mean": 0.3095778524875641,
+        "std_max": 0.4199815094470978
+      },
+      {
+        "iteration": 2500,
+        "finite": true,
+        "std_mean": 0.3041195571422577,
+        "std_max": 0.4066922664642334
+      },
+      {
+        "iteration": 2600,
+        "finite": true,
+        "std_mean": 0.3017207384109497,
+        "std_max": 0.41032251715660095
+      },
+      {
+        "iteration": 2700,
+        "finite": true,
+        "std_mean": 0.29930993914604187,
+        "std_max": 0.4063910245895386
+      },
+      {
+        "iteration": 2800,
+        "finite": true,
+        "std_mean": 0.3046109974384308,
+        "std_max": 0.4077439308166504
+      },
+      {
+        "iteration": 2900,
+        "finite": true,
+        "std_mean": 0.301925927400589,
+        "std_max": 0.41370800137519836
+      },
+      {
+        "iteration": 3000,
+        "finite": true,
+        "std_mean": 0.30279216170310974,
+        "std_max": 0.40759509801864624
+      },
+      {
+        "iteration": 3100,
+        "finite": true,
+        "std_mean": 0.2995854914188385,
+        "std_max": 0.4031912386417389
+      },
+      {
+        "iteration": 3200,
+        "finite": true,
+        "std_mean": 0.29806193709373474,
+        "std_max": 0.39566025137901306
+      },
+      {
+        "iteration": 3300,
+        "finite": true,
+        "std_mean": 0.29809823632240295,
+        "std_max": 0.40229445695877075
+      },
+      {
+        "iteration": 3400,
+        "finite": true,
+        "std_mean": 0.29689475893974304,
+        "std_max": 0.41057756543159485
+      },
+      {
+        "iteration": 3500,
+        "finite": true,
+        "std_mean": 0.3026508390903473,
+        "std_max": 0.40928909182548523
+      },
+      {
+        "iteration": 3600,
+        "finite": true,
+        "std_mean": 0.3038152754306793,
+        "std_max": 0.4152664840221405
+      },
+      {
+        "iteration": 3700,
+        "finite": true,
+        "std_mean": 0.29479843378067017,
+        "std_max": 0.4005123972892761
+      },
+      {
+        "iteration": 3800,
+        "finite": true,
+        "std_mean": 0.2971337139606476,
+        "std_max": 0.4077915549278259
+      },
+      {
+        "iteration": 3900,
+        "finite": true,
+        "std_mean": 0.3034787178039551,
+        "std_max": 0.4001871943473816
+      },
+      {
+        "iteration": 4000,
+        "finite": true,
+        "std_mean": 0.30123171210289,
+        "std_max": 0.4005202054977417
+      },
+      {
+        "iteration": 4100,
+        "finite": true,
+        "std_mean": 0.2970100939273834,
+        "std_max": 0.40314579010009766
+      },
+      {
+        "iteration": 4200,
+        "finite": true,
+        "std_mean": 0.29282671213150024,
+        "std_max": 0.39270129799842834
+      },
+      {
+        "iteration": 4300,
+        "finite": true,
+        "std_mean": 0.28883108496665955,
+        "std_max": 0.3899278938770294
+      }
+    ],
+    "config_diff": {
+      "env.yaml": [
+        {
+          "path": ".commands.base_velocity.ranges.lin_vel_x",
+          "control": [
+            "-1.2",
+            "1.2"
+          ],
+          "candidate": [
+            "-0.6",
+            "0.6"
+          ]
+        },
+        {
+          "path": ".commands.base_velocity.ranges.lin_vel_y",
+          "control": [
+            "-0.8",
+            "0.8"
+          ],
+          "candidate": [
+            "-0.4",
+            "0.4"
+          ]
+        },
+        {
+          "path": ".curriculum.terrain_levels",
+          "control": {
+            "func": "isaaclab_tasks.manager_based.locomotion.velocity.mdp.curriculums:terrain_levels_vel",
+            "params": {}
+          },
+          "candidate": "null"
+        },
+        {
+          "path": ".log_dir",
+          "control": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-24-27_feetheight_4.0",
+          "candidate": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_20-44-05_terrain_curriculum_stop"
+        },
+        {
+          "path": ".rewards.base_height_l2.weight",
+          "control": "-16.0",
+          "candidate": "-18.0"
+        },
+        {
+          "path": ".rewards.feet_height_body.params.target_height",
+          "control": "-0.2",
+          "candidate": "-0.24"
+        },
+        {
+          "path": ".rewards.lin_vel_z_l2.weight",
+          "control": "-2.0",
+          "candidate": "-4.0"
+        },
+        {
+          "path": ".scene.terrain.terrain_generator.curriculum",
+          "control": "true",
+          "candidate": "false"
+        }
+      ],
+      "agent.yaml": [
+        {
+          "path": ".load_checkpoint",
+          "control": "model_9999.pt",
+          "candidate": "model_.*.pt"
+        },
+        {
+          "path": ".load_run",
+          "control": "2026-11-02_23-12-30",
+          "candidate": ".*"
+        },
+        {
+          "path": ".max_iterations",
+          "control": "500",
+          "candidate": "5000"
+        },
+        {
+          "path": ".resume",
+          "control": "true",
+          "candidate": "false"
+        },
+        {
+          "path": ".run_name",
+          "control": "feetheight_4.0",
+          "candidate": "terrain_curriculum_stop"
+        }
+      ]
+    }
+  },
+  "2026-11-03_20-47-29_fast_no_curriculum": {
+    "checkpoints": [
+      {
+        "iteration": 0,
+        "finite": true,
+        "std_mean": 0.9966173768043518,
+        "std_max": 1.0013023614883423
+      },
+      {
+        "iteration": 100,
+        "finite": true,
+        "std_mean": 0.5966628789901733,
+        "std_max": 0.642579972743988
+      },
+      {
+        "iteration": 200,
+        "finite": true,
+        "std_mean": 0.5205828547477722,
+        "std_max": 0.5943785309791565
+      },
+      {
+        "iteration": 300,
+        "finite": true,
+        "std_mean": 0.522319495677948,
+        "std_max": 0.6035734415054321
+      },
+      {
+        "iteration": 400,
+        "finite": true,
+        "std_mean": 0.5277429223060608,
+        "std_max": 0.6131750345230103
+      },
+      {
+        "iteration": 500,
+        "finite": true,
+        "std_mean": 0.5223976373672485,
+        "std_max": 0.6110721826553345
+      },
+      {
+        "iteration": 600,
+        "finite": true,
+        "std_mean": 0.5169177651405334,
+        "std_max": 0.6019567847251892
+      },
+      {
+        "iteration": 700,
+        "finite": true,
+        "std_mean": 0.5030890703201294,
+        "std_max": 0.5840294361114502
+      },
+      {
+        "iteration": 800,
+        "finite": true,
+        "std_mean": 0.5005924105644226,
+        "std_max": 0.5997202396392822
+      },
+      {
+        "iteration": 900,
+        "finite": true,
+        "std_mean": 0.4887749254703522,
+        "std_max": 0.591781735420227
+      },
+      {
+        "iteration": 1000,
+        "finite": true,
+        "std_mean": 0.4879823923110962,
+        "std_max": 0.5860942006111145
+      },
+      {
+        "iteration": 1100,
+        "finite": true,
+        "std_mean": 0.4799485206604004,
+        "std_max": 0.5751618146896362
+      },
+      {
+        "iteration": 1200,
+        "finite": true,
+        "std_mean": 0.4754626750946045,
+        "std_max": 0.5859233140945435
+      },
+      {
+        "iteration": 1300,
+        "finite": true,
+        "std_mean": 0.4680151641368866,
+        "std_max": 0.572563886642456
+      },
+      {
+        "iteration": 1400,
+        "finite": true,
+        "std_mean": 0.46285805106163025,
+        "std_max": 0.5614379644393921
+      },
+      {
+        "iteration": 1500,
+        "finite": true,
+        "std_mean": 0.4677724838256836,
+        "std_max": 0.5761447548866272
+      },
+      {
+        "iteration": 1600,
+        "finite": true,
+        "std_mean": 0.46850302815437317,
+        "std_max": 0.5889844298362732
+      },
+      {
+        "iteration": 1700,
+        "finite": true,
+        "std_mean": 0.46326741576194763,
+        "std_max": 0.5757089853286743
+      },
+      {
+        "iteration": 1800,
+        "finite": true,
+        "std_mean": 0.4564497172832489,
+        "std_max": 0.5617247819900513
+      },
+      {
+        "iteration": 1900,
+        "finite": true,
+        "std_mean": 0.4525778293609619,
+        "std_max": 0.5592182874679565
+      },
+      {
+        "iteration": 2000,
+        "finite": true,
+        "std_mean": 0.4450725018978119,
+        "std_max": 0.5498401522636414
+      },
+      {
+        "iteration": 2100,
+        "finite": true,
+        "std_mean": 0.4363916218280792,
+        "std_max": 0.5442262291908264
+      },
+      {
+        "iteration": 2200,
+        "finite": true,
+        "std_mean": 0.43129467964172363,
+        "std_max": 0.5358264446258545
+      },
+      {
+        "iteration": 2300,
+        "finite": true,
+        "std_mean": 0.4370650351047516,
+        "std_max": 0.5595540404319763
+      },
+      {
+        "iteration": 2400,
+        "finite": true,
+        "std_mean": 0.4302198886871338,
+        "std_max": 0.5467941761016846
+      },
+      {
+        "iteration": 2500,
+        "finite": true,
+        "std_mean": 0.4295404255390167,
+        "std_max": 0.5345043540000916
+      },
+      {
+        "iteration": 2600,
+        "finite": true,
+        "std_mean": 0.4287025034427643,
+        "std_max": 0.5345191359519958
+      },
+      {
+        "iteration": 2700,
+        "finite": true,
+        "std_mean": 0.4207397997379303,
+        "std_max": 0.5317062735557556
+      },
+      {
+        "iteration": 2800,
+        "finite": true,
+        "std_mean": 0.41990530490875244,
+        "std_max": 0.5246220827102661
+      },
+      {
+        "iteration": 2900,
+        "finite": true,
+        "std_mean": 0.4250471591949463,
+        "std_max": 0.5397420525550842
+      },
+      {
+        "iteration": 3000,
+        "finite": true,
+        "std_mean": 0.4257698953151703,
+        "std_max": 0.535530149936676
+      },
+      {
+        "iteration": 3100,
+        "finite": true,
+        "std_mean": 0.41999658942222595,
+        "std_max": 0.5222606658935547
+      },
+      {
+        "iteration": 3200,
+        "finite": true,
+        "std_mean": 0.4226900339126587,
+        "std_max": 0.5273056626319885
+      },
+      {
+        "iteration": 3300,
+        "finite": true,
+        "std_mean": 0.4186997711658478,
+        "std_max": 0.5229312777519226
+      },
+      {
+        "iteration": 3400,
+        "finite": true,
+        "std_mean": 0.41790392994880676,
+        "std_max": 0.5175071358680725
+      },
+      {
+        "iteration": 3500,
+        "finite": true,
+        "std_mean": 0.4192657172679901,
+        "std_max": 0.5279253721237183
+      },
+      {
+        "iteration": 3600,
+        "finite": true,
+        "std_mean": 0.41858911514282227,
+        "std_max": 0.5210690498352051
+      },
+      {
+        "iteration": 3700,
+        "finite": true,
+        "std_mean": 0.4125988781452179,
+        "std_max": 0.5179052948951721
+      },
+      {
+        "iteration": 3800,
+        "finite": true,
+        "std_mean": 0.41700419783592224,
+        "std_max": 0.5211942195892334
+      },
+      {
+        "iteration": 3900,
+        "finite": true,
+        "std_mean": 0.41811612248420715,
+        "std_max": 0.5229837894439697
+      }
+    ],
+    "config_diff": {
+      "env.yaml": [
+        {
+          "path": ".curriculum.terrain_levels",
+          "control": {
+            "func": "isaaclab_tasks.manager_based.locomotion.velocity.mdp.curriculums:terrain_levels_vel",
+            "params": {}
+          },
+          "candidate": "null"
+        },
+        {
+          "path": ".log_dir",
+          "control": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_17-24-27_feetheight_4.0",
+          "candidate": "/root/Desktop/imgo2/imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-03_20-47-29_fast_no_curriculum"
+        },
+        {
+          "path": ".rewards.ang_vel_xy_l2.weight",
+          "control": "-0.05",
+          "candidate": "-0.1"
+        },
+        {
+          "path": ".rewards.base_height_l2.weight",
+          "control": "-16.0",
+          "candidate": "-18.0"
+        },
+        {
+          "path": ".rewards.feet_height_body.weight",
+          "control": "-4.0",
+          "candidate": "-5.0"
+        },
+        {
+          "path": ".rewards.lin_vel_z_l2.weight",
+          "control": "-2.0",
+          "candidate": "-4.0"
+        },
+        {
+          "path": ".scene.terrain.terrain_generator.curriculum",
+          "control": "true",
+          "candidate": "false"
+        }
+      ],
+      "agent.yaml": [
+        {
+          "path": ".load_checkpoint",
+          "control": "model_9999.pt",
+          "candidate": "model_.*.pt"
+        },
+        {
+          "path": ".load_run",
+          "control": "2026-11-02_23-12-30",
+          "candidate": ".*"
+        },
+        {
+          "path": ".max_iterations",
+          "control": "500",
+          "candidate": "5000"
+        },
+        {
+          "path": ".resume",
+          "control": "true",
+          "candidate": "false"
+        },
+        {
+          "path": ".run_name",
+          "control": "feetheight_4.0",
+          "candidate": "fast_no_curriculum"
+        }
+      ]
+    }
+  }
+}

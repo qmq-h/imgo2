@@ -1,0 +1,148 @@
+{
+  "attachment": "/home/tommy0929/.codex/attachments/78bf76da-1f31-41e1-9bcf-cf5aaea9788b/已粘贴的文本.txt",
+  "sha256": "71869ba18949abe3ea8de45d348c06ce55040d454257659cc4d498172ff9cc21",
+  "verification": "AST/compile only, not imported or run",
+  "scope": "static reweighting of old 5700-5800 rough distribution; NOT new training prediction, low-speed plane distribution differs",
+  "rows": [
+    {
+      "name": "lin_vel_z_l2",
+      "old_weight": -4.0,
+      "candidate_weight": -10,
+      "old_contribution": -0.09329226236827302,
+      "reweighted_same_old_trajectory": -0.23323065592068257
+    },
+    {
+      "name": "ang_vel_xy_l2",
+      "old_weight": -0.05,
+      "candidate_weight": -0.1,
+      "old_contribution": -0.07120760633508758,
+      "reweighted_same_old_trajectory": -0.14241521267017515
+    },
+    {
+      "name": "flat_orientation_l2",
+      "old_weight": -5.0,
+      "candidate_weight": -5.0,
+      "old_contribution": -0.04109217053150187,
+      "reweighted_same_old_trajectory": -0.04109217053150187
+    },
+    {
+      "name": "base_height_l2",
+      "old_weight": -18.0,
+      "candidate_weight": -40,
+      "old_contribution": -0.01259809719527712,
+      "reweighted_same_old_trajectory": -0.027995771545060267
+    },
+    {
+      "name": "joint_torques_l2",
+      "old_weight": -2.5e-06,
+      "candidate_weight": -2.5e-06,
+      "old_contribution": -0.000970638727672435,
+      "reweighted_same_old_trajectory": -0.000970638727672435
+    },
+    {
+      "name": "joint_acc_l2",
+      "old_weight": -5e-09,
+      "candidate_weight": -5e-09,
+      "old_contribution": -0.011571197558452588,
+      "reweighted_same_old_trajectory": -0.011571197558452588
+    },
+    {
+      "name": "joint_deviation_l1",
+      "old_weight": -1.0,
+      "candidate_weight": -0.5,
+      "old_contribution": -0.22819149479417516,
+      "reweighted_same_old_trajectory": -0.11409574739708758
+    },
+    {
+      "name": "joint_power",
+      "old_weight": -2e-05,
+      "candidate_weight": -2e-05,
+      "old_contribution": -0.002702190135006267,
+      "reweighted_same_old_trajectory": -0.002702190135006267
+    },
+    {
+      "name": "stand_still",
+      "old_weight": -0.1,
+      "candidate_weight": -0.1,
+      "old_contribution": -0.0024936950724055566,
+      "reweighted_same_old_trajectory": -0.0024936950724055566
+    },
+    {
+      "name": "joint_pos_penalty",
+      "old_weight": -0.1,
+      "candidate_weight": 0,
+      "old_contribution": -0.062170756187769446,
+      "reweighted_same_old_trajectory": 0.0
+    },
+    {
+      "name": "joint_mirror",
+      "old_weight": -1.0,
+      "candidate_weight": -1.0,
+      "old_contribution": -0.0542839905708143,
+      "reweighted_same_old_trajectory": -0.0542839905708143
+    },
+    {
+      "name": "action_rate_l2",
+      "old_weight": -0.01,
+      "candidate_weight": -0.01,
+      "old_contribution": -0.08559082795192699,
+      "reweighted_same_old_trajectory": -0.08559082795192699
+    },
+    {
+      "name": "undesired_contacts",
+      "old_weight": -0.5,
+      "candidate_weight": -0.5,
+      "old_contribution": -0.02225926555324309,
+      "reweighted_same_old_trajectory": -0.02225926555324309
+    },
+    {
+      "name": "contact_forces",
+      "old_weight": -0.02,
+      "candidate_weight": -0.02,
+      "old_contribution": -0.09548479340749212,
+      "reweighted_same_old_trajectory": -0.09548479340749212
+    },
+    {
+      "name": "track_lin_vel_xy_exp",
+      "old_weight": 1.5,
+      "candidate_weight": 1.5,
+      "old_contribution": 1.272127650751926,
+      "reweighted_same_old_trajectory": 1.272127650751926
+    },
+    {
+      "name": "track_ang_vel_z_exp",
+      "old_weight": 0.6,
+      "candidate_weight": 1.2,
+      "old_contribution": 0.49394703088420455,
+      "reweighted_same_old_trajectory": 0.9878940617684091
+    },
+    {
+      "name": "feet_air_time",
+      "old_weight": 1.8,
+      "candidate_weight": 1.6,
+      "old_contribution": -0.19247911870479584,
+      "reweighted_same_old_trajectory": -0.1710925499598185
+    },
+    {
+      "name": "feet_air_time_variance",
+      "old_weight": -8.0,
+      "candidate_weight": -8.0,
+      "old_contribution": -0.07814214452363477,
+      "reweighted_same_old_trajectory": -0.07814214452363477
+    },
+    {
+      "name": "feet_slide",
+      "old_weight": -0.05,
+      "candidate_weight": -0.05,
+      "old_contribution": -0.03661751252884912,
+      "reweighted_same_old_trajectory": -0.03661751252884912
+    },
+    {
+      "name": "feet_height_body",
+      "old_weight": -4.0,
+      "candidate_weight": -4.0,
+      "old_contribution": -0.00816404893717701,
+      "reweighted_same_old_trajectory": -0.00816404893717701
+    }
+  ]
+}

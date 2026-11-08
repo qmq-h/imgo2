@@ -1,0 +1,230 @@
+{
+  "scope": "Counterfactual flat-ground cost on unchanged trajectories; not a training result",
+  "parameters": {
+    "run": "imgo2_rl/logs/plane_low_compare_2026-11-05/mujoco/run.json",
+    "output": "docs/training/foot_drag_cost_counterfactual_2026-11-05.json",
+    "height": 0.03,
+    "speed_scale": 0.2,
+    "weight": 0.1,
+    "skip": 4.0
+  },
+  "formula": "-weight*sum(tanh(world_foot_xy_speed/speed_scale)*clip((height-clearance)/height,0,1)^2); command gate only",
+  "results": [
+    {
+      "policy": "plane4000.pt",
+      "case": "stand",
+      "samples": 3200,
+      "mean_cost_rate": 0.0
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "forward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.08803715493804373
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "forward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.08792232343746703
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "backward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.10531523602736492
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "backward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.14987701383966595
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.16932507168875421
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.17061232473971344
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "turn_left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.0634468630792215
+    },
+    {
+      "policy": "plane4000.pt",
+      "case": "turn_right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.06283819524258565
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "stand",
+      "samples": 3200,
+      "mean_cost_rate": 0.0
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "forward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.0864847196517532
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "forward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.10258591838832194
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "backward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.10992381005337633
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "backward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.15418208016650306
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.16255530090399445
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.15595236174698904
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "turn_left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.06225758676871157
+    },
+    {
+      "policy": "plane5900.pt",
+      "case": "turn_right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.05690897462626154
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "stand",
+      "samples": 3200,
+      "mean_cost_rate": 0.0
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "forward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.054581338840657946
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "forward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.06922352473262472
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "backward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.07098900247544522
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "backward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.06812727508488507
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.06315727536350338
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.05791646448892547
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "turn_left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.06359502619584638
+    },
+    {
+      "policy": "baseline5800.pt",
+      "case": "turn_right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.06676531663219243
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "stand",
+      "samples": 3200,
+      "mean_cost_rate": 0.0
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "forward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.05502076279568469
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "forward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.06751746390276762
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "backward03",
+      "samples": 3200,
+      "mean_cost_rate": -0.05134779912903402
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "backward05",
+      "samples": 3200,
+      "mean_cost_rate": -0.06334054346585322
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.057319431898223805
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.05869195826753957
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "turn_left03",
+      "samples": 3200,
+      "mean_cost_rate": -0.0308612159878858
+    },
+    {
+      "policy": "policy_1.pt",
+      "case": "turn_right03",
+      "samples": 3200,
+      "mean_cost_rate": -0.033348241821510576
+    }
+  ]
+}

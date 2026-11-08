@@ -1,0 +1,169 @@
+{
+  "run": "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_22-07-33_speed_curriculum_resume",
+  "checkpoints": [
+    {
+      "file": "model_5300.pt",
+      "iter": 5300,
+      "finite": true,
+      "std_mean": 0.15812452137470245,
+      "std_max": 0.19173093140125275
+    },
+    {
+      "file": "model_5400.pt",
+      "iter": 5400,
+      "finite": true,
+      "std_mean": 0.16918450593948364,
+      "std_max": 0.20512652397155762
+    },
+    {
+      "file": "model_5500.pt",
+      "iter": 5500,
+      "finite": true,
+      "std_mean": 0.21652676165103912,
+      "std_max": 0.26976320147514343
+    },
+    {
+      "file": "model_5600.pt",
+      "iter": 5600,
+      "finite": true,
+      "std_mean": 0.2539038360118866,
+      "std_max": 0.3174872100353241
+    },
+    {
+      "file": "model_5700.pt",
+      "iter": 5700,
+      "finite": true,
+      "std_mean": 0.2641656994819641,
+      "std_max": 0.34048035740852356
+    },
+    {
+      "file": "model_5800.pt",
+      "iter": 5800,
+      "finite": true,
+      "std_mean": 0.26097115874290466,
+      "std_max": 0.33449047803878784
+    },
+    {
+      "file": "model_5900.pt",
+      "iter": 5900,
+      "finite": true,
+      "std_mean": 0.2551771104335785,
+      "std_max": 0.32438790798187256
+    },
+    {
+      "file": "model_6000.pt",
+      "iter": 6000,
+      "finite": true,
+      "std_mean": 0.25606468319892883,
+      "std_max": 0.31923890113830566
+    },
+    {
+      "file": "model_6100.pt",
+      "iter": 6100,
+      "finite": true,
+      "std_mean": 0.25073572993278503,
+      "std_max": 0.31725940108299255
+    },
+    {
+      "file": "model_6200.pt",
+      "iter": 6200,
+      "finite": true,
+      "std_mean": 0.25050222873687744,
+      "std_max": 0.31524160504341125
+    },
+    {
+      "file": "model_6300.pt",
+      "iter": 6300,
+      "finite": true,
+      "std_mean": 0.2481200248003006,
+      "std_max": 0.31835201382637024
+    },
+    {
+      "file": "model_6400.pt",
+      "iter": 6400,
+      "finite": true,
+      "std_mean": 0.24981437623500824,
+      "std_max": 0.31222501397132874
+    },
+    {
+      "file": "model_6500.pt",
+      "iter": 6500,
+      "finite": true,
+      "std_mean": 0.2453722506761551,
+      "std_max": 0.3111485540866852
+    },
+    {
+      "file": "model_6600.pt",
+      "iter": 6600,
+      "finite": true,
+      "std_mean": 0.24937719106674194,
+      "std_max": 0.31926804780960083
+    },
+    {
+      "file": "model_6700.pt",
+      "iter": 6700,
+      "finite": true,
+      "std_mean": 0.24926984310150146,
+      "std_max": 0.3172340393066406
+    },
+    {
+      "file": "model_6800.pt",
+      "iter": 6800,
+      "finite": true,
+      "std_mean": 0.2476956993341446,
+      "std_max": 0.3112698197364807
+    },
+    {
+      "file": "model_6900.pt",
+      "iter": 6900,
+      "finite": true,
+      "std_mean": 0.24675704538822174,
+      "std_max": 0.30604347586631775
+    },
+    {
+      "file": "model_7000.pt",
+      "iter": 7000,
+      "finite": true,
+      "std_mean": 0.24778741598129272,
+      "std_max": 0.3129813075065613
+    },
+    {
+      "file": "model_7100.pt",
+      "iter": 7100,
+      "finite": true,
+      "std_mean": 0.2513126730918884,
+      "std_max": 0.31615129113197327
+    },
+    {
+      "file": "model_7200.pt",
+      "iter": 7200,
+      "finite": true,
+      "std_mean": 0.24841012060642242,
+      "std_max": 0.30875489115715027
+    },
+    {
+      "file": "model_7299.pt",
+      "iter": 7299,
+      "finite": true,
+      "std_mean": 0.24448321759700775,
+      "std_max": 0.30728697776794434
+    }
+  ],
+  "hashes": {
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_22-07-33_speed_curriculum_resume/model_7299.pt": "170f8424ddd664d93a6e48ace0a166e1a554660c410802d86c115b928db1d5fd",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_22-07-33_speed_curriculum_resume/params/env.yaml": "c3a536c885d57f096d4d1b1dbf9c66f71bfc16d295b48bfef83f97ebf43aaf71",
+    "imgo2_rl/logs/rsl_rl/base_move_rough/2026-11-05_22-07-33_speed_curriculum_resume/params/agent.yaml": "58bc4a18c047755513cc03670b6013c14ccbcfe6d02b0e0ff0b961cd2c610b8e"
+  },
+  "jit_actor_tensor_max_diff": 0.0,
+  "jit_1024_input_max_diff": 0.0,
+  "jit_sha256": "daa474df1c2f386d1aad2c0ca9633c62043b5368ebc2ff3e54650e03f6b8979b",
+  "mujoco_common_hash_match": {
+    "imgo2_description/mjcf/imgo2.xml": true,
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_feedback.hpp": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/ppo/config.yaml": true,
+    "imgo2_deploy/ros2_ws/policy/imgo2/base.yaml": true,
+    "imgo2_deploy/ros2_ws/src/imgo2_deploy/include/mujoco_motor_pd.hpp": true,
+    "imgo2_deploy/ros2_ws/scripts/mujoco_policy_benchmark.cpp": true,
+    "imgo2_description/mjcf/scene.xml": true
+  }
+}
