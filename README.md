@@ -351,7 +351,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --run_name=ppo2500
 ```
 
-启动时看这一行：`[towing] frozen low-level: ppo -> .../ppo_2500/policy.pt`。如果打印 `amp`，说明 `--policy` 没生效；如果只传 `--policy=ppo` 而不传 `--policy_checkpoint`，会用部署目录 `ppo/policy.pt`；该文件已于 2026-11-09 替换为 **PPO@2500 导出件**（sha256 `27c398d3…`）。`--policy_checkpoint` 必须指向 `play.py` 导出的 TorchScript，不能直接传 `model_2500.pt`（`torch.jit.load` 读不了训练态 checkpoint）。
+启动时看这一行：`[towing] frozen low-level: ppo -> .../ppo_2500/policy.pt`。如果打印 `amp`，说明 `--policy` 没生效；如果只传 `--policy=ppo` 而不传 `--policy_checkpoint`，会用部署目录 `ppo/policy.pt`；该文件于 2026-11-09 恢复为**旧参考 PPO**（sha256 `53a57f90…`），PPO@2500 在 `logs/towing_rl_lab/policies/ppo_2500/policy.pt`。`--policy_checkpoint` 必须指向 `play.py` 导出的 TorchScript，不能直接传 `model_2500.pt`（`torch.jit.load` 读不了训练态 checkpoint）。
 
 **拖曳上层回放**（`--agent` 必须是完整注册键）在仓库根用统一入口跑，并把回放诊断一起打开：
 
@@ -462,7 +462,7 @@ HIM-Loco actor 单帧按以下顺序构造，按配置计算为 45 维：
 
 | 键 | 状态类 | 配置目录 | 观察 | 网络 |
 |---|---|---|---|---|
-| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（2026-11-09 替换为仓库训练的 **PPO@2500** 导出件，sha256 `27c398d3813ef3275636e5658a668baf715c4f8baec183d00ffdeb8598b876bd`；旧参考项目 `policy_flat.pt` / `53a57f90…` 见 git 历史） |
+| `1` | `RLFSMStatePPOLocomotion` | `policy/imgo2/ppo/` | 45 维（无 `base_lin_vel`、无 `height_scan`） | `policy.pt`（2026-11-09 恢复为旧参考项目 `policy_flat.pt`，sha256 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`；PPO@2500 在 `logs/towing_rl_lab/policies/ppo_2500/`） |
 | `2` | `RLFSMStateRLLocomotion` | `policy/imgo2/himloco/` | 45 维 × 6 帧 = 270（`observations_history: [0..5]`） | `himloco.pt`（Go2 参考占位，见 DEPLOY-01） |
 | `3` | `RLFSMStateAMPLocomotion` | `policy/imgo2/amp/` | 45 维（无 `base_lin_vel`，与参考 `amp_go2` 的 actor 组成一致） | `policy.pt`（`model_24500.pt` 的导出，sha256 `cba59d44e387834e…`；与 checkpoint actor 数值完全一致。**24500 轮已确认：0.2/0.3/0.5 m/s 跟速 93.4%/97.9%/95.9%，站立漂移 0.001 m/s，周期强度 0.71–0.83、相位 ±180°**，见 [Gazebo 记录](docs/deployment/gazebo_ros2_bringup_2026-09-17.md) 9.7 节） |
 
@@ -950,3 +950,4 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-10-24（**v6：去掉 vx 偏移头，动作 13→12，必须重训**） | 用户「去掉他」：删除 1 维 vx 偏移头，动作 **12 维纯关节残差**；policy 帧 58→57、actor 79→78、critic 73→72、decoder frame 58→57，`towing_contract` v6。**改**：`upper_logic`（UpperActionSpec 只留 12 维残差、`CMD_ACTION_DIM` 删除）、`upper_mdp`（`loco_command = task_command`，无 offset 块）、`upper_env_cfg`（动作文档/配置）、`upper_policy_runtime`（FRAME_TERMS last_action 12、ACTION_DIM 12、v6 校验、导出 57→12）、`towing_decoder` 默认 frame 57、`towing_on_policy_runner` v6、`towing_vec_env_wrapper` 57、`play_towing_test`（57/12、无偏移诊断；旧 offset 字段置 0）、`play.py --export`。**旧 v5（58/13/79）checkpoint 与导出的 `policy.pt` 全部失效**：删除 `imgo2_deploy/policy/imgo2/towing/policy.pt`，`model_1300.pt` 仅作 v5 历史留档。 | **验证**：`pytest imgo2_rl/tests -q` ⇒ **740 passed, 4 skipped, 1336 subtests**；`play.py --export` 的 v6 路径用合成 checkpoint 的单元测试通过（57→12、TorchScript load/reset/前向）；`git diff --check` 通过。**未验证/待办**：没有 v6 checkpoint（不能 resume `model_1300.pt`），必须在训练机从零重训后再导出；本机未跑训练。 |
 | 2026-11-09（**部署侧 PPO 换成 PPO@2500；旧 2026-09-17 参考权重退役**） | 用户要求把底层模型换成当前 PPO@2500，并单独测这个低层拉车。**做**：`imgo2_deploy/policy/imgo2/ppo/policy.pt` 用 `logs/towing_rl_lab/policies/ppo_2500/policy.pt` 覆盖（sha256 `27c398d3…`，752 KB，45→12 TorchScript）；`train.py` 的 PPO 未给 checkpoint 提示同步改为“使用部署 ppo/policy.pt（2500）”，不再报旧 53a57f90 警告；README 部署键 1 的权重说明同步。 | **验证**：源/目标 sha256 一致；`py_compile` 通过。**未验证**：本机无 GPU，未实跑；旧 53a57f90 仍在 git 历史。 |
 | 2026-11-09（**地形追加 15°/20° 坡；80 列 × 20 行 = 1600 env**） | 用户要求补 15°/20° 坡。**改**：`connection_grid` 在 0–59 列后追加 15°（60–69）、20°（70–79）两个 10 列块，连接布局 4/4/2；`COLUMNS 60→80`、`GRID_SIZE 1200→1600`、`ELASTIC/RIGID/INEXTENSIBLE 24/24/12→32/32/16`；`MAX_GRADE_DEG 10→20`；`slope_geometry/mixed_geometry/upper_env_cfg/slope_terrain` 文档与 timeout 同步；20° 弧长 10.385067 m ⇒ `episode_length_s=24.770133 s` / **496 步**；`play_towing_test` 默认网格自动 1600，测试台/分段报表族标签支持 15°/20°。原有 0–59 列号/语义不变。 | **验证**：地形/测试台/契约相关 `pytest` ⇒ **309 passed, 4 skipped**；`py_compile`/`git diff --check` 通过。**未验证**：本机无 GPU，未跑仿真；1600 env 实际显存/训练速度、15°/20° 坡的碰撞与翻车行为待训练机。 |
+| 2026-11-09（**部署侧 PPO 恢复为旧参考权重**） | 用户要求「部署那边也换成老的 ppo」⇒ 将 `imgo2_deploy/policy/imgo2/ppo/policy.pt` 恢复为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`（753 KB，45→12 TorchScript；旧参考项目 `policy_flat.pt`）。PPO@2500 仍保留在 `logs/towing_rl_lab/policies/ppo_2500/policy.pt`（`27c398d3…`），不再作为部署默认。`train.py` 的 `--policy ppo` 未给 checkpoint 提示与 README 部署键 1 同步。 | **验证**：源/目标 sha256 一致；`py_compile` 通过。**未验证**：本机无 GPU，未实跑。 |
