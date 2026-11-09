@@ -37,7 +37,7 @@
    所以离线测试不需要 import isaaclab。
 
 **注意**：本模块只负责「帧 → 动作」。上层的**控制节拍**由调用方负责：训练侧
-`upper_control_dt = 0.05 s`（20 Hz），两次上层更新之间残差保持不变
+`upper_control_dt = 0.02 s`（50 Hz），两次上层更新之间残差保持不变
 （`HierarchicalVelocityAction.apply_actions` 每次冻结策略刷新都重算 `joint_targets + delta`）。
 """
 

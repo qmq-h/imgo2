@@ -1,3 +1,5 @@
+# 2026-11-09: upper/frozen control = 50 Hz (dt=0.02 s); physics = 200 Hz.
+# Historical per-step reward examples below use the former 20 Hz cadence.
 """Class-based configuration for the hierarchical towing RL environment.
 
 架构（2026-10-24 起，**v6**）：送给冻结低层策略的速度指令 = 脚本调度（+ 横向/朝向 PD）；
@@ -153,7 +155,7 @@ class UpperActionsCfg:
 
     high_level_velocity = mdp.HierarchicalVelocityActionCfg(
         asset_name="robot", cart_asset_name="cart", policy_name="amp",
-        upper_control_dt=0.05, low_level_control_dt=0.02,
+        upper_control_dt=0.02, low_level_control_dt=0.02,
     )
 
 
@@ -616,7 +618,7 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.terrain.terrain_generator.class_type = (
             TowingMixedRollingTerrainGenerator if self.towing_terrain_profile == "rolling"
             else TowingMixedTerrainGenerator)
-        self.decimation = 10              # upper policy: 0.005 * 10 = 0.05 s = 20 Hz
+        self.decimation = 4               # upper and frozen policy: 0.005 * 4 = 0.02 s = 50 Hz
         action = self.actions.high_level_velocity
         if action.stop_distance_m >= FORWARD_M - BOUNDARY_MARGIN_M - 0.1:
             raise ValueError("stop distance exceeds the safe lane length")
@@ -648,8 +650,8 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         # 计算完全由 `episode_geometry.SPEED_RANGE[0]` 经 `speed_range` 参数驱动，没有第二处
         # 硬编码。`POST_STOP_WINDOW_S` 是最慢速度下的停车窗口；速度越快 STOP 越早、尾巴越长
         # （已与用户确认接受；"有没有走到 STOP 点"看 `obs_stop_reached` 诊断量，不靠终止原因区分）。
-        # `decimation`（10，= 20 Hz 上层）与 `num_steps_per_env`（训练侧 rollout 长度）**不跟改**：
-        # 前者由 frozen AMP 策略的 50 Hz 与上层 20 Hz 契约决定、后者是采样长度（与回合上限无关，
+        # `decimation`（4，= 50 Hz 上层）与 `num_steps_per_env`（训练侧 rollout 长度）**不跟改**：
+        # 前者保证底层与上层同步按 50 Hz 更新、后者是采样长度（与回合上限无关，
         # 只影响每轮 rollout 的步数）。
         smooth = "rolling" if self.towing_terrain_profile == "rolling" else "hill"
         from .mdp.mixed_geometry import arc_length_upper_bound as mixed_arc_length

@@ -56,7 +56,7 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
                                                                         ↓
                                                     set_joint_position_target
 
-  1. 上层一拍（20 Hz）先组 **57 维帧**：`loco_command(3)` + `last_action(12)` +
+  1. 上层一拍（50 Hz）先组 **57 维帧**：`loco_command(3)` + `last_action(12)` +
      `base_ang_vel·0.25(3)` + `projected_gravity(3)` + `last_loco_action(12)` +
      `joint_pos−default(12)` + `joint_vel·0.05(12)`；`last_action` 取**上一拍** 12 维动作，
      `loco_command` 取**上一拍合成、这一拍仍在驱动底层**的那条指令（训练侧观测在 action
@@ -67,8 +67,8 @@ tow v → STOP 0），负载是仓库里那台被动小车，连接是三类（�
   4. **加 12 维残差**：`delta = clamp(action, ±1) ⊙ action_scale`，
      `held = 冻结目标 + delta`。**`held` 既下发、又作为 `JNT` 指标的参考量**，与训练侧
      `low_level_position_error_l2(reference="commanded")` 同口径。
-- 上层网络在训练侧是 **20 Hz**（`upper_control_dt = 0.05 s`），冻结策略是 50 Hz；
-  本脚本沿用该节拍：每 10 个物理步（50 ms）推理一次上层（与冻结策略的 4 步刷新**独立**，
+- 上层网络在训练侧是 **50 Hz**（`upper_control_dt = 0.02 s`），冻结策略是 50 Hz；
+  本脚本沿用该节拍：每 4 个物理步（20 ms）推理一次上层（与冻结策略的 4 步刷新同步，
   与训练侧 `process_actions`（env step 驱动）/ `apply_actions`（物理步驱动）同一结构），
   两次之间 12 维残差保持不变；冻结策略每 4 个物理步刷新一次并重算 `held`
   （同 `HierarchicalVelocityAction.apply_actions`）。`--upper-stochastic` 时用 actor 的分布
@@ -363,9 +363,9 @@ UPPER_TOWING_CONTRACT_EXPECTED = {
 UPPER_OFFSET_SCALE_MPS = 0.0
 UPPER_OFFSET_RANGE_MPS = (0.0, 0.0)
 UPPER_AMP_VX_RANGE_MPS = (-1.0, 1.0)     # 仅用于脚本 vx 的任务包络
-#: 上层控制周期（s）：训练侧 `HierarchicalVelocityActionCfg.upper_control_dt = 0.05`（20 Hz）。
+#: 上层控制周期（s）：训练侧 `HierarchicalVelocityActionCfg.upper_control_dt = 0.02`（50 Hz）。
 #: plan 行按它和 `--dt` 算出「每几个物理步推理一拍」；离线测试按 AST 交叉核对。
-UPPER_CONTROL_DT_S = 0.05
+UPPER_CONTROL_DT_S = 0.02
 
 DEFAULT_VELOCITIES = (0.5, 1.0)          # 2026-10-17 工作域上界 1.5 → 1.0（见 SPEED_RANGE）
 DEFAULT_CART_MASSES = (10.0, 15.0, 20.0, 25.0, 30.0)
@@ -2573,7 +2573,7 @@ def build_markdown_report(*, case_summaries, groups, conclusion, args_dict, thre
                 if args_dict.get("upper_checkpoint") is None else
                 f"**开启**（checkpoint `{args_dict['upper_checkpoint']}`；"
                 + ("随机采样" if args_dict.get("upper_stochastic") else "确定性均值")
-                + "；每 10 个物理步 = 50 ms 推理一次，两次之间残差不变；"
+                + "；每 4 个物理步 = 20 ms 推理一次，两次之间残差不变；"
                   "`held = 冻结目标 + clamp(actor,±1)⊙action_scale` 既是下发目标也是 JNT 参考）"),
              "",
              "## 任务口径（2026-10-19 收束，验收以此为准）", "",
@@ -2901,7 +2901,7 @@ def upper_policy_record(args) -> dict:
         "action_dim_expected": UPPER_ACTION_DIM,
         "cmd_action_dim": UPPER_CMD_ACTION_DIM,
         "joint_action_dim": UPPER_JOINT_ACTION_DIM,
-        # 节拍：训练侧 upper_control_dt（20 Hz）；实跑时按 `--dt` 换成物理步数
+        # 节拍：训练侧 upper_control_dt（50 Hz）；实跑时按 `--dt` 换成物理步数
         "control_dt_s": UPPER_CONTROL_DT_S,
         # v6 没有 vx 偏移头；保留旧字段并显式标 removed，避免旧分析脚本误读。
         "offset": {
@@ -2915,8 +2915,8 @@ def upper_policy_record(args) -> dict:
             "gate_after_s": None,
             "applied_before_frozen_policy": False,
         },
-        "note": "默认关（基线，残差恒 0）。开启后每 50 ms（训练侧 upper_control_dt = "
-                "0.05 s = 20 Hz；默认 --dt 5 ms 时即每 10 个物理步）推理一次上层，"
+        "note": "默认关（基线，残差恒 0）。开启后每 20 ms（训练侧 upper_control_dt = "
+                "0.02 s = 50 Hz；默认 --dt 5 ms 时即每 4 个物理步）推理一次上层，"
                 "两次之间 12 维关节残差保持不变；vx 完全由脚本/PD 给出（v6 已删除偏移头），"
                 "冻结策略输出关节目标后再加残差 ⇒ held，held 只在冻结策略刷新那一拍重算并下发"
                 "（同训练侧 apply_actions），既是下发目标也是 JNT 参考。加载前硬校验 "
@@ -3049,7 +3049,7 @@ def planned_grid_lines(args) -> list:
             f"loco_command 完全由脚本/PD 给出；"
             f"delta = clamp(action,±1)⊙action_scale（hip 0.125 / thigh·shank 0.25 rad）"
             f" ⇒ held = 冻结目标 + delta 既下发又作为 JNT 参考；"
-            f"训练节拍 20 Hz（每 "
+            f"训练节拍 50 Hz（每 "
             f"{max(1, int(round(UPPER_CONTROL_DT_S / args.dt)))} 物理步 = "
             f"{UPPER_CONTROL_DT_S:g} s = 训练侧 `upper_control_dt`）推理一次；"
             f"加载前硬校验 towing_contract：version=6 / frame_dim=57 / explicit_dim=5 / "
@@ -3427,9 +3427,9 @@ def main(args):
                 amp_vx_range_mps=list(UPPER_AMP_VX_RANGE_MPS),
                 gate_after_s=UPPER_GATE_AFTER_S, note="v6 removed vx offset head")
             write_json(output / "experiment.json", experiment)
-        # 上层推理节拍 = 训练侧 `upper_control_dt`（0.05 s = 10 个物理步）；两次之间偏移与残差
+        # 上层推理节拍 = 训练侧 `upper_control_dt`（0.02 s = 4 个物理步）；两次之间偏移与残差
         # 都保持不变，冻结策略每次刷新（每 `decimation` 步）都重算 held = 冻结目标 + 残差
-        # （同 apply_actions）。两者**独立**：上层 tick 可以落在两次冻结刷新之间。
+        # （同 apply_actions）。调度保持独立实现，但当前两者周期相同，上层更新先于同拍底层推理。
         upper_control_decimation = max(1, int(round(float(action_cfg.upper_control_dt) / dt)))
         if not math.isclose(upper_control_decimation * dt, float(action_cfg.upper_control_dt),
                             rel_tol=1e-6):
@@ -3937,9 +3937,9 @@ def main(args):
                     joint_targets = loco_joint_targets
             else:
                 # ---- 上层 v5 CE Net 接线（开关开）----
-                # 1) 上层一拍：训练侧 20 Hz（每 `upper_control_decimation` 个物理步），
-                #    **与冻结策略的 `decimation` 步刷新独立**（训练里 `process_actions` 由 env
-                #    step 驱动、`apply_actions` 由每个物理步驱动 ⇒ tick 会落在两次刷新之间）。
+                # 1) 上层一拍：训练侧 50 Hz（每 `upper_control_decimation` 个物理步），
+                #    **与冻结策略的 `decimation` 步刷新同频**（训练里 `process_actions` 由 env
+                #    step 驱动、`apply_actions` 由每个物理步驱动；同拍先更新上层再刷新底层）。
                 #    帧里的量全部按 `upper_mdp.policy_frame` 的口径取：`last_action` 由 runtime
                 #    自己持有（上一拍 clamp 后的 13 维动作）；`loco_command` 取**上一拍合成、
                 #    这一拍仍在驱动底层**的那条指令（训练侧观测在 action 之前算，同口径）；

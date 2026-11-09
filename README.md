@@ -1,6 +1,12 @@
 # Imgo2 项目说明与维护记录
 
+> 最后核对：2026-11-09（控制频率统一）。上层与冻结底层均按 50 Hz 更新，物理仿真 200 Hz；训练环境 decimation=4，回放默认周期 0.02 s。离线验证记录见 [50 Hz 更新](docs/towing/control_frequency_50hz_2026-11-09.md)。旧 20 Hz checkpoint 不代表新频率下的验证结果，须新建训练并验证。
+
 > 最后核对：**2026-11-09（地形追加 15°/20° 坡：80 列 × 20 行 = 1600 env）**。在原有 0–59 列之后追加 **15°（60–69）**、**20°（70–79）** 两个 10 列块，连接布局 4/4/2；`COLUMNS 60→80`、`GRID_SIZE 1200→1600`、`MAX_GRADE_DEG 10→20`。新 20° 剖面弧长 **10.385067 m** 超过波浪 10.116044 m ⇒ `episode_length_s=24.770133 s` / **496 步**。原有列号/语义不变；`train.py` 默认网格自动变 1600，训练命令需去掉 `--num_envs 1200` 或改 1600。**验证**：地形/测试台/契约相关 309 passed, 4 skipped；完整训练与实跑待训练机。
+
+> 最后核对：2026-10-29（远端同步至 `879d1c8`）。本地 `main` 已快进拉取 2 个提交，保留原有未提交文档。远端已修代码：训练 checkpoint 参数别名、v6 回放帮助与日志；本轮只验证 Git 同步，未运行代码测试或仿真，相关修复仍待运行验证。
+
+> 最后核对：2026-10-24（本地复审 `08ea251`）。已拉取 v6；删除的是 vx 偏移头，12 维关节残差仍保留。维数与动作缩放链路一致，未发现本次迁移的阻断错误。定向 unittest 222 项通过、11 项跳过；本机缺 torch/numpy，未验证推理/导出/仿真。`play.py` 帮助与日志仍使用旧接口说明，待修 TOW-V6-REVIEW-01，详见 [v6 复审](docs/maintenance/towing_v6_review_2026-10-24.md)。
 
 > 最后核对：**2026-10-24（v6：去掉 vx 偏移头，动作 12 维；必须重训）**。用户明确「去掉他」⇒ 动作从 13（1 维 vx 偏移 + 12 关节残差）改为 **12 维纯关节残差**；policy 帧 58→**57**、actor 79→**78**、critic 73→**72**、decoder frame 58→**57**，towing_contract 升 **v6**。`upper_mdp` / `upper_logic` / `upper_env_cfg` / `upper_policy_runtime` / `play_towing_test` / runner / decoder / wrapper 及测试已全部切到 v6。**旧 v5（58/13/79）checkpoint 与 v5 导出的 `policy.pt` 一律失效**：`imgo2_deploy/policy/imgo2/towing/policy.pt` 已移除，等 v6 重训后重新 `play.py --export`。当前没有可训练的 v6 checkpoint，必须从零新建 run（不能 resume `model_1300.pt`）。**验证**：本机已跑过 `pytest imgo2_rl/tests -q` ⇒ 740 passed, 4 skipped；用户要求后续先重训、暂停全量测试。
 
@@ -682,6 +688,8 @@ bash build.sh --cmake
 
 | ID | 优先级 | 状态 | 问题与依据 | 完成标准 |
 |---|---|---|---|---|
+| TOW-FREQ-50 | P2 | 已修，待仿真验证 | 上层/底层控制统一至 50 Hz；训练与回放默认周期同步至 0.02 s。见 [记录](docs/towing/control_frequency_50hz_2026-11-09.md)。 | 用新运行训练并验证历史编码、启停冲击和累计奖励；旧 20 Hz 权重不得作为 50 Hz 实验结果。 |
+| TOW-V6-REVIEW-01 | P2 | 已修，待验证 | 历史问题：v6 的 `play.py` 导出帮助仍称 58→13，动作日志将首个关节残差标为 vx 偏移。2026-10-29 已拉取远端修复 `879d1c8`，本轮未运行验证。见 [v6 复审](docs/maintenance/towing_v6_review_2026-10-24.md)。 | 在可用 torch/Isaac 环境验证导出与回放输出，确认 57→12 及关节残差标签正确。 |
 | TOW-ROLL-01 | P1 | **已修，待动态验证** | 新增平滑起伏高度场、训练任务、测试台选择和二维离面高度；离线几何/接缝/网格/CLI检查通过，torch等价测试跳过；见 [记录](docs/towing/towing_rolling_terrain_2026-10-12.md) | 缺训练机torch/Isaac Lab：先张量等价和40环境短冒烟，核对mesh/出生/接触/过顶过谷/timeout，再做同起伏地形策略与冻结基线配对；不预设长下坡不可解 |
 | TOW-BUMP-01 | P1 | **已修，待动态验证** | 2026-10-16 把减速带**拼进原网格**（用户口径：追加 10 列、照 5° 坡块同构）：列 40–49 地形完全相同＝一条 **300/100/50 mm 等腰梯形凸条**（侧坡 26.565°、居中 x=5.625 m、单条/lane、横向 ±2 m 满高外缘 1 m 收零），`slope_degrees` 报真实梯形侧坡；与波浪块一起使网格变成 60 列 × 20 行 = 1200 环境。离线 619 passed / 4 skipped；见 [混合地形记录](docs/towing/towing_mixed_terrain_2026-10-16.md) | 缺训练机 Isaac Lab：梯形两条竖直棱与 5 cm 台阶的碰撞几何、60 环境短冒烟（出生首拍、足端/车轮过凸条接触、`max_episode_length` 读回 **485**）、1200 环境冻结基线一轮；hill/rolling 各自同参数两轮才可配对。不预设策略或基线在减速带上的表现 |
 | TOW-WAVE-01 | P1 | **已修，待动态验证** | 2026-10-16 新增**波浪块**（列 50–59，用户口径「和上下坡占据同样的位置，最后用一个平地收尾」+「振幅大概 10 cm」）：**3 周期等幅正弦**（周期 2.25 m、振幅 ±10 cm、最大侧坡 15.603°，占 2.25–9.0 m 同一窗口，两端各半个周期 `cos²` 包络平滑归零 ⇒ 9.0 m 后平地收尾）；新增 `mdp/wave_geometry.py` + `mdp/wave_torch.py`，`mixed_geometry` 按列分派四类 tile 并取三族弧长上界最大者（**10.116044 m** ⇒ timeout 24.232088 s / **485 步**）、`robot_fall` 三层掩码分派、测试台三族高度/俯仰与波浪分段（用解析坡度定上/下坡）。离线 619 passed / 4 skipped；见 [混合地形记录](docs/towing/towing_mixed_terrain_2026-10-16.md) | 缺训练机 Isaac Lab：波浪网格导入/碰撞（纵向 0.1 m、横向收零段 0.2 m 采样）、60 环境短冒烟（过波时的周期性载荷与足端接触、`max_episode_length` 读回 **485**）、1200 环境冻结基线一轮；与减速带/平坡列同轮对照读数。不预设策略在波浪上的表现 |
@@ -823,6 +831,9 @@ checkpoint / 日志 / 视频 / 导出目录：
 
 | 日期 | 变更 | 验证与限制 |
 |---|---|---|
+| 2026-11-09（50 Hz） | 合并远端 9e6e6e4 并保留本地 README 记录；上层/底层统一为 50 Hz，回放同步。 | 代码及定向离线测试结果见 [记录](docs/towing/control_frequency_50hz_2026-11-09.md)；无 Isaac 仿真、无新模型训练。 |
+| 2026-10-29（远端同步） | `main` 从 `08ea251` 快进至 `879d1c8`，拉取 `65d974d`（训练 checkpoint 参数别名）与 `879d1c8`（v6 回放日志/帮助修复）；保留原有 README 与未跟踪复审记录。 | Git 快进成功；本轮未执行代码测试、导出或仿真。已修代码待运行验证，TOW-V6-REVIEW-01 保留待验证状态。 |
+| 2026-10-24（本地 v6 复审） | main 快进至 `08ea251`；核对删除 vx 偏移头后的 57/78/72/12 维契约、残差缩放、旧权重拒绝与导出链路。无新增代码修复，发现日志遗漏 TOW-V6-REVIEW-01。 | 定向 unittest 233 项中 222 通过、11 跳过；全量尝试 689 项、8 errors、88 skipped（依赖/编码/测试守卫限制），不宣称全量通过。无新 v6 checkpoint 或 policy.pt，推理/导出/仿真待验证。见 [复审记录](docs/maintenance/towing_v6_review_2026-10-24.md)。 |
 | 2026-10-18（**towing 质量上限 20 → 30 kg**） | 用户要求「整体质量最高 30 kg」⇒ `upper_env_cfg.reset_work_condition.mass_range=(5.0, 30.0)`；测试台 `TRAINING_MASS_RANGE_KG=(5.0, 30.0)`、默认档 **10/15/20/25/30 kg**（5 kg 仍训练采样，默认评测不覆盖；5 档保持连接/坡度×质量均衡）；`scan_towing_boundary` 默认质量档 10/15/20/25/30；`episode_geometry` 的 timeout 不受质量影响（仍 24.232088 s / 485 步）。**注意**：30 kg 上限档的动力学、停车间隙与 `towing_force_rate` 阈值未标定（TOW-CAL-01）；运行中的旧 run 不会自动生效。 | **验证**：`pytest imgo2_rl/tests -q` ⇒ **684 passed, 4 skipped, 1336 subtests passed**；`py_compile`/`git diff --check` 通过。**未验证**：30 kg 档实跑。**生效条件**：重启训练。详见 [工作域记录](docs/towing/towing_work_domain_2026-10-10.md)、TOW-17 / TOW-CAL-01 |
 | 2026-10-18（**towing 训练入口支持 PPO@2500 冻结低层**） | 用户要求「用 ppo 2500 模型启动一次训练」⇒ 训练侧原先在 `upper_env_cfg` 硬编码 `policy_name="amp"`，无法切换。新增 `train.py --policy amp\|ppo` 与 `--policy_checkpoint`（只接受 `play.py` 导出的 TorchScript）；`upper_mdp` 用 `with_model_path` 只换权重、契约仍按 `policy_name`；启动打印 `[towing] frozen low-level: ...`；只传 `--policy=ppo` 不给 checkpoint 会 WARNING 并退回部署目录的旧参考权重。命令（含 2500 导出与拷贝步骤）写进 README 训练节。 | **验证**：`pytest imgo2_rl/tests -q` ⇒ **684 passed, 4 skipped, 1336 subtests passed**；`train.py --help` 含两参数；`with_model_path` 对 2500 导出件契约 OK（45 维、`(-1.5,3.0)`）；`py_compile`。**未验证**：本机无 GPU/Isaac Lab，实跑待训练机；首轮冒烟先确认启动行是 `ppo -> .../ppo_2500/policy.pt`。详见 README 训练节、TOW-LOW-02 |
 | 2026-10-18（**towing P3 文字漂移清理 + 部署目录警示**） | 用户「3 操作一下，其他不重要」⇒ 按 10-17 审计 §3 逐条改：Δz 0.17→0.22、`min_clearance` 阈值 0.3166–1.1622 m、杆行 Δz* 0.2568/0.2950 m、包络注释 6 处改「任务包络 (−1.0,1.0) / 必须落在低层训练包络内」、`towing_reward_weights` 的出生间距/func/阈值表、`towing_reward_retune` §2.4/§2.5 的新几何数字、`play_towing_test` 速度域 0.5–1.0、`tow_drag` 旧 b=0.016 示例、`upper_env_cfg` v5 docstring；部署目录加 README（旧 checkpoint 不可部署，文件保留）。同时把「停车段天然生效」改成「长绳行会、最短绳行约 3.4 mm 待实测」。 | **验证**：`pytest imgo2_rl/tests -q` ⇒ **683 passed, 4 skipped, 1336 subtests passed**；`py_compile` 改动文件；grep 旧值无命中。**未验证**：P2 四项仍需训练机。详见 [审计记录 §5](docs/towing/towing_cart_audit_2026-10-17.md)、TOW-DOCS-01 |

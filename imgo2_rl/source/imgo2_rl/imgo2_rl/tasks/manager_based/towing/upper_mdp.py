@@ -21,7 +21,7 @@
 
 **两头不独立（动作空间存在别名/冗余）**：上层同时影响底层输入与输出，同一个关节目标变化
 既可由偏移（改变步态）也可由残差（改变关节角）达成 ⇒ credit assignment 更难、两头可能互相打架。
-缓解：偏移是"步态级"旋钮（秒级、建议低通/限速率），残差是"单步级"（20 Hz）；必要时只在特定相位
+缓解：偏移是"步态级"旋钮（秒级、建议低通/限速率），残差是"单步级"（50 Hz）；必要时只在特定相位
 放开偏移。当前默认两条脚本开关全关，偏移在 `elapsed >= tow_start_s` 后全程可用。
 
 观测／奖励函数对特权数据的取舍是刻意显式的。本文件是**目标函数与动作适配器**的唯一定义处；
@@ -140,7 +140,7 @@ class HierarchicalVelocityAction(ActionTerm):
         self.towing_force_b = torch.zeros(env.num_envs, 3, device=env.device)
         # 【拉力变化率惩罚的状态（2026-10-10，TOW-25；物理理由见 `towing_force_rate_penalty`）】
         # `prev_force_mag` = **上一个控制步**结束时的 ‖F‖（N）。只在 `process_actions`
-        # 每个控制步（20 Hz）更新一次，**不在 200 Hz 物理子步里**——20 Hz 有限差分与
+        # 每个控制步（50 Hz）更新一次，**不在 200 Hz 物理子步里**——50 Hz 有限差分与
         # 奖励/动作同节拍，才有确定的「上一拍」。
         self.prev_force_mag = torch.zeros(env.num_envs, device=env.device)
         #: 本拍的「上一拍」样本是否真实存在：刚 `reset` 后的第一拍没有上一拍 ⇒ `False`
@@ -152,7 +152,7 @@ class HierarchicalVelocityAction(ActionTerm):
         self._force_rate_tick_seen = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         #: **200 Hz 诊断**：本控制步内物理子步的 max |Δ‖F‖| / dt_phys（N/s）。
         #: 每物理子步取最大、由 `obs_force_rate_max` **读后清零** ⇒ 每控制步一个值。
-        #: 存在的理由：20 Hz 的有限差分看不到 5 ms 级的冲量尖峰（见 `obs_force_rate_max`）。
+        #: 存在的理由：50 Hz 的有限差分看不到 5 ms 级的冲量尖峰（见 `obs_force_rate_max`）。
         self.force_rate_max = torch.zeros(env.num_envs, device=env.device)
         self._phys_prev_force_mag = torch.zeros(env.num_envs, device=env.device)
         self.cart_collision = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -361,7 +361,7 @@ class HierarchicalVelocityAction(ActionTerm):
         return self._processed
 
     def process_actions(self, actions):
-        """每上层控制步（50 ms）更新一次：脚本速度指令 + 12 维关节残差。
+        """每上层控制步（20 ms）更新一次：脚本速度指令 + 12 维关节残差。
 
         动作 ``u = u_joint(12)``（2026-10-24 去掉 1 维 vx 偏移头）。相位
         （2026-10-09 恢复三段制，用户要求）：
@@ -587,7 +587,7 @@ class HierarchicalVelocityAction(ActionTerm):
             body_ids=[self._cart_body_id])
         self.towing_force_b[:] = force_robot_b[:, 0, :3]
         # 200 Hz 诊断（TOW-25）：物理子步内的 max |Δ‖F‖| / dt_phys。
-        # 只在这里累加、由 `obs_force_rate_max` 读后清零；**不参与** 20 Hz 的 rate 惩罚。
+        # 只在这里累加、由 `obs_force_rate_max` 读后清零；**不参与** 50 Hz 的 rate 惩罚。
         force_mag = torch.linalg.vector_norm(self.towing_force_b, dim=1)
         self.force_rate_max.copy_(torch.maximum(
             self.force_rate_max,
@@ -653,7 +653,7 @@ class HierarchicalVelocityActionCfg(ActionTermCfg):
     #: 冻结低层权重覆盖（`play.py` 导出的 TorchScript `policy.pt`）；空串 = 用
     #: `policy_name` 对应部署目录里的默认权重。训练入口 `--policy-checkpoint` 写这里。
     policy_checkpoint: str = ""
-    upper_control_dt: float = 0.05
+    upper_control_dt: float = 0.02
     low_level_control_dt: float = 0.02
     physics_dt: float = 0.005
     initial_tow_speed: float = 0.5
@@ -1106,7 +1106,7 @@ def min_clearance_violation(env, deadband_m, softness=0.02):
     **但最短绳行 L=0.5 的停车间隙 ≈0.32 m 与阈值 0.3166 m 只差约 3.4 mm**，是否触发取决于
     实测间隙与解析值的几毫米差 ⇒ **不能写「天然生效」**，必须按 TOW-CAL-01 #1 在训练机读
     `Episode_Reward/min_clearance`。**备选（若最短行实测不触发）**：在 `process_actions`
-    （20 Hz）里记录停车那一拍的 `gap_at_stop`，把阈值改成 `gap_at_stop − deadband_m`。
+    （50 Hz）里记录停车那一拍的 `gap_at_stop`，把阈值改成 `gap_at_stop − deadband_m`。
     本机无 Isaac Lab，实测未做。
 
     **权重的标定依据**：`RewardManager` 每步代价 = `weight × func × step_dt`（`step_dt = 0.05 s`）
@@ -1343,7 +1343,7 @@ def towing_force_rate_penalty(env, rate_limit_n_per_s=200.0, release_limit_n_per
     公式（`mag = ‖towing_force_b‖`，与 `obs_towing_force` 同量纲 N；`dt = env.step_dt`）
     ------------------------------------------------------------------
     ```
-    rate    = (mag_t − mag_{t−1}) / dt                        # N/s，20 Hz 有限差分
+    rate    = (mag_t − mag_{t−1}) / dt                        # N/s，50 Hz 有限差分
     up      = relu(rate − rate_limit_n_per_s) / rate_limit_n_per_s
     slack   = mag_t < slack_eps_n                             # 卸载到 ≈0：绳松弛 / 杆卸载
     down    = relu(−rate − release_limit_n_per_s) / release_limit_n_per_s * (1 − slack)
@@ -1369,7 +1369,7 @@ def towing_force_rate_penalty(env, rate_limit_n_per_s=200.0, release_limit_n_per
     ------------------------------------------------------------------
     `mag_{t−1}` 缓存在动作项 `HierarchicalVelocityAction.prev_force_mag` 上，**只在
     `process_actions`（每个控制步一次，与 `_previous/_processed` 同一处）更新**，
-    不在 200 Hz 物理子步里更新——奖励与动作同节拍（20 Hz）才有唯一的「上一拍」。
+    不在 200 Hz 物理子步里更新——奖励与动作同节拍（50 Hz）才有唯一的「上一拍」。
     `reset()` 清 `prev_force_mag` / `force_rate_has_prev` / `_force_rate_tick_seen`
     ⇒ **每回合第一拍的 rate 精确为 0**（那一拍没有上一拍样本，`torch.where` 把它置 0），
     与仓库其它项「spawn 精确为 0」的纪律一致：出生那一拍不会因为"从 0 到出生力"被误罚。
@@ -1377,12 +1377,12 @@ def towing_force_rate_penalty(env, rate_limit_n_per_s=200.0, release_limit_n_per
     20 个控制步），真正的起步绷直发生在第几十拍、早过了首拍门。
 
     ------------------------------------------------------------------
-    ⚠ 已知限制（写进文档，不当缺陷）：20 Hz 采样看不到 5 ms 级的冲量尖峰
+    ⚠ 已知限制（写进文档，不当缺陷）：50 Hz 采样看不到 5 ms 级的冲量尖峰
     ------------------------------------------------------------------
     控制步长 `step_dt = 0.05 s`，而物理步长只有 5 ms：**一次在一个控制步内完成
-    "猛拽→回弹"的冲量在 20 Hz 的 `mag_t` 上可能与"缓慢加载到同一水平"完全一样**，
+    "猛拽→回弹"的冲量在 50 Hz 的 `mag_t` 上可能与"缓慢加载到同一水平"完全一样**，
     本项对它没有梯度。这就是诊断项 `obs_force_rate_max`（200 Hz 子步的
-    `max |Δmag| / dt_phys`）存在的理由：它用来量化"被 20 Hz 采样漏掉了多少"。
+    `max |Δmag| / dt_phys`）存在的理由：它用来量化"被 50 Hz 采样漏掉了多少"。
 
     ⚠ **符号约定（以源码为准）**：`towing_force_b` 是**作用在机器人挂点上的力**（base 机体系），
     `mag` 是它的**模长**，因此只对两套绳成立"力恒为拉力"。`RigidLink` 的
@@ -1468,11 +1468,11 @@ def towing_force_norm_active(env):
 def obs_force_rate_max(env):
     """**诊断**：200 Hz 物理子步内的 `max |Δ‖F‖| / dt_phys`（N/s）；每控制步取最大、**读后清零**。
 
-    存在的理由（TOW-25）：`towing_force_rate_penalty` 的 rate 是 **20 Hz** 的有限差分
+    存在的理由（TOW-25）：`towing_force_rate_penalty` 的 rate 是 **50 Hz** 的有限差分
     （`step_dt = 0.05 s`），而物理步长只有 **5 ms**——**一次在一个控制步内完成的
-    "猛拽→回弹"冲量在 20 Hz 采样上可能与"缓慢加载到同一水平"完全一样**，惩罚项对它
+    "猛拽→回弹"冲量在 50 Hz 采样上可能与"缓慢加载到同一水平"完全一样**，惩罚项对它
     没有梯度。本诊断量用 200 Hz 的 `|Δmag| / dt_phys` 给出同一段过程里**最大的那一跳**，
-    用来量化"被 20 Hz 采样漏掉了多少"：若它在 TensorBoard 上远大于 `up` 的
+    用来量化"被 50 Hz 采样漏掉了多少"：若它在 TensorBoard 上远大于 `up` 的
     `rate_limit_n_per_s`（200 N/s），说明真实冲量主要发生在子步尺度、只能靠提高
     控制频率（或改物理侧限速）解决，而不是继续加这个奖励的权重。
 

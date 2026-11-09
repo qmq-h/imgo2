@@ -1601,12 +1601,14 @@ class UpperLogicTests(unittest.TestCase):
         self.assertIn("hidden_state[..., done_mask, :] = 0.0", recurrent)
         self.assertIn("if self.hidden_states is None or dones is None", recurrent)
 
-    def test_hierarchical_frequency_contract_is_200_50_20_hz(self):
+    def test_hierarchical_frequency_contract_is_200_50_50_hz(self):
         env_cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
         mdp = (PKG / "upper_mdp.py").read_text("utf-8")
         policy_cfg = (PKG / "utils/policy_cfg.py").read_text("utf-8")
         self.assertIn("self.sim.dt = 0.005", env_cfg)
-        self.assertIn("self.decimation = 10", env_cfg)
+        self.assertIn("self.decimation = 4", env_cfg)
+        self.assertIn("upper_control_dt=0.02", env_cfg)
+        self.assertIn("upper_control_dt: float = 0.02", mdp)
         self.assertIn("low_level_control_dt=0.02", env_cfg)
         self.assertIn("control_dt=0.02", policy_cfg)
         self.assertIn("cfg.physics_dt - env.physics_dt", mdp)

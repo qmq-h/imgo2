@@ -2477,7 +2477,7 @@ class UpperV6WiringTests(unittest.TestCase):
         self.assertEqual(off["action_dim_expected"], 12)
         self.assertEqual(off["cmd_action_dim"], 0)
         self.assertEqual(off["joint_action_dim"], 12)
-        self.assertEqual(off["control_dt_s"], 0.05)
+        self.assertEqual(off["control_dt_s"], 0.02)
         self.assertTrue(off["offset"]["removed"])
         self.assertFalse(off["offset"]["bounded"])
         self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.0)
