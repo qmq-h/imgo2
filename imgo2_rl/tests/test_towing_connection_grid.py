@@ -40,16 +40,15 @@ rope_model = load("towing_rope_model_grid_test", MDP / "rope_model.py")
 
 class GridShapeTests(unittest.TestCase):
     def test_dimensions_and_row_lengths(self):
-        self.assertEqual((grid.COLUMNS, grid.ROWS, grid.GRID_SIZE), (80, 20, 1600))
-        # 七个块：平地 20 + 5/10/15/20° 各 10 + 减速带 10 + 波浪 10
+        self.assertEqual((grid.COLUMNS, grid.ROWS, grid.GRID_SIZE), (70, 20, 1400))
+        # 六个块：平地 20 + 5/10/15° 各 10 + 减速带 10 + 波浪 10
         self.assertEqual((grid.FLAT_COLUMNS, grid.FIVE_DEGREE_COLUMNS,
                           grid.TEN_DEGREE_COLUMNS, grid.FIFTEEN_DEGREE_COLUMNS,
-                          grid.TWENTY_DEGREE_COLUMNS, grid.SPEEDBUMP_COLUMNS,
-                          grid.WAVE_COLUMNS), (20, 10, 10, 10, 10, 10, 10))
+                          grid.SPEEDBUMP_COLUMNS, grid.WAVE_COLUMNS),
+                         (20, 10, 10, 10, 10, 10))
         self.assertEqual((grid.FIVE_DEGREE_START_COLUMN, grid.TEN_DEGREE_START_COLUMN,
                           grid.SPEEDBUMP_START_COLUMN, grid.WAVE_START_COLUMN,
-                          grid.FIFTEEN_DEGREE_START_COLUMN,
-                          grid.TWENTY_DEGREE_START_COLUMN), (20, 30, 40, 50, 60, 70))
+                          grid.FIFTEEN_DEGREE_START_COLUMN), (20, 30, 40, 50, 60))
         # 2026-10-09：绳与杆各有长度区间（绳 0.5–1.5、杆 0.5–1.0），20 档等距含两端
         for model, low, high in (("compliant", grid.ROPE_LENGTH_MIN_M, grid.ROPE_LENGTH_MAX_M),
                                  ("inextensible", grid.ROPE_LENGTH_MIN_M, grid.ROPE_LENGTH_MAX_M),
@@ -77,7 +76,7 @@ class GridShapeTests(unittest.TestCase):
         self.assertEqual(names.count("rigid"), grid.RIGID_COLUMNS)
         self.assertEqual(names.count("inextensible"), grid.INEXTENSIBLE_COLUMNS)
         self.assertEqual((grid.ELASTIC_COLUMNS, grid.RIGID_COLUMNS,
-                          grid.INEXTENSIBLE_COLUMNS), (32, 32, 16))
+                          grid.INEXTENSIBLE_COLUMNS), (28, 28, 14))
         # 平地块：弹性（0-7，每档 2 列）→ 刚体（8-15）→ 低弹性绳（16-19）
         self.assertEqual(names[:8], ["compliant"] * 8)
         self.assertEqual(names[8:16], ["rigid"] * 8)
@@ -86,7 +85,7 @@ class GridShapeTests(unittest.TestCase):
         expected_block = (["compliant"] * 4 + ["rigid"] * 4 + ["inextensible"] * 2)
         for start in (grid.FIVE_DEGREE_START_COLUMN, grid.TEN_DEGREE_START_COLUMN,
                       grid.SPEEDBUMP_START_COLUMN, grid.WAVE_START_COLUMN,
-                      grid.FIFTEEN_DEGREE_START_COLUMN, grid.TWENTY_DEGREE_START_COLUMN):
+                      grid.FIFTEEN_DEGREE_START_COLUMN):
             self.assertEqual(names[start:start + 10], expected_block)
 
     def test_terrain_family_and_slope_degrees(self):
@@ -94,7 +93,7 @@ class GridShapeTests(unittest.TestCase):
         self.assertEqual([grid.terrain_family(column) for column in range(0, 20)],
                          [grid.SMOOTH_TERRAIN] * 20)
         for start in (grid.FIVE_DEGREE_START_COLUMN, grid.TEN_DEGREE_START_COLUMN,
-                      grid.FIFTEEN_DEGREE_START_COLUMN, grid.TWENTY_DEGREE_START_COLUMN):
+                      grid.FIFTEEN_DEGREE_START_COLUMN):
             self.assertEqual([grid.terrain_family(column) for column in range(start, start + 10)],
                              [grid.SMOOTH_TERRAIN] * 10)
         self.assertEqual([grid.terrain_family(column)
@@ -124,10 +123,8 @@ class GridShapeTests(unittest.TestCase):
             self.assertEqual(grid.slope_degrees(column, 0), grid.SPEEDBUMP_RAMP_DEG)
         for column in range(grid.WAVE_START_COLUMN, grid.FIFTEEN_DEGREE_START_COLUMN):
             self.assertEqual(grid.slope_degrees(column, 0), grid.WAVE_MAX_SLOPE_DEG)
-        for column in range(grid.FIFTEEN_DEGREE_START_COLUMN, grid.TWENTY_DEGREE_START_COLUMN):
+        for column in range(grid.FIFTEEN_DEGREE_START_COLUMN, grid.COLUMNS):
             self.assertEqual(grid.slope_degrees(column, 0), 15.0)
-        for column in range(grid.TWENTY_DEGREE_START_COLUMN, grid.COLUMNS):
-            self.assertEqual(grid.slope_degrees(column, 0), 20.0)
         # 波浪参数与派生坡度自洽（3 周期铺满 6.75 m 窗口；坡度 = atan(2πA/λ)）
         self.assertEqual((grid.WAVE_PERIOD_COUNT, grid.WAVE_PERIOD_M, grid.WAVE_PEAK_M),
                          (3, 2.25, 0.10))
@@ -243,7 +240,7 @@ class GridIndexTests(unittest.TestCase):
         self.assertTrue(grid.is_full_grid(2 * grid.GRID_SIZE))
         self.assertFalse(grid.is_full_grid(4))          # 冒烟规模只覆盖前缀
         self.assertFalse(grid.is_full_grid(0))
-        # 超出网格时取模：1600 环境 = 两份相同网格
+        # 超出网格时取模：1400 环境 = 两份相同网格
         wrapped = grid.env_spec(grid.GRID_SIZE)
         self.assertEqual(wrapped["grid_index"], grid.env_spec(0)["grid_index"])
         self.assertEqual(wrapped["model_name"], grid.env_spec(0)["model_name"])

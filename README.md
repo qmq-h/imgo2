@@ -1,8 +1,10 @@
 # Imgo2 项目说明与维护记录
 
-> 最后核对：2026-11-09（控制频率统一）。上层与冻结底层均按 50 Hz 更新，物理仿真 200 Hz；训练环境 decimation=4，回放默认周期 0.02 s。离线验证记录见 [50 Hz 更新](docs/towing/control_frequency_50hz_2026-11-09.md)。旧 20 Hz checkpoint 不代表新频率下的验证结果，须新建训练并验证。
+> 最后核对：**2026-11-09（底层老 PPO 全列结论：15° 无载能爬但速度不稳，带载 15° 29 次翻车；10° 25/30 kg 停滞）**。用部署侧老 PPO `53a57f90…`（45→12 TorchScript）、上层关闭，跑 0 kg 无载 + 5/10/15/20/25/30 kg 两轮 1600 env（80 列，当时含 20°）。0 kg：旧口径 826/1600 OK；平地 400/400、减速带 200/200、10° 26/200、15° 0/200（能爬但全部 SPD）、20° 0/200（0.5 停滞，1.0 100 次 FALL）。5–30 kg：任务 0/1600（JNT 0/1600）；速度 63/802、横向 790/802、不翻车 790/802；FALL 37（15° 29 + 波浪 8），30 kg 仅 4 次波浪 FALL。**10° 的瓶颈是牵引力**：稳态速度比 5 kg 0.70 → 20 kg 0.27 → 25/30 kg ≈0（停滞，不翻车）。20° 已按后续要求删除；详细见 [底层老 PPO 结论](docs/towing/towing_lowlevel_ppo_eval_2026-11-09.md)。
 
-> 最后核对：**2026-11-09（地形追加 15°/20° 坡：80 列 × 20 行 = 1600 env）**。在原有 0–59 列之后追加 **15°（60–69）**、**20°（70–79）** 两个 10 列块，连接布局 4/4/2；`COLUMNS 60→80`、`GRID_SIZE 1200→1600`、`MAX_GRADE_DEG 10→20`。新 20° 剖面弧长 **10.385067 m** 超过波浪 10.116044 m ⇒ `episode_length_s=24.770133 s` / **496 步**。原有列号/语义不变；`train.py` 默认网格自动变 1600，训练命令需去掉 `--num_envs 1200` 或改 1600。**验证**：地形/测试台/契约相关 309 passed, 4 skipped；完整训练与实跑待训练机。
+> 最后核对：**2026-11-09（地形收束到 15°：70 列 × 20 行 = 1400 env）**。在原有 0–59 列之后只追加 **15°（60–69）** 一个 10 列块，20° 已按用户要求删除；连接布局 4/4/2；`COLUMNS 60→70`、`GRID_SIZE 1200→1400`、`MAX_GRADE_DEG 10→15`。15° 剖面弧长 **10.211657 m** 超过波浪 10.116044 m ⇒ `episode_length_s=24.423314 s` / **1222 步（当前 50 Hz；历史 20 Hz 为 489 步）**。原有列号/语义不变；`train.py` 默认网格自动变 1400，训练命令需用 1400。**验证**：地形/测试台/契约相关 309 passed, 4 skipped；完整训练与实跑待训练机。
+
+> 最后核对：2026-11-09（控制频率统一）。上层与冻结底层均按 50 Hz 更新，物理仿真 200 Hz；训练环境 decimation=4，回放默认周期 0.02 s。离线验证记录见 [50 Hz 更新](docs/towing/control_frequency_50hz_2026-11-09.md)。旧 20 Hz checkpoint 不代表新频率下的验证结果，须新建训练并验证。
 
 > 最后核对：2026-10-29（远端同步至 `879d1c8`）。本地 `main` 已快进拉取 2 个提交，保留原有未提交文档。远端已修代码：训练 checkpoint 参数别名、v6 回放帮助与日志；本轮只验证 Git 同步，未运行代码测试或仿真，相关修复仍待运行验证。
 
@@ -287,19 +289,19 @@ python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-height-play --n
 
 ```bash
 cd /root/Desktop/Imgo2
-# 看场景：80 环境 = 网格第 0 行（列 0–19 平地、20–29 5°、30–39 10°、40–49 减速带、50–59 波浪、60–69 15°、70–79 20°）
+# 看场景：70 环境 = 网格第 0 行（列 0–19 平地、20–29 5°、30–39 10°、40–49 减速带、50–59 波浪、60–69 15°）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
-    --num_envs 80 --max_iterations 2 --compact-log --run_name scene-look
+    --num_envs 70 --max_iterations 2 --compact-log --run_name scene-look
 
-# 正式训练：默认 1600 环境（80 列 × 20 行，含 5/10/15/20° 坡、减速带、波浪；长度绳 0.5→1.5 / 杆 0.5→1.0 m），3000 轮 × 48 步/轮
+# 正式训练：默认 1400 环境（70 列 × 20 行，含 5/10/15° 坡、减速带、波浪；长度绳 0.5→1.5 / 杆 0.5→1.0 m），3000 轮 × 48 步/轮
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point --headless --compact-log
 ```
 
-默认网格自 2026-11-09 起是**混合地形**：20 平列 + 10 个 5°/10°/15°/20° + **10 列减速带
+默认网格自 2026-11-09 起是**混合地形**：20 平列 + 10 个 5°/10°/15° + **10 列减速带
 （40–49，300/100/50 mm 梯形凸条）+ 10 列波浪（50–59，3 周期正弦、振幅 10 cm）**
-= **80 列 × 20 行 = 1600 环境**（最长 20° 弧长 10.385067 m ⇒ timeout 24.770133 s / 496 步），见
+= **70 列 × 20 行 = 1400 环境**（最长 15° 弧长 10.211657 m ⇒ timeout 24.423314 s / 489 步），见
 [混合地形记录](docs/towing/towing_mixed_terrain_2026-10-16.md)。**训练侧质量随机范围自
 2026-10-18 起是 5–30 kg**（`reset_work_condition.mass_range`）；测试台默认档
 **10/15/20/25/30 kg**（5 kg 仍训练采样，默认评测不覆盖；5 档保持连接/坡度×质量均衡）。另一个任务
@@ -348,7 +350,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --policy_checkpoint=logs/towing_rl_lab/policies/ppo_2500/policy.pt \
     --run_name=smoke_ppo2500
 
-# 3) 正式训练：默认 1600 环境、3000 轮 × 48 步/轮
+# 3) 正式训练：默认 1400 环境、3000 轮 × 48 步/轮
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
     --headless --compact-log \
@@ -376,14 +378,14 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/play.py \
 
 ```bash
 python3 imgo2_rl/scripts/towing/play_towing_test.py --dry-run      # 只打印网格与代价，不启动仿真
-# 完整训练网格（1600 环境 = 80 列 × 20 行，一次仿真跑完）
+# 完整训练网格（1400 环境 = 70 列 × 20 行，一次仿真跑完）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py --headless
-# 冒烟（网格前缀）：80 环境 = 整行，三种连接 + 5/10/15/20° + 减速带 + 波浪都在
+# 冒烟（网格前缀）：70 环境 = 整行，三种连接 + 5/10/15° + 减速带 + 波浪都在
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
     --headless --num-envs 60 --tow-duration 2 --coast-duration 2 --write-csv none
 ```
 
-场景 = **训练场景** `UpperTowingSceneCfg`（80 列 × 20 行 = 1600 条 lane，其中 40–49 减速带、50–59 波浪、60–69 15°、70–79 20°），逐 env 的连接类型/长度/坡度量级取 `connection_grid.env_spec(i)`，**只扫速度 × 质量**（确定性轮转 `slot = row + column`：15 个组合各 105–108 个 env，且「连接 × 质量」「坡度量级 × 质量」严格均衡）；地面摩擦固定 `0.8`、轮轴阻尼 `0.032`（训练名义值）；横向/朝向用 PD 压在 lane 中线并保持超前（**vx 只给指令、不参与 PD**）；旧的「`gravity` / `terrain` 两种坡度后端」与 `--connections/--slopes/--slope-backend` 等开关已删除实现（与真实坡面同解），`--slope-backend terrain` 则用远端 2026-10-09 的真实坡面 tile（与训练场景同源，每坡度需 ≤100 case）。要对照「Fixed Ramp」基线加 `--command-shaping ramp`；要在坡上跑无制动真实溜坡用 `--slope-settle free`。产物是 `report.md`（逐坡度判定矩阵 + 结论）、`report.csv`、`report.json` 与逐 case 摘要，口径、阈值与限制见 [记录](docs/towing/towing_necessity_test_2026-10-09.md)。
+场景 = **训练场景** `UpperTowingSceneCfg`（70 列 × 20 行 = 1400 条 lane，其中 40–49 减速带、50–59 波浪、60–69 15°），逐 env 的连接类型/长度/坡度量级取 `connection_grid.env_spec(i)`，**只扫速度 × 质量**（确定性轮转 `slot = row + column`：15 个组合各 93–98 个 env，且「连接 × 质量」「坡度量级 × 质量」严格均衡）；地面摩擦固定 `0.8`、轮轴阻尼 `0.032`（训练名义值）；横向/朝向用 PD 压在 lane 中线并保持超前（**vx 只给指令、不参与 PD**）；旧的「`gravity` / `terrain` 两种坡度后端」与 `--connections/--slopes/--slope-backend` 等开关已删除实现（与真实坡面同解），`--slope-backend terrain` 则用远端 2026-10-09 的真实坡面 tile（与训练场景同源，每坡度需 ≤100 case）。要对照「Fixed Ramp」基线加 `--command-shaping ramp`；要在坡上跑无制动真实溜坡用 `--slope-settle free`。产物是 `report.md`（逐坡度判定矩阵 + 结论）、`report.csv`、`report.json` 与逐 case 摘要，口径、阈值与限制见 [记录](docs/towing/towing_necessity_test_2026-10-09.md)。
 
 导出后按三条契约复核，再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`：① 导出件与 checkpoint 的
 actor 在同一批确定性输入上 max|diff| = 0；② 能被部署自己的 libtorch 加载；③ 部署 interface 的观测维数
@@ -698,7 +700,7 @@ bash build.sh --cmake
 | TOW-EVAL-03 | P1 | **全列评测完成；30 kg 波浪/减速带翻车待修** | 2026-10-20 用 `model_1300` 跑全列 1200 env（`elapsed_s=5649`，[report.md](imgo2_rl/logs/towing/play_test/model1300_full/report.md)）：任务 **0/1050**；速度 275/350、横向 1020/1050、JNT 0/1050、冲击 1048/1050、不翻车 1043/1050。**30 kg 342/349 不翻车**：平地 116/116、5° 57/57、10° 59/59 全过；**波浪 3 次 + 减速带 4 次真翻车**（roll≈π、高度 0.07–0.09 m，全 30 kg；减速带 0.5 m/s 4 个、波浪 1.0 m/s 3 个）。10 kg 速度失败集中 10° 35/61、波浪 24/61、减速带 43/55；横向 23 个 code（30 kg 波浪 10、减速带 9、10° 6）。 | 待训练机/下一轮：① 30 kg × 波浪/减速带专项，查横向 PD 与 roll 触发时刻（优先，目标把 7 次 FALL 压到 0）；② 10 kg × 10°/波浪速度稳定性；③ JNT 阈值重标或把关节静差列为训练目标（当前 0/1050，仍主导任务通过率）；④ 本次 `--write-csv none`，统计阶段被打断无法续算；后续长 eval 要么不自动关机，要么先加 CSV/断点能力。详见 [全列记录](docs/towing/towing_eval_model1300_full_2026-10-20.md) |
 | TOW-SEG-01 | P2 | **工具已修（离线验证），实跑待训练机** | 2026-10-17 用户要求用 PPO 低层跑一次 towing 测试并按「地形段 × 绳/刚体」统计：平地速度跟踪、障碍段（上/下坡分开）速度跟踪、下坡的小车影响与步态变化、启动关节超限/冲击、停车接触与冲击。新增 `scripts/tools/towing_segment_report.py`（纯标准库；六块表（另含**段 × 速度**矩阵 2b/3b、coast 末是否真停的校验），绳 = compliant + inextensible、刚体 = rigid；每格 = 先按 case 段内平均再跨 case 的中位数 [p10,p90]；步态周期 = FL 大腿角自相关 0.20–0.90 s 第一峰）；`tests/test_towing_segment_report.py` 11 项合成数据测试。跑法见 [分段报表记录](docs/towing/towing_ppo_segment_report_2026-10-17.md)（分 0.5/1.0/1.5/2.0 m/s 四档、**时长按速度给 20/10.5/7/5.5 s** + `--coast-duration 5`（0.5 m/s 要 20 s、2.0 m/s 只能 5.5 s；报表校验 coast 末 |vx| ≤ 0.05 m/s）。 | 缺训练机：① 四档实跑（`--write-csv all`，每 run ~0.25 GB）；② 段覆盖核对（0.5 m/s 20 s 时「平地(出口)」应有样本）；③ 真实轨迹上的步态周期是否稳定、下坡松弛占比是否接近 1、停车接触率是否随速度单调上升 |
 | TOW-LOW-01 | P1 | **已修（接口/契约离线验证通过），待训练机试跑** | 2026-10-17 用户要求「用 PPO 替换底层策略，先用 `logs/rsl_rl/base_move_rough/2026-10-16_21-26-48/model_4000.pt` 跑不带上层的测试，1000 环境」⇒ `policy_cfg` 新增 `PPO_POLICY`（45 维观测/12 维动作，与 AMP **逐字段相同**，依据 `imgo2_deploy/policy/imgo2/ppo/config.yaml` 与该 run 的 `params/env.yaml`：`decimation 4`、actuator 25/0.5、`action_scale (0.125,0.25,0.25)`、逐腿 joint 顺序、`lin_vel_x (−1.5,3.0)`）与 `with_model_path()`；测试台新增 `--policy-checkpoint`（只换权重、不覆盖部署产物）。`PPOContractTests` 6 项 + `--dry-run` 无 torch 通过，离线 627 passed；见 [PPO 低层记录](docs/towing/towing_ppo_lowlevel_swap_2026-10-17.md) | 缺训练机：① 导出 `model_4000.pt` → `exported/policy.pt` 后 60 环境短冒烟（45 维契约自检、站住、跟 0.5–1.5 m/s）；② 1000 环境一轮完整基线，与 `--policy amp` 同参数对照（速度跟踪/跌倒/停车读数）；③ 训练侧已可切（2026-10-18 起 `--policy ppo --policy_checkpoint`，默认仍 AMP；命令见 README 训练节），PPO@2500 上层训练待跑 |
-| TOW-LOW-02 | P1 | **选型已定（PPO@2500），训练侧已接线；towing 口径待实跑** | 用户 2026-10-18 决定：基线测试的低层**统一用 PPO**（不再混用 AMP）。选用 `2026-10-17_19-11-01_cart_v2_curriculum/model_2500.pt` 的导出件（零观测 `\|a\|max=1.86`、std 0.74、速度上界 1.5、地形 6.0、`time_out` 99.9%）；4000 及以后已发散（std 1.22→2.41→**16.9**、零观测动作 8.4→23.9→**44.9** ⇒ 全关节饱和，用户实测「直接全部倒下」），训练停在 6034/10000。**两个坑**：① `--policy-checkpoint` 只接受 `play.py` 导出的 TorchScript（传 `model_*.pt` 报 `constants.pkl` 找不到）；② `exported/` 每个 run 目录只有一份，换 checkpoint 重导会**覆盖**，对照时必须先复制到独立路径。**2026-10-18 训练侧已接线**：`train.py` 新增 `--policy amp\|ppo` 与 `--policy_checkpoint`（默认仍 AMP；命令见 README 训练节），启动打印 `[towing] frozen low-level: ...`。详见 [选型记录](docs/towing/towing_ppo_baseline_choice_2026-10-18.md) | 训练机：① 平坦 `--columns 0-19 --stop-progress 4.5` 跑 0.5/1.0 拿跟速比；② 质量上限扫描（阶段 1 列 0–39 × 20/25/30/40/50/60，阶段 2 全网格 × 20/30/40/50），判据取跟速比 <0.8 与 `FALL`/`COL`/力矩饱和/张力；③ 先用 PPO@2500 起一轮上层训练（`--run_name ppo2500`） |
+| TOW-LOW-02 | P1 | **部署默认旧 PPO（53a57f90）；PPO@2500 单独保留；老 PPO 全列结论已实测** | 用户 2026-10-18 决定：基线测试的低层**统一用 PPO**（不再混用 AMP）。选用 `2026-10-17_19-11-01_cart_v2_curriculum/model_2500.pt` 的导出件（零观测 `\|a\|max=1.86`、std 0.74、速度上界 1.5、地形 6.0、`time_out` 99.9%）；4000 及以后已发散（std 1.22→2.41→**16.9**、零观测动作 8.4→23.9→**44.9** ⇒ 全关节饱和，用户实测「直接全部倒下」），训练停在 6034/10000。**两个坑**：① `--policy-checkpoint` 只接受 `play.py` 导出的 TorchScript（传 `model_*.pt` 报 `constants.pkl` 找不到）；② `exported/` 每个 run 目录只有一份，换 checkpoint 重导会**覆盖**，对照时必须先复制到独立路径。**2026-10-18 训练侧已接线**：`train.py` 新增 `--policy amp\|ppo` 与 `--policy_checkpoint`（默认仍 AMP；命令见 README 训练节），启动打印 `[towing] frozen low-level: ...`。详见 [选型记录](docs/towing/towing_ppo_baseline_choice_2026-10-18.md) | 训练机：① 平坦 `--columns 0-19 --stop-progress 4.5` 跑 0.5/1.0 拿跟速比；② 质量上限扫描（阶段 1 列 0–39 × 20/25/30/40/50/60，阶段 2 全网格 × 20/30/40/50），判据取跟速比 <0.8 与 `FALL`/`COL`/力矩饱和/张力；③ 先用 PPO@2500 起一轮上层训练（`--run_name ppo2500`）；2026-11-09 老 PPO 全列（1600 env，含当时 20°）实测：0 kg 旧口径 826/1600 OK、20° 无载 100 FALL；5–30 kg 任务 0/1600（JNT 0/1600）、速度 63/802、不翻车 790/802、FALL 37（15° 29 + 波浪 8），10° 25/30 kg 停滞。部署已恢复为旧 PPO，PPO@2500 仅留在 logs。详见 [底层老 PPO 结论](docs/towing/towing_lowlevel_ppo_eval_2026-11-09.md)。 |
 | TOW-DEC-01 | P1 | **已修（离线契约通过），待训练机验证；2026-10-17 合并后契约升 v5（CE Net）** | 2026-10-16 用户准则「**只用 decoder 建模和四足机器人直接相关的量，质量用 latent 假定**」⇒ **去掉 decoder 的显式质量预测**：explicit 6 → **5**（[vx, vy, Fx, Fy, Fz]）、actor 80 → **79**、契约 v3 → **v4**；删 `mass_head` / `mass_coef` / `mass_supervision_weight` / `decoder_mass_weight` 观测项与 `DecoderSpec.mass_range`。**2026-10-17 补修**：训练机首次实跑报 `TypeError: TowingDecoderCfg.__init__() got an unexpected keyword argument 'mass_coef'` ⇒ `towing/agents/upper_ppo_cfg.py` 漏删 `mass_coef=1.0`（类体 import 时求值，连不训练的测试台都崩）、`rl_lab/modules/__init__.py` 仍导出已删除的 `mass_supervision_weight`；两处已删，并新增 AST 守卫 `tests/test_towing_rl_lab_config_wiring.py`（cfg 未声明 kwarg / 已删符号代码引用 / 包导出存在性；反证：写回 `mass_coef` 即 2 项失败）。离线 627 passed；见 [decoder v4 记录](docs/towing/towing_decoder_v4_2026-10-16.md) | 缺训练机：① 5 维 head 的短训练（velocity/force 两项 loss 量级、KL 不塌缩）；② 带 `--dump-latent` 一轮后用 `analyze_latent*.py` 检查「质量档在 latent 上是否仍可读」；③ 旧 v3/v2 checkpoint 与导出件一律重训（加载前抛契约错误） |
 | TOW-CE-01 | P1 | **已合并 + 重建掩码已修（离线契约通过）；②③ 待训练机，训练机未跑** | 远端 `817d44e` 的 CE Net 已按用户决定与本地「去质量」合并（显式 5 + latent 16 → 重建下一帧、契约 **v5**）。**评审发现**：① 重建目标含 13 维 `last_action` + 3 维 `loco_command` 偏移 = 策略**下一拍**自己的输出（`upper_last_action` 是 `processed_actions`，Isaac Lab 先处理动作再算观测）⇒ 不可观测、训练时是采样噪声，MSE 下限 ≈0.05、这些维度的重建梯度是噪声；② 量级上重建（MSE≈0.1~0.3×1.0）与 KL（≈43×0.005≈0.22）比 force（smooth_l1×10、未归一化 N ≈25）小 2~3 个数量级 ⇒ latent 有塌缩风险；③ 显式头绕开瓶颈 ⇒ 变分不再约束估计量。**① 已修**：`UpperObservationSpec.reconstruction_mask()`（42 维，排除 `loco_command` 3 + `last_action` 13）→ `TowingDecoderCfg.reconstruction_mask` → `DynamicsDecoderTrainer`；`None` = 全维对照。**②③ 的修法候选（未实现，待定）**：重建目标逐维标准化、force 也归一化；或把 `a_t` 喂进重建让那 16 维也能学。**验证**：远端树 604 passed/4 skipped（CE Net 7/7 真跑）；合并后 670 passed/4 skipped；未跑仿真。| 训练机 64 环境 × ~20 轮冒烟：读 `Loss/decoder{,_velocity,_force,_reconstruction}` 与 `Loss/decoder_kl`，确认量级排序与梯度；按切片看 `ô_{t+1}` 误差（`last_action` 13 维应显著更差 ⇒ 证实 ①）；确认 latent 未塌缩（`analyze_latent*.py` 看质量可读性）；再据读数定 `reconstruction_coef`、`kld_weight` 与是否做切片 mask |
 | TOW-TSNE-01 | P1 | **真实工况图已跑出；报告本体归档与局部坡段记录待补** | 已新增 t-SNE 多参数、多标签及受控筛选工具。2026-10-12 首次拿到带 latent 的产物（`v3_800_policy_c008/report.json`，700 有车样本），已在 station/tow 两阶段按 perplexity 10/30/50、seed 0 跑出真实图并归档到 [latent_cluster 目录](docs/towing/data/latent_cluster_2026-10-12/tsne_station/)（只保留 PNG，PDF 可重生成）。见 [使用记录](docs/towing/towing_latent_tsne_2026-10-11.md)、[聚类检验记录](docs/towing/towing_latent_cluster_2026-10-12.md) | ① 决定并归档该 report 本体（19 MB，未入仓）；② 局部地形补短窗口 `--samples` 记录（`local_slope_deg`/`segment`） |
@@ -962,3 +964,5 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-11-09（**部署侧 PPO 换成 PPO@2500；旧 2026-09-17 参考权重退役**） | 用户要求把底层模型换成当前 PPO@2500，并单独测这个低层拉车。**做**：`imgo2_deploy/policy/imgo2/ppo/policy.pt` 用 `logs/towing_rl_lab/policies/ppo_2500/policy.pt` 覆盖（sha256 `27c398d3…`，752 KB，45→12 TorchScript）；`train.py` 的 PPO 未给 checkpoint 提示同步改为“使用部署 ppo/policy.pt（2500）”，不再报旧 53a57f90 警告；README 部署键 1 的权重说明同步。 | **验证**：源/目标 sha256 一致；`py_compile` 通过。**未验证**：本机无 GPU，未实跑；旧 53a57f90 仍在 git 历史。 |
 | 2026-11-09（**地形追加 15°/20° 坡；80 列 × 20 行 = 1600 env**） | 用户要求补 15°/20° 坡。**改**：`connection_grid` 在 0–59 列后追加 15°（60–69）、20°（70–79）两个 10 列块，连接布局 4/4/2；`COLUMNS 60→80`、`GRID_SIZE 1200→1600`、`ELASTIC/RIGID/INEXTENSIBLE 24/24/12→32/32/16`；`MAX_GRADE_DEG 10→20`；`slope_geometry/mixed_geometry/upper_env_cfg/slope_terrain` 文档与 timeout 同步；20° 弧长 10.385067 m ⇒ `episode_length_s=24.770133 s` / **496 步**；`play_towing_test` 默认网格自动 1600，测试台/分段报表族标签支持 15°/20°。原有 0–59 列号/语义不变。 | **验证**：地形/测试台/契约相关 `pytest` ⇒ **309 passed, 4 skipped**；`py_compile`/`git diff --check` 通过。**未验证**：本机无 GPU，未跑仿真；1600 env 实际显存/训练速度、15°/20° 坡的碰撞与翻车行为待训练机。 |
 | 2026-11-09（**部署侧 PPO 恢复为旧参考权重**） | 用户要求「部署那边也换成老的 ppo」⇒ 将 `imgo2_deploy/policy/imgo2/ppo/policy.pt` 恢复为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`（753 KB，45→12 TorchScript；旧参考项目 `policy_flat.pt`）。PPO@2500 仍保留在 `logs/towing_rl_lab/policies/ppo_2500/policy.pt`（`27c398d3…`），不再作为部署默认。`train.py` 的 `--policy ppo` 未给 checkpoint 提示与 README 部署键 1 同步。 | **验证**：源/目标 sha256 一致；`py_compile` 通过。**未验证**：本机无 GPU，未实跑。 |
+| 2026-11-09（**地形收束到 15°：删除 20°；70 列 × 20 行 = 1400 env**） | 用户要求「地形收束到 15 度，20 度删掉」。**改**：删除 20°（70–79）块，保留 15°（60–69）；`COLUMNS 80→70`、`GRID_SIZE 1600→1400`、`MAX_GRADE_DEG 20→15`；`ELASTIC/RIGID/INEXTENSIBLE 32/32/16→28/28/14`；15° 弧长 10.211657 m ⇒ `episode_length_s=24.423314 s` / **489 步**；地形/测试台/分段报表族标签同步。 | **验证**：地形/测试台相关 `pytest` ⇒ **309 passed, 4 skipped**；`py_compile`/`git diff --check` 通过。**未验证**：本机无 GPU，未跑仿真；1400 env 显存/训练速度、15° 坡行为待训练机。 |
+| 2026-11-09（**底层老 PPO 全列结论写完：15° 带载 29 次翻车、10° 25/30 kg 停滞**） | 用部署侧老 PPO `53a57f90…`、上层关闭，跑 0 kg 无载和 5/10/15/20/25/30 kg 两轮 1600 env（80 列，含当时 20°）。**结论**：0 kg 旧口径 826/1600 OK，平地/减速带全过，15° 能爬但全部 SPD，20° 0.5 停滞、1.0 100 次 FALL；5–30 kg 任务 0/1600（JNT 0/1600 主导），速度 63/802、横向 790/802、不翻车 790/802，FALL 37（15° 29 + 波浪 8），30 kg 仅 4 次波浪 FALL；10° 稳态速度比 5 kg 0.70 → 20 kg 0.27 → 25/30 kg ≈0，瓶颈是牵引力不是翻车。20° 随后已删除。 | **验证**：离线报告 `report.json`/`report.md` 完整（两轮 elapsed 7900 s / 8160 s）；地形/测试台/契约相关 291 passed, 4 skipped。**未验证**：本机无 GPU，70 列/15° 新地形未重跑；80 列数据中的 20° 仅作历史对照。详见 [底层老 PPO 结论](docs/towing/towing_lowlevel_ppo_eval_2026-11-09.md)、TOW-LOW-02。 |

@@ -201,7 +201,7 @@ class MixedGridWiringTests(unittest.TestCase):
                         for r in range(grid.ROWS) for c in range(grid.COLUMNS))
         bump_verts, bump_faces, _ = bump.tile_mesh(0, grid.SPEEDBUMP_START_COLUMN)
         wave_verts, wave_faces, _ = wave.tile_mesh(0, grid.WAVE_START_COLUMN)
-        hills = lanes[5.0] + lanes[10.0] + lanes[15.0] + lanes[20.0]
+        hills = lanes[5.0] + lanes[10.0] + lanes[15.0]
         self.assertEqual(len(vertices),
                          lanes[0.0] * 8 + hills * 16
                          + lanes[grid.SPEEDBUMP_RAMP_DEG] * len(bump_verts)
@@ -214,10 +214,10 @@ class MixedGridWiringTests(unittest.TestCase):
         self.assertEqual(len({o for row in origins for o in row}), grid.GRID_SIZE)
 
     def test_arc_length_bound_takes_the_worst_family(self):
-        # 2026-11-09 追加 20° 后，混合地面上界由 20° 平滑坡（10.3850666 m）主导；
+        # 2026-11-09 收束到 15° 后，混合地面上界由 15° 平滑坡（10.2116571 m）主导；
         # 波浪 10.116044 m、减速带 10.023607 m、10° hill 10.092560 m 都更短。
-        worst = mixed.arc_length_upper_bound(20.0, 10.0, "hill")
-        self.assertAlmostEqual(worst, 10.385066634855473, places=9)
+        worst = mixed.arc_length_upper_bound(15.0, 10.0, "hill")
+        self.assertAlmostEqual(worst, 10.211657082460498, places=9)
         self.assertGreater(worst, wave.arc_length_upper_bound(10.0, 10.0))
         self.assertGreater(worst, bump.arc_length_upper_bound(10.0, 10.0))
         self.assertGreater(worst, hill.profile_arc_length(10.0, 10.0))
