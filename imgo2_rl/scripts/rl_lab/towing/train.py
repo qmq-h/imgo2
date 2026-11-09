@@ -105,8 +105,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
     if action_cfg.policy_checkpoint:
         frozen = with_model_path(frozen, action_cfg.policy_checkpoint)
     elif action_cfg.policy_name == "ppo":
-        print("[towing] WARNING: --policy ppo 未给 --policy_checkpoint，使用部署目录里的参考 PPO "
-              "权重（sha256 53a57f90…），不是 2500 导出件", flush=True)
+        print("[towing] INFO: --policy ppo 未给 --policy_checkpoint，使用部署目录 "
+              "ppo/policy.pt（2026-11-09 已替换为 PPO@2500 导出件，sha256 27c398d3…）",
+              flush=True)
     print(f"[towing] frozen low-level: {frozen.name} -> {frozen.model_path}", flush=True)
 
     log_root = os.path.abspath(os.path.join("logs", "towing_rl_lab", agent_cfg.experiment_name))
