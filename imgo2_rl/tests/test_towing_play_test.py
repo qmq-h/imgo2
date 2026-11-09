@@ -1234,7 +1234,7 @@ class WorkConditionTests(unittest.TestCase):
                          [(0.5, 5.0), (0.5, 10.0), (0.5, 10.0), (0.5, 20.0)])
 
     def test_bucket_counts_are_balanced_within_a_few(self):
-        conditions = play.work_conditions(1200, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
+        conditions = play.work_conditions(1400, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
         counts = {}
         for condition in conditions:
             counts[condition] = counts.get(condition, 0) + 1
@@ -1242,13 +1242,13 @@ class WorkConditionTests(unittest.TestCase):
         self.assertEqual(sorted(counts), sorted(
             (velocity, mass) for velocity in (0.5, 1.0, 1.5)
             for mass in (5.0, 10.0, 15.0, 20.0, 25.0)))
-        # 60×20 = 1200 是 15 的整数倍且 slot = row + column 铺满 0..78 ⇒ 每组**恰好 80** 个
-        self.assertEqual(set(counts.values()), {80}, sorted(counts.values()))
-        self.assertEqual(sum(counts.values()), 1200)
+        # 70×20 = 1400，15 个组合 ⇒ 93–98 个（不是整数倍，差值 ≤ 5）
+        self.assertLessEqual(max(counts.values()) - min(counts.values()), 5)
+        self.assertEqual(sum(counts.values()), 1400)
 
     def test_mass_is_balanced_across_connection_and_grade(self):
         """回归：质量**不能**只由列决定，否则 (连接 × 质量)/(坡度量级 × 质量) 会混淆。"""
-        cases = play.build_env_cases(1200, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
+        cases = play.build_env_cases(1400, [0.5, 1.0, 1.5], [5.0, 10.0, 15.0, 20.0, 25.0])
         by_connection, by_grade, per_column = {}, {}, {}
         for case in cases:
             by_connection.setdefault(case.connection, {}).setdefault(case.cart_mass_kg, 0)
@@ -1257,10 +1257,10 @@ class WorkConditionTests(unittest.TestCase):
             by_grade[case.grade_deg][case.cart_mass_kg] += 1
             per_column.setdefault(case.column, set()).add((case.velocity_mps, case.cart_mass_kg))
         for connection, counts in by_connection.items():
-            self.assertEqual(len(set(counts.values())), 1, (connection, counts))
+            self.assertLessEqual(max(counts.values()) - min(counts.values()), 1, (connection, counts))
             self.assertEqual(len(counts), len(play.DEFAULT_CART_MASSES))
         for grade, counts in by_grade.items():
-            self.assertEqual(len(set(counts.values())), 1, (grade, counts))
+            self.assertLessEqual(max(counts.values()) - min(counts.values()), 1, (grade, counts))
             self.assertEqual(len(counts), len(play.DEFAULT_CART_MASSES))
         # 每一列都覆盖全部 15 个 (速度, 质量) 组合
         self.assertTrue(all(len(combos) == 15 for combos in per_column.values()))
@@ -1290,25 +1290,25 @@ class EnvCaseTests(unittest.TestCase):
             self.assertEqual(case.grade_deg, spec["slope_degrees"])
 
     def test_cell_distribution_matches_the_training_grid(self):
-        cases = play.build_env_cases(1600, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        cases = play.build_env_cases(1400, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
         connections = {}
         grades = {}
         for case in cases:
             connections[case.connection] = connections.get(case.connection, 0) + 1
             grades[case.grade_deg] = grades.get(case.grade_deg, 0) + 1
         # 20 平列 + 5/10/15/20° 各 10 列 + 减速带 10 + 波浪 10；连接 8/8/4（平列）与 4/4/2
-        self.assertEqual(grades, {0.0: 400, 5.0: 200, 10.0: 200, 15.0: 200, 20.0: 200,
+        self.assertEqual(grades, {0.0: 400, 5.0: 200, 10.0: 200, 15.0: 200,
                                   connection_grid.SPEEDBUMP_RAMP_DEG: 200,
                                   connection_grid.WAVE_MAX_SLOPE_DEG: 200})
-        self.assertEqual(connections, {"compliant": 640, "inextensible": 320, "rigid": 640})
+        self.assertEqual(connections, {"compliant": 560, "inextensible": 280, "rigid": 560})
 
     def test_multiple_of_the_grid_repeats_cells_with_other_work_conditions(self):
-        # 1600 个 cell 后 slot 前进 20（= 行数），20 % 15 = 5 ⇒ 第二个网格落在另一个工作条件上。
-        cases = play.build_env_cases(3200, [0.5, 1.0, 1.5], play.DEFAULT_CART_MASSES)
-        self.assertEqual(len(cases), 3200)
-        self.assertEqual(cases[0].cell_index, cases[1600].cell_index)
+        # 1400 个 cell 后 slot 前进 20（= 行数），20 % 15 = 5 ⇒ 第二个网格落在另一个工作条件上。
+        cases = play.build_env_cases(2800, [0.5, 1.0, 1.5], play.DEFAULT_CART_MASSES)
+        self.assertEqual(len(cases), 2800)
+        self.assertEqual(cases[0].cell_index, cases[1400].cell_index)
         self.assertNotEqual((cases[0].velocity_mps, cases[0].cart_mass_kg),
-                            (cases[1600].velocity_mps, cases[1600].cart_mass_kg))
+                            (cases[1400].velocity_mps, cases[1400].cart_mass_kg))
 
     def test_slug_is_unique_and_filename_safe(self):
         cases = play.build_env_cases(800, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
@@ -1327,13 +1327,13 @@ class EnvCaseTests(unittest.TestCase):
         _json.dumps(payload)
 
     def test_env_case_summary_reports_the_distribution(self):
-        cases = play.build_env_cases(1600, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
+        cases = play.build_env_cases(1400, play.DEFAULT_VELOCITIES, play.DEFAULT_CART_MASSES)
         summary = play.env_case_summary(cases)
-        self.assertEqual(summary["envs"], 1600)
-        self.assertEqual(summary["cells"], 1600)
+        self.assertEqual(summary["envs"], 1400)
+        self.assertEqual(summary["cells"], 1400)
         self.assertEqual(summary["cell_repeats"], 1.0)
         self.assertEqual(summary["grades_deg"],
-                         {"0": 400, "5": 200, "10": 200, "15": 200, "20": 200,
+                         {"0": 400, "5": 200, "10": 200, "15": 200,
                           "15.6025": 200, "26.5651": 200})
         # 绳 0.5–1.5 与杆 0.5–1.0 的并集
         self.assertEqual(summary["length_m"], {"min": 0.5, "max": 1.5})
@@ -1341,16 +1341,16 @@ class EnvCaseTests(unittest.TestCase):
         self.assertLessEqual(max(summary["bucket_env_counts"]) -
                              min(summary["bucket_env_counts"]), 5)
         # 「连接 × 质量」计数用来核对 slot 轮转的均衡性：每个连接类型内各质量档相等
-        # （compliant/rigid 各 128、inextensible 各 64），15 个组合全部非空
+        # （compliant/rigid 各 112、inextensible 各 56），15 个组合全部非空
         masses = summary["mass_counts_by_connection"]
-        self.assertEqual(sum(sum(counts.values()) for counts in masses.values()), 1600)
-        self.assertEqual(sum(masses["compliant"].values()), 640)
-        self.assertEqual(sum(masses["rigid"].values()), 640)
-        self.assertEqual(sum(masses["inextensible"].values()), 320)
+        self.assertEqual(sum(sum(counts.values()) for counts in masses.values()), 1400)
+        self.assertEqual(sum(masses["compliant"].values()), 560)
+        self.assertEqual(sum(masses["rigid"].values()), 560)
+        self.assertEqual(sum(masses["inextensible"].values()), 280)
         self.assertEqual(sum(len(counts) for counts in masses.values()), 15)   # 3 连接 × 5 质量
         self.assertEqual(sorted(masses["inextensible"]), ["10", "15", "20", "25", "30"])
         self.assertEqual({count for counts in masses.values() for count in counts.values()},
-                         {64, 128})
+                         {56, 112})
 
 
 class SpawnGeometryTests(unittest.TestCase):
@@ -1491,13 +1491,12 @@ class CliTests(unittest.TestCase):
         args = play.parse_args(["--dry-run"])
         text = "\n".join(play.planned_grid_lines(args))
         self.assertIn("训练场景", text)
-        self.assertIn("1600", text)
-        self.assertIn("compliant 640", text)
+        self.assertIn("1400", text)
+        self.assertIn("compliant 560", text)
         self.assertIn("0° 400", text)
         # 2026-10-16：减速带块（列 40–49）与波浪块（列 50–59）拼进同一张网格，
         # 档位分别报梯形侧坡 26.5651° 与正弦最大侧坡 15.6025°
         self.assertIn("15° 200", text)
-        self.assertIn("20° 200", text)
         self.assertIn("26.5651° 200", text)
         self.assertIn("15.6025° 200", text)
         self.assertIn("env0000", text)
@@ -1562,10 +1561,10 @@ class CliTests(unittest.TestCase):
         self.assertEqual([case.cell_index for case in args.cases], list(range(40)))
 
     def test_num_envs_multiple_of_the_grid_repeats_cells(self):
-        args = play.parse_args(["--num-envs", "3200", "--velocities", "1.0",
+        args = play.parse_args(["--num-envs", "2800", "--velocities", "1.0",
                                 "--cart-masses", "10"])
-        self.assertEqual(len(args.cases), 3200)
-        self.assertEqual(args.cases[0].cell_index, args.cases[1600].cell_index)
+        self.assertEqual(len(args.cases), 2800)
+        self.assertEqual(args.cases[0].cell_index, args.cases[1400].cell_index)
 
     def test_upper_switch_defaults_off(self):
         """开关默认关：不给路径就是现在的基线（残差恒 0），确定性取均值。"""

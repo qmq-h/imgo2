@@ -12,7 +12,7 @@ from .mdp.connection_grid import COLUMNS, ROWS, GRID_SIZE
 class TowingMixedTerrainGenerator:
     """One ground mesh: flat + slope columns + the speed-bump block (2026-10-16).
 
-    `smooth` 选择平滑列（0–39 与 60–79）用哪套高度场；列 40–49 恒为减速带（见
+    `smooth` 选择平滑列（0–39 与 60–69）用哪套高度场；列 40–49 恒为减速带（见
     `mdp/mixed_geometry.py`）。逻辑原点仍由 `env_spec` 的行优先映射给出。
     """
 

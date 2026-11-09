@@ -10,7 +10,7 @@
 2026-10-09：「收窄的意思是不要 20 m，而是 15 m，对应缩小上下坡+平地的长度」）。机器人出生在
 x=0（**平地上、姿态竖直**），走完 10 m 目标时落在**出口平地**上（剖面 11.25 m，出口平地
 从 9.0 m 起）；上坡与下坡在**同一条 lane 内成对出现**，所以不再需要「坡度正负号交替」来
-平衡方向。坡度量级由列决定（`connection_grid.slope_degrees` = 0 / 5 / 10 / 15 / 20 deg）。
+平衡方向。坡度量级由列决定（`connection_grid.slope_degrees` = 0 / 5 / 10 / 15 deg；20° 已删除）。
 
 **相邻 lane 共边拼接**（2026-10-09 用户要求「训练场景拼接到一起」）：
 `ROW_SPACING_M = BACK_M + FORWARD_M`（15 m）、`COLUMN_SPACING_M = 2·HALF_WIDTH_M`（6 m），
@@ -60,7 +60,7 @@ CREST_START_M = UP_START_M + UP_M               # 5.25  坡顶起点
 DOWN_START_M = CREST_START_M + CREST_M          # 6.0   下坡起点
 FLAT_OUT_START_M = DOWN_START_M + DOWN_M        # 9.0   回到平地
 PROFILE_LENGTH_M = FLAT_OUT_START_M + EXIT_M    # 11.25
-MAX_GRADE_DEG = 20.0            # 剖面的最大坡度量级（= 网格里最陡的平滑坡档；2026-11-09 加到 20°）
+MAX_GRADE_DEG = 15.0            # 剖面的最大坡度量级（15°；20° 已按 2026-11-09 要求删除）
 
 if PROFILE_LENGTH_M > FORWARD_M:
     raise ValueError("剖面长度超过 lane 的前向长度（FORWARD_M），出生/边界假设不再成立")

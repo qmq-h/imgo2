@@ -1,8 +1,9 @@
-"""80 columns: 20 flat + 10 each at 5/10/15/20 degrees + 10 speed-bump + 10 wave.
+"""70 columns: 20 flat + 10 each at 5/10/15 degrees + 10 speed-bump + 10 wave.
 
-2026-11-09 用户要求补 15°/20° 坡：在原有 0–59 列之后追加 15°（60–69）与 20°（70–79）两个
-10 列块，原有列号/语义保持不动。新增两块的列内连接布局与其它 10 列坡块相同（4 compliant /
-4 rigid / 2 inextensible）。平地列仍是 8 compliant / 8 rigid / 4 inextensible。
+2026-11-09 用户要求补 15° 坡，并**收束到 15°**（不保留 20°）：在原有 0–59 列之后追加
+15°（60–69）一个 10 列块，原有列号/语义保持不动。新增块的列内连接布局与其它 10 列坡块
+相同（4 compliant / 4 rigid / 2 inextensible）。平地列仍是 8 compliant / 8 rigid / 4
+inextensible。
 
 2026-10-09：地形改成**一条连续剖面**（平地 → 上坡 → 坡顶 → 下坡 → 平地，见
 `slope_geometry.profile_*`），上坡与下坡在**同一条 lane 内成对出现**，所以
@@ -37,17 +38,15 @@ TEN_DEGREE_COLUMNS = 10
 SPEEDBUMP_COLUMNS = 10
 WAVE_COLUMNS = 10
 FIFTEEN_DEGREE_COLUMNS = 10
-TWENTY_DEGREE_COLUMNS = 10
 FIVE_DEGREE_START_COLUMN = FLAT_COLUMNS                                     # 20
 TEN_DEGREE_START_COLUMN = FIVE_DEGREE_START_COLUMN + FIVE_DEGREE_COLUMNS    # 30
 SPEEDBUMP_START_COLUMN = TEN_DEGREE_START_COLUMN + TEN_DEGREE_COLUMNS       # 40
 WAVE_START_COLUMN = SPEEDBUMP_START_COLUMN + SPEEDBUMP_COLUMNS              # 50
 FIFTEEN_DEGREE_START_COLUMN = WAVE_START_COLUMN + WAVE_COLUMNS              # 60
-TWENTY_DEGREE_START_COLUMN = FIFTEEN_DEGREE_START_COLUMN + FIFTEEN_DEGREE_COLUMNS  # 70
-COLUMNS = TWENTY_DEGREE_START_COLUMN + TWENTY_DEGREE_COLUMNS                # 80
-ELASTIC_COLUMNS = 32
-RIGID_COLUMNS = 32
-INEXTENSIBLE_COLUMNS = 16
+COLUMNS = FIFTEEN_DEGREE_START_COLUMN + FIFTEEN_DEGREE_COLUMNS              # 70
+ELASTIC_COLUMNS = 28
+RIGID_COLUMNS = 28
+INEXTENSIBLE_COLUMNS = 14
 ROWS = 20
 # 2026-10-09 用户决定：**绳类与杆类用各自的长度范围**（同一行索引在两类里映射到各自的区间）。
 #   绳（compliant / inextensible）0.5–1.5 m：真实拖绳偏长，且出生比 0.8 让短绳也有实体间隙；
@@ -145,7 +144,7 @@ def column_spec(column: int):
 
 def terrain_family(column: int) -> str:
     """该列的地形族：`smooth`（平地/平坡，0–39 与 60–79）、`speedbump`（40–49）、
-    `wave`（50–59）。15°/20° 追加块（60–79）仍是 `smooth`，只是 `slope_degrees` 更陡。"""
+    `wave`（50–59）。15° 追加块（60–69）仍是 `smooth`，只是 `slope_degrees` 更陡。"""
     if not 0 <= column < COLUMNS:
         raise ValueError(f"column must be in [0, {COLUMNS}), got {column}")
     if column < SPEEDBUMP_START_COLUMN:
@@ -170,9 +169,9 @@ def is_wave(column: int) -> bool:
 def slope_degrees(column: int, row: int = 0) -> float:
     """这条 lane 剖面的**最大纵向坡度**（deg）。
 
-    - 平地列 = 0、5° = 5、10° = 10、**15° = 15、20° = 20**（每列剖面都是「平地 2.25 m →
-      上坡 3 m → 坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」，上/下坡成对出现，所以只给量级、
-      没有方向）；15°/20° 块是 2026-11-09 追加的列 60–79；
+    - 平地列 = 0、5° = 5、10° = 10、**15° = 15**（每列剖面都是「平地 2.25 m → 上坡 3 m →
+      坡顶 0.75 m → 下坡 3 m → 平地 2.25 m」，上/下坡成对出现，所以只给量级、没有方向）；
+      15° 块是 2026-11-09 追加的列 60–69；20° 已按用户要求删除；
     - **减速带块 = 梯形侧坡 26.565°**（`SPEEDBUMP_RAMP_DEG`）：那 10 列的地形完全相同，
       这个值是该剖面的真实最大坡度，也是 timeout 弧长与相对俯仰要用的量；
     - **波浪块 = 正弦最大侧坡**（`WAVE_MAX_SLOPE_DEG`，约 15.61°）：同样地，那 10 列地形
@@ -192,9 +191,7 @@ def slope_degrees(column: int, row: int = 0) -> float:
         return SPEEDBUMP_RAMP_DEG
     if column < FIFTEEN_DEGREE_START_COLUMN:
         return WAVE_MAX_SLOPE_DEG
-    if column < TWENTY_DEGREE_START_COLUMN:
-        return 15.0
-    return 20.0
+    return 15.0
 
 
 def initial_attachment_distance(model_name: str, length: float) -> float:

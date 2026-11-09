@@ -189,15 +189,14 @@ class WaveGridWiringTests(unittest.TestCase):
     def test_grid_columns_and_mixed_dispatch(self):
         # 列 50–59 = 波浪块；档位报正弦最大坡度；连接照 5° 坡块同构 4/4/2
         self.assertEqual(grid.WAVE_START_COLUMN, 50)
-        self.assertEqual(grid.COLUMNS, 80)
+        self.assertEqual(grid.COLUMNS, 70)
         self.assertEqual([grid.terrain_family(c) for c in range(50, 60)],
                          [grid.WAVE_TERRAIN] * 10)
         self.assertEqual([grid.slope_degrees(c, 0) for c in range(50, 60)],
                          [grid.WAVE_MAX_SLOPE_DEG] * 10)
-        self.assertEqual([grid.terrain_family(c) for c in range(60, 80)],
-                         [grid.SMOOTH_TERRAIN] * 20)
+        self.assertEqual([grid.terrain_family(c) for c in range(60, 70)],
+                         [grid.SMOOTH_TERRAIN] * 10)
         self.assertEqual([grid.slope_degrees(c, 0) for c in range(60, 70)], [15.0] * 10)
-        self.assertEqual([grid.slope_degrees(c, 0) for c in range(70, 80)], [20.0] * 10)
         self.assertEqual([grid.column_spec(c)[0] for c in range(50, 60)],
                          ['compliant'] * 4 + ['rigid'] * 4 + ['inextensible'] * 2)
         for row in (0, grid.ROWS - 1):
