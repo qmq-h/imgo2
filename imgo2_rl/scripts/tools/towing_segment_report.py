@@ -77,8 +77,8 @@ CONNECTION_CLASS = {"compliant": "绳", "inextensible": "绳", "rigid": "刚体"
 CONNECTION_ORDER = ("绳", "刚体")
 
 #: 地形族标签（显示顺序）。`smooth` 按坡度量级再分。
-FAMILY_ORDER = ("平地", "5°坡", "10°坡", "减速带", "波浪")
-OBSTACLE_FAMILIES = ("5°坡", "10°坡", "减速带", "波浪")
+FAMILY_ORDER = ("平地", "5°坡", "10°坡", "15°坡", "20°坡", "减速带", "波浪")
+OBSTACLE_FAMILIES = ("5°坡", "10°坡", "15°坡", "20°坡", "减速带", "波浪")
 
 #: 段名（`play_test_stats.segment_of` 的返回值里去掉「平地」前缀的四种）。
 OBSTACLE_SEGMENTS = ("上坡", "坡顶", "带顶", "下坡")

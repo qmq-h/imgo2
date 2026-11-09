@@ -25,6 +25,10 @@
 ② 契约升到 **v4**（帧 58 / explicit 5 / actor **79** / critic 73 / 动作 13，decoder 去掉显式
 质量）。`episode_timeout_s` 本身与这两项无关，只是被上面的数字驱动。
 
+**2026-11-09**：网格追加 15°/20° 平滑坡列（60–79），20° 剖面弧长 **10.3851 m** 成为最长
+（超过波浪 10.1160 m）⇒ `episode_length_s = 1 + 10.3851/0.5 + 3 = 24.7701 s`，
+`max_episode_length = 496` 步。
+
 **2026-10-18**：`reset_work_condition.mass_range` 上限 **20 → 30 kg**（用户要求）。本模块的
 `SPEED_RANGE` 与 timeout **不受质量影响**（timeout 只由最慢速度驱动），所以
 `episode_length_s = 24.232088 s` / `max_episode_length = 485` 步都**不变**。

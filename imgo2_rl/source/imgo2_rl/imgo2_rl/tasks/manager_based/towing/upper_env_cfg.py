@@ -93,8 +93,9 @@ _ROBOT_BODY_FILTERS = _robot_body_filters()
 
 @configclass
 class UpperTowingSceneCfg(InteractiveSceneCfg):
-    # Real mesh: 20 flat columns, 10 at |5 deg|, 10 at |10 deg| and 10 speed-bump columns
-    # (2026-10-16). Exact origins come from the importer, not GridCloner's square arrangement.
+    # Real mesh: 20 flat, 10 each at 5/10/15/20 deg, 10 speed-bump, 10 wave columns.
+    # 15/20 deg appended 2026-11-09 (columns 60–79). Origins come from the importer,
+    # not GridCloner's square arrangement.
     terrain = TerrainImporterCfg(
         prim_path="/World/Ground", terrain_type="generator",
         class_type=TowingSlopeTerrainImporter,
@@ -589,11 +590,12 @@ class UpperRobotDomainRandCfg:
 @configclass
 class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
     #: 平滑段（平地/平坡列）用哪套高度场：`hill`（默认，连续单坡包）或 `rolling`（连续起伏）。
-    #: **减速带块（列 40–49）不随它变**：2026-10-16 起那 10 列始终是 300/100/50 mm 的梯形凸条，
-    #: 拼在同一张 60 列网格里（见 `mdp/mixed_geometry.py`）。
+    #: **减速带块（列 40–49）不随它变**：2026-10-16 起那 10 列始终是 300/100/50 mm 的梯形凸条；
+    #: 15°/20° 平滑坡在列 60–79（2026-11-09）。全部拼在同一张 80 列网格里
+    #: （见 `mdp/mixed_geometry.py`）。
     towing_terrain_profile: str = "hill"
-    # 50 columns x 20 lengths = 1000 envs（20 平列 + 10 个 5° + 10 个 10° + 10 列减速带，
-    # 见 `connection_grid.py`）。A non-multiple of 1000 only covers a grid prefix.
+    # 80 columns x 20 lengths = 1600 envs（20 平列 + 10×5/10/15/20° + 10 列减速带 +
+    # 10 列波浪，见 `connection_grid.py`）。A non-multiple of 1600 only covers a grid prefix.
     scene: UpperTowingSceneCfg = UpperTowingSceneCfg(
         num_envs=COLUMNS * ROWS, env_spacing=6.0)
     observations: UpperObservationsCfg = UpperObservationsCfg()
@@ -609,7 +611,8 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
         if self.towing_terrain_profile not in ("hill", "rolling"):
             raise ValueError("unknown towing terrain profile")
         # 地面只有一张混合网格（2026-10-16）：profile 只决定前 40 列的平滑段高度场，
-        # 列 40–49 的减速带块始终存在（见 `mdp/mixed_geometry.py`）。
+        # 列 40–49 的减速带块、50–59 波浪、60–69 15°、70–79 20° 始终存在
+        # （见 `mdp/mixed_geometry.py`）。
         self.scene.terrain.terrain_generator.class_type = (
             TowingMixedRollingTerrainGenerator if self.towing_terrain_profile == "rolling"
             else TowingMixedTerrainGenerator)
@@ -666,7 +669,8 @@ class UpperTowingEnvCfg(ManagerBasedRLEnvCfg):
 class UpperRollingTowingEnvCfg(UpperTowingEnvCfg):
     """Same mixed ground with the smooth columns built from the rolling height field.
 
-    减速带块（列 40–49）与 hill 档**完全相同**；只有前 40 列的平滑段换成 `rolling_geometry`
+    减速带块（40–49）与波浪块（50–59）与 hill 档**完全相同**；平滑列（0–39、60–79）换成
+    `rolling_geometry`
     的连续起伏。timeout 由 rolling 的弧长上界（10.1041 m ⇒ 24.208 s / 485 步）决定。
     """
     towing_terrain_profile: str = "rolling"

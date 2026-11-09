@@ -187,9 +187,12 @@ class MixedGridWiringTests(unittest.TestCase):
             for column in range(grid.SPEEDBUMP_START_COLUMN, grid.WAVE_START_COLUMN):
                 self.assertEqual(mixed.tile_mesh(row, column, "hill"),
                                  bump.tile_mesh(row, column))
-            for column in range(grid.WAVE_START_COLUMN, grid.COLUMNS):
+            for column in range(grid.WAVE_START_COLUMN, grid.FIFTEEN_DEGREE_START_COLUMN):
                 self.assertEqual(mixed.tile_mesh(row, column, "hill"),
                                  wave.tile_mesh(row, column))
+            for column in range(grid.FIFTEEN_DEGREE_START_COLUMN, grid.COLUMNS):
+                self.assertEqual(mixed.tile_mesh(row, column, "hill"),
+                                 hill.tile_mesh(row, column))
         with self.assertRaises(ValueError):
             mixed.tile_mesh(0, 0, "moon")
         # 整块网格：四类 tile 的总和逐项对上（组装不丢块、不错块）
@@ -198,7 +201,7 @@ class MixedGridWiringTests(unittest.TestCase):
                         for r in range(grid.ROWS) for c in range(grid.COLUMNS))
         bump_verts, bump_faces, _ = bump.tile_mesh(0, grid.SPEEDBUMP_START_COLUMN)
         wave_verts, wave_faces, _ = wave.tile_mesh(0, grid.WAVE_START_COLUMN)
-        hills = lanes[5.0] + lanes[10.0]
+        hills = lanes[5.0] + lanes[10.0] + lanes[15.0] + lanes[20.0]
         self.assertEqual(len(vertices),
                          lanes[0.0] * 8 + hills * 16
                          + lanes[grid.SPEEDBUMP_RAMP_DEG] * len(bump_verts)
@@ -211,15 +214,13 @@ class MixedGridWiringTests(unittest.TestCase):
         self.assertEqual(len({o for row in origins for o in row}), grid.GRID_SIZE)
 
     def test_arc_length_bound_takes_the_worst_family(self):
-        # 减速带列只有 10.023607 m、hill 10.092560 m、rolling 10.1041 m，
-        # 而 2026-10-16 加入的波浪（3 周期正弦）是 10.116044 m ⇒ **波浪主导**（两种模式都一样）。
-        wave_bound = wave.arc_length_upper_bound(10.0, 10.0)
-        self.assertAlmostEqual(wave_bound, 10.11604389909993, places=9)
-        for smooth in ("hill", "rolling"):
-            self.assertAlmostEqual(mixed.arc_length_upper_bound(10.0, 10.0, smooth),
-                                   wave_bound, places=12)
-        self.assertGreater(wave_bound, bump.arc_length_upper_bound(10.0, 10.0))
-        self.assertGreater(wave_bound, hill.profile_arc_length(10.0, 10.0))
+        # 2026-11-09 追加 20° 后，混合地面上界由 20° 平滑坡（10.3850666 m）主导；
+        # 波浪 10.116044 m、减速带 10.023607 m、10° hill 10.092560 m 都更短。
+        worst = mixed.arc_length_upper_bound(20.0, 10.0, "hill")
+        self.assertAlmostEqual(worst, 10.385066634855473, places=9)
+        self.assertGreater(worst, wave.arc_length_upper_bound(10.0, 10.0))
+        self.assertGreater(worst, bump.arc_length_upper_bound(10.0, 10.0))
+        self.assertGreater(worst, hill.profile_arc_length(10.0, 10.0))
         with self.assertRaises(ValueError):
             mixed.arc_length_upper_bound(10.0, 10.0, "moon")
 
