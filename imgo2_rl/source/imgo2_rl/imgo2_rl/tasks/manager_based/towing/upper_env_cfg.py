@@ -272,7 +272,10 @@ class UpperRewardsCfg:
     # 【跌倒】离局部地面高度 < 0.18 m，**或** |pitch|/|roll| > 0.8 rad 时置 1，
     # 同时是终止条件（2026-10-19 用户要求把 pitch/roll 也算上）。
     # 0.8 rad 对当前最陡的 26.565° 减速带侧坡仍有 0.336 rad 余量；波浪 15.6° 更远。
-    fall = RewTerm(func=mdp.robot_fall_cost, weight=-50.0,
+    # 2026-11-12 用户要求重新标定 fall / tracking 比例：50 Hz 下 step_dt=0.02，
+    # 单次翻车 = -500 × 0.02 = **-10.0**，约等于 10 s 满额 tracking（回合约 24.4 s 的 41%）；
+    # 旧 -50 只有 -1.0（4%），跟踪奖励会把翻车成本盖掉。v6/v7 两个分支同权。
+    fall = RewTerm(func=mdp.robot_fall_cost, weight=-500.0,
                    params={"minimum_height": 0.18,
                            "pitch_limit_rad": 0.8, "roll_limit_rad": 0.8})
 
