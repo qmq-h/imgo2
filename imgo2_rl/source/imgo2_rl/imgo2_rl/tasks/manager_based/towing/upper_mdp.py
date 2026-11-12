@@ -1224,6 +1224,22 @@ def robot_fall_cost(env, minimum_height, pitch_limit_rad=0.8, roll_limit_rad=0.8
                       pitch_limit_rad=pitch_limit_rad,
                       roll_limit_rad=roll_limit_rad).float()
 
+def roll_penalty(env, deadband_rad=0.15):
+    """连续 roll 惩罚：只罚超过 deadband 的部分，单位 rad²。
+
+    2026-11-13 用户要求增加 roll 方向惩罚。姿态用与 `robot_fall` 同一套世界系
+    `euler_xyz_from_quat` roll（不是相对地形；平滑坡沿 x 上坡时 roll≈0）。
+    ``excess = relu(|roll| - deadband)``，返回 ``excess²``；0.8 rad 的终止判据不变。
+    50 Hz 下每步 = weight × excess² × 0.02，权重默认 −10：
+    0.30 rad → −0.0045/步，0.60 rad → −0.0405/步；deadband 以下精确为 0。
+    """
+    term = _term(env)
+    roll, _pitch, _yaw = math_utils.euler_xyz_from_quat(term._asset.data.root_quat_w)
+    excess = (roll.abs() - float(deadband_rad)).clamp(min=0.0)
+    return excess.square()
+
+
+
 
 def stop_reached(env):
     """机器人沿 lane 的前进量是否到达 STOP 触发点（**不是**终止条件，只用来置零指令）。
