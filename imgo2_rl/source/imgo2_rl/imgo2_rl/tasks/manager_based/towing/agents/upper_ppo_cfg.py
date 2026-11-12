@@ -3,7 +3,7 @@
 任务已注册为 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）。
 
 `decoder.frame_dim` 必须等于环境的 policy 帧维数（``upper_logic.UpperObservationSpec``
-当前为 **57**，契约 **v6**（2026-10-24 去掉 vx 偏移头））：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，
+当前为 **58**，契约 **v7**（2026-11-12 恢复 vx 偏移头））：runner 启动时会断言 ``decoder.frame_dim == env.num_obs``，
 写错会直接报错。decoder 的显式输出是 **5 维**（vel 2 + force 3，2026-10-16 去掉质量），
 所以这里**没有** `mass_coef`；2026-10-17 起多了 `reconstruction_coef`（拼接 5+16 重建下一帧）。
 """
@@ -46,7 +46,7 @@ class UpperTowingPPORunnerCfg(TowingOnPolicyRunnerCfg):
     #              + towing_force(3) + cart_privileged_parameters(4) = **73**
     # （`upper_policy_runtime.DEFAULT_CRITIC_OBS_DIM` 与它有离线交叉校验）。
     decoder = TowingDecoderCfg(
-        frame_dim=57,
+        frame_dim=58,
         feature_dim=128,
         hidden_dim=128,
         num_layers=1,

@@ -67,11 +67,12 @@ parser.add_argument("--max-steps", type=int, default=0,
 # 周期性落盘摘要，避免必须等进程结束才有文件可读。
 parser.add_argument("--summary-every-s", type=float, default=30.0,
                     help="Rewrite the summary file every N seconds (0 disables).")
-# 2026-10-24：导出分支。只跑 checkpoint 的 actor/decoder 推理子图，不启动 Isaac Sim；
-# 产物是 57 维 frame → 12 维归一化关节残差的 stateful TorchScript（decoder/actor 两套 GRU
-# hidden 在模块内部），默认写到 checkpoint 同级 `exported/policy.pt`。
+# 2026-11-12：导出分支。只跑 checkpoint 的 actor/decoder 推理子图，不启动 Isaac Sim；
+# 产物是 58 维 frame → 13 维归一化动作（1 维 vx 偏移 + 12 维关节残差）的 stateful
+# TorchScript（decoder/actor 两套 GRU hidden 在模块内部），默认写到 checkpoint 同级
+# `exported/policy.pt`。
 parser.add_argument("--export", action="store_true", default=False,
-                    help="只把 checkpoint 导出为 TorchScript（57→12），不启动仿真/回放。")
+                    help="只把 checkpoint 导出为 TorchScript（58→13），不启动仿真/回放。")
 parser.add_argument("--export-dir", type=str, default=None,
                     help="--export 的输出目录（默认 <checkpoint 同级>/exported）。")
 cli_args.add_towing_args(parser)
@@ -196,8 +197,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
         print(f"[dec] {'step':>6} {'vxT':>7} {'vxP':>7} {'vyT':>7} {'vyP':>7} "
               f"{'|F|T':>7} {'|F|P':>7}")
     if args_cli.cmd_interval > 0:
-        print("[cmd] 列含义：t=时刻s  cmd=送冻结策略的脚本指令（v6 无偏移）  achieved=实际体速  "
-              "|res|=12 维上层动作范数(归一化单位)  res_0=第 1 维关节残差")
+        print("[cmd] 列含义：t=时刻s  cmd=送冻结策略的指令（脚本+偏移）  achieved=实际体速  "
+              "|res|=13 维上层动作范数(归一化单位)  res_0=第 1 维 vx 偏移")
         print(f"[cmd] {'step':>6} {'t(s)':>7} {'cmd':>8} {'achv':>8} "
               f"{'err_track':>9} {'|res|':>8} {'res_0':>8}")
 
@@ -241,7 +242,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
             print(f"[cmd] {env_id:>4} {int(n):>7} {et:>10.4f} {rn:>9.4f}")
         print("[cmd] err_track = |实际速度 − 送冻结策略的指令速度|（最终跟速误差，"
               "与测量台 steady_tracking_ratio 同口径）")
-        print("[cmd] |res|     = 12 维上层动作范数均值（归一化单位，12 维全是关节残差）："
+        print("[cmd] |res|     = 13 维上层动作范数均值（归一化单位，1 vx + 12 关节）："
               "=0 表示上层完全没介入，接近冻结策略满幅说明上层在主导，需查是否顶掉了底层动作。")
 
     print(f"[INFO] 开始回放（确定性策略，step_dt={dt} s）。Ctrl+C 退出。", flush=True)
@@ -256,7 +257,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
               episode_steps += 1
               episode_return += rewards
 
-              # ---- 指令对照：loco_command（脚本任务指令）/ 实际速度 / 12 维上层动作 ----
+              # ---- 指令对照：loco_command（脚本+偏移）/ 实际速度 / 13 维上层动作 ----
               cmd = action_term.loco_command
               residual = action_term.processed_actions
               achieved = action_term._asset.data.root_lin_vel_b[:, :2]
@@ -300,7 +301,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg, agent_cfg: TowingOnPolicyRunnerCfg):
                                 f"间隙 {action_term.rope_state[env_id, 0].item():.3f} m  "
                                 f"指令速度 {action_term.loco_command[env_id].tolist()}  "
                                 f"上层动作范数 {torch.linalg.vector_norm(action_term.processed_actions[env_id]).item():.3f}"
-                                f"（归一化单位，12 维全是关节残差）")
+                                f"（归一化单位，1 维 vx 偏移 + 12 维关节残差）")
                   episode_steps[finished] = 0
                   episode_return[finished] = 0
                   # 回合边界必须清掉三套 GRU 里对应环境的 hidden，否则下个回合会带着

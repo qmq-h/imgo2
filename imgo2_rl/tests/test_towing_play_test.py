@@ -1578,11 +1578,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**关闭**", text)
         self.assertIn("残差恒 0", text)
         self.assertIn("vx 偏移恒 0", text)
-        # 关时也要打印 v6 口径（帧 57 / explicit 5 / 动作 12）
-        self.assertIn("v6", text)
-        self.assertIn("帧 57", text)
-        self.assertIn("动作 12", text)
-        self.assertIn("无 vx 偏移头", text)
+        # 关时也要打印 v7 口径（帧 58 / explicit 5 / 动作 13）
+        self.assertIn("v7", text)
+        self.assertIn("帧 58", text)
+        self.assertIn("动作 13", text)
+        self.assertIn("vx 偏移恒 0", text)
         # 打开：需要真实存在的 checkpoint（parse_args 会在启动 Isaac Sim 之前校验）
         with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
             args = play.parse_args(["--dry-run", "--upper-checkpoint", handle.name])
@@ -1595,16 +1595,14 @@ class CliTests(unittest.TestCase):
         self.assertIn("上层网络：**开启**", opened)
         self.assertIn("确定性均值", opened)
         self.assertIn("towing_contract", opened)
-        # v6：帧 57 / explicit 5 / 动作 12，不是 v5（58/13）或 v4/v3
-        self.assertIn("契约 **v6**", opened)
-        self.assertIn("帧 57", opened)
-        self.assertIn("frame_dim=57", opened)
+        # v7：帧 58 / explicit 5 / 动作 13，不是 v6（57/12）或 v4/v3
+        self.assertIn("契约 **v7**", opened)
+        self.assertIn("帧 58", opened)
+        self.assertIn("frame_dim=58", opened)
         self.assertIn("explicit_dim=5", opened)
-        self.assertIn("动作 12 = 12 维关节残差", opened)
-        self.assertIn("v2（57/79）", opened)
-        self.assertNotIn("frame_dim=58", opened)
+        self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", opened)
+        self.assertIn("v6（57/12）", opened)
         self.assertNotIn("explicit_dim=6", opened)
-        self.assertIn("无 vx 偏移头", opened)
         self.assertIn("随机采样", stochastic)
 
     def test_upper_switch_bad_values_rejected(self):
@@ -2141,12 +2139,11 @@ class DryRunTests(unittest.TestCase):
         # ④ 默认判定口径必须打印（JNT 不计入），且 `--count-jnt` 开关可见
         self.assertIn("判定口径：**JNT 不计入**", result.stdout)
         self.assertIn("--count-jnt", result.stdout)
-        # ⑤ 上层开关状态与 v6 口径（帧 57 / explicit 5 / 动作 12 / 无偏移头）也在 plan 里
+        # ⑤ 上层开关状态与 v7 口径（帧 58 / explicit 5 / 动作 13 / 有偏移头）也在 plan 里
         self.assertIn("上层网络：**关闭**", result.stdout)
-        self.assertIn("v6", result.stdout)
-        self.assertIn("帧 57", result.stdout)
-        self.assertIn("动作 12", result.stdout)
-        self.assertIn("无 vx 偏移头", result.stdout)
+        self.assertIn("v7", result.stdout)
+        self.assertIn("帧 58", result.stdout)
+        self.assertIn("动作 13", result.stdout)
 
     def test_dry_run_with_upper_checkpoint_and_no_torch(self):
         """`--dry-run --upper-checkpoint <存在的文件>` 也要**纯标准库**跑完并打印开启态 plan。
@@ -2173,11 +2170,10 @@ class DryRunTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         self.assertIn("DRY_RUN_CKPT_OK", result.stdout)
         self.assertIn("上层网络：**开启**", result.stdout)
-        self.assertIn("契约 **v6**", result.stdout)
-        self.assertIn("frame_dim=57", result.stdout)
-        self.assertIn("动作 12 = 12 维关节残差", result.stdout)
-        self.assertIn("无 vx 偏移头", result.stdout)
-        self.assertIn("v2（57/79）", result.stdout)
+        self.assertIn("契约 **v7**", result.stdout)
+        self.assertIn("frame_dim=58", result.stdout)
+        self.assertIn("动作 13 = 1 维 vx 偏移 + 12 维关节残差", result.stdout)
+        self.assertIn("v6（57/12）", result.stdout)
         self.assertIn("56/63 维 checkpoint 会被拒绝", result.stdout)
 
 
@@ -2428,8 +2424,8 @@ class SimLoopStaticTests(unittest.TestCase):
         self.assertIn("ARCHIVED_BASELINE_2026_10_09", self.source)
 
 
-class UpperV6WiringTests(unittest.TestCase):
-    """必要性测试台接到 **v6 单头契约**（帧 57 / 动作 12，去掉 vx 偏移头）。"""
+class UpperV7WiringTests(unittest.TestCase):
+    """必要性测试台接到 **v7 双头契约**（帧 58 / 动作 13，1 vx + 12 关节）。"""
 
     TOWING_DIR = RL / "source/imgo2_rl/imgo2_rl/tasks/manager_based/towing"
 
@@ -2451,16 +2447,16 @@ class UpperV6WiringTests(unittest.TestCase):
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
                          runtime.expected_towing_contract(runtime.UpperNetworkSpec()))
         self.assertEqual(play.UPPER_TOWING_CONTRACT_EXPECTED,
-                         {"version": 6, "frame_dim": 57, "explicit_dim": 5, "latent_dim": 16})
+                         {"version": 7, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16})
         self.assertEqual(play.UPPER_CONTRACT_VERSION, runtime.CHECKPOINT_CONTRACT_VERSION)
         self.assertEqual(play.UPPER_FRAME_DIM, runtime.FRAME_DIM)
         self.assertEqual(play.UPPER_ACTION_DIM, runtime.ACTION_DIM)
-        self.assertEqual(play.UPPER_ACTION_DIM, 12)
-        self.assertEqual(play.UPPER_CMD_ACTION_DIM, 0)
+        self.assertEqual(play.UPPER_ACTION_DIM, 13)
+        self.assertEqual(play.UPPER_CMD_ACTION_DIM, 1)
         self.assertEqual(play.UPPER_JOINT_ACTION_DIM, 12)
         terms = {name: (dim, scale) for name, dim, scale in runtime.FRAME_TERMS}
         self.assertEqual(sum(dim for dim, _scale in terms.values()), play.UPPER_FRAME_DIM)
-        self.assertEqual(terms["last_action"], (12, 1.0))
+        self.assertEqual(terms["last_action"], (13, 1.0))
 
     def test_v5_contract_is_rejected_by_the_runtime(self):
         with self.assertRaises(self.runtime.TowingCheckpointContractError):
@@ -2468,18 +2464,18 @@ class UpperV6WiringTests(unittest.TestCase):
                 {"version": 5, "frame_dim": 58, "explicit_dim": 5, "latent_dim": 16},
                 self.runtime.UpperNetworkSpec())
 
-    def test_upper_policy_record_has_no_offset_head(self):
+    def test_upper_policy_record_has_offset_head(self):
         off = play.upper_policy_record(play.parse_args(["--dry-run"]))
-        self.assertEqual(off["towing_contract_expected"]["version"], 6)
-        self.assertEqual(off["towing_contract_expected"]["frame_dim"], 57)
-        self.assertEqual(off["frame_dim_expected"], 57)
-        self.assertEqual(off["action_dim_expected"], 12)
-        self.assertEqual(off["cmd_action_dim"], 0)
+        self.assertEqual(off["towing_contract_expected"]["version"], 7)
+        self.assertEqual(off["towing_contract_expected"]["frame_dim"], 58)
+        self.assertEqual(off["frame_dim_expected"], 58)
+        self.assertEqual(off["action_dim_expected"], 13)
+        self.assertEqual(off["cmd_action_dim"], 1)
         self.assertEqual(off["joint_action_dim"], 12)
         self.assertEqual(off["control_dt_s"], 0.02)
-        self.assertTrue(off["offset"]["removed"])
-        self.assertFalse(off["offset"]["bounded"])
-        self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.0)
+        self.assertFalse(off["offset"]["removed"])
+        self.assertTrue(off["offset"]["bounded"])
+        self.assertEqual(off["offset"]["cmd_offset_scale_mps"], 0.5)
         self.assertEqual(off["mode"], "deterministic")
 
     def test_switch_branch_order_is_act_then_frozen_then_residual(self):
@@ -2500,8 +2496,8 @@ class UpperV6WiringTests(unittest.TestCase):
         for token in ("upper_delta", "upper_loco_command", "upper_processed", "upper.act("):
             self.assertNotIn(token, baseline)
         self.assertIn("joint_targets = loco_joint_targets", baseline)
-        self.assertNotIn("command_offset_vx", self.source)
-        self.assertNotIn("compose_loco_vx_offset(", opened)
+        self.assertIn("command_offset_vx", self.source)
+        self.assertIn("compose_loco_vx_offset(", opened)
 
 
 class CommandDiagnosticsTests(unittest.TestCase):

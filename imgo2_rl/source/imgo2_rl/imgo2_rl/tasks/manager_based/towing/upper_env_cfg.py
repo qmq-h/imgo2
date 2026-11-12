@@ -2,8 +2,9 @@
 # Historical per-step reward examples below use the former 20 Hz cadence.
 """Class-based configuration for the hierarchical towing RL environment.
 
-架构（2026-10-24 起，**v6**）：送给冻结低层策略的速度指令 = 脚本调度（+ 横向/朝向 PD）；
-上层网络只输出 **12 维关节位置残差**，叠加在冻结策略的关节目标上。2026-10-10 引入的
+架构（2026-11-12 起，**v7**）：送给冻结低层策略的速度指令 = 脚本调度 + 1 维 vx 偏移
+（+ 横向/朝向 PD）；上层网络输出 **13 维 = 1 维 vx 偏移 + 12 维关节位置残差**，
+关节残差叠加在冻结策略的关节目标上。2026-10-10 引入的
 1 维 vx 偏移头已删除，actor 不再改写速度。
 
     task_command —— 脚本调度、到点归零 —— 奖励参考量；
@@ -18,9 +19,9 @@
 ``Imgo2-towing-upper-rl-lab``（见同目录 ``__init__.py``）；运行级验收仍未完成，
 清单见 ``docs/towing/towing_training_prep_2026-09-22.md``。
 
-契约 v6（2026-10-24，去掉 vx 偏移头）：policy 帧 **57**、explicit **5**（机器人速度 2 +
-牵引力 3）、latent **16**、actor **78**、critic **73**、decoder ``frame_dim`` **57**；
-动作 **12** = 12 维关节残差。decoder 走 CE Net，重建目标按
+契约 v7（2026-11-12，恢复 vx 偏移头）：policy 帧 **58**、explicit **5**（机器人速度 2 +
+牵引力 3）、latent **16**、actor **79**、critic **73**、decoder ``frame_dim`` **58**；
+动作 **13** = 1 维 vx 偏移 + 12 维关节残差。decoder 走 CE Net，重建目标按
 `UpperObservationSpec.reconstruction_mask()` 取 **42 维**（排除 `loco_command` 3 +
 `last_action` 12）。
 """
@@ -142,10 +143,10 @@ class UpperTowingSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class UpperActionsCfg:
-    """12 维动作（2026-10-24 起）= 12 维归一化关节残差；vx 偏移头已删除。
+    """13 维动作（v7）= 1 维 vx 偏移 + 12 维归一化关节残差。
 
-    残差尺度取冻结策略契约的 `action_scale`，所以这里不再有 `acceleration_*`／
-    `reference_*` 两组限制：送给冻结策略的速度指令由脚本调度产生，不由网络积分。
+    残差尺度取冻结策略契约的 `action_scale`；偏移加在脚本 vx 上（出生段不生效），
+    所以这里不再有 `acceleration_*`／`reference_*` 两组限制。
     「停机之后」开关 `stop_command_ramp_s` 仍在
     `mdp.HierarchicalVelocityActionCfg` 上（默认 0.0）。
     另一个「停机之后」旋钮 `post_stop_allowance_m` **不在本文件**：它是

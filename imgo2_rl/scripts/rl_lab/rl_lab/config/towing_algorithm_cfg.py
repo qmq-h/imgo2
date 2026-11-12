@@ -29,7 +29,7 @@ class TowingDecoderCfg:
 
     # 必须等于环境的 policy 帧维数（`upper_logic.UpperObservationSpec.frame_dim`，契约 v6
     # 起为 58：`last_action` 12 → 13）；runner 会断言它与 `env.num_obs` 一致。
-    frame_dim: int = 57
+    frame_dim: int = 58
     feature_dim: int = 128
     hidden_dim: int = 128
     num_layers: int = 1
