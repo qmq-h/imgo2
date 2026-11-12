@@ -1450,6 +1450,21 @@ class UpperLogicTests(unittest.TestCase):
                          for sub in ast.walk(tracking))
         self.assertTrue(reads_task, "velocity_tracking_exp 必须读 task_command 当参考量")
 
+    def test_roll_penalty_is_continuous_before_the_fall_threshold(self):
+        """2026-11-13：0.8 rad 终止前必须有连续 roll 梯度；deadband 以下不罚。"""
+        cfg = (PKG / "upper_env_cfg.py").read_text("utf-8")
+        mdp = (PKG / "upper_mdp.py").read_text("utf-8")
+        self.assertIn("roll = RewTerm(func=mdp.roll_penalty, weight=-10.0,", cfg)
+        self.assertIn('"deadband_rad": 0.15', cfg)
+        self.assertIn("fall = RewTerm(func=mdp.robot_fall_cost, weight=-500.0,", cfg)
+        self.assertIn("def roll_penalty(env, deadband_rad=0.15):", mdp)
+        body = mdp[mdp.index("def roll_penalty("):]
+        body = body[:body.index("\n\ndef ")]
+        self.assertIn("euler_xyz_from_quat", body)
+        self.assertIn("roll.abs() - float(deadband_rad)", body)
+        # 关掉时没有第二条 roll 终止项；roll 只由奖励连续塑形
+        self.assertNotIn("roll_penalty = DoneTerm", cfg)
+
     def test_task_and_loco_command_are_decoupled_in_the_action_term(self):
         """两个命令必须**分成两个张量**，且偏移只在 `elapsed_s >= tow_start_s` 后生效。
 

@@ -279,6 +279,12 @@ class UpperRewardsCfg:
     fall = RewTerm(func=mdp.robot_fall_cost, weight=-500.0,
                    params={"minimum_height": 0.18,
                            "pitch_limit_rad": 0.8, "roll_limit_rad": 0.8})
+    # 【连续 roll】2026-11-13 用户要求：在 0.8 rad 终止前给 roll 连续梯度。
+    # 50 Hz 每步 = -10 × relu(|roll|-0.15)² × 0.02；0.30 rad −0.0045/步、
+    # 0.60 rad −0.0405/步；deadband 以下精确为 0。权重先取 −10，训练后按
+    # 15°/25–30 kg 的 FALL 与 tracking 是否被压得太狠再调。
+    roll = RewTerm(func=mdp.roll_penalty, weight=-10.0,
+                   params={"deadband_rad": 0.15})
 
     # ============================ 几何／安全约束 ============================
 
