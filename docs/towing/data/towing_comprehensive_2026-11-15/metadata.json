@@ -1,0 +1,46 @@
+{
+  "generated_from": {
+    "baseline_oldppo_20hz": "imgo2_rl/logs/towing/play_test/ppo_deploy53_baseline_m5to30_80col_20261109/report.json",
+    "v6_m2000_50hz": "imgo2_rl/logs/towing/play_test/ppo53_v6_roll10_fall500_m2000_loaded_70col_20261114/report.json",
+    "v7_m2000_50hz": "imgo2_rl/logs/towing/play_test/ppo53_upper2000_v7_50hz_loaded_70col_20261113/report.json"
+  },
+  "terrain_filter": [
+    "0deg",
+    "5deg",
+    "10deg",
+    "wave",
+    "bump"
+  ],
+  "excluded_terrain": [
+    "15deg",
+    "20deg"
+  ],
+  "mass_kg": [
+    5.0,
+    10.0,
+    15.0,
+    20.0,
+    25.0,
+    30.0
+  ],
+  "velocities_mps": [
+    0.5,
+    1.0
+  ],
+  "case_rows": 3600,
+  "summary_rows": 180,
+  "definitions": {
+    "speed_ok": "task speed_tracking.ok; applicable only <=15 kg",
+    "speed_steady_*": "steady-window speed metrics",
+    "impact_*": "four impact windows; task impact_ok checks ratio/delta/saturation",
+    "fell": "stability.fell",
+    "joint_ok": "task joint_static_error (JNT); expected 0",
+    "task_ok": "full task v2 pass; 0 because JNT fails"
+  },
+  "limits": [
+    "historical reports, not one fresh 60-column run",
+    "baseline 20 Hz/no upper; v6/v7 50 Hz/upper",
+    "only 0.5/1.0 m/s",
+    "15/20 deg excluded"
+  ]
+}
