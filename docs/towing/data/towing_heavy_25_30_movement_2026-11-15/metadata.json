@@ -1,0 +1,35 @@
+{
+  "source_reports": {
+    "baseline": "imgo2_rl/logs/towing/play_test/ppo_deploy53_baseline_m5to30_80col_20261109/report.json",
+    "v6_model2000": "imgo2_rl/logs/towing/play_test/ppo53_v6_roll10_fall500_m2000_loaded_70col_20261114/report.json"
+  },
+  "filter": "排除 grade_deg=15.0 和 20.0；两侧均剩 60 列/1200 case",
+  "terrain_labels": {
+    "0.0": "0°",
+    "5.0": "5°",
+    "10.0": "10°",
+    "15.602533394574222": "波浪",
+    "26.565051177077994": "减速带"
+  },
+  "rows": 12,
+  "columns": [
+    "mass_kg",
+    "terrain",
+    "baseline_n",
+    "baseline_ratio_median",
+    "baseline_slow_lt_0_5",
+    "baseline_slow_n",
+    "baseline_fall",
+    "v6_model2000_n",
+    "v6_model2000_ratio_median",
+    "v6_model2000_slow_lt_0_5",
+    "v6_model2000_slow_n",
+    "v6_model2000_fall"
+  ],
+  "definitions": {
+    "ratio_median": "speed.steady_ratio_mean median; 1.0=command",
+    "slow_lt_0_5": "count with steady ratio <0.5",
+    "fall": "stability.fell count"
+  },
+  "note": "baseline 20Hz/no upper; v6 50Hz/upper; historical report filter, not a fresh 60-column run"
+}
