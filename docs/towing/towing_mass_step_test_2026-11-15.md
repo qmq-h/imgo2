@@ -97,6 +97,21 @@ bash imgo2_rl/scripts/run_isaaclab.sh \
 }
 ```
 
+## 2.1 速度曲线
+
+当前 mass-step run 用的是 `--write-csv none`，所以 `latent_trace.csv` 只有 latent 和质量，
+**没有速度时序**。要画速度曲线，用 `--write-csv all` 重跑目标 run（每个 case 写 `tow.csv`），
+然后：
+
+```bash
+python3 imgo2_rl/scripts/tools/plot_mass_step_speed.py \
+    --run-dir <run>/compliant_step10to30 \
+    --output <run>/compliant_step10to30/mass_step_speed.png
+```
+
+脚本读取每个 case 的 `tow.csv`，画 robot vx / load vx / loco cmd 的中位数与 robot vx 10–90%
+带，并在质量切换时刻画竖线。工具只依赖标准库 + matplotlib。
+
 ## 3. 建议分析
 
 对每个连接，比较：
