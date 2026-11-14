@@ -33,6 +33,17 @@ load 降约 0.024 m/s。速度曲线逐点数据见
 [speed_curve_compliant_10to30.csv](data/towing_mass_step_2026-11-15/speed_curve_compliant_10to30.csv)。
 
 > **限制：rigid 没有 `--write-csv all` 的速度轨迹**；当前只有 compliant 有速度曲线。
+>
+> 补跑 rigid 速度曲线（fixed10/fixed30/step，各约 20 分钟）：
+>
+> ```bash
+> bash imgo2_rl/scripts/run_isaaclab.sh \
+>     imgo2_rl/scripts/towing/mass_step_sweep.py \
+>     --connections rigid --write-csv all \
+>     --output-root imgo2_rl/logs/towing/play_test/mass_step_rigid_speed_20261115
+> ```
+>
+> 跑完后对每个 run 用 `plot_mass_step_speed.py` 生成曲线。
 
 ## 3. Latent 适应
 

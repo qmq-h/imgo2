@@ -42,6 +42,10 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--num-envs", type=int, default=160,
                         help="flat 0-7 / 8-15 各 8 列 ×20 行 = 160；默认每连接 160")
+    parser.add_argument("--connections", nargs="+", choices=tuple(CONNECTIONS),
+                        default=list(CONNECTIONS), help="只跑指定连接（默认两类）")
+    parser.add_argument("--write-csv", choices=("none", "failed", "all"), default="none",
+                        help="透传给 play_towing_test；要画速度曲线必须 all")
     parser.add_argument("--mass-step-at-s", type=float, default=5.0,
                         help="tow 段开始后的秒数（1.0 m/s 时约 5 m）")
     parser.add_argument("--include-reverse", action="store_true",
@@ -65,13 +69,14 @@ def main() -> int:
         sys.executable, str(PLAY), "--headless",
         "--num-envs", "160", "--velocities", "1.0",
         "--tow-duration", "24", "--coast-duration", "5",
-        "--stop-progress", "10", "--write-csv", "none",
+        "--stop-progress", "10", "--write-csv", args.write_csv,
         "--compact-log", "--dump-latent", "--latent-trace",
         "--policy", "ppo", "--policy-checkpoint", str(args.policy_checkpoint),
         "--upper-checkpoint", str(args.upper_checkpoint),
     ]
     jobs = []
-    for connection, columns in CONNECTIONS.items():
+    for connection in args.connections:
+        columns = CONNECTIONS[connection]
         base = [*common, "--columns", columns]
         for label, mass, step in (
             ("fixed10", 10, None),
