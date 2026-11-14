@@ -1,5 +1,7 @@
 # Imgo2 项目说明与维护记录
 
+> 最后核对：**2026-11-15（地形删除 15° 回到 60 列 × 20 行 = 1200 env；v6 与无上层速度/启停对比完成）**。`COLUMNS 70→60`、`GRID_SIZE 1400→1200`、`MAX_GRADE_DEG 15→10`、连接计数 24/24/12；15°/20° 均删除，最长弧长回到波浪 10.116044 m ⇒ timeout 24.232088 s / 485 步。历史 report 过滤 15°/20° 后同 1200 case 对比：0.5 m/s 速度通过 **0/300→177/300**、稳态 MAE 0.153→0.037；1.0 m/s **63/300→273/300**、MAE 0.205→0.062；impact 两速度均 600/600，upper 1.0 startup RMS 0.215→0.276（ratio 1.127<1.5）。详见 [60 列对比](docs/towing/towing_v6_vs_baseline_60col_speed_impact_2026-11-15.md)。
+
 > 最后核对：**2026-11-11（model_1500 上层评测：无载 1400/1400 通过；带载速度 412/701、FALL 100，25 kg 最严重）**。用 `model_1500.pt`（contract v6、训练时 **20 Hz**）+ 部署侧老 PPO、70 列/1400 env 跑无载与 5–30 kg 有载两轮（[无载](imgo2_rl/logs/towing/play_test/ppo53_upper1500_noload_70col_20261111/report.md)、[有载](imgo2_rl/logs/towing/play_test/ppo53_upper1500_loaded_70col_20261111/report.md)）。**无载 1400/1400 旧口径 OK、0 FALL，15° 稳态速度比 1.07**。有载任务 **0/1400**（JNT 0/1400 主导）；速度 **412/701**、横向 682/701、不翻车 **683/701**；FALL **100**（15° 63、10° 28、波浪 9），按质量 25 kg **44**、20 kg 27、15 kg 17、30 kg 11、10 kg 1。训练日志 fall 1.8% 与测试 7.1% 不可直接比：训练连续 5–30 kg + 12.5% 无载 + 采样噪声；测试六档等概率 + 全带载 + 确定性均值。但 upper1500 相对老 PPO 基线 37/1400 仍升到 100/1400，重载 15° 姿态控制确有退化。远端已切 50 Hz（`upper_control_dt=0.02`/decimation 4），model_1500 是 20 Hz 训练，不能直接用于 50 Hz；需从零重训。详见 [评测记录](docs/towing/towing_upper1500_eval_2026-11-11.md)。
 
 > 最后核对：**2026-11-09（底层老 PPO 全列结论：15° 无载能爬但速度不稳，带载 15° 29 次翻车；10° 25/30 kg 停滞）**。用部署侧老 PPO `53a57f90…`（45→12 TorchScript）、上层关闭，跑 0 kg 无载 + 5/10/15/20/25/30 kg 两轮 1600 env（80 列，当时含 20°）。0 kg：旧口径 826/1600 OK；平地 400/400、减速带 200/200、10° 26/200、15° 0/200（能爬但全部 SPD）、20° 0/200（0.5 停滞，1.0 100 次 FALL）。5–30 kg：任务 0/1600（JNT 0/1600）；速度 63/802、横向 790/802、不翻车 790/802；FALL 37（15° 29 + 波浪 8），30 kg 仅 4 次波浪 FALL。**10° 的瓶颈是牵引力**：稳态速度比 5 kg 0.70 → 20 kg 0.27 → 25/30 kg ≈0（停滞，不翻车）。20° 已按后续要求删除；详细见 [底层老 PPO 结论](docs/towing/towing_lowlevel_ppo_eval_2026-11-09.md)。
@@ -291,19 +293,20 @@ python scripts/rl_lab/amp/play.py --task=Imgo2-basemove-flat-amp-height-play --n
 
 ```bash
 cd /root/Desktop/Imgo2
-# 看场景：70 环境 = 网格第 0 行（列 0–19 平地、20–29 5°、30–39 10°、40–49 减速带、50–59 波浪、60–69 15°）
+# 看场景：60 环境 = 网格第 0 行（列 0–19 平地、20–29 5°、30–39 10°、40–49 减速带、50–59 波浪）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
-    --num_envs 70 --max_iterations 2 --compact-log --run_name scene-look
+    --num_envs 60 --max_iterations 2 --compact-log --run_name scene-look
 
-# 正式训练：默认 1400 环境（70 列 × 20 行，含 5/10/15° 坡、减速带、波浪；长度绳 0.5→1.5 / 杆 0.5→1.0 m），3000 轮 × 48 步/轮
+# 正式训练：默认 1200 环境（60 列 × 20 行，含 5/10° 坡、减速带、波浪；长度绳 0.5→1.5 / 杆 0.5→1.0 m），3000 轮 × 48 步/轮
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point --headless --compact-log
 ```
 
-默认网格自 2026-11-09 起是**混合地形**：20 平列 + 10 个 5°/10°/15° + **10 列减速带
-（40–49，300/100/50 mm 梯形凸条）+ 10 列波浪（50–59，3 周期正弦、振幅 10 cm）**
-= **70 列 × 20 行 = 1400 环境**（最长 15° 弧长 10.211657 m ⇒ timeout 24.423314 s / 489 步），见
+默认网格自 2026-11-15 起是**60 列混合地形**：20 平列 + 10 个 5°/10° + **10 列减速带
+（40–49，300/100/50 mm 梯形凸条）+ 10 列波浪（50–59，3 周期正弦、振幅 10 cm）**；
+15°/20° 坡已删除。= **60 列 × 20 行 = 1200 环境**（最长波浪弧长 10.116044 m
+⇒ timeout 24.232088 s / 485 步），见
 [混合地形记录](docs/towing/towing_mixed_terrain_2026-10-16.md)。**训练侧质量随机范围自
 2026-10-18 起是 5–30 kg**（`reset_work_condition.mass_range`）；测试台默认档
 **10/15/20/25/30 kg**（5 kg 仍训练采样，默认评测不覆盖；5 档保持连接/坡度×质量均衡）。另一个任务
@@ -352,7 +355,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --policy_checkpoint=logs/towing_rl_lab/policies/ppo_2500/policy.pt \
     --run_name=smoke_ppo2500
 
-# 3) 正式训练：默认 1400 环境、3000 轮 × 48 步/轮
+# 3) 正式训练：默认 1200 环境、3000 轮 × 48 步/轮
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/train.py \
     --task=Imgo2-towing-upper-rl-lab --agent=rl_lab_cfg_entry_point \
     --headless --compact-log \
@@ -380,14 +383,14 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/rl_lab/towing/play.py \
 
 ```bash
 python3 imgo2_rl/scripts/towing/play_towing_test.py --dry-run      # 只打印网格与代价，不启动仿真
-# 完整训练网格（1400 环境 = 70 列 × 20 行，一次仿真跑完）
+# 完整训练网格（1200 环境 = 60 列 × 20 行，一次仿真跑完）
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py --headless
-# 冒烟（网格前缀）：70 环境 = 整行，三种连接 + 5/10/15° + 减速带 + 波浪都在
+# 冒烟（网格前缀）：60 环境 = 整行，三种连接 + 5/10° + 减速带 + 波浪都在
 bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.py \
     --headless --num-envs 60 --tow-duration 2 --coast-duration 2 --write-csv none
 ```
 
-场景 = **训练场景** `UpperTowingSceneCfg`（70 列 × 20 行 = 1400 条 lane，其中 40–49 减速带、50–59 波浪、60–69 15°），逐 env 的连接类型/长度/坡度量级取 `connection_grid.env_spec(i)`，**只扫速度 × 质量**（确定性轮转 `slot = row + column`：15 个组合各 93–98 个 env，且「连接 × 质量」「坡度量级 × 质量」严格均衡）；地面摩擦固定 `0.8`、轮轴阻尼 `0.032`（训练名义值）；横向/朝向用 PD 压在 lane 中线并保持超前（**vx 只给指令、不参与 PD**）；旧的「`gravity` / `terrain` 两种坡度后端」与 `--connections/--slopes/--slope-backend` 等开关已删除实现（与真实坡面同解），`--slope-backend terrain` 则用远端 2026-10-09 的真实坡面 tile（与训练场景同源，每坡度需 ≤100 case）。要对照「Fixed Ramp」基线加 `--command-shaping ramp`；要在坡上跑无制动真实溜坡用 `--slope-settle free`。产物是 `report.md`（逐坡度判定矩阵 + 结论）、`report.csv`、`report.json` 与逐 case 摘要，口径、阈值与限制见 [记录](docs/towing/towing_necessity_test_2026-10-09.md)。
+场景 = **训练场景** `UpperTowingSceneCfg`（60 列 × 20 行 = 1200 条 lane，其中 40–49 减速带、50–59 波浪），逐 env 的连接类型/长度/坡度量级取 `connection_grid.env_spec(i)`，**只扫速度 × 质量**（确定性轮转 `slot = row + column`：15 个组合各 80 个 env，且「连接 × 质量」「坡度量级 × 质量」严格均衡）；地面摩擦固定 `0.8`、轮轴阻尼 `0.032`（训练名义值）；横向/朝向用 PD 压在 lane 中线并保持超前（**vx 只给指令、不参与 PD**）；旧的「`gravity` / `terrain` 两种坡度后端」与 `--connections/--slopes/--slope-backend` 等开关已删除实现（与真实坡面同解），`--slope-backend terrain` 则用远端 2026-10-09 的真实坡面 tile（与训练场景同源，每坡度需 ≤100 case）。要对照「Fixed Ramp」基线加 `--command-shaping ramp`；要在坡上跑无制动真实溜坡用 `--slope-settle free`。产物是 `report.md`（逐坡度判定矩阵 + 结论）、`report.csv`、`report.json` 与逐 case 摘要，口径、阈值与限制见 [记录](docs/towing/towing_necessity_test_2026-10-09.md)。
 
 导出后按三条契约复核，再拷进 `imgo2_deploy/policy/imgo2/<算法>/policy.pt`：① 导出件与 checkpoint 的
 actor 在同一批确定性输入上 max|diff| = 0；② 能被部署自己的 libtorch 加载；③ 部署 interface 的观测维数
@@ -979,3 +982,4 @@ checkpoint / 日志 / 视频 / 导出目录：
 | 2026-11-15（**v6 model2000 latent：station 绳/杆可分、tow 地形/速度主导、质量变弱**） | `ppo53_v6_roll10_fall500_m2000_loaded_70col_20261114_latent`（1400 case，16 维 phase 均值）。station：绳vs杆 kNN 1.000/ARI .728，两种绳混叠，质量只在 rigid（η² .611）。tow：连接 ARI .010、质量 η² .038/kNN .606、**地形 η² .237/kNN .806**、速度 kNN .996。 | **与旧结论**：station 绳/杆、两种绳混、质量只在 rigid 一致；tow 连接弱一致；**tow 质量从旧“可分”变弱**，地形/速度成为主分离轴。t-SNE/PCA 图在 `latent_plots/`；详见 [latent 分析](docs/towing/towing_latent_v6_fall500_2026-11-15.md)。 |
 | 2026-11-15（**归档 v6 model2000 latent 数据与图；补充平地1.0按连接质量结论**） | 将 1400 case × station/tow/coast 的 16 维 phase 均值压成 `latent_points.csv.gz`（4200 行，含 connection/mass/grade/velocity/length/row/column），并归档连接/质量/地形 PCA/t-SNE 与控制平地1.0按连接图。**新增**：平地+1.0 按连接的质量 η² 0.194/0.265/0.248（聚合 0.038），但 kNN 0.33–0.42、ARI≈0.07，仍无低维簇；旧 v3 质量带清楚但 mass head 误差≈5kg，属“表示存在/读出失败”。 | **验证**：数据 4200 行、压缩 402KB；图像已归档；`metadata.json` 含源 report SHA256。详见 [latent 记录](docs/towing/towing_latent_v6_fall500_2026-11-15.md)。 |
 | 2026-11-15（**新增质量突变测试脚本：10→30 kg，平地 1.0 m/s，compliant/rigid 各一组**） | 新增 `play_towing_test.py` 的 `--mass-step-at-s/from/to` 与 `--latent-trace`：tow 开始后指定秒数同时更新 cart base_link mass/inertia/CoM；逐记录写 16 维 latent + 当前质量。新增驱动 `mass_step_sweep.py`：compliant/rigid 各 fixed10/fixed30/step10→30，共 6 run，可选 30→10。 | **验证**：全量 742 passed, 4 skipped；driver `--dry-run` 打印 6 条命令；新增质量参数校验测试。**未验证**：GPU 实跑中 PhysX 运行期改质量、瞬态冲击、`summarize_tow` 最终质量口径。详见 [质量突变测试](docs/towing/towing_mass_step_test_2026-11-15.md)。 |
+| 2026-11-15（**删除 15° 地形回到 60 列；v6 与无上层 60 列速度/冲击对比**） | 用户要求去掉 15° 并统计所有速度相对无上层的速度跟随/启停冲击。**地形**：`COLUMNS 70→60`、`GRID_SIZE 1400→1200`、`MAX_GRADE_DEG 15→10`、`ELASTIC/RIGID/INEXTENSIBLE 28/28/14→24/24/12`；最长弧长回到波浪 10.116044 m ⇒ 24.232088 s / 485 步。**统计**（历史 report 过滤 15°/20°，各 1200）：0.5 m/s 速度通过 0/300→**177/300**、MAE .153→.037；1.0 m/s 63/300→**273/300**、MAE .205→.062；impact 两速度均 600/600，upper 1.0 startup RMS .215→.276（ratio 1.127<1.5）。 | **验证**：地形/测试台/契约相关测试更新；详见 [60列对比](docs/towing/towing_v6_vs_baseline_60col_speed_impact_2026-11-15.md)。**未验证**：未重新跑 60 列仿真；统计是过滤历史 70/80 列 report；速度只有 0.5/1.0。 |
