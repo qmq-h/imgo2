@@ -2681,6 +2681,16 @@ def parse_args(argv=None):
                              "（`assets/cart_mass.body_properties`，与训练侧同一套；**不是**整车等比缩放）。"
                              "总重必须 > 1.0 kg（车斗+四轮），上界 100 kg。> 30 kg 属训练域外，plan 与 experiment.json 会标出；默认 10/15/20/25/30 kg 全在域内。"
                              "按 slot = row + column 轮转分配")
+    parser.add_argument("--mass-step-at-s", type=float, default=None,
+                        help="在 tow 段开始后第几秒把小车上质量从 --mass-step-from 突变到 "
+                             "--mass-step-to（必须同时给三者；例如 5.0）")
+    parser.add_argument("--mass-step-from", type=float, default=None,
+                        help="突变前小车总质量（kg）；必须与 --cart-masses 的唯一档位一致")
+    parser.add_argument("--mass-step-to", type=float, default=None,
+                        help="突变后小车总质量（kg）")
+    parser.add_argument("--latent-trace", action="store_true",
+                        help="逐记录步写 latent_trace.csv（16 维 latent + 当前质量/phase）；"
+                             "需要 --upper-checkpoint，且建议配合小规模 --num-envs")
     parser.add_argument("--ground-friction", type=float, default=FACTORY_FLOOR_FRICTION,
                         help="地面静/动摩擦系数（固定值；工厂地面常规 0.8，训练侧随机 0.4–1.2）")
     parser.add_argument("--wheel-damping", type=float, default=TRAINING_WHEEL_DAMPING,
@@ -2873,6 +2883,24 @@ def parse_args(argv=None):
     args.schedule = make_schedule(settle_steps=int(round(args.settle_time / args.dt)),
                                   tow_duration=args.tow_duration,
                                   coast_duration=args.coast_duration, dt=args.dt)
+    mass_step = (args.mass_step_at_s, args.mass_step_from, args.mass_step_to)
+    if any(value is not None for value in mass_step):
+        if any(value is None for value in mass_step):
+            parser.error("--mass-step-at-s / --mass-step-from / --mass-step-to 必须同时给出")
+        if not math.isfinite(args.mass_step_at_s) or args.mass_step_at_s <= 0.0:
+            parser.error("--mass-step-at-s 必须是有限正数")
+        if (not math.isfinite(args.mass_step_from) or not math.isfinite(args.mass_step_to)
+                or args.mass_step_from <= 1.0 or args.mass_step_to <= 1.0):
+            parser.error("--mass-step-from / --mass-step-to 必须 > 1.0 kg（车斗+四轮固定质量）")
+        bad = [case for case in args.cases
+               if abs(float(case.cart_mass_kg) - float(args.mass_step_from)) > 1e-6]
+        if bad:
+            parser.error(
+                f"--mass-step-from={args.mass_step_from:g} 必须与所有 case 的初始质量一致；"
+                f"发现 {len(bad)} 个 case 是 {sorted({case.cart_mass_kg for case in bad})} kg。"
+                f"请只传 --cart-masses {args.mass_step_from:g}")
+    if args.latent_trace and args.upper_checkpoint is None:
+        parser.error("--latent-trace 需要同时给 --upper-checkpoint（基线没有 latent）")
     return args
 
 
@@ -2936,6 +2964,9 @@ def planned_grid_lines(args) -> list:
     lines = [
         f"[plan] 地形剖面 = {getattr(args, 'terrain_profile', 'hill')}"
         f"（平滑段高度场；减速带块列 40–49 与波浪块列 50–59 始终在网格里）",
+        (f"[plan] 质量突变 = tow 开始后 {args.mass_step_at_s:g} s："
+         f"{args.mass_step_from:g} → {args.mass_step_to:g} kg（所有 env，更新质量/惯量/CoM）"
+         if args.mass_step_at_s is not None else "[plan] 质量突变 = 关闭（固定质量）"),
         f"[plan] 地形过滤 = `--columns {getattr(args, 'columns', None)}`"
         f"（{len(getattr(args, 'cases', []))} 条 lane）；停车 = "
         + (f"按里程 `--stop-progress {args.stop_progress:g} m`（逐 env 置零指令）"
@@ -3147,7 +3178,15 @@ def main(args):
                  f"JNT 指标参考 = 实际下发的 held（与训练侧 reference=\"commanded\" 同口径）"),
             ],
         },
+        "mass_step": ({
+            "at_tow_elapsed_s": float(args.mass_step_at_s),
+            "from_kg": float(args.mass_step_from),
+            "to_kg": float(args.mass_step_to),
+            "scope": "all envs; cases must all start at from_kg",
+            "note": "cart base_link mass/inertia/com are updated together; no reset",
+        } if args.mass_step_at_s is not None else None),
         "schedule": args.schedule.to_dict(),
+
         "thresholds": thresholds,
         "criteria": {
             "version": TASK_VERSION,
@@ -3512,6 +3551,41 @@ def main(args):
                 raise RuntimeError(
                     f"env {index} 的小车质量缩放失败：目标 {case.cart_mass_kg:g} kg，"
                     f"PhysX 里是 {actual_masses[index]:g} kg")
+        # ---- 质量突变（小规模受控实验）：tow 段开始后 at_s 秒把所有 env 从 from 改到 to
+        # 只改重物块 → base_link 的质量/惯量/CoM 一起重算；不 reset、不重建 env。
+        mass_step_done = False
+
+        def apply_mass_step() -> None:
+            nonlocal actual_masses, mass_step_done
+            target = float(args.mass_step_to)
+            new_base_mass, new_base_inertia, new_base_com_z, _ = cart_mass_tensors(
+                cart_model, [target] * num_envs)
+            new_masses = nominal_masses.clone()
+            new_inertias = nominal_inertias.clone()
+            new_coms = nominal_coms.clone()
+            for index in range(num_envs):
+                new_masses[index, base_id] = new_base_mass[index]
+                new_inertias[index, base_id] = 0.0
+                ixx, iyy, izz = new_base_inertia[index]
+                new_inertias[index, base_id, 0] = ixx
+                new_inertias[index, base_id, 4] = iyy
+                new_inertias[index, base_id, 8] = izz
+                new_coms[index, base_id, :3] = torch.tensor(
+                    (0.0, 0.0, new_base_com_z[index]), dtype=new_coms.dtype)
+            cart.root_physx_view.set_masses(new_masses, cart_env_idx)
+            cart.root_physx_view.set_inertias(new_inertias, cart_env_idx)
+            cart.root_physx_view.set_coms(new_coms, cart_env_idx)
+            actual_masses = cart.root_physx_view.get_masses().sum(dim=1).tolist()
+            bad = [index for index, value in enumerate(actual_masses)
+                   if abs(value - target) > 1e-3 + 1e-3 * target]
+            if bad:
+                raise RuntimeError(
+                    f"质量突变失败：{len(bad)} 个 env 目标 {target:g} kg，"
+                    f"PhysX 实际 {[actual_masses[i] for i in bad[:4]]}")
+            mass_step_done = True
+            print(f"[mass] tow 开始后 {args.mass_step_at_s:g} s："
+                  f"{args.mass_step_from:g} → {target:g} kg（{num_envs} env）", flush=True)
+
         torque_limits = robot.data.joint_effort_limits[0, policy_to_asset].tolist()
 
         # ---- 出生几何（逐 env）：目标挂点距 = env_spec 的 initial_distance
@@ -3886,6 +3960,7 @@ def main(args):
         # `tow.csv` 事后重建（帧里的 last_action/last_loco_action/joint_vel 都没记录），
         # 所以只能在跑的时候按阶段求和，最后写进 report.json。
         latent_sums = estimate_sums = decoder_gt_sums = decoder_abs_err = decoder_counts = None
+        latent_trace_rows = [] if args.latent_trace else None
         if args.dump_latent:
             latent_sums = torch.zeros(num_envs, 3, upper.spec.latent_dim,
                                       dtype=torch.float64, device=args.device)
@@ -3916,6 +3991,9 @@ def main(args):
         for step in range(args.schedule.total_steps):
             phase = args.schedule.phase_of(step)
             step_in_phase = args.schedule.step_in_phase(step)
+            if (args.mass_step_at_s is not None and not mass_step_done
+                    and phase == "tow" and step_in_phase * dt >= args.mass_step_at_s):
+                apply_mass_step()
             if phase == "tow":
                 if args.command_shaping == "direct":
                     vx_command = velocities
@@ -4054,6 +4132,16 @@ def main(args):
             progress_load = progress_load.tolist()
             stopped_list = (env_stopped.tolist() if env_stopped is not None
                             else [False] * num_envs)
+            if latent_trace_rows is not None:
+                snapshot = upper.last_latent.detach().cpu().tolist()
+                for env_index in range(num_envs):
+                    latent_trace_rows.append({
+                        "env_index": env_index, "step": step,
+                        "time_s": (step + 1) * dt,
+                        "phase": "coast" if stopped_list[env_index] else phase,
+                        "cart_mass_kg": actual_masses[env_index],
+                        **{f"z{i}": value for i, value in enumerate(snapshot[env_index])},
+                    })
             for env_index in range(num_envs):
                 case_rows[env_index].append(make_row(
                     env_index, phase=("coast" if stopped_list[env_index] else phase),
@@ -4078,6 +4166,15 @@ def main(args):
                 reached = torch.tensor(progress_robot, dtype=torch.float32,
                                        device=args.device) >= float(args.stop_progress)
                 env_stopped |= reached
+        if latent_trace_rows is not None:
+            fields = (["env_index", "step", "time_s", "phase", "cart_mass_kg"]
+                      + [f"z{i}" for i in range(16)])
+            with (output / "latent_trace.csv").open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(latent_trace_rows)
+            print(f"[latent] 逐记录 latent 轨迹：{output / 'latent_trace.csv'}"
+                  f"（{len(latent_trace_rows)} 行）", flush=True)
         elapsed = time.time() - started
         print(f"[run] 完成 {args.schedule.total_steps} 步 × {num_envs} 环境，用时 {elapsed:.1f} s",
               flush=True)
@@ -4334,6 +4431,7 @@ def main(args):
             "task_statistics": task_summary,
             "task_conclusion": task_conclusion,
             "arguments": experiment["arguments"],
+            "mass_step": experiment.get("mass_step"),
             "upper_policy": experiment["upper_policy"],
             "baseline_comparison": baseline_comparison,
             "impact_statistics": impact_report,

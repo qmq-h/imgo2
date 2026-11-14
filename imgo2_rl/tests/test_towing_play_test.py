@@ -1572,6 +1572,30 @@ class CliTests(unittest.TestCase):
         self.assertIsNone(args.upper_checkpoint)
         self.assertFalse(args.upper_stochastic)
 
+    def test_mass_step_validation_and_plan(self):
+        args = play.parse_args([
+            "--dry-run", "--columns", "0-7", "--num-envs", "160",
+            "--velocities", "1.0", "--cart-masses", "10",
+            "--mass-step-at-s", "5", "--mass-step-from", "10",
+            "--mass-step-to", "30",
+        ])
+        text = "\n".join(play.planned_grid_lines(args))
+        self.assertIn("质量突变", text)
+        self.assertIn("10 → 30 kg", text)
+        # 初始质量与 --mass-step-from 不一致时拒绝
+        with self.assertRaises(SystemExit):
+            play.parse_args([
+                "--dry-run", "--columns", "0-7", "--num-envs", "160",
+                "--velocities", "1.0", "--cart-masses", "10",
+                "--mass-step-at-s", "5", "--mass-step-from", "15",
+                "--mass-step-to", "30",
+            ])
+        # 只给一部分 mass-step 参数时拒绝
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--mass-step-at-s", "5"])
+        with self.assertRaises(SystemExit):
+            play.parse_args(["--latent-trace", "--dry-run"])
+
     def test_upper_plan_lines_show_the_switch(self):
         baseline = play.parse_args(["--dry-run"])
         text = "\n".join(play.planned_grid_lines(baseline))
