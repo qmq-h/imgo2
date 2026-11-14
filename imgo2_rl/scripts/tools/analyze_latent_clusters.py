@@ -460,6 +460,8 @@ def main(argv=None):
         if not report:
             continue
         confusion = report["centroid_loo_confusion"]
+        if not confusion.get("labels"):
+            continue
         print(f"    [{display}] {'':>10s}" + "".join(f"{str(label):>14s}" for label in confusion["labels"]))
         for label, row in zip(confusion["labels"], confusion["matrix"]):
             print(f"    {'':>8s}{str(label):>14s}" + "".join(f"{value:>14d}" for value in row))
