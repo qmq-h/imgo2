@@ -17,6 +17,7 @@ latent + current mass).  Run this script under the Isaac Lab launcher, e.g.:
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 import subprocess
 import sys
@@ -45,6 +46,8 @@ def main() -> int:
                         help="tow 段开始后的秒数（1.0 m/s 时约 5 m）")
     parser.add_argument("--include-reverse", action="store_true",
                         help="额外跑 30 -> 10 kg 卸载")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="若该 run 的 experiment.json state=completed 则跳过（用于中断后续跑）")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -91,6 +94,16 @@ def main() -> int:
 
     print(f"[mass-step] output root: {root}")
     for label, cmd in jobs:
+        out_dir = Path(cmd[cmd.index("--output-dir") + 1])
+        state_file = out_dir / "experiment.json"
+        if args.skip_existing and state_file.is_file():
+            try:
+                state = json.loads(state_file.read_text(encoding="utf-8")).get("state")
+            except (OSError, json.JSONDecodeError):
+                state = None
+            if state == "completed":
+                print(f"\n[mass-step] {label}: SKIP (completed: {out_dir})")
+                continue
         print(f"\n[mass-step] {label}\n  {shlex.join(cmd)}")
         if args.dry_run:
             continue

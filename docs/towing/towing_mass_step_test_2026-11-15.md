@@ -57,6 +57,15 @@ bash imgo2_rl/scripts/run_isaaclab.sh \
 | rigid | 8–15 | 固定 30 kg |
 | rigid | 8–15 | **10 → 30 kg @ tow+5 s** |
 
+中断后续跑（已完成 run 会按 `experiment.json.state=completed` 跳过）：
+
+```bash
+bash imgo2_rl/scripts/run_isaaclab.sh \
+    imgo2_rl/scripts/towing/mass_step_sweep.py \
+    --output-root imgo2_rl/logs/towing/play_test/mass_step_70col_flat_v1_20261115_051350 \
+    --skip-existing
+```
+
 可选反向卸载：
 
 ```bash
