@@ -89,3 +89,58 @@ PCA：PC1 **37.7%**、PC2 **23.5%**；连接/质量在二维投影里都大面�
 - 连接/质量标签与列/行绑定，可能是 cell 位置/地形在编码，不一定是物理参数；
 - 单模型、单 checkpoint；未做多 seed；
 - t-SNE 只用于可视化，不是聚类证据；可分性以 16 维 kNN/η²/ARI 为准。
+
+## 5. 控制工况：平地 + 1.0 m/s，按连接拆质量
+
+使用 `--filter grade_deg=0 --filter velocity_mps=1.0`，tow 阶段：
+
+| 连接 | n | 质量 η² | kNN5 LOO | k=4 ARI |
+|---|---:|---:|---:|---:|
+| compliant | 85 | 0.194 | 0.424 | 0.072 |
+| inextensible | 47 | 0.265 | 0.404 | 0.080 |
+| rigid | 73 | 0.248 | 0.329 | 0.056 |
+
+对比全部 tow 聚合的 mass η² 0.038：控制地形/速度并按连接拆开后，质量结构明显增强
+（0.19–0.27），但仍没有低维质量簇（kNN 0.33–0.42、ARI≈0.07）。
+
+图（已归档）：
+
+- [平地 1.0，质量 PCA 按连接](data/latent_v6_fall500_2026-11-15/latent_mass_flat_v1_pca_by_connection.png)
+- [平地 1.0，质量 t-SNE 按连接](data/latent_v6_fall500_2026-11-15/latent_mass_flat_v1_tsne_by_connection.png)
+
+## 6. 与旧 v3 的质量图对比 / “head 差但 latent 好”的解释
+
+旧 v3（2026-10-12，5/10/15/20 kg、800 env、20 Hz）的质量图：
+
+- [旧 tow 全量](data/latent_cluster_2026-10-12/tow/pca_mass_by_connection.png)
+- [旧 tow 平地 + row0–9](data/latent_cluster_2026-10-12/tow_rows0-9_grade0/pca_mass_by_connection.png)
+- [旧 station](data/latent_cluster_2026-10-12/station/pca_mass_by_connection.png)
+
+旧图里 5/10/15/20 的质量带很清楚；当前 v6 平地 1.0 按连接拆开后只有局部梯度。
+
+但旧 v3 的显式 mass head 误差中位数约 **5.001 kg**（station 接近常数预测），tow 也约
+2.8–3.2 kg，所以「head 差、latent 却能分」并不矛盾：
+
+1. **latent 是表示，mass head 只是读出层**：head 因尺度/门控/优化不足塌成常数，不代表共享
+   decoder GRU 没编码质量；质量损失仍会通过共享层塑造 latent。
+2. **质量本身改变动力学**：牵引力、速度响应、绳张力/伸长都可被机器人本体感觉观测；即使没有
+   head，latent 也能从动力学推断质量。
+3. **旧工况更干净**：4 档质量、0/5/10°、20 Hz、800 env；当前 6 档、0–15° + 波浪/减速带、
+   50 Hz、fall/roll，latent 方差被地形/速度占走。
+4. **质量标签与列/行绑定**：旧图的质量带可能混入长度/几何/工况；旧数据用 row0–9/grade0
+   控制了一部分，但不是完全独立。
+
+因此旧图不能直接证明“显式 mass head 让 latent 更好”；要确认需做：
+
+- 对旧 v3 latent 做线性/最近质心 mass probe，和 mass head 误差对比；
+- 当前 v6 同域加 explicit mass head（v8：explicit 6，actor 79）与当前 v6 做 A/B；
+- 同时看 head MAE、latent 质量 η²/kNN/ARI，以及控制平地 1.0 + 连接拆分后的图。
+
+## 7. 归档数据
+
+- 压缩 latent 全量：`docs/towing/data/latent_v6_fall500_2026-11-15/latent_points.csv.gz`
+  - 4200 行 = 1400 case × station/tow/coast；
+  - 每行 16 维 phase 均值 + connection/mass/grade/velocity/length/row/column；
+  - 仅 `cart_present=true`。
+- 元数据/源 report SHA256：同目录 `metadata.json`。
+- 图：同目录 6 张（连接 PCA/t-SNE、质量 PCA/t-SNE、平地 1.0 质量按连接、地形 t-SNE）。
