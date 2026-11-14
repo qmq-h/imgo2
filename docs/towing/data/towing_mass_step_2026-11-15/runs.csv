@@ -1,0 +1,7 @@
+run,connection,condition,state,elapsed_s,n,task_pass,task_codes,fall,speed_light_pass,speed_light_applicable,speed_heavy_pass,speed_heavy_applicable,impact_light_pass,impact_light_applicable,impact_heavy_pass,impact_heavy_applicable,lane_light_pass,lane_heavy_pass,joint_light_pass,joint_heavy_pass,no_fall_light_pass,no_fall_heavy_pass,mass_step
+compliant_fixed10,compliant,fixed10,completed,1218.2794575691223,160,0,JOINT_ERROR:160,0,160,160,0,0,160,160,0,0,160,0,0,0,160,0,null
+compliant_fixed30,compliant,fixed30,completed,1215.9342379570007,160,0,JOINT_ERROR:160,0,0,0,0,0,0,0,160,160,0,160,0,0,0,160,null
+compliant_step10to30,compliant,step10to30,completed,1226.0984299182892,160,0,JOINT_ERROR:160,0,160,160,0,0,160,160,0,0,160,0,0,0,160,0,"{""at_tow_elapsed_s"": 5.0, ""from_kg"": 10.0, ""to_kg"": 30.0, ""scope"": ""all envs; cases must all start at from_kg"", ""note"": ""cart base_link mass/inertia/com are updated together; no reset""}"
+rigid_fixed10,rigid,fixed10,completed,1216.1989908218384,160,0,JOINT_ERROR:160,0,160,160,0,0,160,160,0,0,160,0,0,0,160,0,null
+rigid_fixed30,rigid,fixed30,completed,852.779762506485,160,0,JOINT_ERROR:160,0,0,0,0,0,0,0,160,160,0,160,0,0,0,160,null
+rigid_step10to30,rigid,step10to30,completed,860.85116314888,160,0,JOINT_ERROR:160,0,160,160,0,0,160,160,0,0,160,0,0,0,160,0,"{""at_tow_elapsed_s"": 5.0, ""from_kg"": 10.0, ""to_kg"": 30.0, ""scope"": ""all envs; cases must all start at from_kg"", ""note"": ""cart base_link mass/inertia/com are updated together; no reset""}"
