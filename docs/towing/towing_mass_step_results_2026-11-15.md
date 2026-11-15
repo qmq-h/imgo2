@@ -32,18 +32,26 @@
 load 降约 0.024 m/s。速度曲线逐点数据见
 [speed_curve_compliant_10to30.csv](data/towing_mass_step_2026-11-15/speed_curve_compliant_10to30.csv)。
 
-> **限制：rigid 没有 `--write-csv all` 的速度轨迹**；当前只有 compliant 有速度曲线。
->
-> 补跑 rigid 速度曲线（fixed10/fixed30/step，各约 20 分钟）：
->
-> ```bash
-> bash imgo2_rl/scripts/run_isaaclab.sh \
->     imgo2_rl/scripts/towing/mass_step_sweep.py \
->     --connections rigid --write-csv all \
->     --output-root imgo2_rl/logs/towing/play_test/mass_step_rigid_speed_20261115
-> ```
->
-> 跑完后对每个 run 用 `plot_mass_step_speed.py` 生成曲线。
+### rigid 速度曲线
+
+![rigid step](data/towing_mass_step_2026-11-15/rigid_step10to30_speed.png)
+
+| 窗口 | rigid fixed10 | rigid fixed30 | rigid step10→30 |
+|---|---:|---:|---:|
+| 5.5–5.9 s | 0.945 | 0.911 | 0.945（10 kg） |
+| 6.1–7.0 s | 0.948 | 0.910 | **0.927（30 kg）** |
+| 8–10 s | 0.950 | 0.905 | 0.931（30 kg） |
+
+- rigid 10→30 后 robot vx 0.945→0.927（−0.018）、load 0.949→0.928；
+- 同样没有速度塌陷；
+- fixed30 稳态约 0.91，step 后期约 0.93，略高但同量级；
+- 三张图：
+  - [fixed10](data/towing_mass_step_2026-11-15/rigid_fixed10_speed.png)
+  - [fixed30](data/towing_mass_step_2026-11-15/rigid_fixed30_speed.png)
+  - [step10→30](data/towing_mass_step_2026-11-15/rigid_step10to30_speed.png)
+
+四组速度曲线的逐点数据统一在
+[speed_curves_all.csv](data/towing_mass_step_2026-11-15/speed_curves_all.csv)。
 
 ## 3. Latent 适应
 

@@ -27,15 +27,20 @@
   "notes": [
     "6 runs: compliant/rigid x fixed10/fixed30/step10to30",
     "latent windows: pre 5.0-5.9, post 6.1-7.0, late 8.0-10.0 s (absolute; station=1s, step at tow+5=6s)",
-    "speed curve exists only for compliant step rerun with --write-csv all; rigid speed curve not dumped",
-    "all runs are flat 0 deg, 1.0 m/s, 160 env; no 15/20 terrain"
+    "all runs are flat 0 deg, 1.0 m/s, 160 env; no 15/20 terrain",
+    "speed curves: compliant step only from first rerun; rigid fixed10/fixed30/step from 2026-11-15 rigid speed rerun"
   ],
   "files": [
     "runs.csv",
     "latent_means.csv",
     "latent_adaptation.csv",
     "latent_adaptation.png",
+    "speed_curves_all.csv",
     "speed_curve_compliant_10to30.csv",
-    "mass_step_speed_compliant_10to30.png"
-  ]
+    "mass_step_speed_compliant_10to30.png",
+    "rigid_fixed10_speed.png",
+    "rigid_fixed30_speed.png",
+    "rigid_step10to30_speed.png"
+  ],
+  "rigid_speed_root": "imgo2_rl/logs/towing/play_test/mass_step_rigid_speed_20261115"
 }
