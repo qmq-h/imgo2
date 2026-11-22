@@ -33,7 +33,7 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 - 不传 `--headless` 会打开 Isaac Sim GUI；相机截图逻辑相同。
 - `--capture-dir` 会强制 `--num-envs 1`，并只取第一列，避免多 env 干扰构图。
 - 侧视相机：机器人和小车**实际位置的中点**，相机在中心 + `(0, -6.0, 3.0)`，看向中点；
-- 地形相机：网格**中间行**、第 30 列（10°/减速带附近）上方 `(0, -80, 320)` 斜俯视；
+- 地形相机：网格**中间行**、第 30 列上方 `(-40, -80, 80)` 看总览；另拍一张第 45 列（减速带/波浪附近）`(-28, -35, 22)` 近景；
 - 第一版曾用 env0 原点/第 0 行边缘，导致机器人被裁到左下、地形一半是空背景；2026-11-22 已修正。
 - 也可以在 GUI 里手动调 Isaac Sim viewport 相机后截图；这个脚本只是可复现版本。
 
@@ -42,13 +42,14 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 ```text
 docs/towing/data/scene_capture_2026-11-22/
   side.png       # 机器人 + 小车侧视
-  terrain.png    # 地形俯视
+  terrain.png       # 地形总览
+  terrain_close.png # 地形近景（减速带/波浪附近）
 ```
 
 ## 可能需要调整
 
 - 侧视如果机器人/小车不在画面中心，改 capture block 里的 `center/eyes`；
-- 地形图如果拍不全/太远，调整 `320.0` 高度或 `focal_length=18.0`；
+- 地形图如果太平/看不清坡，优先用 `terrain_close.png`；再调 `80/22` 高度或 `focal_length=18.0`；
 - 相机路径在 env0 下，地形相机用世界坐标；多 env 时只拍 env0。
 
 ## 限制

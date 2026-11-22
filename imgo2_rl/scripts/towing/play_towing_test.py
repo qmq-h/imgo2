@@ -3914,22 +3914,36 @@ def main(args):
             # 否则画面一半是空背景（上一版 side/terrain 都因此构图失败）。
             terrain_origins = scene.terrain.terrain_origins
             row_mid = terrain_origins.shape[0] // 2
-            col_mid = min(30, terrain_origins.shape[1] - 1)
-            mid = torch.as_tensor(terrain_origins[row_mid, col_mid],
-                                  device=device, dtype=torch.float32)
-            eyes_t = mid + torch.tensor([0.0, -80.0, 320.0], device=device)
-            targets_t = mid
-            terrain_cam.set_world_poses_from_view(eyes_t.unsqueeze(0),
-                                                  targets_t.unsqueeze(0), [0])
+            # 近距离斜视 10°/减速带/波浪交界；远景保留一张总览。
+            col_close = min(45, terrain_origins.shape[1] - 1)
+            col_far = min(30, terrain_origins.shape[1] - 1)
+            mid_close = torch.as_tensor(terrain_origins[row_mid, col_close],
+                                        device=device, dtype=torch.float32)
+            mid_far = torch.as_tensor(terrain_origins[row_mid, col_far],
+                                      device=device, dtype=torch.float32)
+            views = (
+                ("terrain", mid_far + torch.tensor([-40.0, -80.0, 80.0], device=device),
+                 mid_far + torch.tensor([20.0, 0.0, 0.0], device=device)),
+                ("terrain_close", mid_close + torch.tensor([-28.0, -35.0, 22.0], device=device),
+                 mid_close + torch.tensor([5.0, 0.0, 0.0], device=device)),
+            )
             print(f"[capture] robot={robot_pos.tolist()} cart={cart_pos.tolist()} "
-                  f"side_eye={eyes.tolist()} terrain_mid={mid.tolist()}", flush=True)
+                  f"side_eye={eyes.tolist()}", flush=True)
             sim.render()
             side.update(dt)
-            terrain_cam.update(dt)
-            sim.render()
+            side_image = side.data.output["rgb"][0].detach().cpu().numpy()
             args.capture_dir.mkdir(parents=True, exist_ok=True)
-            for name, cam in (("side", side), ("terrain", terrain_cam)):
-                image = cam.data.output["rgb"][0].detach().cpu().numpy()
+            if side_image.shape[-1] == 4:
+                side_image = side_image[..., :3]
+            Image.fromarray(side_image).save(args.capture_dir / "side.png")
+            print(f"[capture] {args.capture_dir / 'side.png'}", flush=True)
+            for name, eye, target in views:
+                terrain_cam.set_world_poses_from_view(eye.unsqueeze(0),
+                                                      target.unsqueeze(0), [0])
+                sim.render()
+                terrain_cam.update(dt)
+                sim.render()
+                image = terrain_cam.data.output["rgb"][0].detach().cpu().numpy()
                 if image.shape[-1] == 4:
                     image = image[..., :3]
                 Image.fromarray(image).save(args.capture_dir / f"{name}.png")
