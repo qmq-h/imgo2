@@ -3902,17 +3902,27 @@ def main(args):
             device = scene.env_origins.device
             side = scene["side_camera"]
             terrain_cam = scene["terrain_camera"]
-            origin = origins[0].to(device=device, dtype=torch.float32)
-            eyes = origin + torch.tensor([2.5, -5.0, 2.5], device=device)
-            targets = origin + torch.tensor([2.5, 0.0, 0.6], device=device)
+            # 侧视：以机器人和小车的实际中点为中心，避免把车/机器人裁到画面外。
+            robot_pos = robot.data.root_pos_w[0].to(dtype=torch.float32)
+            cart_pos = cart.data.root_pos_w[0].to(dtype=torch.float32)
+            center = (robot_pos + cart_pos) * 0.5
+            center[2] += 0.4
+            eyes = center + torch.tensor([0.0, -6.0, 3.0], device=device)
+            targets = center
             side.set_world_poses_from_view(eyes.unsqueeze(0), targets.unsqueeze(0), [0])
+            # 地形：取网格中间行、10°/减速带附近列，斜俯视；不要从第 0 行边缘看，
+            # 否则画面一半是空背景（上一版 side/terrain 都因此构图失败）。
             terrain_origins = scene.terrain.terrain_origins
-            mid = torch.as_tensor(terrain_origins[0, min(30, terrain_origins.shape[1] - 1)],
+            row_mid = terrain_origins.shape[0] // 2
+            col_mid = min(30, terrain_origins.shape[1] - 1)
+            mid = torch.as_tensor(terrain_origins[row_mid, col_mid],
                                   device=device, dtype=torch.float32)
-            eyes_t = mid + torch.tensor([0.0, 0.0, 450.0], device=device)
+            eyes_t = mid + torch.tensor([0.0, -80.0, 320.0], device=device)
             targets_t = mid
             terrain_cam.set_world_poses_from_view(eyes_t.unsqueeze(0),
                                                   targets_t.unsqueeze(0), [0])
+            print(f"[capture] robot={robot_pos.tolist()} cart={cart_pos.tolist()} "
+                  f"side_eye={eyes.tolist()} terrain_mid={mid.tolist()}", flush=True)
             sim.render()
             side.update(dt)
             terrain_cam.update(dt)
@@ -3924,7 +3934,10 @@ def main(args):
                     image = image[..., :3]
                 Image.fromarray(image).save(args.capture_dir / f"{name}.png")
                 print(f"[capture] {args.capture_dir / f'{name}.png'}", flush=True)
-            return 0
+            sys.stdout.flush()
+            sys.stderr.flush()
+            # 直接退出：Kit 的 Python finalize/关窗路径会挂住（上一版卡在保存后）。
+            os._exit(0)
 
         def make_row(env_index: int, *, phase: str, step: int, command: float,
                      loco_cmd_vx: float, upper_offset_vx: float, upper_cmd_action: float,
