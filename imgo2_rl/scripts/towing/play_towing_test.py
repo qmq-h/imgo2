@@ -3907,7 +3907,7 @@ def main(args):
             cart_pos = cart.data.root_pos_w[0].to(dtype=torch.float32)
             center = (robot_pos + cart_pos) * 0.5
             center[2] += 0.4
-            eyes = center + torch.tensor([0.0, -6.0, 3.0], device=device)
+            eyes = center + torch.tensor([0.0, -4.5, 1.8], device=device)
             targets = center
             side.set_world_poses_from_view(eyes.unsqueeze(0), targets.unsqueeze(0), [0])
             # 地形：取网格中间行、10°/减速带附近列，斜俯视；不要从第 0 行边缘看，
