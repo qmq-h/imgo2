@@ -2730,6 +2730,10 @@ def parse_args(argv=None):
     parser.add_argument("--write-csv", choices=("failed", "all", "none"), default="failed",
                         help="逐记录步 CSV 的写入范围（all = 800 环境全写，可能数百 MB）")
     parser.add_argument("--headless", action="store_true", help="无显示运行")
+    parser.add_argument("--enable-cameras", action="store_true",
+                        help="启用 Isaac Sim 相机（--capture-dir 需要）")
+    parser.add_argument("--capture-dir", type=Path, default=None,
+                        help="只拍两张渲染图（侧视机器人+小车、地形俯视）后退出")
     parser.add_argument("--no-cart-fraction", type=float, default=0.0,
                         help="不拖车的 env 比例（0 = 全部拖车，默认；1 = 全部不拖车 ⇒ 测无负载参考）。"
                              "无小车 env 的小车会横向停到 2 m 外、绳力与轮阻置 0，判定时跳过"
@@ -2834,6 +2838,21 @@ def parse_args(argv=None):
     # `available=false` + `note` 并让比值变 None，而不是让 CLI 报错挡住整轮。
     if args.record_every < 1:
         parser.error("--record-every 必须是正整数")
+    if args.capture_dir is not None:
+        args.capture_dir = args.capture_dir.expanduser().resolve()
+        if not args.enable_cameras:
+            parser.error("--capture-dir 需要同时给 --enable-cameras")
+        args.num_envs = 1
+        if args.columns is not None:
+            first = args.columns.split(",")[0].strip()
+            if "-" in first:
+                args.columns = first.split("-")[0]
+            else:
+                args.columns = first
+        if not args.cart_masses:
+            args.cart_masses = [10.0]
+        if not args.velocities:
+            args.velocities = [1.0]
     for name, value in DEFAULT_THRESHOLDS.items():
         if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0.0:
             parser.error(f"--{name.replace('_', '-')} 必须是有限正数，收到 {value!r}")
@@ -3244,13 +3263,17 @@ def main(args):
     application = None
     try:
         from isaaclab.app import AppLauncher
-        launcher = AppLauncher(headless=args.headless, device=args.device)
+        launcher = AppLauncher(headless=args.headless, device=args.device,
+                               enable_cameras=args.enable_cameras)
         application = launcher.app
 
         import isaaclab.sim as sim_utils
         import isaaclab.utils.math as math_utils
         import torch
         from isaaclab.scene import InteractiveScene
+        from isaaclab.sensors import CameraCfg
+        from isaaclab.sim import PinholeCameraCfg
+        from isaaclab.utils import configclass
         # 上层网络运行时：模块只 import torch + 标准库，桥接 rl_lab 的 actor/decoder。
         # `sys.path` 与训练脚本同一约定（把 imgo2_rl/scripts/rl_lab 加进路径）。
         if str(RL_ROOT / "scripts" / "rl_lab") not in sys.path:
@@ -3330,8 +3353,30 @@ def main(args):
         sim = sim_utils.SimulationContext(sim_cfg)
         # 渲染节拍：与训练侧 `self.cfg.sim.render_interval` 同口径（物理步计数）。
         render_interval = max(1, int(getattr(sim_cfg, "render_interval", 1)))
-        scene_cfg = UpperTowingSceneCfg(num_envs=num_envs,
-                                        env_spacing=training_cfg.scene.env_spacing)
+        if args.capture_dir is not None:
+            @configclass
+            class _CaptureSceneCfg(UpperTowingSceneCfg):
+                side_camera: CameraCfg = CameraCfg(
+                    prim_path="{ENV_REGEX_NS}/side_camera",
+                    update_period=0.0, height=1000, width=1600,
+                    data_types=["rgb"],
+                    spawn=PinholeCameraCfg(
+                        focal_length=24.0, focus_distance=400.0,
+                        horizontal_aperture=20.955, clipping_range=(0.1, 3000.0)),
+                )
+                terrain_camera: CameraCfg = CameraCfg(
+                    prim_path="{ENV_REGEX_NS}/terrain_camera",
+                    update_period=0.0, height=1000, width=1600,
+                    data_types=["rgb"],
+                    spawn=PinholeCameraCfg(
+                        focal_length=18.0, focus_distance=400.0,
+                        horizontal_aperture=20.955, clipping_range=(0.1, 5000.0)),
+                )
+            scene_cfg = _CaptureSceneCfg(num_envs=num_envs,
+                                         env_spacing=training_cfg.scene.env_spacing)
+        else:
+            scene_cfg = UpperTowingSceneCfg(num_envs=num_envs,
+                                            env_spacing=training_cfg.scene.env_spacing)
         scene_cfg.terrain.terrain_generator.class_type = (
             training_cfg.scene.terrain.terrain_generator.class_type)
         material = scene_cfg.terrain.physics_material
@@ -3849,6 +3894,37 @@ def main(args):
                 upper_loco_command.zero_()
             scene.reset()
             scene.update(dt)
+
+        if args.capture_dir is not None:
+            from PIL import Image
+            reset_episode()
+            sim.render()
+            device = scene.env_origins.device
+            side = scene["side_camera"]
+            terrain_cam = scene["terrain_camera"]
+            origin = origins[0].to(device=device, dtype=torch.float32)
+            eyes = origin + torch.tensor([2.5, -5.0, 2.5], device=device)
+            targets = origin + torch.tensor([2.5, 0.0, 0.6], device=device)
+            side.set_world_poses_from_view(eyes.unsqueeze(0), targets.unsqueeze(0), [0])
+            terrain_origins = scene.terrain.terrain_origins
+            mid = torch.as_tensor(terrain_origins[0, min(30, terrain_origins.shape[1] - 1)],
+                                  device=device, dtype=torch.float32)
+            eyes_t = mid + torch.tensor([0.0, 0.0, 450.0], device=device)
+            targets_t = mid
+            terrain_cam.set_world_poses_from_view(eyes_t.unsqueeze(0),
+                                                  targets_t.unsqueeze(0), [0])
+            sim.render()
+            side.update(dt)
+            terrain_cam.update(dt)
+            sim.render()
+            args.capture_dir.mkdir(parents=True, exist_ok=True)
+            for name, cam in (("side", side), ("terrain", terrain_cam)):
+                image = cam.data.output["rgb"][0].detach().cpu().numpy()
+                if image.shape[-1] == 4:
+                    image = image[..., :3]
+                Image.fromarray(image).save(args.capture_dir / f"{name}.png")
+                print(f"[capture] {args.capture_dir / f'{name}.png'}", flush=True)
+            return 0
 
         def make_row(env_index: int, *, phase: str, step: int, command: float,
                      loco_cmd_vx: float, upper_offset_vx: float, upper_cmd_action: float,
