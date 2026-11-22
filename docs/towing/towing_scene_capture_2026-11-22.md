@@ -42,14 +42,17 @@ bash imgo2_rl/scripts/run_isaaclab.sh imgo2_rl/scripts/towing/play_towing_test.p
 ```text
 docs/towing/data/scene_capture_2026-11-22/
   side.png       # 机器人 + 小车侧视
-  terrain.png       # 地形总览
-  terrain_close.png # 地形近景（减速带/波浪附近）
+  terrain.png          # 地形总览
+  terrain_close.png    # 地形近景（减速带/波浪附近）
+  terrain_montage.png  # 5 类地形各一张近景拼图
+  terrain_flat/5deg/10deg/bump/wave.png
 ```
 
 ## 可能需要调整
 
 - 侧视如果机器人/小车不在画面中心，改 capture block 里的 `center/eyes`；
-- 地形图如果太平/看不清坡，优先用 `terrain_close.png`；再调 `80/22` 高度或 `focal_length=18.0`；
+- 地形图如果太平/看不清坡，优先看 `terrain_montage.png`（flat/5°/10°/bump/wave 五格）；
+- 仍不够清楚就调近景 `(-16,-20,11)` 或 `focal_length=18.0`；
 - 相机路径在 env0 下，地形相机用世界坐标；多 env 时只拍 env0。
 
 ## 限制

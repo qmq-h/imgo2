@@ -3948,6 +3948,35 @@ def main(args):
                     image = image[..., :3]
                 Image.fromarray(image).save(args.capture_dir / f"{name}.png")
                 print(f"[capture] {args.capture_dir / f'{name}.png'}", flush=True)
+            # 5 类地形各拍一张近景，拼成一张总览；每张单独也保留。
+            terrain_specs = (("flat", 0), ("5deg", 25), ("10deg", 35),
+                             ("bump", 45), ("wave", 55))
+            thumbs = []
+            for label, column in terrain_specs:
+                mid = torch.as_tensor(terrain_origins[row_mid, min(column, terrain_origins.shape[1] - 1)],
+                                      device=device, dtype=torch.float32)
+                eye = mid + torch.tensor([-16.0, -20.0, 11.0], device=device)
+                target = mid + torch.tensor([3.0, 0.0, 0.0], device=device)
+                terrain_cam.set_world_poses_from_view(eye.unsqueeze(0), target.unsqueeze(0), [0])
+                sim.render()
+                terrain_cam.update(dt)
+                sim.render()
+                image = terrain_cam.data.output["rgb"][0].detach().cpu().numpy()
+                if image.shape[-1] == 4:
+                    image = image[..., :3]
+                Image.fromarray(image).save(args.capture_dir / f"terrain_{label}.png")
+                thumbs.append((label, Image.fromarray(image).resize((640, 400))))
+            from PIL import ImageDraw
+            montage = Image.new("RGB", (1280, 1200), (255, 255, 255))
+            canvas = ImageDraw.Draw(montage)
+            for index, (label, thumb) in enumerate(thumbs):
+                x = (index % 2) * 640
+                y = (index // 2) * 400
+                montage.paste(thumb, (x, y))
+                canvas.rectangle((x, y, x + 190, y + 34), fill=(0, 0, 0))
+                canvas.text((x + 8, y + 9), label, fill=(255, 255, 255))
+            montage.save(args.capture_dir / "terrain_montage.png")
+            print(f"[capture] {args.capture_dir / 'terrain_montage.png'}", flush=True)
             sys.stdout.flush()
             sys.stderr.flush()
             # 直接退出：Kit 的 Python finalize/关窗路径会挂住（上一版卡在保存后）。
