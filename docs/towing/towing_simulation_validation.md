@@ -8,7 +8,7 @@
 |---|---|
 | 小车模型 | `imgo2_description/cart/cart.urdf` |
 | 落地与自由滑行 | `imgo2_rl/scripts/towing/cart_coast.py` |
-| 三类连接模型 | `towing/mdp/rope.py`、`towing/mdp/rope_model.py`（`rigid` 见 [刚体连杆记录](towing_rigid_link_2026-10-08.md)） |
+| 三类连接模型 | `towing/mdp/rope.py`、`towing/mdp/rope_model.py`（`rigid` 见 [刚体连杆记录](../maintenance/project_history_2026-09_to_2026-10.md#towing)） |
 | 冻结底层策略适配 | `towing/utils/policy_cfg.py`、`low_level_policy.py` |
 | 拖曳测量台 | `imgo2_rl/scripts/towing/tow_drag.py` |
 | 离线判读 | `summarize_cart_coast.py`、`summarize_tow.py`、`tow_clearance.py` |
@@ -51,7 +51,7 @@
 的柔度，不是无穷刚度**。训练场景由 20×20 确定性网格给出：列 = 弹性绳 8（4 档 k/c）/ 刚体 8 /
 普通绳 4，行 = 连接长度 0.4→0.8 m 均分 20 档，三类都按本 env 长度摆放初始位置。
 本节下表的实测对照只覆盖两套绳，刚体连杆尚未在 Isaac Lab 实跑，见
-[刚体连杆记录](towing_rigid_link_2026-10-08.md)。
+[刚体连杆记录](../maintenance/project_history_2026-09_to_2026-10.md#towing)。
 
 同一 `m=10 kg, b=0.032, μ_ground=0.8, v_cmd=0.5 m/s` 工况的实测对照：
 
@@ -111,7 +111,7 @@
 
 尚未完成：
 
-- 当前 [边界扫描](towing_boundary_scan_2026-09-21.md) 的完整 0.2–1.0 m/s 网格尚未实跑，不能把 0.5 m/s 结论外推到全速度域；
+- 当前 [边界扫描](../maintenance/project_history_2026-09_to_2026-10.md#towing) 的完整 0.2–1.0 m/s 网格尚未实跑，不能把 0.5 m/s 结论外推到全速度域；
 - 尺寸、轮阻和绳参数没有实车标定；默认 compliant 绳是工程软绳，不代表真实低伸长绳；
 - 上层训练环境尚未接入已验证的每物理步绳力、轮阻、双频控制和碰撞见证；
 - GUI 只能确认基本拖曳与停车后前滑，模型优劣应以记录指标判断。

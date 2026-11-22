@@ -95,4 +95,4 @@ tau = tau_ff + Kp*(q_des-q) + Kd*(dq_des-dq)
 
 用户报告程序已能启动；现场只读确认cmake_build_mujoco/bin/rl_sim_mujoco存在，ldd正确找到libmujoco.so.3.2.7、libglfw.so.3和工程LibTorch，未见not found。本轮没有替用户运行GUI、按键、PPO步态或硬件，故“进入策略并运动”仍待实际操作确认；此前“依赖缺失”是安装前历史，当前已找到所需动态库。
 
-模型8body差异、额外被动参数、PD/物理时序、并发快照/队列和线程退出问题仍在，详见[复审](mujoco_sim2sim_review_2026-10-23.md)。本轮新增文档而未改源码/参数。新cmake_build_mujoco目录当前显示为未跟踪，构建产物忽略规则待处理，勿将其作为源码提交；本轮不擅自改gitignore。
+模型8body差异、额外被动参数、PD/物理时序、并发快照/队列和线程退出问题仍在，详见[复审](../deployment/mujoco_sim2sim_review_2026-10-23.md)。本轮新增文档而未改源码/参数。新cmake_build_mujoco目录当前显示为未跟踪，构建产物忽略规则待处理，勿将其作为源码提交；本轮不擅自改gitignore。

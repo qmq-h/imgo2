@@ -87,7 +87,7 @@
 `report.md` 增「## 冲击窗口 vs 稳态（关节响应）」一节、`report.json` 增 `impact_statistics`、
 `report.csv` 增 `impact_<窗口>_*`。既有 `--transition-window` 的 `startup.*`/`stop.*`、
 `DEFAULT_THRESHOLDS`、判定码与 `classify_case` **全未改**，新参数不进判据（AST 守卫）。
-字段名/单位/读法、验证方式与未验证项见 [独立记录](towing_impact_window_2026-10-10.md)。
+字段名/单位/读法、验证方式与未验证项见 [独立记录](../maintenance/project_history_2026-09_to_2026-10.md#towing)。
 
 ## 状态
 
@@ -100,7 +100,7 @@
     压成 0.6），而是裁进冻结 AMP 策略的训练包络 `lin_vel_x = (−1.0, 1.5)`；头权限仍限偏移
     本身。理由与断言见落地记录 §4。
 - **冲击窗口独立统计已实现**（2026-10-10，只新增字段；离线 **501 passed**），详见
-  [冲击窗口记录](towing_impact_window_2026-10-10.md) 与 README 问题表 **TOW-22**。
+  [冲击窗口记录](../maintenance/project_history_2026-09_to_2026-10.md#towing) 与 README 问题表 **TOW-22**。
   运行期行为（1 N 阈值是否合适、25 ms 记录下 ±0.2 s 窗口的样本数、比值能否区分基线/策略）
   **待训练机验证**；
 - 前置：TOW-20 的测试台上层网络开关（已完成）是这次验收的工具。它当时仍是 **v2 口径**、

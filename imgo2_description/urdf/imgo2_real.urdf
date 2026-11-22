@@ -75,14 +75,14 @@
       </geometry>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.063 0.013 0.0"/>
+      <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.060 0.013 0.0"/>
       <geometry>
         <cylinder length="0.041" radius="0.048"/>
       </geometry>
     </collision>
   </link>
   <joint name="FL_hip_joint" type="revolute">
-    <origin xyz="0.1575 0.067 0.00025"/>
+    <origin xyz="0.1591 0.062 -0.00017"/>
     <parent link="base"/>
     <child link="FL_HIP"/>
     <axis xyz="1 0 0"/>
@@ -113,7 +113,7 @@
     </collision>
   </link>
   <joint name="FL_thigh_joint" type="revolute">
-    <origin xyz="0.063 0.0346 0"/>
+    <origin xyz="0.060 0.0351 0"/>
     <parent link="FL_HIP"/>
     <child link="FL_THIGH"/>
     <axis xyz="0 1 0"/>
@@ -192,14 +192,14 @@
       </geometry>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.063 -0.013 0.0"/>
+      <origin rpy="1.5707963267948966 0.0 0.0" xyz="0.060 -0.013 0.0"/>
       <geometry>
         <cylinder length="0.041" radius="0.048"/>
       </geometry>
     </collision>
   </link>
   <joint name="FR_hip_joint" type="revolute">
-    <origin xyz="0.1575 -0.067 0.00025"/>
+    <origin xyz="0.1591 -0.062 -0.00017"/>
     <parent link="base"/>
     <child link="FR_HIP"/>
     <axis xyz="1 0 0"/>
@@ -230,7 +230,7 @@
     </collision>
   </link>
   <joint name="FR_thigh_joint" type="revolute">
-    <origin xyz="0.063 -0.0346 0"/>
+    <origin xyz="0.060 -0.0351 0"/>
     <parent link="FR_HIP"/>
     <child link="FR_THIGH"/>
     <axis xyz="0 1 0"/>
@@ -279,13 +279,13 @@
       </geometry>
     </visual>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 0.01"/>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 0.01"/>
       <geometry>
         <cylinder length="0.01" radius="0.0155"/>
       </geometry>
     </collision>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 -0.02"/>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 -0.02"/>
       <geometry>
         <sphere radius="0.022"/>
       </geometry>
@@ -294,7 +294,7 @@
   <joint dont_collapse="true" name="FR_Ankle" type="fixed">
     <parent link="FR_SHANK"/>
     <child link="FR_FOOT"/>
-    <origin rpy="0.0 0.777 0.0" xyz="0.0 -0.01145 -0.206"/>
+    <origin rpy="0 0.777 0" xyz="0 -0.01145 -0.206"/>
   </joint>
   <!--!!!!!!!!!!!! Back Left Leg !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!-->
   <link name="RL_HIP">
@@ -304,19 +304,20 @@
       <inertia ixx="0.00047490383" ixy="0.00002083480" ixz="-0.00000122317" iyy="0.00090893629" iyz="-0.00000075580" izz="0.000577702"/>
     </inertial>
     <visual>
+      <origin xyz="0.004 0 0"/>
       <geometry>
         <mesh filename="../meshes/RL_hip.STL" scale="1 1 1"/>
       </geometry>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0.0 0.0" xyz="-0.063 0.013 0.0"/>
+      <origin rpy="1.5707963267948966 0.0 0.0" xyz="-0.056 0.013 0.0"/>
       <geometry>
         <cylinder length="0.041" radius="0.048"/>
       </geometry>
     </collision>
   </link>
   <joint name="RL_hip_joint" type="revolute">
-    <origin xyz="-0.1575 0.067 0.00025"/>
+    <origin xyz="-0.1631 0.062 -0.00017"/>
     <parent link="base"/>
     <child link="RL_HIP"/>
     <axis xyz="1 0 0"/>
@@ -347,7 +348,7 @@
     </collision>
   </link>
   <joint name="RL_thigh_joint" type="revolute">
-    <origin xyz="-0.063 0.0346 0"/>
+    <origin xyz="-0.056 0.0351 0"/>
     <parent link="RL_HIP"/>
     <child link="RL_THIGH"/>
     <axis xyz="0 1 0"/>
@@ -421,19 +422,20 @@
       <inertia ixx="0.00047490383" ixy="-0.00002083480" ixz="0.00000122317" iyy="0.00090893629" iyz="-0.00000075580" izz="0.000577702"/>
     </inertial>
     <visual>
+      <origin xyz="0.004 0 0"/>
       <geometry>
         <mesh filename="../meshes/RR_hip.STL" scale="1 1 1"/>
       </geometry>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0.0 0.0" xyz="-0.063 -0.013 0.0"/>
+      <origin rpy="1.5707963267948966 0.0 0.0" xyz="-0.056 -0.013 0.0"/>
       <geometry>
         <cylinder length="0.041" radius="0.048"/>
       </geometry>
     </collision>
   </link>
   <joint name="RR_hip_joint" type="revolute">
-    <origin xyz="-0.1575 -0.067 0.00025"/>
+    <origin xyz="-0.1631 -0.062 -0.00017"/>
     <parent link="base"/>
     <child link="RR_HIP"/>
     <axis xyz="1 0 0"/>
@@ -464,7 +466,7 @@
     </collision>
   </link>
   <joint name="RR_thigh_joint" type="revolute">
-    <origin xyz="-0.063 -0.0346 0"/>
+    <origin xyz="-0.056 -0.0351 0"/>
     <parent link="RR_HIP"/>
     <child link="RR_THIGH"/>
     <axis xyz="0 1 0"/>
@@ -513,13 +515,13 @@
       </geometry>
     </visual>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 0.01"/>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 0.01"/>
       <geometry>
         <cylinder length="0.01" radius="0.0155"/>
       </geometry>
     </collision>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="-0.008 -0.0035 -0.02"/>
+      <origin rpy="0.0 0.0 0.0" xyz="-0.008 0.0035 -0.02"/>
       <geometry>
         <sphere radius="0.022"/>
       </geometry>
@@ -528,6 +530,6 @@
   <joint dont_collapse="true" name="RR_Ankle" type="fixed">
     <parent link="RR_SHANK"/>
     <child link="RR_FOOT"/>
-    <origin rpy="0.0 0.777 0.0" xyz="0.0 -0.01145 -0.206"/>
+    <origin rpy="0 0.777 0" xyz="0 -0.01145 -0.206"/>
   </joint>
 </robot>

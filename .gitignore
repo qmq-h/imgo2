@@ -117,9 +117,30 @@ temp_extract*/
 Thumbs.db
 
 # ---------- 本地历史备份（不属于仓库内容） ----------
-# 合并嵌套仓库前的 Imgo2 / imgo2_rl 历史 bundle，保存在本机供回滚，
-# 不应提交，也不需要同步到服务器。
-.git-backups/
+# 本机恢复用的历史 Git bundle、文档归档和旧模型目录。
+/.git-backups/
+/imgo2_description_old/
+
+# ---------- 本机研究记录 ----------
+# 11 月 9 日起的新实验明细和图表留在原路径供本机复现。
+# 同步操作手册与当前研究摘要；不要把该范围改成全仓的扩展名规则。
+/docs/deployment/*_2026-11-09*
+/docs/deployment/*_2026-11-[12][0-9]*
+/docs/training/*_2026-11-09*
+/docs/training/*_2026-11-[12][0-9]*
+/docs/deployment/deployment_source_rebase_review_2026-11-08.md
+/docs/deployment/hip_roll_focus_2026-11-08.png
+/docs/deployment/oscillation_coupling_2026-11-08.json
+/docs/deployment/oscillation_coupling_review_2026-11-08.md
+/docs/maintenance/gitignore_review_2026-11-22.md
+!/docs/deployment/joint_sine_collection_spec_2026-11-19.md
+!/docs/deployment/model_sync_2026-11-22.md
+!/docs/deployment/pitch_control_2026-11-13.md
+!/docs/deployment/position_test_2026-11-18.md
+!/docs/deployment/ppo_vibration_status_2026-11-22.md
+!/docs/training/parallel_leg_isaaclab_route_2026-11-18.md
+!/docs/training/pasted_rough_config_review_2026-11-22.md
+!/docs/training/ppo_18cm_stairs_route_2026-11-13.md
 
 # ---------- 本机临时运行时（不属于仓库内容） ----------
 # 训练机上手工 `pip install --target` 出来的 pybullet/EGL 运行时，供临时脚本使用；
@@ -129,7 +150,7 @@ Thumbs.db
 # ---------- 明确保留（曾经被误忽略，勿再启用） ----------
 # imgo2_rl/datasets/imgo2_motion/ 是 AMP 训练实际加载的 21 份参考动作；
 # imgo2_rl/tests/ 含 AMP 修复文件集与提交训练前的前置检查。
-# 详见 docs/amp_alignment_review.md。
+# 详见 docs/amp/amp_alignment_review.md。
 
 # 本地研究草稿：保留在工作区，不随仓库同步
 /paper_plan_imgo2.md

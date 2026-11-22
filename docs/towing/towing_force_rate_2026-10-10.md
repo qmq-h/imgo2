@@ -19,7 +19,7 @@
 ## 1. 物理理由：为什么这个奖励必须"不对称"
 
 这是本项存在的**全部依据**，与仓库里对两类连接的分工一致
-（见 [`towing_rigid_link_2026-10-08.md`](towing_rigid_link_2026-10-08.md)、
+（见 [`towing_rigid_link_2026-10-08.md`](../maintenance/project_history_2026-09_to_2026-10.md#towing)、
 `mdp/rope_model.py` 的模型定义）：
 
 | | 绳（`CompliantRope` / `InextensibleRope`） | 刚性杆（`RigidLink`） |

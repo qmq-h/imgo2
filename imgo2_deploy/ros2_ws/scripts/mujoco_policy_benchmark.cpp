@@ -27,7 +27,7 @@ static std::array<double,3> Rpy(const mjtNum* q) {
             std::atan2(2*(w*z+x*y),1-2*(y*y+z*z))};
 }
 int main(int argc,char** argv) {
-    if(argc!=10){std::cerr<<"scene policy base.yaml ppo.yaml csv vx vy wz seconds\n";return 2;}
+    if(argc<10||argc>12){std::cerr<<"scene policy base.yaml ppo.yaml csv vx vy wz seconds [actor.csv [zero_policy_warmup_s]]\n";return 2;}
     mjModel* m=nullptr; mjData* d=nullptr;
     try {
         torch::NoGradGuard guard; torch::set_num_threads(1);
@@ -52,7 +52,9 @@ int main(int argc,char** argv) {
             throw std::runtime_error("Unexpected observation order");
         const auto cmd_scale=cfg["commands_scale"].as<std::vector<float>>();
         const double command[3]={std::stod(argv[6]),std::stod(argv[7]),std::stod(argv[8])};
-        const double seconds=std::stod(argv[9]),settle_s=2.,zero_policy_s=3.;
+        const double seconds=std::stod(argv[9]),settle_s=2.;
+        const double zero_policy_s=argc==12?std::stod(argv[11]):3.;
+        if(!std::isfinite(zero_policy_s)||zero_policy_s<0)throw std::runtime_error("Invalid zero policy warm-up");
         auto policy=torch::jit::load(argv[2],torch::kCPU);policy.eval();
         char error[2048]={};m=mj_loadXML(argv[1],nullptr,error,sizeof(error));
         if(!m)throw std::runtime_error(error);
@@ -90,6 +92,16 @@ int main(int argc,char** argv) {
         for(const auto& n:names)csv<<",tau_"<<n;
         for(const auto& l:legs)for(const auto& n:{"contact_n","clearance_m","x_body","y_body","z_body","hip_y_body","toe_yaw_body","slip_mps"})csv<<","<<l<<"_"<<n;
         csv<<"\n";
+        std::ofstream actor;
+        if(argc>=11){
+            actor.open(argv[10]);
+            if(!actor)throw std::runtime_error("Cannot open actor CSV");
+            actor<<std::setprecision(10)<<"t_s";
+            for(const auto& field : {std::pair<const char*, int>{"obs_",45},{"act_",12},{"raw_",12}}){
+                for(int i=0;i<field.second;++i) actor<<","<<field.first<<std::setw(2)<<std::setfill('0')<<i;
+            }
+            actor<<"\n";
+        }
         std::vector<float> target=q0,zero(12,0),last_action(12,0);
         int saturated=0,rows=0;std::string failure;
         {
@@ -116,6 +128,13 @@ int main(int argc,char** argv) {
                     if(output.numel()!=12||!torch::isfinite(output).all().item<bool>())throw std::runtime_error("Invalid policy output");
                     auto* a=output.data_ptr<float>();saturated=0;
                     for(int k=0;k<12;++k){saturated+=(a[k]<=low[k]||a[k]>=high[k]);last_action[k]=std::clamp(a[k],low[k],high[k]);target[k]=q0[k]+scale[k]*last_action[k];}
+                    if(actor.is_open() && t>=-1e-9){
+                        actor<<std::max(0.,t);
+                        for(float v:obs)actor<<","<<v;
+                        for(float v:last_action)actor<<","<<v;
+                        for(int k=0;k<12;++k)actor<<","<<a[k];
+                        actor<<"\n";
+                    }
                     pd.Publish(target,zero,kp,kd,zero);
                 }
                 mj_step(m,d);feedback.Sample(m,d);

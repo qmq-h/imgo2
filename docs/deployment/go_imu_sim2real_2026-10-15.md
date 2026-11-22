@@ -2,9 +2,9 @@
 
 核对日期：2026-10-15。本轮按用户批准的计划增加独立部署入口；没有启动真实电机、IMU或训练，没有导出、替换策略。**30/30 离线测试通过，不等于真机 PPO 已验收。** 测试结论、策略身份与源码指纹见 [核对数据](go_imu_sim2real_checks_2026-10-15.json)。
 
-当前离线入口为`fsm_check`，复用正式FSM/SDK、键盘切换及固定位置关节目标显示，见 [测试指南](fsm_check_2026-10-15.md)。旧ppo_check、imu_reader、go_probe已按用户要求删除；以下历史30项验证指最初部署落地版本，当前入口及回归结果见 [入口精简记录](go_imu_entry_cleanup_2026-10-15.md)。
+当前离线入口为`fsm_check`，复用正式FSM/SDK、键盘切换及固定位置关节目标显示，见 [测试指南](fsm_check_2026-10-15.md)。旧ppo_check、imu_reader、go_probe已按用户要求删除；以下历史30项验证指最初部署落地版本，当前入口及回归结果见 [入口精简记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
-当前状态实现已拆分，Passive改为趴下实际到位后卸力，站姿/趴下角在deployment内独立设置；以 [状态拆分记录](go_imu_state_split_2026-10-15.md) 为准。
+当前状态实现已拆分，Passive改为趴下实际到位后卸力，站姿/趴下角在deployment内独立设置；以 [状态拆分记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment) 为准。
 
 ## 1. 已完成与待确认
 

@@ -152,7 +152,7 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
 `lin_vel_x ∈ (−1.0, 1.5)`（出处 `tasks/manager_based/locomotion/velocity/base_move/amp_env_cfg.py`
 的 `commands.base_velocity.ranges.lin_vel_x`），而拖曳脚本速度是 0.5–1.5 m/s
 （`mdp/episode_geometry.SPEED_RANGE`；**2026-10-10 当天由 0.4–1.5 收紧为 0.5–1.5**，
-契约不受影响，见[工作域收紧记录](towing_work_domain_2026-10-10.md)）——**牵引段本来就顶在上界 1.5**。把"和"裁到 +0.6 会把
+契约不受影响，见[工作域收紧记录](../maintenance/project_history_2026-09_to_2026-10.md#towing)）——**牵引段本来就顶在上界 1.5**。把"和"裁到 +0.6 会把
 1.5 m/s 的牵引指令压成 0.6，而奖励参考量 `task_command` 仍是 1.5 ⇒ 策略被要求跟一个它根本
 发不出的速度，退化性测试也不可能通过。
 
@@ -297,6 +297,6 @@ credit assignment 更难，两头也可能互相打架（例如偏移让机器�
 ## 8. 相关记录
 
 - 设计依据与 9 项接口清单：[双头方案（未实现 → 已实现）](towing_upper_two_head_2026-10-10.md)；
-- 冲击窗口独立统计（同一批工作的另一半）：[impact window](towing_impact_window_2026-10-10.md)；
+- 冲击窗口独立统计（同一批工作的另一半）：[impact window](../maintenance/project_history_2026-09_to_2026-10.md#towing)；
 - 测试台上层开关（TOW-20 加开关 / **TOW-26 已接到 v3**）：[upper switch](towing_upper_switch_2026-10-10.md)；
 - 残差方案来源：[deltapos residual](towing_deltapos_residual_2026-10-08.md)。

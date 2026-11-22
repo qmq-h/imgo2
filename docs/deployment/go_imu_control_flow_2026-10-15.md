@@ -62,7 +62,7 @@ C++初始化路径是：`MotorConfig`/`ImuConfig`构造函数与头文件字段�
 2. **`policy_to_hardware`**确实对应策略关节顺序与总线/ID顺序。
 3. 确认映射后才把 **`mapping_confirmed`** 改成 `true`，允许进入PPO；当前文件为 `false`。
 4. `policy.pt`与PPO YAML配套；默认使用当前已有45维观测、12维位置动作模型。
-5. 分别设置 `stand_pose` 和 `crouch_pose`：两组均为硬件顺序12项rad，文件已列出默认值，可逐关节修改；详见 [状态拆分记录](go_imu_state_split_2026-10-15.md)。
+5. 分别设置 `stand_pose` 和 `crouch_pose`：两组均为硬件顺序12项rad，文件已列出默认值，可逐关节修改；详见 [状态拆分记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 udev名称和IMU轴一致性已由用户确认，本程序沿用它们，不再加安装旋转。`ImuConfig::mount_quaternion`目前是预留元数据，改它不会使SDK自动旋转IMU数据。
 
@@ -442,7 +442,7 @@ Fault状态下界面通常只报告一次错误，进程等待退出；普通状
 
 建议按下面顺序阅读：
 
-部署状态现分在 `fsm/states/` 的stand/passive/ppo/hold/fault文件中；AMP仅抽象头文件，不注册。`deployment_states.cpp`负责总调度，分工见 [拆分记录](go_imu_state_split_2026-10-15.md)。
+部署状态现分在 `fsm/states/` 的stand/passive/ppo/hold/fault文件中；AMP仅抽象头文件，不注册。`deployment_states.cpp`负责总调度，分工见 [拆分记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 1. [主函数](../../imgo2_deploy/real/rl_real_imgo2.cpp)：启动、键盘、循环、退出。
 2. [状态定义](../../imgo2_deploy/real/fsm/deployment_states.h)和[状态实现](../../imgo2_deploy/real/fsm/deployment_states.cpp)：request、change、update和各状态enter/run。

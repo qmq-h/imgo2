@@ -26,6 +26,10 @@ parser.add_argument(
     "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument(
+    "--warm_start", action="store_true",
+    help="With --resume, load policy/value weights and iteration, but reset optimizer state."
+)
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -39,6 +43,8 @@ cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
+if args_cli.warm_start and not args_cli.resume:
+    parser.error("--warm_start requires --resume")
 
 # always enable cameras to record video
 if args_cli.video:
@@ -76,7 +82,11 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 """Rest everything follows."""
 
 import logging
+import hashlib
+import inspect
+import json
 import os
+import shutil
 import time
 from datetime import datetime
 
@@ -210,7 +220,33 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
-        runner.load(resume_path)
+        if args_cli.warm_start:
+            load_path = resume_path
+            if version.parse(installed_version) >= version.parse("5.0.0"):
+                # Convert only a private copy; never leave migration files in the source run.
+                from isaaclab_rl.rsl_rl import handle_deprecated_rsl_rl_checkpoint
+
+                private_dir = os.path.join(log_dir, "resume_source")
+                os.makedirs(private_dir, exist_ok=True)
+                private_source = os.path.join(private_dir, os.path.basename(resume_path))
+                shutil.copy2(resume_path, private_source)
+                load_path = handle_deprecated_rsl_rl_checkpoint(private_source, installed_version)
+            if "load_cfg" in inspect.signature(runner.load).parameters:
+                runner.load(load_path, load_cfg={"actor": True, "critic": True, "iteration": True},
+                            map_location=env.unwrapped.device)
+            else:
+                runner.load(load_path, load_optimizer=False)
+            os.makedirs(log_dir, exist_ok=True)
+            with open(resume_path, "rb") as source:
+                source_sha256 = hashlib.sha256(source.read()).hexdigest()
+            with open(os.path.join(log_dir, "warm_start.json"), "w") as metadata_file:
+                json.dump({"source_checkpoint": os.path.abspath(resume_path),
+                           "source_sha256": source_sha256, "loaded_checkpoint": os.path.abspath(load_path),
+                           "rsl_rl_version": installed_version, "optimizer_restored": False,
+                           "loaded_iteration": runner.current_learning_iteration}, metadata_file, indent=2)
+            print("[INFO] Warm start: weights/iteration restored; optimizer initialized fresh.", flush=True)
+        else:
+            runner.load(resume_path)
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

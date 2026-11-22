@@ -7,7 +7,7 @@
 > `_prepare_reward_function()` 都会做 `reward_scales[key] *= self.dt`（a1 `legged_robot.py:705-710`、
 > go2 `legged_robot_amp.py:691-696`），所以 a1 的 `1.5/(0.005*6)=50` 每步真值是 **1.5**（角速度 0.5），
 > 我们的 `1.0/step_dt`、`0.3/step_dt` 每步是 **1.0 / 0.3**，属同量级。完整推导与三方逐项对照见
-> [AMP 对照报告](amp_standstill_diagnosis_2026-09-17.md) 第 11 节；后续提交 `f028802` 已按正确口径
+> [AMP 对照报告](../maintenance/project_history_2026-09_to_2026-10.md#amp) 第 11 节；后续提交 `f028802` 已按正确口径
 > 重写权重（每步 4.0 / 2.0 / −5.0）。第 3 节里仍然成立的部分是：**高度项是唯一量级离群项**，
 > 以及 a1 没有高度项、终止条件更严。
 

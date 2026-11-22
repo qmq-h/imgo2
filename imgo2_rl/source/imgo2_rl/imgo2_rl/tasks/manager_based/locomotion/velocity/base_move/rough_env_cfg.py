@@ -183,7 +183,7 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         ]
 
         ## 接触地面时候的触地力
-        self.rewards.contact_forces.weight = -2e-2
+        self.rewards.contact_forces.weight = -2.5e-2
         self.rewards.contact_forces.params["sensor_cfg"].body_names = [
             self.foot_link_name
         ]
@@ -207,7 +207,7 @@ class Imgo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_torques_l2.weight = -2.5e-6
         self.rewards.joint_acc_l2.weight = -5e-9
         # 髋关节的限制，尽量为
-        self.rewards.joint_deviation_l1.weight = -1
+        self.rewards.joint_deviation_l1.weight = -1.0
         self.rewards.joint_deviation_l1.params["asset_cfg"].joint_names = [
             ".*_hip_joint"
         ]

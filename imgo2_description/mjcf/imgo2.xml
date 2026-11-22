@@ -46,12 +46,12 @@
           <body name="base_imu" pos="0 0 0">
             <inertial pos="0 0 0" mass="0.01" fullinertia="0.000001 0.000001 0.000001 0 0 0" />
           </body>
-          <body name="FL_HIP" pos="0.1575 0.067 0.00025" euler="0 0 0">
+          <body name="FL_HIP" pos="0.1591 0.062 -0.00017" euler="0 0 0">
             <joint name="FL_hip_joint" type="hinge" axis="1 0 0" range="-0.523 0.523" damping="0" armature="0" />
             <inertial pos="0.05502 0.01629 0.00008" mass="0.66" fullinertia="0.00048724823 0.00090893629 0.000577702 -0.00002083480 -0.00000122317 0.00000075580" />
             <geom type="mesh" mesh="mesh_1" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-            <geom pos="0.063 0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-            <body name="FL_THIGH" pos="0.063 0.0346 0" euler="0 0 0">
+            <geom pos="0.060 0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+            <body name="FL_THIGH" pos="0.060 0.0351 0" euler="0 0 0">
               <joint name="FL_thigh_joint" type="hinge" axis="0 1 0" range="-0.9 2.87" damping="0" armature="0" />
               <inertial pos="-0.002105 0.044398 -0.032405" mass="1.044" fullinertia="0.005502341 0.005694337 0.000950721 0.000037296 -0.000245651 0.000658207" />
               <geom type="mesh" mesh="mesh_2" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
@@ -72,12 +72,12 @@
               </body>
             </body>
           </body>
-          <body name="FR_HIP" pos="0.1575 -0.067 0.00025" euler="0 0 0">
+          <body name="FR_HIP" pos="0.1591 -0.062 -0.00017" euler="0 0 0">
             <joint name="FR_hip_joint" type="hinge" axis="1 0 0" range="-0.523 0.523" damping="0" armature="0" />
             <inertial pos="0.05502 -0.01629 -0.00008" mass="0.66" fullinertia="0.00048724823 0.00090893629 0.000577702 0.00002083480 0.00000122317 0.00000075580" />
             <geom type="mesh" mesh="mesh_5" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-            <geom pos="0.063 -0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-            <body name="FR_THIGH" pos="0.063 -0.0346 0" euler="0 0 0">
+            <geom pos="0.060 -0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+            <body name="FR_THIGH" pos="0.060 -0.0351 0" euler="0 0 0">
               <joint name="FR_thigh_joint" type="hinge" axis="0 1 0" range="-0.9 2.87" damping="0" armature="0" />
               <inertial pos="-0.002105 -0.044398 -0.032405" mass="1.044" fullinertia="0.005502341 0.005694337 0.000950721 -0.000037296 -0.000245651 -0.000658207" />
               <geom type="mesh" mesh="mesh_6" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
@@ -92,18 +92,18 @@
                 <body name="FR_FOOT" pos="0.0 -0.01145 -0.206" euler="0.0 0.777 0.0">
                   <inertial pos="-0.00797137 0.00353495 -0.02130484" mass="0.056" fullinertia="9.6e-06 9.6e-06 9.6e-06 0 0 0" />
                   <geom type="mesh" mesh="mesh_4" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-                  <geom pos="-0.008 -0.0035 0.01" euler="0.0 0.0 0.0" type="cylinder" size="0.0155 0.005" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-                  <geom pos="-0.008 -0.0035 -0.02" euler="0.0 0.0 0.0" type="sphere" size="0.022" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+                  <geom pos="-0.008 0.0035 0.01" euler="0.0 0.0 0.0" type="cylinder" size="0.0155 0.005" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+                  <geom pos="-0.008 0.0035 -0.02" euler="0.0 0.0 0.0" type="sphere" size="0.022" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
                 </body>
               </body>
             </body>
           </body>
-          <body name="RL_HIP" pos="-0.1575 0.067 0.00025" euler="0 0 0">
+          <body name="RL_HIP" pos="-0.1631 0.062 -0.00017" euler="0 0 0">
             <joint name="RL_hip_joint" type="hinge" axis="1 0 0" range="-0.523 0.523" damping="0" armature="0" />
             <inertial pos="-0.05502 0.01629 -0.00008" mass="0.66" fullinertia="0.00047490383 0.00090893629 0.000577702 0.00002083480 -0.00000122317 -0.00000075580" />
-            <geom type="mesh" mesh="mesh_8" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-            <geom pos="-0.063 0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-            <body name="RL_THIGH" pos="-0.063 0.0346 0" euler="0 0 0">
+            <geom pos="0.004 0 0" type="mesh" mesh="mesh_8" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
+            <geom pos="-0.056 0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+            <body name="RL_THIGH" pos="-0.056 0.0351 0" euler="0 0 0">
               <joint name="RL_thigh_joint" type="hinge" axis="0 1 0" range="-0.9 2.87" damping="0" armature="0" />
               <inertial pos="-0.002105 0.044398 -0.032405" mass="1.044" fullinertia="0.005502341 0.005694337 0.000950721 0.000037296 -0.000245651 0.000658207" />
               <geom type="mesh" mesh="mesh_2" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
@@ -124,12 +124,12 @@
               </body>
             </body>
           </body>
-          <body name="RR_HIP" pos="-0.1575 -0.067 0.00025" euler="0 0 0">
+          <body name="RR_HIP" pos="-0.1631 -0.062 -0.00017" euler="0 0 0">
             <joint name="RR_hip_joint" type="hinge" axis="1 0 0" range="-0.523 0.523" damping="0" armature="0" />
             <inertial pos="-0.05502 -0.01629 0.00008" mass="0.66" fullinertia="0.00047490383 0.00090893629 0.000577702 -0.00002083480 0.00000122317 -0.00000075580" />
-            <geom type="mesh" mesh="mesh_9" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-            <geom pos="-0.063 -0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-            <body name="RR_THIGH" pos="-0.063 -0.0346 0" euler="0 0 0">
+            <geom pos="0.004 0 0" type="mesh" mesh="mesh_9" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
+            <geom pos="-0.056 -0.013 0.0" euler="1.5707963267948966 0.0 0.0" type="cylinder" size="0.048 0.0205" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.2 0.01 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+            <body name="RR_THIGH" pos="-0.056 -0.0351 0" euler="0 0 0">
               <joint name="RR_thigh_joint" type="hinge" axis="0 1 0" range="-0.9 2.87" damping="0" armature="0" />
               <inertial pos="-0.002105 -0.044398 -0.032405" mass="1.044" fullinertia="0.005502341 0.005694337 0.000950721 -0.000037296 -0.000245651 -0.000658207" />
               <geom type="mesh" mesh="mesh_6" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
@@ -144,8 +144,8 @@
                 <body name="RR_FOOT" pos="0.0 -0.01145 -0.206" euler="0.0 0.777 0.0">
                   <inertial pos="-0.00797137 0.00353495 -0.02130484" mass="0.056" fullinertia="9.6e-06 9.6e-06 9.6e-06 0 0 0" />
                   <geom type="mesh" mesh="mesh_4" contype="0" conaffinity="0" group="2" rgba="0.55 0.6 0.65 1" />
-                  <geom pos="-0.008 -0.0035 0.01" euler="0.0 0.0 0.0" type="cylinder" size="0.0155 0.005" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
-                  <geom pos="-0.008 -0.0035 -0.02" euler="0.0 0.0 0.0" type="sphere" size="0.022" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+                  <geom pos="-0.008 0.0035 0.01" euler="0.0 0.0 0.0" type="cylinder" size="0.0155 0.005" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
+                  <geom pos="-0.008 0.0035 -0.02" euler="0.0 0.0 0.0" type="sphere" size="0.022" contype="2" conaffinity="1" condim="3" solref="0.005 1" friction="0.6 0.02 0.01" group="3" rgba="0.2 0.7 0.2 0.3" priority="1" />
                 </body>
               </body>
             </body>

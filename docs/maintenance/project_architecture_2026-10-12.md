@@ -1,6 +1,6 @@
 # Imgo2 整体项目架构、入口与移植指南
 
-路径核对日期：2026-10-20，已按real/ros2_ws更新；迁移验证见 [路径修复记录](../deployment/deploy_layout_migration_2026-10-20.md)。以下控制原理含2026-10-12起的历史说明。根 README 是总入口；本文用于从整体理解项目，细节链接到各模块指南。本轮只更新文档，没有修改代码、运行构建或启动机器人。2026-10-15补充：go_imu已新增独立SDK/FSM真机入口，结构、运行、移植及验证以 [Sim2Real指南](../deployment/go_imu_sim2real_2026-10-15.md) 为准，原ROS参考真机入口保留。go_imu部分于2026-10-14更新为五阶段重构结构，见 [整理记录](../deployment/go_imu_cleanup_2026-10-14.md)。
+路径核对日期：2026-10-20，已按real/ros2_ws更新；迁移验证见 [路径修复记录](project_history_2026-09_to_2026-10.md#simulation-and-deployment)。以下控制原理含2026-10-12起的历史说明。根 README 是总入口；本文用于从整体理解项目，细节链接到各模块指南。本轮只更新文档，没有修改代码、运行构建或启动机器人。2026-10-15补充：go_imu已新增独立SDK/FSM真机入口，结构、运行、移植及验证以 [Sim2Real指南](../deployment/go_imu_sim2real_2026-10-15.md) 为准，原ROS参考真机入口保留。go_imu部分于2026-10-14更新为五阶段重构结构，见 [整理记录](project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 ## 1. 先看这一张图
 
@@ -164,7 +164,7 @@ ros2 launch imgo2_deploy gazebo.launch.py
 ros2 run imgo2_deploy rl_sim
 ```
 
-Gazebo启动实体与控制器，rl_sim读状态并下发控制。先检查初始姿态及有效反馈，再0起身、选择已经核对过的策略；不能把关节变化当身体真实行走。默认／real实验模型选择见[Gazebo代码指南](../deployment/sim2sim_gazebo_code_guide_2026-10-12.md)和根README §6.2；启动姿态问题见[排查](../deployment/gazebo_startup_posture_2026-10-12.md)。
+Gazebo启动实体与控制器，rl_sim读状态并下发控制。先检查初始姿态及有效反馈，再0起身、选择已经核对过的策略；不能把关节变化当身体真实行走。默认／real实验模型选择见[Gazebo代码指南](../deployment/sim2sim_gazebo_code_guide_2026-10-12.md)和根README §6.2；启动姿态问题见[排查](project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 ### 5.3 MuJoCo sim2sim（独立CMake）
 
@@ -218,7 +218,7 @@ add_subdirectory(imgo2_deploy/real)
 target_link_libraries(your_target PRIVATE go_imu::hardware)
 ```
 
-硬件对象采用start/readState/sendCommand/stop；MotorConfig和ImuConfig用默认构造配置参数，apps仅公共辅助；不用复制Motor或Imu实现。具体公开接口、单位和线程约束见[重构记录](../deployment/go_imu_refactor_2026-10-11.md)。安装旋转和policy_to_hardware目前只是保留元数据，仍需未来适配层实际应用。
+硬件对象采用start/readState/sendCommand/stop；MotorConfig和ImuConfig用默认构造配置参数，apps仅公共辅助；不用复制Motor或Imu实现。具体公开接口、单位和线程约束见[重构记录](project_history_2026-09_to_2026-10.md#simulation-and-deployment)。安装旋转和policy_to_hardware目前只是保留元数据，仍需未来适配层实际应用。
 
 ## 7. 当前阻碍真机部署的问题与完成条件
 

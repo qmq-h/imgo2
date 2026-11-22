@@ -1,8 +1,8 @@
 # go_imu 使用、结构与故障手册
 
-> 2026-10-15结构更新：全部具体状态已归入fsm/states，go_stand与部署共用唯一StandState；原行为与本文历史验证记录保留，当前结构见 [纠正记录](go_imu_state_split_2026-10-15.md#同日结构纠正记录删除双standstate与继承套层)。
+> 2026-10-15结构更新：全部具体状态已归入fsm/states，go_stand与部署共用唯一StandState；原行为与本文历史验证记录保留，当前结构见 [纠正记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
-当前入口更新：2026-10-15，ppo_check/imu_reader/go_probe已删除，离线键盘测试改用 [fsm_check](fsm_check_2026-10-15.md)。历史硬件参数说明继续保留。五阶段重构与21项离线验证见 [整理记录](go_imu_cleanup_2026-10-14.md)。用户已确认udev与原monitor实测正常；新版本控制实机仍待确认。
+当前入口更新：2026-10-15，ppo_check/imu_reader/go_probe已删除，离线键盘测试改用 [fsm_check](fsm_check_2026-10-15.md)。历史硬件参数说明继续保留。五阶段重构与21项离线验证见 [整理记录](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。用户已确认udev与原monitor实测正常；新版本控制实机仍待确认。
 
 ## 1. 结构与职责
 

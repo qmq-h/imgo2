@@ -90,4 +90,4 @@ cmake --build cmake_build_mujoco --target rl_sim_mujoco -j4
 
 ## 同日更新：用户已完成安装构建并报告启动
 
-现场只读确认cmake_build_mujoco/bin/rl_sim_mujoco存在，ldd找到工程libmujoco.so.3.2.7、系统GLFW和工程LibTorch，无缺库记录。用户报告程序可启动；前面“缺依赖/未生成入口”仅适用于安装前检查。该结果不等同本轮代为运行PPO或完成步态验证。操作与调用链见[学习说明](mujoco_code_and_usage_2026-10-23.md)，模型/并发/时序待修项保持。新构建目录未跟踪且未忽略，后续需处理忽略规则，本轮未改。
+现场只读确认cmake_build_mujoco/bin/rl_sim_mujoco存在，ldd找到工程libmujoco.so.3.2.7、系统GLFW和工程LibTorch，无缺库记录。用户报告程序可启动；前面“缺依赖/未生成入口”仅适用于安装前检查。该结果不等同本轮代为运行PPO或完成步态验证。操作与调用链见[学习说明](../xiaoji_cmd/mujoco_code_and_usage_2026-10-23.md)，模型/并发/时序待修项保持。新构建目录未跟踪且未忽略，后续需处理忽略规则，本轮未改。

@@ -144,7 +144,7 @@
 3. **公开 HIMLoco A1 的 `_reward_foot_clearance` 形式相同**：机身系足高、目标 −.20、按相对水平足速加权、**没有接触掩码**；但权重是 −.01、门控是线性足速。按本仓库 10/27 的公开源码对照，在同样 `v_rel=.5 m/s`、误差相同的假设下，误差平方前系数约为 `.005`（HIM）对 `4.5696`（本机 −6×tanh(2v)），差约 914 倍。这是同一假设输入的算例，不是实测回合贡献，也不能直接照搬 weight。
 4. **所以 HIMLoco 有类似项，不等于这项没有语义问题。** 它同样把支撑脚算进去、同样用机身系 −.20；在 base .30 m 时支撑脚不可能同时满足 −.20，理论上同样存在“蹲低机身可以省这一项”的激励。HIMLoco 的步态是否更好，要看它的完整配方（尤其 `joint_pos_penalty` 只有 −.1，比 4999 的 −.5 弱 5 倍）和训练结果；不能仅凭“HIMLoco 也这么写”证明这一项没问题，也不能直接复制 HIM 的 −.01 或本仓库的 −5/−6。
 
-来源：本仓库 [himloco_env_cfg.py:181-206](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/himloco_env_cfg.py#L181-L206)；公开 HIMLoco A1 的对照与 URL 见 [公开配方对照](ppo_hip_mpc_public_comparison_2026-10-27.md#4-公开奖励对照)。本轮没有重新联网抓取 HIMLoco 源码，公开侧数字沿用 10/27 已核对记录。
+来源：本仓库 [himloco_env_cfg.py:181-206](../../imgo2_rl/source/imgo2_rl/imgo2_rl/tasks/manager_based/locomotion/velocity/base_move/himloco_env_cfg.py#L181-L206)；公开 HIMLoco A1 的对照与 URL 见 [公开配方对照](../maintenance/project_history_2026-09_to_2026-10.md#ppo-training)。本轮没有重新联网抓取 HIMLoco 源码，公开侧数字沿用 10/27 已核对记录。
 
 ## 5. 用户手册核对：哪些对、哪些要改
 
@@ -267,7 +267,7 @@ reward = torch.sum(foot_vel_w.norm(dim=-1) * contacts, dim=1)
 | 脚滑 | −.05，相对机身 | legged_gym 的 `_reward_feet_slip` 用世界系足速 | 未列 | 未列 |
 | 关节加速度 | −5e−9 | −2.5e−7 | −2.5e−7 | −2.5e−7 |
 
-来源：[公开配方对照](ppo_hip_mpc_public_comparison_2026-10-27.md#4-公开奖励对照)、[Unitree Go2 配置](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/legged_gym/envs/go2/go2_config.py)、[legged_gym 奖励实现](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/legged_gym/envs/base/legged_robot.py)、[HIMLoco A1 配置](https://github.com/InternRobotics/HIMLoco/blob/main/legged_gym/legged_gym/envs/a1/a1_config.py)。
+来源：[公开配方对照](../maintenance/project_history_2026-09_to_2026-10.md#ppo-training)、[Unitree Go2 配置](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/legged_gym/envs/go2/go2_config.py)、[legged_gym 奖励实现](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/legged_gym/envs/base/legged_robot.py)、[HIMLoco A1 配置](https://github.com/InternRobotics/HIMLoco/blob/main/legged_gym/legged_gym/envs/a1/a1_config.py)。
 
 读法：
 
@@ -443,7 +443,7 @@ MuJoCo 平地实测（同一条件、后 16 s）：
 #### 原因拆解
 
 1. **`feet_height=-3.5` 是主要 destabilizer。** 它是**世界系、target .10、两侧平方、无接触掩码**的误差项；rough/stairs 上「世界 z=.1」不是局部地面，策略无法同时满足所有地形/身体姿态，日志直接到 −0.537/s。为了压低这个巨大代价，策略用髋外展/内收、压低机身、改变脚轨迹去「凑」目标，结果就是前外后内 + 低机身。−3.5 比之前我们离线讨论的 −0.5 强 7 倍，而且训练 500 轮足以把它放大。
-2. **髋没有姿态约束，`joint_mirror` 的髋符号问题没有被挡住。** `joint_pos_penalty=0`、`joint_deviation_l1=null`、`joint_pos_limits=null`，`joint_mirror=-1` 仍把 hip 放进对角同号比较。对四髋 +X 模型，这个组合允许「前外后内」以零镜像代价存在（[髋审计](ppo_hip_saturation_reward_audit_2026-10-27.md) 的原函数反例）；没有独立髋项时，别的目标一推，髋就走到这个零代价方向。5998 的前 +11°、后 −15° 正是这个模式。
+2. **髋没有姿态约束，`joint_mirror` 的髋符号问题没有被挡住。** `joint_pos_penalty=0`、`joint_deviation_l1=null`、`joint_pos_limits=null`，`joint_mirror=-1` 仍把 hip 放进对角同号比较。对四髋 +X 模型，这个组合允许「前外后内」以零镜像代价存在（[髋审计](../maintenance/project_history_2026-09_to_2026-10.md#ppo-training) 的原函数反例）；没有独立髋项时，别的目标一推，髋就走到这个零代价方向。5998 的前 +11°、后 −15° 正是这个模式。
 3. **`feet_height_body=-0.5` 把向下的拉力减小了，但 `base_height_l2` 仍然只有 −10；** 在新的大惩罚/探索下，机身没有足够约束，掉到 22 cm。注意：FHB −0.5 不是「蹲低」的主因；主因是新的世界系 `feet_height` 和姿态退化。把它从 −6 降到 −0.5 是方向对的，但一次改太多，无法归因。
 4. **静站没有水平速度惩罚。** `stand_still=-0.1` 只罚「关节角偏离默认」，不罚机身漂移；零指令时 `feet_air_time`/`feet_height` 都被命令门控关掉，`track_lin` 的 exp 核在 .078 m/s 时仍有很高分数，梯度很弱。于是「站着往前蹿」不会被明显惩罚。
 5. **500 轮 + 标准 1e-3 学习率 + reward 量级突变**：`mean_noise_std` 从 .507 翻到 1.048，所有关节 std 约翻倍（hip .71→1.5、thigh .44→.8），动作饱和 18–22%。这不是「再训 500 轮会自己回来」的漂移，而是策略已经离开好盆地。

@@ -10,7 +10,7 @@
 - 小电脑总结：[`项目验证总结.md`](../../imgo2_deploy/real/docs/xiaoji/项目验证总结.md)。其中测试通过、usbmon 数字属于上传方报告，下面区分独立复算与转述；不将文档里的后续建议视为本轮执行授权。
 - 日志：工程 `build/log/2026-10-19_22-15-26_19277/`，338.2 秒、robot.csv 67597 行、169 列，policy.csv 14485 行。另一份 `2026-10-19_22-47-33_21507/` 约27秒，只有 InitialHold，不能作为两个 PPO 条件的对照。
 - 用户补充：曾多次提起机器人但不记得时间；**PPO 初始静站完全不抖**，低速、横移、转动落地时明显颤抖，提起后改善。安静窗口只是候选提起窗口，不能凭 IMU 自动给日志标注悬空/落地。
-- 当前源码、build 副本及根 policy 目录的 PPO 文件 SHA256 为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`；历史核对认定它是参考项目 `policy_flat.pt`，见 [来源复核](ppo_policy_provenance_2026-09-19.md)。小电脑总结所称“24500策略”尚缺对应 checkpoint/env 配置与该哈希的对应证据。
+- 当前源码、build 副本及根 policy 目录的 PPO 文件 SHA256 为 `53a57f909b61d2a708d24d6c08a90e086409b6d4fce4fdd3e6f3e1849abce7cf`；历史核对认定它是参考项目 `policy_flat.pt`，见 [来源复核](../maintenance/project_history_2026-09_to_2026-10.md#ppo-training)。小电脑总结所称“24500策略”尚缺对应 checkpoint/env 配置与该哈希的对应证据。
 - 实际上传参数：主循环5ms、推理20ms、电机总线周期7ms；首次站起/趴下4秒、PPO回站2秒、交接0.5秒；固定60/2、PPO25/0.5；udev名称及坐标轴沿用用户确认。本轮没有恢复旧8秒或改动这些值。
 
 ## 2. 4Mbps 为什么没有得到80微秒事务

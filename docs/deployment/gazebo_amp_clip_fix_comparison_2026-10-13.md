@@ -43,7 +43,7 @@
 
 后退/纯转向：腿间周期不同或无稳定峰，足端长期贴地。Gazebo后退大腿约.33 s的运动不能解释成.33 s离地迈步；右转个别关节的7.69 Hz候选更不能当整机步频。原Isaac后退后脚约98%接触、已完成腾空约20 ms，左转RL/右转RR也约98%接触。**Gazebo测量反映实际模拟行为，但不是“与训练完全相同的目标步态”；也不是参考动作已经复现。**
 
-[双仿真同口径比较](../amp/data/amp_gazebo_isaac_direction_comparison_2026-10-13.json)、[原Isaac足端/接触结果](../amp/data/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json)。完整抬高/接触口径沿用 [足端记录](../amp/amp_foot_lift_review_2026-10-13.md)。
+[双仿真同口径比较](../amp/data/amp_gazebo_isaac_direction_comparison_2026-10-13.json)、[原Isaac足端/接触结果](../amp/data/isaac_amp_motion_new_25000_feet_joint_2026-10-13.json)。完整抬高/接触口径沿用 [足端记录](../maintenance/project_history_2026-09_to_2026-10.md#amp)。
 
 ## 4. 为什么前进看着好、后退/旋转差
 

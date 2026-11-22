@@ -26,7 +26,7 @@ PPO 输出关节位置目标，执行器决定目标如何转成实际力矩。�
 
 ## 3. 抖动先怎么查
 
-已有 [运动振荡路线](../deployment/sim2real_vibration_literature_plan_2026-10-21.md)、[线程时序复审](../deployment/thread_obs_timing_review_2026-10-23.md) 已指出执行/反馈时序、旧观测、接触与IMU等候选；历史7–8Hz现象不是本轮新测量，也不证明当前机器仍是同一机制。
+已有 [运动振荡路线](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)、[线程时序复审](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment) 已指出执行/反馈时序、旧观测、接触与IMU等候选；历史7–8Hz现象不是本轮新测量，也不证明当前机器仍是同一机制。
 
 先固定同一PPO权重、指令、PD与地面条件，保存真实输入、策略目标、Safety后实际目标、q/dq/反馈力矩、IMU、kp/kd、目标与反馈时间戳及有效性。比较：目标本身是否已高频变化；目标平滑时实际q/dq是否振荡；是否集中在触地、饱和或反馈停顿；仿真是否存在同频现象。闭环中仅凭“哪个信号先抖”不能唯一归因。
 

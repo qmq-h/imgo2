@@ -2,13 +2,13 @@
 
 > 后续更新：逐物理步PD和反馈延迟/IMU噪声已实现并完成编译、组件测试与GUI短流程；本文件保留当时排查。当前设置与限制见[实现记录](mujoco_pd_feedback_2026-10-23.md)。
 
-> 后续发现：用户报告生产GUI启动抽搐，已复现Passive采样PD时序敏感性；固定目标诊断通过不能代替启动稳定。当前控制待修，见[专项排查](mujoco_passive_timing_2026-10-23.md)。
+> 后续发现：用户报告生产GUI启动抽搐，已复现Passive采样PD时序敏感性；固定目标诊断通过不能代替启动稳定。当前控制待修，见[专项排查](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 ## 当前结果
 
 已按用户授权修改现有imgo2_description/mjcf/imgo2.xml，不新建第二套机器人模型。基准为ROS2 gazebo.launch.py默认加载的imgo2_real.gazebo.urdf与earth.world；未覆盖IMGO2_GAZEBO_URDF时适用。关节、惯性及碰撞静态门禁通过，MuJoCo3.2.7加载/运动学及限定固定站姿诊断通过。PPO步态、生产FSM时序和跨引擎接触等价仍未验证。
 
-原模型差异见[修改前核对](mjcf_real_alignment_2026-10-23.md)，本次结果为[结构/惯性JSON](mjcf_gazebo_alignment_2026-10-23.json)、[运行诊断JSON](mjcf_gazebo_runtime_2026-10-23.json)。历史记录中的8body未同步结论已由本次修复取代。
+原模型差异见[修改前核对](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)，本次结果为[结构/惯性JSON](mjcf_gazebo_alignment_2026-10-23.json)、[运行诊断JSON](mjcf_gazebo_runtime_2026-10-23.json)。历史记录中的8body未同步结论已由本次修复取代。
 
 ## 修改内容及原因
 

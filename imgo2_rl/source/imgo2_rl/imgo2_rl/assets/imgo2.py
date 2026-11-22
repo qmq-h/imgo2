@@ -90,3 +90,23 @@ IMGO2_CFG = ArticulationCfg(
         ),
     },
 )
+
+
+def make_imgo2_resistance_cfg() -> ArticulationCfg:
+    """Copy the default asset and enable the frozen front-left candidate."""
+    from imgo2_rl.assets.imgo2_actuators import ResistanceDCMotorCfg
+
+    cfg = IMGO2_CFG.copy()
+    motor = cfg.actuators["legs"]
+    cfg.actuators["legs"] = ResistanceDCMotorCfg(
+        joint_names_expr=motor.joint_names_expr,
+        effort_limit=motor.effort_limit,
+        saturation_effort=motor.saturation_effort,
+        velocity_limit=motor.velocity_limit,
+        stiffness=motor.stiffness,
+        damping=motor.damping,
+        armature=motor.armature,
+        fs_nm={"FL_hip_joint": 0.175, "FL_thigh_joint": 0.150, "FL_shank_joint": 0.275},
+        va_rad_s={"FL_hip_joint": 0.005, "FL_thigh_joint": 0.005, "FL_shank_joint": 0.010},
+    )
+    return cfg

@@ -36,7 +36,7 @@ Isaac Lab 中训练好的 actor 经 AMP `play.py` 导出为 TorchScript `policy.
 5. 站起完成后按 `3`：进入 RLFSMStateAMPLocomotion，Enter 调用 `RL::InitRL("imgo2/amp")`，读取 amp/config.yaml、初始化观测/输出并加载 policy.pt。Run 开启推理并调用 RLControl；Exit 关闭推理标志。
 6. 推理线程持续计算目标；控制线程持续发布命令；Gazebo 控制器和物理继续产生反馈。
 
-Passive→GetUp→AMP 的具体按键条件在 fsm_imgo2.hpp；启动期翻倒、重置再掉落与不整齐趴姿详见 [初始化排查](gazebo_startup_posture_2026-10-12.md)，不在本篇重复展开。
+Passive→GetUp→AMP 的具体按键条件在 fsm_imgo2.hpp；启动期翻倒、重置再掉落与不整齐趴姿详见 [初始化排查](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)，不在本篇重复展开。
 
 ## 4. 运行时的两条主循环
 
@@ -82,7 +82,7 @@ SetCommand               按映射发布 12 个电机的 q/dq/kp/kd/tau
 | rl_sim 策略 | dt×decimation=0.02 s，名义 50 Hz | 墙钟调度 |
 | IMU | 配置 100 Hz | 仿真传感器 |
 
-这些是配置频率，不是本轮实测吞吐。Gazebo 实时倍率偏离 1 时，不能把墙钟 20 ms 直接当成仿真时间 20 ms；评测周期使用仿真时间，并留意调度负载。更详细的仿真器差异见 [已有对照](sim2sim_mujoco_vs_gazebo_2026-09-19.md)。
+这些是配置频率，不是本轮实测吞吐。Gazebo 实时倍率偏离 1 时，不能把墙钟 20 ms 直接当成仿真时间 20 ms；评测周期使用仿真时间，并留意调度负载。更详细的仿真器差异见 [已有对照](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)。
 
 ## 5. 策略输入、输出与真正的力矩
 

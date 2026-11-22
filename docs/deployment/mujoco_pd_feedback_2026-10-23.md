@@ -4,7 +4,7 @@
 
 已按用户确认实施两个连续需求：①电机PD按MuJoCo动力学计算更新，5ms循环仅发布目标/增益；②增加独立电机/IMU反馈附加延迟和MJCF可配置IMU噪声。当前入口已编译，3/3 CTest与10/10模型回归通过，默认及非零延迟/噪声的实际图形程序短程操作已通过。没有修改真实硬件工程、URDF/Xacro、策略权重、action_scale或状态增益。
 
-验证摘要与源文件hash见[JSON](mujoco_pd_feedback_validation_2026-10-23.json)。此前[启动抽搐排查](mujoco_passive_timing_2026-10-23.md)中的“生产PD待修改”已由本次实现取代；长时步态质量与真实时序仍待量化。
+验证摘要与源文件hash见[JSON](mujoco_pd_feedback_validation_2026-10-23.json)。此前[启动抽搐排查](../maintenance/project_history_2026-09_to_2026-10.md#simulation-and-deployment)中的“生产PD待修改”已由本次实现取代；长时步态质量与真实时序仍待量化。
 
 ## 1. 控制与反馈分层
 

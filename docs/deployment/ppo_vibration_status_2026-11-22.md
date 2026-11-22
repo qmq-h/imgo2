@@ -1,0 +1,45 @@
+# 实机 PPO 横滚排查（2026-11-22）
+
+无托举实机前进时的横滚振荡仍未解决。两次同 +0.5 m/s 指令、Kp 25/Kd 0.8 的自然承重记录，主峰约 6.84 和 7.03 Hz。横滚角速度 RMS 为 0.795、0.970 rad/s，MuJoCo 与 Isaac Sim 自身反馈基线为 0.105、0.093 rad/s。实机的 6–8 Hz 关节速度相对仿真的差异，髋约 4.1–8.7 倍，大腿约 1.1–1.4 倍，小腿约 1.7–2.0 倍。匹配的是前进指令，实机线速度未独立测量。手托减少振荡，同时影响承重与侧向约束。 全状态曲线（本机 `fourway_motion_2026-11-21.md`） · 逐轴对照与绑定（本机 `roll_joint_binding_2026-11-21.md`）
+
+<a id="replay-and-filtering"></a>
+
+## 回放、滤波和策略输入
+
+| 已做试验 | 能说明什么 |
+|---|---|
+| 实机全关节目标原样回放到 Gazebo | 同一目标序列能在 Gazebo 驱出振荡。旧稳态窗实机/回放横滚 RMS 约 1.526/1.506 rad/s。 同目标报告（本机 `target_replay_2026-11-09.md`） |
+| 只回放实机速度指令历史，Gazebo 用自身反馈 | 走过相同的指令变更后仍可平稳。该前进回放横滚 RMS 约 0.256 rad/s。轨迹、接触及目标输出仍可不同。 |
+| 观察开环回放与曲线 | 实机 dq 和投影重力中的 roll 平滑未消掉横滚。旧批原始 obs 重算 1.286 rad/s，3 Hz dq 平滑 1.221 rad/s，再加 roll 平滑 1.178 rad/s，而 roll 角波动反而大于原重算组。历史图的同 tick 目标有一提交拍错位，具体以成对日志及回放修正（本机 `paired_obs_gui_replay_2026-11-09.md`）为准。 多通道统计（本机 `obs_followup_2026-11-09.md`） |
+| 单换 gravity、换全部 q/dq、或合用正常 IMU 与减幅髋 q | gravity 组的横滚角速度仅约 1.604→1.579 rad/s；全 q/dq 组仍大幅倾斜。用仿真 IMU 后再减幅髋 q 未见进一步稳定。固定历史输入给出的只能是当时的敏感性。 |
+| 单减四髋 dq | 固定历史输入的四档回放没有明显改善；另一次正常 Gazebo 自身反馈闭环的 25% 组横滚角速度 RMS 约低 19%，实机同速效果未测。 完整反馈闭环（本机 `closedloop_hip_dq_2026-11-18.md`） |
+| 两次无托举的实际配对输入逐拍重算 | 去掉 roll gyro 的 4–10 Hz 分量，髋目标同频波动降 14–25%。去掉上一拍髋动作降 19–20%，单去髋 dq 降 3–6%。结果定位了策略能传递的波动，闭环触发仍需同步接触和执行证据。 量化分析（本机 `roll_motion_gap_2026-11-21.md`） |
+
+<a id="actuator-validation"></a>
+
+## 电机模型与日志可用性
+
+- 旧日志适用于位置响应辨识。其力矩为驱动器估算，同行目标与反馈时序有偏差，不能直接当独立标定的力矩真值。若做辨识，应使用真实配对的策略输入输出、明确目标和反馈采样时刻，并留出独立工况。 原始日志量化（本机 `actuator_log_readiness_2026-11-09.json`） · [采集规格](joint_sine_collection_spec_2026-11-19.md)
+- 当前训练默认 DCMotor，标称 25/0.5，诊断固定 25/0.8。原 DCMotor 在 14 个既有台架案例的 5 ms 步长对照通过，但小腿 2 Hz、±0.01 rad 仿真幅比约 94.3%，实机约 23.8%。历史附加阻力候选让较大幅度台架动态位置误差约降 71%，5 ms 下小幅换向验收未过，复现整机横滚也未通过。 执行器台架和闭环（本机 `resistance_actuator_2026-11-21.md`） · PhysX 原生摩擦结果（本机 `native_rack_friction_2026-11-21.md`）
+
+<a id="current-checks"></a>
+
+## 目前要验证的量
+
+- 新髋/大腿位置和碰撞偏移已同步到 Isaac Lab、MuJoCo 和 Gazebo 入口。先固定原 DCMotor、策略、PD 和速度对照新旧几何，再看有无同速横滚改善。新模型的闭环行走效果及真实机械零位待核对。 [同步与服务器启动](model_sync_2026-11-22.md) · 关节零位核对（本机 `joint_position_check_2026-11-21.md`）
+- 正常走动时当前优先看横滚角速度 6–8 Hz、髋目标及反馈、跟速和落脚。要确定振荡怎样维持，可按现有方案做全目标回放和只减四髋目标同频分量的成对试验。能否直接用于实机还需无托举独立验证。 实验依据（本机 `roll_motion_gap_2026-11-21.md`）
+- 训练侧另跟踪 18 cm 上下两阶目标和低速跟踪。当前粘贴的 Rough 配置开启地形课程，关闭速度课程，楼梯高度为 2.5–8 cm。 [配置核对](../training/pasted_rough_config_review_2026-11-22.md) · [18 cm 路线](../training/ppo_18cm_stairs_route_2026-11-13.md)
+
+<details>
+<summary>原文索引（8 份）</summary>
+
+- 最新实机日志能否用于执行器网络训练 （`docs/deployment/actuator_log_readiness_2026-11-09.md`）
+- 正常仿真IMU替换＋四髋位置输入减幅（2026-11-18） （`docs/deployment/body_hip_q_2026-11-18.md`）
+- 正常仿真为何较稳：速度指令历史闭环对照（2026-11-09） （`docs/deployment/command_history_closedloop_2026-11-09.md`）
+- 仅替换正常仿真gravity的观测反事实验证（2026-11-09） （`docs/deployment/gravity_swap_2026-11-09.md`）
+- 四髋速度obs定比例降幅验证（2026-11-18） （`docs/deployment/hip_dq_scale_2026-11-18.md`）
+- 保留实机IMU、仅替换正常关节q/dq的验证（2026-11-09） （`docs/deployment/joint_swap_2026-11-09.md`）
+- 0.5m/s实际策略输入曲线与频幅对照（2026-11-09） （`docs/deployment/obs_curve_comparison_2026-11-09.md`）
+- 关节速度、roll按顺序平滑的Gazebo诊断（2026-11-09） （`docs/deployment/obs_smoothing_2026-11-09.md`）
+
+</details>
