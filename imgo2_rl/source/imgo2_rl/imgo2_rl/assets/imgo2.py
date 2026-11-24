@@ -92,6 +92,33 @@ IMGO2_CFG = ArticulationCfg(
 )
 
 
+if os.environ.get("IMGO2_NATIVE_JOINT_FRICTION") == "1":
+    from isaaclab.utils.version import get_isaac_sim_version
+
+    if get_isaac_sim_version().major < 5:
+        raise RuntimeError("IMGO2_NATIVE_JOINT_FRICTION requires Isaac Sim 5 or later.")
+
+    # PhysX joint-side static, dynamic (N·m), and viscous (N·m·s/rad) friction.
+    # Apply the rack friction candidates symmetrically to all four legs.
+    # The shank settings were fitted on the large-amplitude rack recordings.
+    motor = IMGO2_CFG.actuators["legs"]
+    motor.friction = {
+        ".*_hip_joint": 0.14875,
+        ".*_thigh_joint": 0.180,
+        ".*_shank_joint": 0.325,
+    }
+    motor.dynamic_friction = {
+        ".*_hip_joint": 0.14875,
+        ".*_thigh_joint": 0.180,
+        ".*_shank_joint": 0.195,
+    }
+    motor.viscous_friction = {
+        ".*_hip_joint": 0.10,
+        ".*_thigh_joint": 0.0,
+        ".*_shank_joint": 0.20,
+    }
+
+
 def make_imgo2_resistance_cfg() -> ArticulationCfg:
     """Copy the default asset and enable the frozen front-left candidate."""
     from imgo2_rl.assets.imgo2_actuators import ResistanceDCMotorCfg
@@ -107,6 +134,10 @@ def make_imgo2_resistance_cfg() -> ArticulationCfg:
         damping=motor.damping,
         armature=motor.armature,
         fs_nm={"FL_hip_joint": 0.175, "FL_thigh_joint": 0.150, "FL_shank_joint": 0.275},
-        va_rad_s={"FL_hip_joint": 0.005, "FL_thigh_joint": 0.005, "FL_shank_joint": 0.010},
+        va_rad_s={
+            "FL_hip_joint": 0.005,
+            "FL_thigh_joint": 0.005,
+            "FL_shank_joint": 0.010,
+        },
     )
     return cfg

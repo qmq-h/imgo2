@@ -7,7 +7,6 @@
 ```bash
 cd /home/tommy0929/Documents/imgo2/imgo2_rl
 export IMGO2_ISAACLAB_PYTHON=/home/tommy0929/miniconda3/envs/env_isaaclab/bin/python
-export PYTHONPATH="$PWD/source/imgo2_rl:$PWD/scripts/rl_lab${PYTHONPATH:+:$PYTHONPATH}"
 bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
   --task=Imgo2-basemove-rough-ppo \
   --checkpoint="$PWD/logs/2026-10-26_17-09-42/model_8400.pt" \
@@ -39,7 +38,7 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
 
 另外：`policy.pt` 是 TorchScript 的 zip 归档，**字节哈希每次导出都会变**（`torch.jit.save` 写时间戳），判断「是不是同一份」要比大小和数值（Actor max diff），不要比 SHA256；`policy.onnx` 则跨次一致。
 
-命令前那两条 `export` 不能省：启动器不读已激活的 conda 环境，缺 `IMGO2_ISAACLAB_PYTHON` 会去找本机不存在的 `/opt/conda/envs/isaaclab/bin/python`，缺 `PYTHONPATH` 会 `import cli_args` 失败。
+本机用 `IMGO2_ISAACLAB_PYTHON` 指定解释器。否则启动器默认使用 `/opt/conda/envs/isaaclab/bin/python`。自 2026-11-22 起，启动器会按仓库位置补上共享 `play_utils`、`cli_args` 和项目源码的模块路径。
 
 本机路径示例，核对日期2026-10-20（目录迁移路径已修；历史策略结果不重新判定）。用户称“sim2real”，但此处要求的是导出后启动ROS2仿真，实际为 **sim2sim**；本文不包含真机电机启动。
 
@@ -47,14 +46,13 @@ bash scripts/run_isaaclab.sh scripts/rl_lab/ppo/play.py \
 
 ## 1. model_25000.pt 导出为 policy.pt
 
-在终端A执行；如果已显示 `(env_isaaclab)`，不必重复激活。下面的变量设置都是独立的export命令，可以逐条执行：
+在终端 A 执行。已经激活 `env_isaaclab` 时可以直接指定解释器并执行导出。
 
 ```bash
 cd /home/tommy0929/Documents/imgo2/imgo2_rl
 conda activate env_isaaclab
 
 export IMGO2_ISAACLAB_PYTHON="$CONDA_PREFIX/bin/python"
-export PYTHONPATH="$PWD/source/imgo2_rl:$PWD/scripts/rl_lab${PYTHONPATH:+:$PYTHONPATH}"
 
 bash scripts/run_isaaclab.sh scripts/rl_lab/amp/play.py \
   --task=Imgo2-basemove-flat-amp-height-play \

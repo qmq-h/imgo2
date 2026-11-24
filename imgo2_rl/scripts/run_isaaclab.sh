@@ -96,4 +96,8 @@ if [[ $# -lt 1 ]]; then
 fi
 
 prepend_or_append
+# 算法脚本直接运行时，Python 只会自动加入该脚本所在的算法子目录。
+# 按启动器的位置补上共享脚本和项目源码的路径，兼容从不同目录启动。
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/rl_lab:${SCRIPT_DIR}/../source/imgo2_rl${PYTHONPATH:+:${PYTHONPATH}}"
 exec "${PY}" "$@"

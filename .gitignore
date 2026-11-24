@@ -102,6 +102,9 @@ MUJOCO_LOG.TXT
 /imgo2_rl/docker/artifacts/
 **/*.sif
 
+# 本机中期答辩材料
+/docs/xiaoji_cmd/中期/
+
 # ---------- 压缩包与临时目录 ----------
 *.zip
 *.tgz

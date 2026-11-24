@@ -1,12 +1,13 @@
 """`imgo2_rl/scripts/run_isaaclab.sh` 的离线回归测试（纯标准库 + 子进程，不需要 GPU）。
 
-守两件事：
+覆盖启动器的两类路径：
 1. `--check` 能跑通，并报告 `libtorch_cuda_linalg.so` 存在且 `dlopen` 成功；
 2. 启动器确实把 `<site-packages>/torch/lib` 追加进了子进程的 `LD_LIBRARY_PATH`
    —— 这是 `libtorch_cuda_linalg.so: cannot open shared object file` 这个报错的直接解药
    （机制见 `docs/training/isaaclab_launcher_libtorch_dlopen_2026-09-20.md`：TP 里的
    `libtorch_cuda.so` 只有 `DT_RPATH`，而 glibc **不会**用 RPATH 解析显式 `dlopen(裸名)`，
    所以必须靠 `LD_LIBRARY_PATH`）。
+3. 即使没有 `PYTHONPATH`，算法脚本也能找到共享模块和项目源码。
 
 Run: python3 -m unittest discover -s tests -p test_run_isaaclab_launcher.py
 """
@@ -49,6 +50,21 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("torch/lib", result.stdout)
         # 同时也应带上 pip 版 CUDA 运行库目录（libtorch_cuda_linalg.so 的依赖）
         self.assertIn("nvidia/", result.stdout)
+
+    def test_launcher_exposes_project_imports_without_pythonpath(self):
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        code = (
+            "from importlib.util import find_spec; from pathlib import Path; "
+            "print(Path(find_spec('play_utils').origin).resolve()); "
+            "print(Path(find_spec('imgo2_rl').origin).resolve())"
+        )
+        result = _run(["-c", code], cwd=ROOT.parent, env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [
+            str(ROOT / "scripts/rl_lab/play_utils.py"),
+            str(ROOT / "source/imgo2_rl/imgo2_rl/__init__.py"),
+        ])
 
     def test_launcher_reproduces_and_fixes_the_bare_name_dlopen(self):
         """同一句 `dlopen(裸名)`：不给路径会失败、走启动器会成功 —— 这就是报错的机理。
